@@ -9,7 +9,9 @@ import shutil
 import threading
 import time
 import unicodedata
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,9 @@ from .ingestion import process_inbox_file
 from .models import (
     ChatRequest,
     ChatResponse,
+    ChatSession,
+    ChatSessionCreate,
+    ChatSessionUpdate,
     ClassifyRequest,
     ClassifyResponse,
     DocumentMetadataUpdate,
@@ -34,10 +39,11 @@ from .models import (
     SearchHit,
     SearchResponse,
     SearchSuggestion,
+    StoredChatMessage,
     SuggestResponse,
     TriageDecisionRequest,
 )
-from .opensearch_client import ensure_index, get_client
+from .opensearch_client import ensure_chat_sessions_index, ensure_index, get_client
 from .project_profile import list_project_roots, load_project_profile
 from .reconcile import rebuild_search_index, reconcile_project_index, sync_search_index_for_project
 from .triage import (
@@ -88,6 +94,7 @@ async def lifespan(app: FastAPI):
     for _ in range(max_attempts):
         try:
             ensure_index(os_client)
+            ensure_chat_sessions_index(os_client)
             backfill_search_fields(os_client)
             _start_auto_reconcile_if_enabled()
             break
@@ -101,13 +108,17 @@ async def lifespan(app: FastAPI):
     _reconcile_stop.set()
 
 
+def _cors_origins() -> list[str]:
+    raw = (settings.allowed_origins or "").strip()
+    if not raw:
+        return ["http://localhost:5173", "http://127.0.0.1:5173"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1150,8 +1161,126 @@ async def api_chat(
         model = body.model
     api_key = x_openai_api_key if provider == "openai" else (x_anthropic_api_key if provider == "anthropic" else None)
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
-    result = await run_chat_loop(messages, provider, model, api_key=api_key, enable_thinking=body.enable_thinking)
-    return ChatResponse(content=result["content"], tool_calls_used=result.get("tool_calls_used", []))
+    try:
+        result = await run_chat_loop(messages, provider, model, api_key=api_key, enable_thinking=body.enable_thinking)
+        return ChatResponse(content=result["content"], tool_calls_used=result.get("tool_calls_used", []))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        err_msg = (str(e).strip() or type(e).__name__).replace("\n", " ")
+        if any(
+            x in err_msg.lower()
+            for x in ("authentication", "api_key", "invalid api key", "incorrect api key", "no api key")
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail="Chave de API do provedor não configurada ou inválida. Configure OPENAI_API_KEY ou ANTHROPIC_API_KEY no backend (ou informe na configuração do assistente).",
+            ) from e
+        raise HTTPException(status_code=503, detail=f"Erro no assistente: {err_msg}") from e
+
+
+_CHAT_SESSIONS_INDEX = settings.opensearch_chat_sessions_index
+
+
+def _parse_ts(v: Any) -> int:
+    """Parse createdAt/updatedAt from OpenSearch (int ms or ISO string)."""
+    if v is None:
+        return 0
+    if isinstance(v, (int, float)):
+        return int(v)
+    if isinstance(v, str):
+        try:
+            return int(datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp() * 1000)
+        except (ValueError, TypeError):
+            return 0
+    return 0
+
+
+def _session_doc_to_model(doc_id: str, src: dict[str, Any]) -> ChatSession:
+    ms = [StoredChatMessage(role=m.get("role", "user"), content=m.get("content", ""), timestamp=m.get("timestamp")) for m in src.get("messages", [])]
+    return ChatSession(
+        id=doc_id,
+        title=src.get("title", ""),
+        messages=ms,
+        model=src.get("model", ""),
+        createdAt=_parse_ts(src.get("createdAt")),
+        updatedAt=_parse_ts(src.get("updatedAt")),
+    )
+
+
+@app.get("/api/chat/sessions", response_model=list[ChatSession])
+def list_chat_sessions(q: str | None = Query(None, alias="q")) -> list[ChatSession]:
+    """List chat sessions ordered by updatedAt desc; optional full-text filter on title."""
+    body: dict[str, Any] = {"size": 500, "sort": [{"updatedAt": {"order": "desc"}}]}
+    if q and q.strip():
+        body["query"] = {"simple_query_string": {"query": q.strip(), "fields": ["title"], "default_operator": "and"}}
+    else:
+        body["query"] = {"match_all": {}}
+    try:
+        result = os_client.search(index=_CHAT_SESSIONS_INDEX, body=body)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Erro ao listar sessões: {e!s}") from e
+    hits = (result.get("hits") or {}).get("hits") or []
+    out: list[ChatSession] = []
+    for hit in hits:
+        doc_id = hit.get("_id", "")
+        src = hit.get("_source", {})
+        out.append(_session_doc_to_model(doc_id, src))
+    return out
+
+
+@app.get("/api/chat/sessions/{session_id}", response_model=ChatSession)
+def get_chat_session(session_id: str) -> ChatSession:
+    """Return a single chat session by id."""
+    try:
+        hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+    src = hit.get("_source", {})
+    return _session_doc_to_model(session_id, src)
+
+
+@app.post("/api/chat/sessions", response_model=ChatSession)
+def create_chat_session(body: ChatSessionCreate) -> ChatSession:
+    """Create a new chat session (id generated in backend)."""
+    now_ms = int(time.time() * 1000)
+    doc_id = uuid.uuid4().hex
+    doc = {
+        "title": body.title,
+        "messages": [m.model_dump() for m in body.messages],
+        "model": body.model,
+        "createdAt": now_ms,
+        "updatedAt": now_ms,
+    }
+    os_client.index(index=_CHAT_SESSIONS_INDEX, id=doc_id, body=doc, refresh=True)
+    return _session_doc_to_model(doc_id, doc)
+
+
+@app.patch("/api/chat/sessions/{session_id}", response_model=ChatSession)
+def update_chat_session(session_id: str, body: ChatSessionUpdate) -> ChatSession:
+    """Update session title and/or messages (full replacement for messages)."""
+    try:
+        hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+    src = hit["_source"]
+    if body.title is not None:
+        src["title"] = body.title
+    if body.messages is not None:
+        src["messages"] = [m.model_dump() for m in body.messages]
+    src["updatedAt"] = int(time.time() * 1000)
+    os_client.index(index=_CHAT_SESSIONS_INDEX, id=session_id, body=src, refresh=True)
+    return _session_doc_to_model(session_id, src)
+
+
+@app.delete("/api/chat/sessions/{session_id}", status_code=204)
+def delete_chat_session(session_id: str):
+    """Delete a chat session. Returns 204 No Content."""
+    try:
+        os_client.delete(index=_CHAT_SESSIONS_INDEX, id=session_id, refresh=True)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+    return None
 
 
 @app.post("/api/classify", response_model=ClassifyResponse)

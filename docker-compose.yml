@@ -37,6 +37,7 @@ services:
       context: ./backend
     container_name: atlasfile-api
     environment:
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       - OPENSEARCH_HOST=https://opensearch:9200
       - OPENSEARCH_INDEX=atlasfile_documents
       - OPENSEARCH_USER=admin

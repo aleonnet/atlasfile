@@ -9,7 +9,7 @@ import json
 from typing import Any
 
 from app.config import settings
-from app.llm_catalog import get_max_tool_result_chars
+from app.llm_catalog import get_anthropic_thinking_type, get_max_tool_result_chars, supports_reasoning_effort
 from app.mcp_client import call_tool as mcp_call_tool
 from app.mcp_client import list_tools as mcp_list_tools
 from app.prompts import get_system_prompt_chat, get_system_prompt_classify
@@ -141,8 +141,7 @@ async def _run_chat_openai(
         "messages": loop_messages,
         "tools": tools_api,
     }
-    if enable_thinking:
-        # reasoning_effort: supported by o1, o1-mini, gpt-4.1 and other reasoning models
+    if enable_thinking and supports_reasoning_effort("openai", model):
         create_kw["reasoning_effort"] = "medium"
     for _ in range(MAX_TOOL_LOOPS):
         create_kw["messages"] = loop_messages
@@ -234,9 +233,12 @@ async def _run_chat_anthropic(
         "messages": anthropic_messages,
         "tools": tools_api,
     }
-    if enable_thinking:
-        # Extended thinking: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
-        create_kw["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+    if enable_thinking and supports_reasoning_effort("anthropic", model):
+        thinking_type = get_anthropic_thinking_type("anthropic", model)
+        if thinking_type == "adaptive":
+            create_kw["thinking"] = {"type": "adaptive"}
+        else:
+            create_kw["thinking"] = {"type": "enabled", "budget_tokens": 10000}
     for _ in range(MAX_TOOL_LOOPS):
         create_kw["messages"] = anthropic_messages
         resp = await client.messages.create(**create_kw)

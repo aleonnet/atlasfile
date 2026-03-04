@@ -119,9 +119,28 @@ export interface ModelOption {
   context_tokens?: number;
   /** Limite de tokens de saída por resposta */
   max_output_tokens?: number;
+  /** OpenAI: reasoning_effort; Anthropic: Extended Thinking — Brain só ativo quando true */
+  supports_reasoning_effort?: boolean;
 }
 
 export interface ChatResponse {
   content: string;
   tool_calls_used: { name: string; result_preview?: string }[];
+}
+
+/** Mensagem armazenada (apenas texto; partes de imagem viram "[imagem]" ao persistir). */
+export interface StoredChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp?: number;
+}
+
+/** Sessão de chat persistida no backend. */
+export interface ChatSession {
+  id: string;
+  title: string;
+  messages: StoredChatMessage[];
+  model: string;
+  createdAt: number;
+  updatedAt: number;
 }

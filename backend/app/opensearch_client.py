@@ -80,3 +80,23 @@ def ensure_index(client: OpenSearch) -> None:
         "mappings": {"properties": properties},
     }
     client.indices.create(index=index_name, body=mapping)
+
+
+def ensure_chat_sessions_index(client: OpenSearch) -> None:
+    """Create or update the chat sessions index (separate from documents)."""
+    index_name = settings.opensearch_chat_sessions_index
+    properties: dict[str, Any] = {
+        "title": {"type": "text"},
+        "messages": {"type": "object", "enabled": True},
+        "model": {"type": "keyword"},
+        "createdAt": {"type": "date"},
+        "updatedAt": {"type": "date"},
+    }
+    if client.indices.exists(index=index_name):
+        client.indices.put_mapping(index=index_name, body={"properties": properties})
+        return
+    mapping: dict[str, Any] = {
+        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0}},
+        "mappings": {"properties": properties},
+    }
+    client.indices.create(index=index_name, body=mapping)

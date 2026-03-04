@@ -112,9 +112,47 @@ h1, h2, h3, .card-header, .page-title, .brand h1 {
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   flex-shrink: 0;
   min-width: 0;
+}
+
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 6px;
+}
+
+.topbar-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.topbar-nav button:hover {
+  border-color: var(--border-strong);
+  background: var(--hover, rgba(255, 255, 255, 0.05));
+}
+
+.topbar-nav button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.topbar-nav button svg {
+  flex-shrink: 0;
 }
 
 .topbar-center {
@@ -1175,6 +1213,19 @@ a {
     min-width: 0;
     font-size: 12px;
     padding: 6px 8px;
+    height: 36px;
+    box-sizing: border-box;
+  }
+
+  .topbar-nav .view-tab-label {
+    display: none;
+  }
+
+  .topbar-nav button {
+    height: 36px;
+    padding: 0 10px;
+    min-width: 40px;
+    box-sizing: border-box;
   }
 
   .topbar-center {

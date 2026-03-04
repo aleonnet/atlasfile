@@ -112,3 +112,35 @@ class ModelOption(BaseModel):
     label: str  # e.g. "OpenAI gpt-4o-mini (base)"
     context_tokens: int | None = None  # limite de contexto (input) documentado pelo provedor
     max_output_tokens: int | None = None  # limite de tokens de saída por resposta
+    supports_reasoning_effort: bool = False  # OpenAI: reasoning_effort; Anthropic: Extended Thinking (doc de cada provedor)
+    # Anthropic: "adaptive" (4.6, recomendado) | "enabled" (4.5 e anteriores, budget_tokens). None = não Anthropic ou sem thinking.
+    anthropic_thinking_type: str | None = None
+
+
+# --- Chat sessions (persisted in OpenSearch, separate index) ---
+
+
+class StoredChatMessage(BaseModel):
+    role: str  # user | assistant | system
+    content: str  # text only; image parts become "[imagem]" when persisting
+    timestamp: Optional[int] = None
+
+
+class ChatSession(BaseModel):
+    id: str
+    title: str
+    messages: list[StoredChatMessage]
+    model: str
+    createdAt: int
+    updatedAt: int
+
+
+class ChatSessionCreate(BaseModel):
+    title: str
+    messages: list[StoredChatMessage]
+    model: str
+
+
+class ChatSessionUpdate(BaseModel):
+    title: Optional[str] = None
+    messages: Optional[list[StoredChatMessage]] = None  # full replacement when appending

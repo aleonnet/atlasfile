@@ -1,8 +1,12 @@
-import { File, FileSpreadsheet, FileText, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Settings, Sun } from "lucide-react";
+import { File, FileSpreadsheet, FileText, LayoutDashboard, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Settings, Sun } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  createChatSession,
+  deleteChatSession,
+  fetchChatSessions,
   fetchHealth,
   fetchModels,
+  getChatSession,
   fetchProjectAreas,
   fetchProjects,
   fetchReconcileStatus,
@@ -14,17 +18,32 @@ import {
   searchDocuments,
   sendChatMessage,
   triageDecision,
-  triggerScan
+  triggerScan,
+  updateChatSession
 } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import type { ChatAttachment } from "./components/ChatPanel";
-import type { ChatContentPart, ChatMessage as ChatMessageType, ModelOption, Project, ProjectArea, ReconcileStatus, SearchEvidence, SearchHit, TriageItem } from "./types";
+import type {
+  ChatContentPart,
+  ChatMessage as ChatMessageType,
+  ChatSession,
+  ModelOption,
+  Project,
+  ProjectArea,
+  ReconcileStatus,
+  SearchEvidence,
+  SearchHit,
+  StoredChatMessage,
+  TriageItem
+} from "./types";
 
 const ALL_PROJECTS = "__all__";
 const THEME_STORAGE_KEY = "atlasfile-theme";
 const CHAT_MODEL_STORAGE_KEY = "atlasfile-chat-model";
 const TRIAGE_MODEL_STORAGE_KEY = "atlasfile-triage-model";
 const CHAT_SHOW_THINKING_KEY = "atlasfile-chat-show-thinking";
+const OPENAI_API_KEY_STORAGE = "atlasfile-openai-api-key";
+const ANTHROPIC_API_KEY_STORAGE = "atlasfile-anthropic-api-key";
 type ThemeMode = "system" | "light" | "dark";
 type ViewKind = "operacional" | "assistente";
 type InputLikeEvent = { target: { value: string } };
@@ -106,9 +125,26 @@ function App() {
     }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [openaiApiKey, setOpenaiApiKey] = useState("");
-  const [anthropicApiKey, setAnthropicApiKey] = useState("");
+  const [openaiApiKey, setOpenaiApiKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem(OPENAI_API_KEY_STORAGE) || "";
+    } catch {
+      return "";
+    }
+  });
+  const [anthropicApiKey, setAnthropicApiKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem(ANTHROPIC_API_KEY_STORAGE) || "";
+    } catch {
+      return "";
+    }
+  });
   const [lastToolCalls, setLastToolCalls] = useState<{ name: string; result_preview?: string }[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [savingSession, setSavingSession] = useState(false);
 
   const resolvedTheme = useMemo(() => resolveTheme(theme), [theme]);
 
@@ -151,6 +187,24 @@ function App() {
       /* ignore */
     }
   }, [showThinking]);
+
+  useEffect(() => {
+    try {
+      if (openaiApiKey) localStorage.setItem(OPENAI_API_KEY_STORAGE, openaiApiKey);
+      else localStorage.removeItem(OPENAI_API_KEY_STORAGE);
+    } catch {
+      /* ignore */
+    }
+  }, [openaiApiKey]);
+
+  useEffect(() => {
+    try {
+      if (anthropicApiKey) localStorage.setItem(ANTHROPIC_API_KEY_STORAGE, anthropicApiKey);
+      else localStorage.removeItem(ANTHROPIC_API_KEY_STORAGE);
+    } catch {
+      /* ignore */
+    }
+  }, [anthropicApiKey]);
 
   useEffect(() => {
     if (view === "assistente" && models.length === 0) {
@@ -695,8 +749,13 @@ function App() {
     const hasAttachments = attachments && attachments.length > 0;
     if (!trimmed && !hasAttachments) return;
     if (chatSending || !selectedModel) return;
-    const displayContent = trimmed || (hasAttachments ? `(${attachments!.length} imagem(ns) anexada(s))` : "");
-    const userMsg: ChatMessageType = { role: "user", content: displayContent, timestamp: Date.now() };
+    const userContent: string | ChatContentPart[] = hasAttachments
+      ? [
+          { type: "text", text: trimmed || "(imagem anexada)" },
+          ...attachments!.map((a) => ({ type: "image_url" as const, image_url: { url: a.dataUrl } }))
+        ]
+      : trimmed;
+    const userMsg: ChatMessageType = { role: "user", content: userContent, timestamp: Date.now() };
     setChatMessages((prev) => [...prev, userMsg]);
     setChatError(null);
     setLastToolCalls([]);
@@ -723,11 +782,29 @@ function App() {
         enableThinking: showThinking,
         signal: controller.signal
       });
-      setChatMessages((prev) => [...prev, { role: "assistant", content: res.content, timestamp: Date.now() }]);
+      setChatMessages((prev) => {
+        const assistantMsg: ChatMessageType = {
+          role: "assistant",
+          content: res.content,
+          timestamp: Date.now()
+        };
+        const next: ChatMessageType[] = [...prev, assistantMsg];
+        if (activeSessionId) {
+          updateChatSession(activeSessionId, { messages: messagesToStored(next) }).catch(() => {});
+        }
+        return next;
+      });
       setLastToolCalls(res.tool_calls_used ?? []);
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
-      setChatError((e as Error).message || "Erro no chat");
+      const err = e as Error;
+      const msg =
+        err.message && (err.message.includes("fetch") || err.message.includes("NetworkError"))
+          ? "Erro de rede. Verifique se a API está rodando (ex.: http://localhost:8000) e se o backend está acessível."
+          : err.message || "Erro no chat";
+      setChatError(msg);
+      setChatSending(false);
+      setChatAbortRef(null);
     } finally {
       setChatSending(false);
       setChatAbortRef(null);
@@ -738,6 +815,121 @@ function App() {
     setChatMessages([]);
     setChatError(null);
     setLastToolCalls([]);
+    setActiveSessionId(null);
+  }
+
+  async function handleRequestNewSession() {
+    if (chatMessages.length === 0) {
+      handleChatNewSession();
+      return;
+    }
+    setSavingSession(true);
+    let title = "";
+    const fallbackTitle = (() => {
+      const firstUser = chatMessages.find((m) => m.role === "user");
+      const text = firstUser && typeof firstUser.content === "string"
+        ? firstUser.content
+        : firstUser && Array.isArray(firstUser.content)
+          ? firstUser.content.map((p) => (p.type === "text" ? p.text : "")).join(" ").trim()
+          : "";
+      return text.slice(0, 50) || `Conversa ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
+    })();
+    try {
+      const textStart = chatMessages.slice(0, 6).map((m) => {
+        const c = typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" ");
+        return { role: m.role, content: c };
+      });
+      const titleMessages = [
+        { role: "system" as const, content: "Retorne apenas um título em uma linha, sem explicação." },
+        ...textStart
+      ];
+      const [provider, model] = selectedModel.split("/");
+      const res = await sendChatMessage(titleMessages, {
+        provider,
+        model,
+        openaiApiKey: provider === "openai" ? (openaiApiKey || undefined) : undefined,
+        anthropicApiKey: provider === "anthropic" ? (anthropicApiKey || undefined) : undefined,
+        enableThinking: false
+      });
+      title = (res.content || "").trim().split("\n")[0].slice(0, 100) || fallbackTitle;
+    } catch {
+      title = fallbackTitle;
+    }
+    let created;
+    try {
+      created = await createChatSession({
+        title,
+        messages: messagesToStored(chatMessages),
+        model: selectedModel
+      });
+    } catch {
+      setChatError("Falha ao salvar sessão");
+      return;
+    } finally {
+      setSavingSession(false);
+    }
+    setSessions((prev) => [created, ...prev]);
+    handleChatNewSession();
+  }
+
+  function openHistoryModal() {
+    setChatError(null);
+    setHistoryModalOpen(true);
+    setSessionsLoading(true);
+    fetchChatSessions()
+      .then((list) => {
+        setSessions(list);
+      })
+      .catch(() => {
+        setChatError("Falha ao carregar histórico de sessões");
+      })
+      .finally(() => setSessionsLoading(false));
+  }
+
+  function messagesToStored(messages: ChatMessageType[]): StoredChatMessage[] {
+    return messages.map((m) => {
+      const content =
+        typeof m.content === "string"
+          ? m.content
+          : m.content
+              .map((p) => (p.type === "text" ? p.text : "[imagem]"))
+              .join(" ");
+      return { role: m.role, content, timestamp: m.timestamp };
+    });
+  }
+
+  function handleSelectSession(sessionId: string) {
+    getChatSession(sessionId)
+      .then((session) => {
+        const msgs: ChatMessageType[] = session.messages.map((m) => ({
+          role: m.role as "user" | "assistant" | "system",
+          content: m.content,
+          timestamp: m.timestamp
+        }));
+        setChatMessages(msgs);
+        if (session.model) setSelectedModel(session.model);
+        setActiveSessionId(session.id);
+        setChatError(null);
+        setHistoryModalOpen(false);
+      })
+      .catch(() => setChatError("Falha ao carregar sessão"));
+  }
+
+  function handleEditSession(sessionId: string, newTitle: string) {
+    updateChatSession(sessionId, { title: newTitle }).then(() =>
+      fetchChatSessions().then(setSessions)
+    );
+  }
+
+  function handleDeleteSession(sessionId: string) {
+    deleteChatSession(sessionId).then(() => {
+      fetchChatSessions().then(setSessions);
+      if (activeSessionId === sessionId) {
+        setChatMessages([]);
+        setActiveSessionId(null);
+      }
+      setHistoryModalOpen(false);
+    });
   }
 
   function handleChatAbort() {
@@ -785,16 +977,21 @@ function App() {
             type="button"
             className={view === "operacional" ? "active" : ""}
             onClick={() => setView("operacional")}
+            aria-current={view === "operacional" ? "page" : undefined}
+            title="Operacional"
           >
-            Operacional
+            <LayoutDashboard size={18} strokeWidth={2} aria-hidden />
+            <span className="view-tab-label">Operacional</span>
           </button>
           <button
             type="button"
             className={view === "assistente" ? "active" : ""}
             onClick={() => setView("assistente")}
+            aria-current={view === "assistente" ? "page" : undefined}
+            title="Assistente"
           >
-            <MessageCircle size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
-            Assistente
+            <MessageCircle size={18} strokeWidth={2} aria-hidden />
+            <span className="view-tab-label">Assistente</span>
           </button>
         </nav>
         <div className="topbar-center">
@@ -1044,7 +1241,8 @@ function App() {
           messages={chatMessages.filter((m): m is ChatMessageType & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant").map((m) => ({
             role: m.role,
             content: typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" "),
-            timestamp: m.timestamp
+            timestamp: m.timestamp,
+            ...(m.role === "user" && Array.isArray(m.content) && { contentParts: m.content })
           }))}
           lastToolCalls={lastToolCalls}
           sending={chatSending}
@@ -1056,10 +1254,20 @@ function App() {
           onOpenSettings={() => setSettingsOpen(true)}
           onSend={handleChatSend}
           onAbort={handleChatAbort}
-          onNewSession={handleChatNewSession}
+          onNewSession={handleRequestNewSession}
           showThinking={showThinking}
           onShowThinkingChange={setShowThinking}
           disabled={models.length === 0 || !selectedModel}
+          sessions={sessions}
+          sessionsLoading={sessionsLoading}
+          activeSessionId={activeSessionId}
+          historyModalOpen={historyModalOpen}
+          onOpenHistory={openHistoryModal}
+          onCloseHistory={() => setHistoryModalOpen(false)}
+          onSelectSession={handleSelectSession}
+          onEditSession={handleEditSession}
+          onDeleteSession={handleDeleteSession}
+          savingSession={savingSession}
         />
       )}
 

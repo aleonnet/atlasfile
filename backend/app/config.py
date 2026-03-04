@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     opensearch_host: str = "http://opensearch:9200"
     opensearch_index: str = "atlasfile_documents"
+    opensearch_chat_sessions_index: str = "atlasfile_chat_sessions"
     opensearch_user: str = "admin"
     opensearch_password: str = "admin123"
 
@@ -76,6 +77,8 @@ class Settings(BaseSettings):
     chat_llm_model: str | None = None
     # Habilitar classificação por LLM no ingest (usa submit_classification via MCP).
     classification_llm_enabled: bool = False
+    # CORS: origens permitidas separadas por vírgula. Ex.: http://localhost:5173,http://192.168.1.5:5173
+    allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(
         env_file=".env",

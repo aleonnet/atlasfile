@@ -1,16 +1,23 @@
 import type {
   ChatMessage,
   ChatResponse,
+  ChatSession,
   ModelOption,
   Project,
   ProjectArea,
   ReconcileStatus,
   SearchResponse,
+  StoredChatMessage,
   SuggestResponse,
   TriageItem
 } from "./types";
 
-export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : "http://localhost:8000");
+export const API_URL = API_BASE;
 
 export function getFileDownloadUrl(filePath: string): string {
   return `${API_URL}/api/files/download?path=${encodeURIComponent(filePath)}`;
@@ -143,7 +150,64 @@ export async function sendChatMessage(
   });
   if (!res.ok) {
     const t = await res.text();
+    try {
+      const j = JSON.parse(t) as { detail?: string };
+      if (typeof j?.detail === "string") throw new Error(j.detail);
+    } catch (e) {
+      if (e instanceof Error && e.message !== t) throw e;
+    }
     throw new Error(t || "Falha no chat");
   }
   return res.json();
+}
+
+/** List chat sessions (optional q for title filter). */
+export async function fetchChatSessions(q?: string): Promise<ChatSession[]> {
+  const url = new URL(`${API_URL}/api/chat/sessions`);
+  if (q?.trim()) url.searchParams.set("q", q.trim());
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Falha ao listar sessões");
+  return res.json();
+}
+
+/** Get one chat session by id. */
+export async function getChatSession(id: string): Promise<ChatSession> {
+  const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error("Sessão não encontrada");
+  return res.json();
+}
+
+/** Create a chat session. */
+export async function createChatSession(payload: {
+  title: string;
+  messages: StoredChatMessage[];
+  model: string;
+}): Promise<ChatSession> {
+  const res = await fetch(`${API_URL}/api/chat/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error("Falha ao criar sessão");
+  return res.json();
+}
+
+/** Update session (title and/or messages). */
+export async function updateChatSession(
+  id: string,
+  payload: { title?: string; messages?: StoredChatMessage[] }
+): Promise<ChatSession> {
+  const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error("Falha ao atualizar sessão");
+  return res.json();
+}
+
+/** Delete a chat session. */
+export async function deleteChatSession(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Falha ao excluir sessão");
 }
