@@ -1183,11 +1183,13 @@ _CHAT_SESSIONS_INDEX = settings.opensearch_chat_sessions_index
 
 
 def _parse_ts(v: Any) -> int:
-    """Parse createdAt/updatedAt from OpenSearch (int ms or ISO string)."""
+    """Parse createdAt/updatedAt from OpenSearch (int ms, float, ISO string, or datetime)."""
     if v is None:
         return 0
     if isinstance(v, (int, float)):
         return int(v)
+    if isinstance(v, datetime):
+        return int(v.timestamp() * 1000)
     if isinstance(v, str):
         try:
             return int(datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp() * 1000)

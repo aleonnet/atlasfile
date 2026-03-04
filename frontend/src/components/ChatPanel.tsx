@@ -91,9 +91,17 @@ const SESSION_GROUP_BUCKETS: { minDays: number; maxDays: number; label: string }
 ];
 
 function getSessionGroupLabel(updatedAt: number): string {
-  const now = Date.now();
-  const daysAgo = (now - updatedAt) / (24 * 60 * 60 * 1000);
-  const bucket = SESSION_GROUP_BUCKETS.find((b) => daysAgo >= b.minDays && daysAgo < b.maxDays);
+  const ts = Number(updatedAt);
+  if (!Number.isFinite(ts) || ts <= 0) return "Anterior";
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const updated = new Date(ts);
+  if (Number.isNaN(updated.getTime())) return "Anterior";
+  const updatedDayStart = new Date(updated.getFullYear(), updated.getMonth(), updated.getDate()).getTime();
+  const calendarDaysAgo = Math.floor((todayStart - updatedDayStart) / (24 * 60 * 60 * 1000));
+  const bucket = SESSION_GROUP_BUCKETS.find(
+    (b) => calendarDaysAgo >= b.minDays && calendarDaysAgo < b.maxDays
+  );
   return bucket ? bucket.label : "Anterior";
 }
 
