@@ -1,7 +1,8 @@
-import { File, FileSpreadsheet, FileText, Monitor, Moon, Presentation, RefreshCw, Search, Sun } from "lucide-react";
+import { File, FileSpreadsheet, FileText, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Settings, Sun } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchHealth,
+  fetchModels,
   fetchProjectAreas,
   fetchProjects,
   fetchReconcileStatus,
@@ -11,16 +12,24 @@ import {
   initializeProject,
   runReconcile,
   searchDocuments,
+  sendChatMessage,
   triageDecision,
   triggerScan
 } from "./api";
-import type { Project, ProjectArea, ReconcileStatus, SearchEvidence, SearchHit, TriageItem } from "./types";
+import { ChatPanel } from "./components/ChatPanel";
+import type { ChatAttachment } from "./components/ChatPanel";
+import type { ChatContentPart, ChatMessage as ChatMessageType, ModelOption, Project, ProjectArea, ReconcileStatus, SearchEvidence, SearchHit, TriageItem } from "./types";
 
 const ALL_PROJECTS = "__all__";
 const THEME_STORAGE_KEY = "atlasfile-theme";
+const CHAT_MODEL_STORAGE_KEY = "atlasfile-chat-model";
+const TRIAGE_MODEL_STORAGE_KEY = "atlasfile-triage-model";
+const CHAT_SHOW_THINKING_KEY = "atlasfile-chat-show-thinking";
 type ThemeMode = "system" | "light" | "dark";
+type ViewKind = "operacional" | "assistente";
 type InputLikeEvent = { target: { value: string } };
 type KeyboardLikeEvent = { key: string };
+type KeyboardEventLike = { key: string; shiftKey?: boolean; preventDefault?: () => void };
 
 function getStoredTheme(): ThemeMode {
   try {
@@ -66,6 +75,41 @@ function App() {
   const [correctSubmitting, setCorrectSubmitting] = useState(false);
   const reconcileEsRef = useRef<EventSource | null>(null);
 
+  const [view, setView] = useState<ViewKind>("operacional");
+  const [chatMessages, setChatMessages] = useState<ChatMessageType[]>([]);
+  const [chatSending, setChatSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [chatAbortRef, setChatAbortRef] = useState<AbortController | null>(null);
+  const [showThinking, setShowThinking] = useState<boolean>(() => {
+    try {
+      const s = localStorage.getItem(CHAT_SHOW_THINKING_KEY);
+      return s === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    try {
+      const s = localStorage.getItem(CHAT_MODEL_STORAGE_KEY);
+      return s || "";
+    } catch {
+      return "";
+    }
+  });
+  const [selectedModelTriage, setSelectedModelTriage] = useState<string>(() => {
+    try {
+      const s = localStorage.getItem(TRIAGE_MODEL_STORAGE_KEY);
+      return s || "";
+    } catch {
+      return "";
+    }
+  });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [anthropicApiKey, setAnthropicApiKey] = useState("");
+  const [lastToolCalls, setLastToolCalls] = useState<{ name: string; result_preview?: string }[]>([]);
+
   const resolvedTheme = useMemo(() => resolveTheme(theme), [theme]);
 
   useEffect(() => {
@@ -79,6 +123,50 @@ function App() {
       /* ignore */
     }
   }, [theme]);
+
+  useEffect(() => {
+    if (selectedModel) {
+      try {
+        localStorage.setItem(CHAT_MODEL_STORAGE_KEY, selectedModel);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [selectedModel]);
+
+  useEffect(() => {
+    if (selectedModelTriage !== undefined) {
+      try {
+        localStorage.setItem(TRIAGE_MODEL_STORAGE_KEY, selectedModelTriage);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [selectedModelTriage]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_SHOW_THINKING_KEY, String(showThinking));
+    } catch {
+      /* ignore */
+    }
+  }, [showThinking]);
+
+  useEffect(() => {
+    if (view === "assistente" && models.length === 0) {
+      fetchModels()
+        .then((list) => {
+          setModels(list);
+          const values = list.map((m) => `${m.provider}/${m.model}`);
+          const first = values[0];
+          if (first) {
+            setSelectedModel((s) => (!s || !values.includes(s) ? first : s));
+            setSelectedModelTriage((s) => (!s || !values.includes(s) ? first : s));
+          }
+        })
+        .catch(() => setModels([]));
+    }
+  }, [view, models.length]);
 
   useEffect(() => {
     let mounted = true;
@@ -602,6 +690,60 @@ function App() {
       });
   }
 
+  async function handleChatSend(text: string, attachments?: ChatAttachment[]) {
+    const trimmed = text.trim();
+    const hasAttachments = attachments && attachments.length > 0;
+    if (!trimmed && !hasAttachments) return;
+    if (chatSending || !selectedModel) return;
+    const displayContent = trimmed || (hasAttachments ? `(${attachments!.length} imagem(ns) anexada(s))` : "");
+    const userMsg: ChatMessageType = { role: "user", content: displayContent, timestamp: Date.now() };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatError(null);
+    setLastToolCalls([]);
+    const controller = new AbortController();
+    setChatAbortRef(controller);
+    setChatSending(true);
+    try {
+      const newUserContent: string | ChatContentPart[] = hasAttachments
+        ? [
+            { type: "text", text: trimmed || "(imagem anexada)" },
+            ...attachments!.map((a) => ({ type: "image_url" as const, image_url: { url: a.dataUrl } }))
+          ]
+        : trimmed;
+      const messagesForApi: ChatMessageType[] = [
+        ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+        { role: "user", content: newUserContent }
+      ];
+      const [provider, model] = selectedModel.split("/");
+      const res = await sendChatMessage(messagesForApi, {
+        provider,
+        model,
+        openaiApiKey: provider === "openai" ? (openaiApiKey || undefined) : undefined,
+        anthropicApiKey: provider === "anthropic" ? (anthropicApiKey || undefined) : undefined,
+        enableThinking: showThinking,
+        signal: controller.signal
+      });
+      setChatMessages((prev) => [...prev, { role: "assistant", content: res.content, timestamp: Date.now() }]);
+      setLastToolCalls(res.tool_calls_used ?? []);
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return;
+      setChatError((e as Error).message || "Erro no chat");
+    } finally {
+      setChatSending(false);
+      setChatAbortRef(null);
+    }
+  }
+
+  function handleChatNewSession() {
+    setChatMessages([]);
+    setChatError(null);
+    setLastToolCalls([]);
+  }
+
+  function handleChatAbort() {
+    chatAbortRef?.abort();
+  }
+
   async function handleDecision(item: TriageItem, action: "approve" | "correct" | "reject") {
     if (action === "correct") {
       await openCorrectModal(item);
@@ -638,6 +780,23 @@ function App() {
             ))}
           </select>
         </div>
+        <nav className="topbar-nav" aria-label="Visão">
+          <button
+            type="button"
+            className={view === "operacional" ? "active" : ""}
+            onClick={() => setView("operacional")}
+          >
+            Operacional
+          </button>
+          <button
+            type="button"
+            className={view === "assistente" ? "active" : ""}
+            onClick={() => setView("assistente")}
+          >
+            <MessageCircle size={14} style={{ marginRight: 6, verticalAlign: "middle" }} />
+            Assistente
+          </button>
+        </nav>
         <div className="topbar-center">
           <div className="header-search-card">
             <button className="header-search-btn" onClick={() => setSearchModalOpen(true)} title="Abrir busca (Cmd/Ctrl + K)">
@@ -691,6 +850,8 @@ function App() {
       </header>
 
       <main className="content">
+      {view === "operacional" && (
+      <>
       <section className="panel panel-control card">
         <div className="panel-head card-header">
           <h2>Controle operacional</h2>
@@ -873,6 +1034,34 @@ function App() {
           </div>
         </section>
       )}
+      </>
+      )}
+
+      {view === "assistente" && (
+        <ChatPanel
+          agentName="Assistente"
+          agentAvatarUrl={null}
+          messages={chatMessages.filter((m): m is ChatMessageType & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant").map((m) => ({
+            role: m.role,
+            content: typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" "),
+            timestamp: m.timestamp
+          }))}
+          lastToolCalls={lastToolCalls}
+          sending={chatSending}
+          error={chatError}
+          canAbort={chatSending}
+          selectedModel={selectedModel}
+          models={models}
+          onModelChange={setSelectedModel}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onSend={handleChatSend}
+          onAbort={handleChatAbort}
+          onNewSession={handleChatNewSession}
+          showThinking={showThinking}
+          onShowThinkingChange={setShowThinking}
+          disabled={models.length === 0 || !selectedModel}
+        />
+      )}
 
       <footer className="status">{status}</footer>
       </main>
@@ -960,6 +1149,84 @@ function App() {
                 </span>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {settingsOpen && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Configuração do Assistente" onClick={() => setSettingsOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Configuração do Assistente</h3>
+            <p className="sub">Modelo de triagem (classificação no ingest) e modelo de chat podem ser diferentes. Chaves são enviadas só na requisição e não ficam no servidor. Hoje: API Key; OAuth/assinatura planejado (ref. OpenClaw auth-profiles).</p>
+            <div className="field">
+              <label htmlFor="settings-model-triage">Modelo triagem</label>
+              <select
+                id="settings-model-triage"
+                value={selectedModelTriage}
+                onChange={(e: InputLikeEvent) => setSelectedModelTriage(e.target.value)}
+              >
+                {models.map((m) => (
+                  <option key={`triage-${m.label}`} value={`${m.provider}/${m.model}`}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="settings-model-chat">Modelo chat</label>
+              <select
+                id="settings-model-chat"
+                value={selectedModel}
+                onChange={(e: InputLikeEvent) => setSelectedModel(e.target.value)}
+              >
+                {models.map((m) => (
+                  <option key={`chat-${m.label}`} value={`${m.provider}/${m.model}`}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {(() => {
+              const chatProvider = selectedModel ? selectedModel.split("/")[0]?.toLowerCase() : null;
+              const triageProvider = selectedModelTriage ? selectedModelTriage.split("/")[0]?.toLowerCase() : null;
+              const needOpenAI = chatProvider === "openai" || triageProvider === "openai";
+              const needAnthropic = chatProvider === "anthropic" || triageProvider === "anthropic";
+              return (
+                <>
+                  {needOpenAI && (
+                    <div className="field">
+                      <label htmlFor="settings-openai-key">OpenAI API Key</label>
+                      <input
+                        id="settings-openai-key"
+                        type="password"
+                        value={openaiApiKey}
+                        onChange={(e: InputLikeEvent) => setOpenaiApiKey(e.target.value)}
+                        placeholder="sk-..."
+                        autoComplete="off"
+                      />
+                    </div>
+                  )}
+                  {needAnthropic && (
+                    <div className="field">
+                      <label htmlFor="settings-anthropic-key">Anthropic API Key</label>
+                      <input
+                        id="settings-anthropic-key"
+                        type="password"
+                        value={anthropicApiKey}
+                        onChange={(e: InputLikeEvent) => setAnthropicApiKey(e.target.value)}
+                        placeholder="sk-ant-..."
+                        autoComplete="off"
+                      />
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+            <div className="modal-actions">
+              <button type="button" className="btn primary" onClick={() => setSettingsOpen(false)}>
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

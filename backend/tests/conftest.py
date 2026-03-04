@@ -1,13 +1,23 @@
 """Pytest fixtures: FastAPI app, TestClient, and OpenSearch mock."""
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-# Import app after we can patch; tests that need OS mock will patch app.main.os_client
-from app.main import app
+# If mcp client fails to import (e.g. incompatible mcp package version), inject stub so app loads
+try:
+    from app.main import app
+except ImportError as e:
+    if "streamable_http" not in str(e):
+        raise
+    _stub = type(sys)("app.mcp_client")
+    _stub.call_tool = lambda *a, **k: None
+    _stub.list_tools = lambda *a, **k: []
+    sys.modules["app.mcp_client"] = _stub
+    from app.main import app
 
 
 @pytest.fixture

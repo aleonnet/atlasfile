@@ -1,4 +1,14 @@
-import type { Project, ProjectArea, ReconcileStatus, SearchResponse, SuggestResponse, TriageItem } from "./types";
+import type {
+  ChatMessage,
+  ChatResponse,
+  ModelOption,
+  Project,
+  ProjectArea,
+  ReconcileStatus,
+  SearchResponse,
+  SuggestResponse,
+  TriageItem
+} from "./types";
 
 export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -97,4 +107,43 @@ export function getReconcileStatusStreamUrl(): string {
 export async function fetchHealth(): Promise<{ ok: boolean }> {
   const res = await fetch(`${API_URL}/health`);
   return { ok: res.ok };
+}
+
+/** List LLM models (provider/model) for chat. */
+export async function fetchModels(): Promise<ModelOption[]> {
+  const res = await fetch(`${API_URL}/api/models`);
+  if (!res.ok) throw new Error("Falha ao carregar modelos");
+  return res.json();
+}
+
+/** Send chat message; optional API keys in headers. Returns assistant content and tool_calls_used. */
+export async function sendChatMessage(
+  messages: ChatMessage[],
+  options?: {
+    provider?: string;
+    model?: string;
+    openaiApiKey?: string;
+    anthropicApiKey?: string;
+    enableThinking?: boolean;
+    signal?: AbortSignal;
+  }
+): Promise<ChatResponse> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (options?.openaiApiKey) headers["X-OpenAI-API-Key"] = options.openaiApiKey;
+  if (options?.anthropicApiKey) headers["X-Anthropic-API-Key"] = options.anthropicApiKey;
+  const body: { messages: ChatMessage[]; provider?: string; model?: string; enable_thinking?: boolean } = { messages };
+  if (options?.provider) body.provider = options.provider;
+  if (options?.model) body.model = options.model;
+  if (options?.enableThinking === true) body.enable_thinking = true;
+  const res = await fetch(`${API_URL}/api/chat`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    signal: options?.signal
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(t || "Falha no chat");
+  }
+  return res.json();
 }

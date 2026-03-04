@@ -98,3 +98,30 @@ export interface TriageItem {
   source_path: string;
   metadata_path: string;
 }
+
+/** Parte de conteúdo multimodal (texto ou imagem) enviada ao LLM. */
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string | ChatContentPart[];
+  /** Timestamp for display (e.g. Date.now()) */
+  timestamp?: number;
+}
+
+export interface ModelOption {
+  provider: string;
+  model: string;
+  label: string;
+  /** Limite de contexto (input) em tokens — documentado pelo provedor */
+  context_tokens?: number;
+  /** Limite de tokens de saída por resposta */
+  max_output_tokens?: number;
+}
+
+export interface ChatResponse {
+  content: string;
+  tool_calls_used: { name: string; result_preview?: string }[];
+}

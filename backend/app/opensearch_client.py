@@ -65,6 +65,9 @@ def ensure_index(client: OpenSearch) -> None:
         "confidence_score": {"type": "float"},
         "sha256": {"type": "keyword"},
         "tags": {"type": "keyword"},
+        "document_type": {"type": "keyword"},
+        "correspondent": {"type": "keyword"},
+        "review_status": {"type": "keyword"},
     }
 
     if client.indices.exists(index=index_name):

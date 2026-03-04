@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
@@ -23,7 +23,20 @@ from .bootstrap import ensure_project_structure
 from .config import settings
 from .indexer import backfill_search_fields, index_document, read_text_excerpt
 from .ingestion import process_inbox_file
-from .models import SearchHit, SearchResponse, SearchSuggestion, SuggestResponse, TriageDecisionRequest
+from .models import (
+    ChatRequest,
+    ChatResponse,
+    ClassifyRequest,
+    ClassifyResponse,
+    DocumentMetadataUpdate,
+    DocumentTagsUpdate,
+    ModelOption,
+    SearchHit,
+    SearchResponse,
+    SearchSuggestion,
+    SuggestResponse,
+    TriageDecisionRequest,
+)
 from .opensearch_client import ensure_index, get_client
 from .project_profile import list_project_roots, load_project_profile
 from .reconcile import rebuild_search_index, reconcile_project_index, sync_search_index_for_project
@@ -34,6 +47,8 @@ from .triage import (
     triage_rejected_dir,
     triage_resolved_dir,
 )
+from .llm_catalog import LLM_MODEL_CATALOG
+from .orchestrator import classify_with_llm, get_llm_config, run_chat_loop
 from .utils import utc_now_iso
 
 os_client = get_client()
@@ -952,6 +967,216 @@ def download_file(path: str = Query(..., description="Caminho do arquivo dentro 
     )
 
 
+def _apply_get_document_limit(data: dict[str, Any], max_chars: int) -> dict[str, Any]:
+    """Trunca content + content_chunks para não exceder max_chars. Adiciona _truncated, _message etc. quando houver corte."""
+    content = data.get("content") or ""
+    chunks = list(data.get("content_chunks") or [])
+    total_chars = len(content) + sum(len((c.get("text") or "")) for c in chunks)
+    if total_chars <= max_chars:
+        return data
+    out = {k: v for k, v in data.items() if k not in ("content", "content_chunks")}
+    budget = max_chars
+    if len(content) > budget:
+        out["content"] = (content[: budget - 200] + "\n\n[... truncado ...]") if budget > 200 else content[:budget]
+        budget = 0
+    else:
+        out["content"] = content
+        budget -= len(content)
+    returned: list[dict[str, Any]] = []
+    for c in chunks:
+        t = (c.get("text") or "")
+        if budget <= 0:
+            break
+        if len(t) > budget:
+            returned.append({"location": c.get("location"), "text": t[: budget - 100] + "\n[... truncado ...]"})
+            budget = 0
+        else:
+            returned.append(c)
+            budget -= len(t)
+    out["content_chunks"] = returned
+    out["_truncated"] = True
+    out["_total_chunks"] = len(chunks)
+    out["_returned_chunks"] = len(returned)
+    out["_message"] = (
+        f"Documento truncado por limite de tamanho (máx. {max_chars} caracteres). "
+        f"Retornados os primeiros {len(returned)} de {len(chunks)} trechos. "
+        "Use busca por termo (search_documents) para localizar trechos específicos."
+    )
+    return out
+
+
+@app.get("/api/documents/{doc_id}")
+def get_document(doc_id: str) -> dict[str, Any]:
+    """Return document by id: metadata + content_chunks (location + text) and content excerpt. Resposta limitada a get_document_max_chars para caber no contexto do modelo; quando truncada, inclui _truncated e _message."""
+    try:
+        hit = os_client.get(index=settings.opensearch_index, id=doc_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    src = hit.get("_source", {})
+    if not src:
+        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    data = {
+        "doc_id": src.get("doc_id"),
+        "project_id": src.get("project_id"),
+        "area_key": src.get("area_key"),
+        "title": src.get("title"),
+        "original_filename": src.get("original_filename"),
+        "canonical_filename": src.get("canonical_filename"),
+        "path": src.get("path"),
+        "content": src.get("content"),
+        "content_chunks": src.get("content_chunks", []),
+        "tags": src.get("tags", []),
+        "document_type": src.get("document_type"),
+        "correspondent": src.get("correspondent"),
+        "review_status": src.get("review_status"),
+        "content_type": src.get("content_type"),
+        "ingested_at": src.get("ingested_at"),
+        "processed_at": src.get("processed_at"),
+    }
+    return _apply_get_document_limit(data, settings.get_document_max_chars)
+
+
+@app.get("/api/documents/{doc_id}/chunks")
+def get_document_chunks(doc_id: str, locations: list[str] = Query(..., min_length=1)) -> dict[str, Any]:
+    """Return only the requested chunks of a document. locations are chunk identifiers (e.g. from search_documents match_locations or evidences[].location). Returns metadata and content_chunks with only those locations. Use after search to get full text of matched chunks without loading the full document."""
+    try:
+        hit = os_client.get(index=settings.opensearch_index, id=doc_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    src = hit.get("_source", {})
+    if not src:
+        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    all_chunks = list(src.get("content_chunks") or [])
+    want = {loc.strip() for loc in locations if (loc or "").strip()}
+    filtered = [c for c in all_chunks if (c.get("location") or "").strip() in want]
+    return {
+        "doc_id": src.get("doc_id"),
+        "project_id": src.get("project_id"),
+        "area_key": src.get("area_key"),
+        "title": src.get("title"),
+        "original_filename": src.get("original_filename"),
+        "canonical_filename": src.get("canonical_filename"),
+        "path": src.get("path"),
+        "content_chunks": filtered,
+        "tags": src.get("tags", []),
+        "document_type": src.get("document_type"),
+        "correspondent": src.get("correspondent"),
+        "review_status": src.get("review_status"),
+        "content_type": src.get("content_type"),
+        "ingested_at": src.get("ingested_at"),
+        "processed_at": src.get("processed_at"),
+        "_requested_locations": len(locations),
+        "_returned_chunks": len(filtered),
+    }
+
+
+@app.post("/api/documents/{doc_id}/tags")
+def update_document_tags(doc_id: str, payload: DocumentTagsUpdate) -> dict[str, Any]:
+    """Add and/or remove tags for a document. Idempotent (no duplicate tags)."""
+    try:
+        hit = os_client.get(index=settings.opensearch_index, id=doc_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    src = hit["_source"]
+    current_tags: list[str] = list(src.get("tags") or [])
+    to_add = [t for t in (payload.add or []) if t and t.strip()]
+    to_remove = set((payload.remove or []) if payload.remove else [])
+    new_tags = [t for t in current_tags if t not in to_remove]
+    for t in to_add:
+        if t not in new_tags:
+            new_tags.append(t)
+    update_body: dict[str, Any] = {"doc": {"tags": new_tags}}
+    os_client.update(index=settings.opensearch_index, id=doc_id, body=update_body, refresh=True)
+    return {"status": "ok", "doc_id": doc_id, "tags": new_tags}
+
+
+@app.patch("/api/documents/{doc_id}")
+def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate) -> dict[str, Any]:
+    """Partial update: document_type, correspondent, area_key, review_status."""
+    try:
+        os_client.get(index=settings.opensearch_index, id=doc_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    doc_updates: dict[str, Any] = {}
+    if payload.document_type is not None:
+        doc_updates["document_type"] = payload.document_type
+    if payload.correspondent is not None:
+        doc_updates["correspondent"] = payload.correspondent
+    if payload.area_key is not None:
+        doc_updates["area_key"] = payload.area_key
+    if payload.review_status is not None:
+        doc_updates["review_status"] = payload.review_status
+    if not doc_updates:
+        return {"status": "ok", "doc_id": doc_id}
+    os_client.update(index=settings.opensearch_index, id=doc_id, body={"doc": doc_updates}, refresh=True)
+    return {"status": "ok", "doc_id": doc_id}
+
+
+@app.get("/api/tags")
+def list_tags(project_id: str | None = Query(None, description="Filter by project")) -> dict[str, Any]:
+    """Aggregate unique tag values from the index."""
+    aggs: dict[str, Any] = {
+        "tags": {
+            "terms": {"field": "tags", "size": 500, "order": {"_key": "asc"}},
+        }
+    }
+    query: dict[str, Any] = {"query": {"match_all": {}}}
+    if project_id:
+        query["query"] = {"bool": {"filter": [{"term": {"project_id": project_id}}]}}
+    body = {"size": 0, "query": query["query"], "aggs": aggs}
+    result = os_client.search(index=settings.opensearch_index, body=body)
+    buckets = (result.get("aggregations") or {}).get("tags", {}).get("buckets") or []
+    tags_list = [b["key"] for b in buckets if b.get("key")]
+    return {"tags": tags_list}
+
+
+@app.get("/api/models", response_model=list[ModelOption])
+def get_models() -> list[ModelOption]:
+    """Return catalog of supported LLM models (OpenAI and Anthropic), with context_tokens and max_output_tokens."""
+    return list(LLM_MODEL_CATALOG)
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def api_chat(
+    body: ChatRequest,
+    x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
+    x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+) -> ChatResponse:
+    """Send messages to the chat orchestrator (LLM + MCP tools)."""
+    provider, model = get_llm_config("chat")
+    if body.provider:
+        provider = body.provider
+    if body.model:
+        model = body.model
+    api_key = x_openai_api_key if provider == "openai" else (x_anthropic_api_key if provider == "anthropic" else None)
+    messages = [{"role": m.role, "content": m.content} for m in body.messages]
+    result = await run_chat_loop(messages, provider, model, api_key=api_key, enable_thinking=body.enable_thinking)
+    return ChatResponse(content=result["content"], tool_calls_used=result.get("tool_calls_used", []))
+
+
+@app.post("/api/classify", response_model=ClassifyResponse)
+async def api_classify(
+    body: ClassifyRequest,
+    x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
+    x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+) -> ClassifyResponse:
+    """Classify a document excerpt via LLM (submit_classification tool). Request may override provider/model."""
+    if body.provider and body.model:
+        provider, model = body.provider.strip().lower(), body.model.strip()
+        provider_override, model_override = provider, model
+    else:
+        provider, model = get_llm_config("classification")
+        provider_override, model_override = None, None
+    api_key = x_openai_api_key if provider == "openai" else (x_anthropic_api_key if provider == "anthropic" else None)
+    result = await classify_with_llm(
+        body.doc_id, body.text_excerpt, body.filename or "",
+        api_key=api_key,
+        provider_override=provider_override,
+        model_override=model_override,
+    )
+    return ClassifyResponse(**result)
+
+
 @app.get("/api/triage/{project_id}")
 def get_triage(project_id: str) -> list[dict[str, Any]]:
     project_root = _resolve_project_root(project_id)
@@ -1068,6 +1293,10 @@ def search(
     q: str = Query(..., min_length=2),
     project_id: str | None = None,
     area_key: str | None = None,
+    tags: list[str] | None = Query(None, description="Filter by tags (any match)"),
+    document_type: str | None = Query(None, description="Filter by document_type"),
+    date_from: str | None = Query(None, description="Filter ingested_at >= (ISO date)"),
+    date_to: str | None = Query(None, description="Filter ingested_at <= (ISO date)"),
     page: int = Query(1, ge=1),
     size: int | None = Query(None, ge=1, le=100),
 ) -> SearchResponse:
@@ -1169,6 +1398,14 @@ def search(
         filters.append({"term": {"project_id": project_id}})
     if area_key:
         filters.append({"term": {"area_key": area_key}})
+    if tags:
+        filters.append({"terms": {"tags": tags}})
+    if document_type:
+        filters.append({"term": {"document_type": document_type}})
+    if date_from:
+        filters.append({"range": {"ingested_at": {"gte": date_from}}})
+    if date_to:
+        filters.append({"range": {"ingested_at": {"lte": date_to}}})
 
     query = {"bool": {"should": should, "minimum_should_match": 2 if strict_mode else 1, "filter": filters}}
     from_ = max(0, (page - 1) * page_size)

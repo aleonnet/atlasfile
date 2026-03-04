@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run backend and frontend tests. Exit 1 if any fail.
-# Use before: docker compose up -d --build
+# Backend: usa backend/.venv se existir, senão python3. Frontend: npm run test (vitest).
 
 set -e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,13 +13,12 @@ if [ -x .venv/bin/python ]; then
 else
   python3 -m pytest tests/ -v
 fi
-cd ..
+cd "$ROOT"
 
 echo ""
 echo "=== Frontend tests (vitest) ==="
-cd frontend
-npm run test
-cd ..
+cd frontend && npm run test
+cd "$ROOT"
 
 echo ""
 echo "=== All tests passed ==="

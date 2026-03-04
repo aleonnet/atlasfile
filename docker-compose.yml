@@ -24,6 +24,9 @@ services:
       - OPENSEARCH_USERNAME=admin
       - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-Kaid0Search!2026X}
       - OPENSEARCH_SSL_VERIFICATIONMODE=none
+    volumes:
+      # Permite header securitytenant no import (tenant Global); conexão segue das env acima.
+      - ./config/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml:ro
     ports:
       - "5601:5601"
     depends_on:
@@ -41,12 +44,34 @@ services:
       - PROJECTS_ROOT=/projects
       - AUTO_RECONCILE_INTERVAL_SECONDS=${AUTO_RECONCILE_INTERVAL_SECONDS:-600}
       - AUTO_RECONCILE_REINDEX_SEARCH=${AUTO_RECONCILE_REINDEX_SEARCH:-true}
+      # MCP e LLM (chat / classificação)
+      - MCP_SERVER_URL=http://mcp:8001/mcp
+      - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
+      - DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL:-gpt-4o-mini}
+      - CLASSIFICATION_LLM_ENABLED=${CLASSIFICATION_LLM_ENABLED:-false}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - ${PROJECTS_HOST_ROOT:-/Users/alessandro/Library/CloudStorage/OneDrive-Personal/Documentos/Projects}:/projects
     ports:
       - "8000:8000"
     depends_on:
       - opensearch
+
+  mcp:
+    build:
+      context: ./backend
+    container_name: atlasfile-mcp
+    command: ["python", "-m", "app.mcp.server"]
+    environment:
+      - ATLASFILE_API_BASE=http://api:8000
+      - ATLASFILE_API_TOKEN=${ATLASFILE_API_TOKEN:-}
+      - FASTMCP_HOST=0.0.0.0
+      - FASTMCP_PORT=8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      - api
 
   web:
     build:

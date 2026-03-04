@@ -58,6 +58,25 @@ class Settings(BaseSettings):
     # Tamanho total máximo do snippet em caracteres (antes + termo + depois). Regra única para autocomplete e busca.
     snippet_total_max: int = 80
 
+    # --- GET /api/documents (conteúdo para o agente) ---
+    # Limite de caracteres (content + content_chunks) retornados por get_document, para caber no contexto do modelo.
+    # ~100k chars ≈ 25k tokens; evita estourar contexto (ex.: 128k tokens no gpt-4o). Quando excedido, a resposta é truncada e campos _truncated/_message sinalizam ao modelo e ao usuário.
+    get_document_max_chars: int = 100_000
+
+    # --- MCP e LLM (chat / classificação) ---
+    # URL do MCP server (streamable HTTP). Ex.: http://localhost:8001/mcp
+    mcp_server_url: str = "http://localhost:8001/mcp"
+    # Provedor e modelo padrão (usado para chat e classificação se os específicos não forem definidos).
+    default_llm_provider: str = "openai"
+    default_llm_model: str = "gpt-4o-mini"
+    # Opcionais: classificação e chat podem usar provedor/modelo distintos.
+    classification_llm_provider: str | None = None
+    classification_llm_model: str | None = None
+    chat_llm_provider: str | None = None
+    chat_llm_model: str | None = None
+    # Habilitar classificação por LLM no ingest (usa submit_classification via MCP).
+    classification_llm_enabled: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

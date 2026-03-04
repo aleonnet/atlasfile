@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import shutil
@@ -222,6 +223,20 @@ def process_inbox_file(
     text_excerpt = read_text_excerpt(inbox_file)
     classification = classify(profile=profile, source_path=inbox_file, text_excerpt=text_excerpt)
 
+    llm_result: dict[str, Any] | None = None
+    if getattr(settings, "classification_llm_enabled", False):
+        try:
+            from .orchestrator import classify_with_llm
+            llm_result = asyncio.run(classify_with_llm(doc_id, text_excerpt, inbox_file.name))
+        except Exception:
+            llm_result = None
+    if llm_result and (llm_result.get("confidence") or 0) > 0:
+        classification["confidence"] = llm_result.get("confidence", classification.get("confidence", 0))
+        if llm_result.get("tags"):
+            classification["suggested_tags"] = llm_result["tags"]
+        if llm_result.get("document_type"):
+            classification["document_type"] = llm_result["document_type"]
+
     auto_route_min = float(profile.get("confidence_thresholds", {}).get("auto_route_min", 0.85))
     triage_min = float(profile.get("confidence_thresholds", {}).get("triage_min", 0.5))
     confidence = float(classification["confidence"])
@@ -378,6 +393,12 @@ def process_inbox_file(
         meta["metadata_path"] = str(meta_path)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    tags = [area_key or "unclassified"]
+    if classification.get("suggested_tags"):
+        tags = list(set(tags + classification["suggested_tags"]))
+    if confidence < auto_route_min or (llm_result and (llm_result.get("confidence") or 0) < auto_route_min):
+        if "REVIEW_REQUIRED" not in tags:
+            tags.append("REVIEW_REQUIRED")
     payload = {
         "doc_id": doc_id,
         "project_id": project_id,
@@ -396,8 +417,12 @@ def process_inbox_file(
         "decision": decision,
         "confidence_score": confidence,
         "sha256": sha,
-        "tags": [area_key or "unclassified"],
+        "tags": tags,
     }
+    if classification.get("document_type"):
+        payload["document_type"] = classification["document_type"]
+    if confidence < auto_route_min or (llm_result and (llm_result.get("confidence") or 0) < auto_route_min):
+        payload["review_status"] = "needs_review"
 
     if decision == "auto":
         index_document(client, payload)
