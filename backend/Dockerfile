@@ -9,7 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     tesseract-ocr \
     tesseract-ocr-por \
-    && rm -rf /var/lib/apt/lists/*
+    unrar-free \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/unrar-free /usr/bin/unrar
 
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt

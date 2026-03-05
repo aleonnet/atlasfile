@@ -1,6 +1,6 @@
 /// <reference types="@testing-library/jest-dom/vitest" />
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { IngestTriageCard } from "./IngestTriageCard";
 
@@ -152,9 +152,11 @@ describe("IngestTriageCard", () => {
       expect(screen.getByText(/Classificação LLM/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText(/Classificação LLM/i));
-    const toggle = screen.getByRole("button", { name: /Ativar classificação LLM/i });
-    fireEvent.click(toggle);
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Classificação LLM/i));
+      const toggle = screen.getByRole("button", { name: /Ativar classificação LLM/i });
+      fireEvent.click(toggle);
+    });
 
     const { updateProjectProfile } = await import("../../api");
     await waitFor(() => {
@@ -176,7 +178,9 @@ describe("IngestTriageCard", () => {
       expect(screen.getByText(/Processar INBOX/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText(/Processar INBOX/i));
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Processar INBOX/i));
+    });
 
     const { triggerScan } = await import("../../api");
     await waitFor(() => {
@@ -285,5 +289,72 @@ describe("IngestTriageCard", () => {
     await waitFor(() => {
       expect(screen.getByText(/4 arquivo/i)).toBeInTheDocument();
     });
+  });
+
+  it("shows LLM detail card when expanding a row with llm_explanation", async () => {
+    const llmEntry = {
+      ...mockHistoryEntry,
+      items: [
+        {
+          ...mockHistoryEntry.items[0],
+          rule_area_key: "contratos_comunicacao",
+          rule_confidence: 0.33,
+          llm_explanation: "Resumo financeiro com EBITDA",
+          area_key: "financeiro",
+          confidence_score: 0.85,
+        }
+      ]
+    };
+    const { fetchIngestHistory } = await import("../../api");
+    vi.mocked(fetchIngestHistory).mockResolvedValue({
+      project_id: "p1",
+      entries: [llmEntry]
+    });
+
+    render(<IngestTriageCard {...defaultProps()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/relatorio\.pdf/i)).toBeInTheDocument();
+    });
+
+    const row = screen.getByText(/relatorio\.pdf/i).closest("tr");
+    expect(row).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(row!);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Resumo financeiro com EBITDA/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Regra:/)).toBeInTheDocument();
+  });
+
+  it("shows LLM context and approve-with-proposed-area button on triage items", async () => {
+    const triageItems = [
+      {
+        doc_id: "t2",
+        filename: "esg-report.pdf",
+        project_id: "p1",
+        suggested_area: "contratos_comunicacao",
+        confidence_score: 0.45,
+        reason: "llm_review_divergence",
+        top_candidates: [],
+        source_path: "/p1/_TRIAGE_REVIEW/pending/esg-report.pdf",
+        metadata_path: "/p1/_TRIAGE_REVIEW/pending/t2.json",
+        llm_explanation: "Relatorio ESG sem area existente",
+        llm_proposed_area: "esg_sustentabilidade",
+        rule_area_key: "contratos_comunicacao",
+        rule_confidence: 0.12,
+      }
+    ];
+    render(<IngestTriageCard {...defaultProps({ triageItems })} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/esg-report\.pdf/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Relatorio ESG sem area existente/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/esg_sustentabilidade/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/Aprovar: esg_sustentabilidade/i)).toBeInTheDocument();
   });
 });

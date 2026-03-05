@@ -1,107 +1,201 @@
 # AtlasFile
 
-AtlasFile e um sistema local para organizacao documental por projeto com:
+Sistema local de organização documental por projeto, com classificação híbrida (regras + LLM), triagem humana, indexação full-text e assistente conversacional.
 
-- ingestao automatica por pasta `_INBOX_DROP`;
-- classificacao por regras do projeto em `/_PROJECT_PROFILE.md` (com fallback assistido);
-- triagem humana no frontend (`Approve`, `Correct`, `Reject`) para baixa confianca;
-- indexacao de conteudo e metadados em OpenSearch com ranking BM25;
-- rastreabilidade entre nome original e nome canonico.
+## Visão geral
+
+- **Ingestão automática** via pasta `_INBOX_DROP` por projeto
+- **Classificação** em 3 camadas: routing rules → alias scoring (word boundary + sqrt norm) → LLM (opcional)
+- **Triagem humana** no frontend para documentos de baixa confiança (`Approve`, `Correct`, `Reject`)
+- **Dedup precoce** por SHA256 antes do fluxo completo — sem cópias `_dup_*`
+- **Indexação** de conteúdo e metadados em OpenSearch (BM25, 35+ campos, chunking com localização)
+- **Extração** de texto: PDF, DOCX, XLSX, PPTX, HTML, MSG, ZIP, RAR
+- **Assistente LLM** com chat multi-modelo (OpenAI, Anthropic), MCP tools e sessões persistentes
+- **Templates de projeto** com CRUD (builtin + user), editor visual e inicialização via UI
+- **Rastreabilidade** completa: nome original → nome canônico → SHA256 → `_INDEX.md` → OpenSearch
 
 ## Stack
 
-- Backend: FastAPI (Python 3.12)
-- Busca: OpenSearch 2.x (BM25)
-- Frontend: Vite + React + TypeScript (tema claro/escuro)
-- Runtime: Docker Compose
+| Camada | Tecnologia |
+|--------|------------|
+| Backend | FastAPI (Python 3.12) |
+| Busca | OpenSearch 2.17 (BM25) |
+| Frontend | Vite + React + TypeScript |
+| LLM | OpenAI / Anthropic (multi-modelo) |
+| MCP | FastMCP server (tools de busca, tags, stats) |
+| Runtime | Docker Compose (5 serviços) |
 
-## Estrutura
+## Estrutura do monorepo
 
-- `backend/`: API, motor de ingestao, classificador, indexador, triagem.
-- `frontend/`: interface de busca e fila de triagem.
-- `docs/`: framework, convencoes e governanca.
-- `scripts/`: bootstrap de projeto piloto.
-
-## Projeto piloto Kaido
-
-Pasta alvo para validacao:
-
-`/Users/alessandro/Library/CloudStorage/OneDrive-Personal/Documentos/Projects/Kaidô`
-
-O arquivo `/_PROJECT_PROFILE.md` desse projeto e lido pelo motor para definir:
-
-- areas de `_WORK`;
-- regras de roteamento;
-- thresholds de confianca;
-- aliases e sinonimos.
-
-## Novo projeto (template estilo Kaidô)
-
-Para criar um projeto novo com estrutura padrao numerada (JD):
-
-```bash
-python3 scripts/bootstrap_project.py --name "kaidô_teste" --id "kaido_teste"
+```
+AtlasFile/
+├── backend/                 # API FastAPI, classificador, indexador, MCP server
+│   ├── app/                 # Código principal (main, ingestion, orchestrator, ...)
+│   │   ├── api/             # Routers (profile, layout)
+│   │   ├── mcp/             # MCP server (tools)
+│   │   ├── mcp_client/      # Cliente MCP (chat/orchestrator)
+│   │   └── prompts/         # System prompts (classify, chat)
+│   └── tests/               # Unit + integration (pytest)
+├── frontend/                # SPA React + TypeScript
+│   └── src/
+│       ├── components/      # ChatPanel
+│       ├── features/        # ingest, profile-layout, search, settings, templates, triage
+│       └── hooks/           # useEscapeKey
+├── config/
+│   └── templates/           # Templates de projeto (default.json, user templates)
+├── docs/                    # Documentação de referência (benchmarking, conventions, KPIs)
+├── scripts/                 # Bootstrap, smoke test, CI, reset index
+├── docker-compose.yml
+├── Makefile
+└── CHANGELOG.md
 ```
 
-Isso cria:
+## Estrutura de um projeto
 
-- `_INBOX_DROP`
-- `_TRIAGE_REVIEW/pending|resolved|rejected`
-- `_WORK/01_* ... 09_*`
-- `_PROJECT_PROFILE.md`
-- `_INDEX.md`
-
-## Execucao local com Docker
-
-```bash
-docker compose up -d --build
+```
+/<PROJETO>/
+├── _INBOX_DROP/                    # Ponto de entrada de documentos
+├── _TRIAGE_REVIEW/
+│   ├── pending/                    # Aguardando decisão humana
+│   ├── resolved/                   # Aprovados/corrigidos
+│   └── rejected/                   # Rejeitados
+├── _PROFILE/
+│   ├── profile.json                # Profile V2 (áreas, routing, LLM policy, indexação)
+│   ├── ingest_history.json         # Histórico de ingestões (FIFO, cap 50)
+│   └── history/                    # Versões anteriores do profile
+├── 01_contratos_comunicacao/       # Áreas de trabalho (JD numbering)
+├── 02_financeiro/
+├── ...
+└── _INDEX.md                       # Registro local de documentos ingeridos
 ```
 
-Servicos:
+## Execução local
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000`
-- MCP Server (ferramentas para chat/classificação): `http://localhost:8001`
-- OpenSearch: `https://localhost:9200` (basic auth)
-- OpenSearch Dashboards: `http://localhost:5601`
+### Pré-requisitos
 
-Variáveis opcionais (env ou `.env`): `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` (para chat/classificação), `CLASSIFICATION_LLM_ENABLED=true` (habilitar classificação por LLM no ingest).
+- Docker Desktop ([Mac](https://www.docker.com/products/docker-desktop/) / [Windows](https://www.docker.com/products/docker-desktop/))
+- (Opcional) Chaves de API: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
 
-**Assistente (modelos e chaves):** na UI (Config) há seleção separada de **modelo triagem** e **modelo chat**; as chaves são enviadas apenas na requisição (não armazenadas no servidor). Autenticação hoje é por API Key; OAuth/assinatura está planejado (referência: OpenClaw `src/agents/auth-profiles`).
+### Setup
 
-### Reset do índice OpenSearch
+```bash
+# 1. Copie e configure o .env
+cp .env.example .env
+# Edite PROJECTS_HOST_ROOT com o path absoluto dos seus projetos
+# Default recomendado: $HOME/Documents/Projects
 
-Para recriar o índice com o mapping atualizado (ex.: após incluir `document_type`, `correspondent`, `review_status`):
+# 2. Suba o stack
+make docker-update
+```
 
-1. Com o stack no ar, rode: `./scripts/reset-opensearch-index.sh` (ou defina `OPENSEARCH_HOST`, `OPENSEARCH_PASSWORD` se diferente).
-2. Reinicie a API (ou o stack): o backend recria o índice no startup (`ensure_index`).
-3. Na UI, execute **Reconciliar INDEX** para repopular a partir dos `_INDEX.md` dos projetos.
+### Serviços
 
-Credenciais OpenSearch (dev):
+| Serviço | URL | Descrição |
+|---------|-----|-----------|
+| Frontend | http://localhost:5173 | Interface web (tema claro/escuro) |
+| API | http://localhost:8000 | FastAPI (REST + SSE) |
+| MCP Server | http://localhost:8001 | Tools para chat/classificação |
+| OpenSearch | https://localhost:9200 | Motor de busca (admin/Kaid0Search!2026X) |
+| Dashboards | http://localhost:5601 | OpenSearch Dashboards |
 
-- usuario: `admin`
-- senha: `Kaid0Search!2026X`
+### Makefile
 
-### Dashboard programático (OpenSearch Dashboards)
+| Target | O que faz |
+|--------|-----------|
+| `make test` | Roda todos os testes (backend + frontend) |
+| `make docker-update` | Testa + rebuild + sobe stack + smoke test |
+| `make docker-up` | Sobe stack sem rodar testes |
+| `make reset-index` | Remove índice OpenSearch para recriar com mapping atualizado |
 
-Os saved objects (index pattern sem time field, visualização “Documentos por tipo”, dashboard “AtlasFile – Visão geral”) estão em `dashboards/atlasfile.ndjson`. O gráfico de barras agrega por `content_type` (docx, pptx, pdf, xlsx, etc.).
+## Fluxo de classificação
 
-1. Com o stack no ar, importe: `./scripts/import-dashboards.sh` (variáveis opcionais: `DASHBOARDS_URL`, `DASHBOARDS_PASSWORD`).
-2. Faça login em http://localhost:5601 (admin / senha do OpenSearch) e **mantenha o tenant padrão** (não troque para Global).
-3. Abra o dashboard pelo **link direto**: http://localhost:5601/app/dashboards#/view/atlasfile-overview (a lista em Dashboards pode ficar vazia; o link funciona).
+```
+Arquivo entra em _INBOX_DROP
+         │
+         ▼
+   ┌─ Dedup (SHA256) ──────────────── Duplicado? → registro em _INDEX.md, remove da inbox
+   │
+   ▼
+   ┌─ Routing Rules ───────────────── Match por path/filename? → move para área (confiança 0.95+)
+   │
+   ▼
+   ┌─ Alias Scoring ───────────────── Word boundary + sqrt norm → score por área
+   │
+   ▼
+   ┌─ LLM (se habilitado) ─────────── Enriquece: area override, tags, document_type, topics
+   │                                   Pode propor nova área (auto-criação no profile)
+   ▼
+   Score >= auto_route_min (0.85)?
+   ├─ Sim → move para _WORK/<area>, indexa no OpenSearch
+   └─ Não → move para _TRIAGE_REVIEW/pending
+                  │
+                  ▼
+            Humano decide: Approve / Correct / Reject
+```
 
-O arquivo `config/opensearch_dashboards.yml` é montado no container para o servidor escutar em todas as interfaces.
+## Convenção de nomes (canonical)
 
+```
+YYYYMMDD__<project_id>__<area_key>__<short_title>__vNN.<ext>
+```
 
-## Fluxo operacional
+Exemplo: `20260301__kaido__contratos_comunicacao__migracao_clientes__v01.xlsx`
 
-1. Usuario salva arquivo em `/<PROJETO>/_INBOX_DROP`.
-2. Motor classifica usando `/_PROJECT_PROFILE.md`.
-3. Se score >= threshold, move para `/_WORK/<area>`.
-4. Se score baixo, move para `/_TRIAGE_REVIEW/pending`.
-5. Humano decide no frontend: `Approve`, `Correct` ou `Reject`.
-6. Backend atualiza `/_INDEX.md` e indexa no OpenSearch BM25.
+## Variáveis de ambiente
 
-## Observacao
+| Variável | Descrição | Default |
+|----------|-----------|---------|
+| `PROJECTS_HOST_ROOT` | Path absoluto dos projetos no host | (obrigatório) |
+| `OPENAI_API_KEY` | Chave OpenAI (chat + classificação) | — |
+| `ANTHROPIC_API_KEY` | Chave Anthropic (chat) | — |
+| `CLASSIFICATION_LLM_ENABLED` | Habilitar LLM no fluxo de ingestão | `false` |
+| `DEFAULT_LLM_PROVIDER` | Provider padrão | `openai` |
+| `DEFAULT_LLM_MODEL` | Modelo padrão | `gpt-4o-mini` |
+| `AUTO_RECONCILE_INTERVAL_SECONDS` | Intervalo de reconciliação automática | `600` |
 
-Os documentos em `docs/` consolidam as regras e referencias usadas no plano aprovado.
+Veja `.env.example` para a lista completa.
+
+## MCP Tools (para LLM e integrações)
+
+| Tool | Descrição |
+|------|-----------|
+| `search_documents` | Busca full-text com filtros (projeto, área, tipo, tags, datas) |
+| `get_stats` | Estatísticas agregadas (por doc_kind, area_key, document_type) |
+| `get_document` | Metadados + chunks de um documento |
+| `get_document_chunks` | Chunks específicos por localização (page:N, sheet:Name) |
+| `apply_tags` | Adiciona/remove tags |
+| `set_metadata` | Atualiza document_type, correspondent, area_key, review_status |
+| `submit_classification` | Classificação via LLM (area, tags, document_type, topics) |
+
+## Testes
+
+```bash
+make test              # Backend (pytest) + Frontend (vitest)
+make test-backend      # Apenas backend
+make test-frontend     # Apenas frontend
+```
+
+249 testes (200 backend + 49 frontend) cobrindo: classificador, LLM visibility, templates, stats, dedup, layout, extração, reconciliação, MCP, API.
+
+## Documentação
+
+- `CHANGELOG.md` — histórico de versões
+- `INSTALL.md` — guia de instalação detalhado (Mac/Windows)
+
+### Referência técnica (`docs/`)
+
+| Doc | Conteúdo |
+|-----|----------|
+| `01_benchmarking.md` | Referências (NARA, ISO 15489, FAIR, Johnny.Decimal, BM25) |
+| `02_gap_analysis.md` | Análise de gaps que motivou o projeto |
+| `03_framework_template.md` | Estrutura de projeto e ciclo de ingestão |
+| `04_naming_convention.md` | Convenção canônica de nomes |
+| `05_index_models.md` | Modelo de índice (_INDEX.md + OpenSearch, 35+ campos) |
+| `06_retention_policy.md` | Política de retenção (roadmap) |
+| `07_rollout_kpis.md` | Fases de rollout e KPIs |
+| `08_project_profile_template.md` | Template de profile V2 (JSON) com exemplo completo |
+| `09_field_mapping.md` | Mapeamento completo de campos: origem, derivação, uso pelo LLM |
+| `10_classifier_design.md` | Design do classificador: benchmarks, fundamentação, comparativos |
+| `agent-tools-flow.md` | Fluxo MCP → LLM → tools (como o agente recebe e usa ferramentas) |
+
+Planos de implementação concluídos ficam em `docs/planos_concluidos/` como registro de decisões.

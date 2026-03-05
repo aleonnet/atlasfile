@@ -18,7 +18,7 @@ from pathlib import Path
 import json
 import sys
 
-template = Path("/workspace/config/templates/profile_v2_default.json")
+template = Path("/workspace/config/templates/default.json")
 if not template.exists():
     print(f"Template ausente: {template}")
     sys.exit(1)

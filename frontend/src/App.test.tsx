@@ -62,7 +62,18 @@ vi.mock("./api", () => ({
       version: 2
     })
   ),
-  triageDecision: vi.fn(() => Promise.resolve())
+  triageDecision: vi.fn(() => Promise.resolve()),
+  fetchStats: vi.fn(() =>
+    Promise.resolve({
+      project_id: null,
+      total_documents: 5,
+      by_doc_kind: [{ key: "pdf", count: 3 }, { key: "docx", count: 2 }],
+      by_area_key: [{ key: "juridica", count: 4 }],
+      by_document_type: [{ key: "contrato", count: 3 }],
+      by_extension: [{ key: ".pdf", count: 3 }],
+      by_tags: [{ key: "juridica", count: 4 }]
+    })
+  )
 }));
 
 describe("App", () => {

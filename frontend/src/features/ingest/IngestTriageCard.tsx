@@ -1,5 +1,5 @@
-import { RefreshCw, Settings } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, RefreshCw, Settings } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchIngestHistory, fetchModels, fetchProjectProfile, triggerScan, updateProjectProfile } from "../../api";
 import type {
   IngestHistoryEntry,
@@ -36,6 +36,11 @@ type FlatRow = {
   decision: "auto" | "triage_pending" | "duplicate" | "error";
   confidence: number | null;
   llm: boolean;
+  rule_area_key?: string;
+  rule_confidence?: number;
+  llm_explanation?: string;
+  llm_proposed_area?: string;
+  classification_reason?: string;
 };
 
 function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
@@ -50,7 +55,12 @@ function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
         area_key: item.area_key,
         decision: item.decision,
         confidence: item.confidence_score,
-        llm: item.topics_source === "llm_policy",
+        llm: item.topics_source === "llm_policy" || !!item.llm_explanation || !!item.rule_area_key,
+        rule_area_key: item.rule_area_key,
+        rule_confidence: item.rule_confidence,
+        llm_explanation: item.llm_explanation,
+        llm_proposed_area: item.llm_proposed_area,
+        classification_reason: item.classification_reason,
       });
     }
     for (let i = 0; i < entry.errors.length; i++) {
@@ -249,6 +259,17 @@ export function IngestTriageCard({
   const totalPages = Math.ceil(allRows.length / PAGE_SIZE);
   const pageRows = allRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
+  const [expandedLlm, setExpandedLlm] = useState<Set<string>>(new Set());
+
+  function toggleLlmRow(key: string) {
+    setExpandedLlm((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   const currentProviderModel = `${llmPolicy.provider}/${llmPolicy.model}`;
   const modelLabel = models.find((m) => `${m.provider}/${m.model}` === currentProviderModel)?.label;
   const hasKey =
@@ -380,36 +401,66 @@ export function IngestTriageCard({
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.map((row) => (
-                    <tr key={row.key} className="itc-scan-row">
-                      <td className={`itc-scan-icon ${row.decision}`}>
-                        {row.decision === "auto" ? "✓" : row.decision === "duplicate" ? "✕" : row.decision === "error" ? "✕" : "⏳"}
-                      </td>
-                      <td className="itc-scan-datetime">
-                        {new Date(row.timestamp).toLocaleString("pt-BR", {
-                          day: "2-digit", month: "2-digit", year: "2-digit",
-                          hour: "2-digit", minute: "2-digit"
-                        })}
-                      </td>
-                      <td className="itc-scan-name" title={row.filename}>
-                        {row.filename}
-                        {row.llm && (
-                          <span className="itc-scan-llm-indicator" title="Classificado com LLM">🤖</span>
+                  {pageRows.map((row) => {
+                    const hasLlmDetail = row.llm && (row.llm_explanation || row.rule_area_key || row.llm_proposed_area);
+                    const isExpanded = expandedLlm.has(row.key);
+                    const areaOverridden = row.rule_area_key && row.rule_area_key !== row.area_key;
+                    return (
+                      <React.Fragment key={row.key}>
+                        <tr className={`itc-scan-row${hasLlmDetail ? " itc-row-clickable" : ""}`} onClick={hasLlmDetail ? () => toggleLlmRow(row.key) : undefined}>
+                          <td className={`itc-scan-icon ${row.decision}`}>
+                            {row.decision === "auto" ? "✓" : row.decision === "duplicate" ? "✕" : row.decision === "error" ? "✕" : "⏳"}
+                          </td>
+                          <td className="itc-scan-datetime">
+                            {new Date(row.timestamp).toLocaleString("pt-BR", {
+                              day: "2-digit", month: "2-digit", year: "2-digit",
+                              hour: "2-digit", minute: "2-digit"
+                            })}
+                          </td>
+                          <td className="itc-scan-name" title={row.filename}>
+                            {row.filename}
+                            {row.llm && (
+                              <span className="itc-scan-llm-indicator" title="Classificado com LLM">🤖</span>
+                            )}
+                          </td>
+                          <td className="itc-scan-area" title={row.area_key}>
+                            {row.area_key}
+                            {areaOverridden && (
+                              <span className="itc-area-override" title={`Regra: ${row.rule_area_key}`}>
+                                ← {row.rule_area_key}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`itc-scan-badge ${row.decision}`}>
+                              {row.decision === "auto" ? "auto" : row.decision === "duplicate" ? "dup" : row.decision === "error" ? "falha" : "triagem"}
+                            </span>
+                          </td>
+                          <td className="itc-scan-conf">
+                            {row.confidence !== null ? row.confidence.toFixed(2) : "-"}
+                            {hasLlmDetail && (isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
+                          </td>
+                        </tr>
+                        {isExpanded && hasLlmDetail && (
+                          <tr className="itc-llm-detail-row">
+                            <td colSpan={6}>
+                              <div className="itc-llm-detail-card">
+                                <strong>Detalhes da classificação LLM</strong>
+                                {row.rule_area_key && (
+                                  <p>Regra: <code>{row.rule_area_key}</code> (conf {(row.rule_confidence ?? 0).toFixed(2)})</p>
+                                )}
+                                <p>LLM: <code>{row.area_key}</code> (conf {(row.confidence ?? 0).toFixed(2)})</p>
+                                {row.llm_explanation && <p>Motivo: <em>{row.llm_explanation}</em></p>}
+                                {row.llm_proposed_area && (
+                                  <p className="itc-proposed-area">Área proposta (nova): <code>{row.llm_proposed_area}</code></p>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="itc-scan-area" title={row.area_key}>
-                        {row.area_key}
-                      </td>
-                      <td>
-                        <span className={`itc-scan-badge ${row.decision}`}>
-                          {row.decision === "auto" ? "auto" : row.decision === "duplicate" ? "dup" : row.decision === "error" ? "falha" : "triagem"}
-                        </span>
-                      </td>
-                      <td className="itc-scan-conf">
-                        {row.confidence !== null ? row.confidence.toFixed(2) : "-"}
-                      </td>
-                    </tr>
-                  ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -440,31 +491,56 @@ export function IngestTriageCard({
           </summary>
           <div className="itc-collapsible-body">
             <ul className="list">
-              {triageItems.map((item) => (
-                <li key={item.doc_id} className="list-item">
-                  <strong className="list-title">{item.filename}</strong>
-                  <div className="sub list-meta">
-                    projeto: {projectLabelById.get(item.project_id) || item.project_id} | sugestão:{" "}
-                    {item.suggested_area || "sem sugestão"} | confiança: {item.confidence_score.toFixed(2)}
-                  </div>
-                  <div className="row">
-                    <button
-                      className="btn"
-                      disabled={!item.suggested_area}
-                      title={!item.suggested_area ? "Sem sugestão de área" : ""}
-                      onClick={() => void onDecision(item, "approve")}
-                    >
-                      Aprovar
-                    </button>
-                    <button className="btn" onClick={() => void onDecision(item, "correct")}>
-                      Corrigir
-                    </button>
-                    <button className="btn danger" onClick={() => void onDecision(item, "reject")}>
-                      Rejeitar
-                    </button>
-                  </div>
-                </li>
-              ))}
+              {triageItems.map((item) => {
+                const hasLlmContext = item.llm_explanation || item.rule_area_key || item.llm_proposed_area;
+                return (
+                  <li key={item.doc_id} className="list-item">
+                    <strong className="list-title">{item.filename}</strong>
+                    <div className="sub list-meta">
+                      projeto: {projectLabelById.get(item.project_id) || item.project_id} | sugestão:{" "}
+                      {item.suggested_area || "sem sugestão"} | confiança: {item.confidence_score.toFixed(2)}
+                    </div>
+
+                    {hasLlmContext && (
+                      <div className="itc-triage-llm-context">
+                        {item.rule_area_key && (
+                          <p>Regra: <code>{item.rule_area_key}</code> (conf {(item.rule_confidence ?? 0).toFixed(2)})</p>
+                        )}
+                        {item.llm_explanation && <p>LLM: <em>{item.llm_explanation}</em></p>}
+                        {item.llm_proposed_area && (
+                          <p className="itc-proposed-area">Área proposta (nova): <code>{item.llm_proposed_area}</code></p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="row">
+                      <button
+                        className="btn"
+                        disabled={!item.suggested_area}
+                        title={!item.suggested_area ? "Sem sugestão de área" : ""}
+                        onClick={() => void onDecision(item, "approve")}
+                      >
+                        Aprovar
+                      </button>
+                      {item.llm_proposed_area && (
+                        <button
+                          className="btn primary"
+                          onClick={() => void onDecision({ ...item, suggested_area: item.llm_proposed_area }, "correct")}
+                          title={`Aprovar e criar área: ${item.llm_proposed_area}`}
+                        >
+                          Aprovar: {item.llm_proposed_area}
+                        </button>
+                      )}
+                      <button className="btn" onClick={() => void onDecision(item, "correct")}>
+                        Corrigir
+                      </button>
+                      <button className="btn danger" onClick={() => void onDecision(item, "reject")}>
+                        Rejeitar
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </details>

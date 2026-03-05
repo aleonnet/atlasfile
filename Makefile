@@ -7,7 +7,7 @@ test: test-backend test-frontend
 	@echo "All tests passed."
 
 test-backend:
-	@cd backend && (test -x .venv/bin/python && .venv/bin/python -m pytest tests/ -v || python3 -m pytest tests/ -v)
+	@cd backend && if test -x .venv/bin/python; then .venv/bin/python -m pytest tests/ -v; else python3 -m pytest tests/ -v; fi
 
 test-frontend:
 	cd frontend && npm run test

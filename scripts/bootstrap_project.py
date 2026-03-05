@@ -1,43 +1,37 @@
+#!/usr/bin/env python3
+"""Bootstrap de projeto AtlasFile via CLI.
+
+Reutiliza os mesmos módulos do backend (profile_store, bootstrap) para
+garantir que o profile.json, history e estrutura de pastas sejam idênticos
+ao que a API /api/projects/{id}/initialize produz.
+
+Uso:
+    python3 scripts/bootstrap_project.py --name "meu_projeto"
+    python3 scripts/bootstrap_project.py --name "meu_projeto" --template default
+    python3 scripts/bootstrap_project.py --name "due_diligence" --label "Due Diligence Alfa" --template default
+"""
 from __future__ import annotations
 
 import argparse
-import json
-from datetime import datetime, timezone
+import os
+import sys
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT / "backend"))
 
-DEFAULT_PROJECTS_ROOT = Path("/Users/alessandro/Library/CloudStorage/OneDrive-Personal/Documentos/Projects")
+from app.profile_store import ensure_profile, load_profile  # noqa: E402
+from app.project_profile import profile_v2_to_runtime  # noqa: E402
+from app.bootstrap import ensure_project_structure  # noqa: E402
+
+DEFAULT_PROJECTS_ROOT = Path(
+    os.environ.get("PROJECTS_HOST_ROOT", str(Path.home() / "Documents" / "Projects"))
+)
 
 
-def slugify(value: str) -> str:
-    out = value.strip().lower()
-    out = out.replace(" ", "_")
-    out = out.replace("-", "_")
+def _slugify(value: str) -> str:
+    out = value.strip().lower().replace(" ", "_").replace("-", "_")
     return "".join(ch for ch in out if ch.isalnum() or ch == "_").strip("_")
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def _load_default_template() -> dict:
-    template_path = _repo_root() / "config" / "templates" / "profile_v2_default.json"
-    raw = template_path.read_text(encoding="utf-8")
-    data = json.loads(raw)
-    if not isinstance(data, dict):
-        raise ValueError(f"Template invalido: {template_path}")
-    return data
-
-
-def build_profile(*, project_id: str, project_label: str, project_root: Path) -> dict:
-    profile = _load_default_template()
-    profile["project_id"] = project_id
-    profile["project_label"] = project_label
-    profile["project_root"] = str(project_root)
-    profile["updated_at"] = datetime.now(timezone.utc).isoformat()
-    profile["updated_by"] = "bootstrap_project.py"
-    profile["version"] = 1
-    return profile
 
 
 def bootstrap_project(
@@ -46,77 +40,51 @@ def bootstrap_project(
     project_dir_name: str,
     project_id: str,
     project_label: str,
+    template_slug: str = "default",
 ) -> Path:
     project_root = projects_root / project_dir_name
     project_root.mkdir(parents=True, exist_ok=True)
 
-    profile = build_profile(
+    profile, created = ensure_profile(
+        project_root=project_root,
         project_id=project_id,
         project_label=project_label,
-        project_root=project_root,
+        template_slug=template_slug,
     )
 
-    dirs_to_create = [
-        profile["paths"]["inbox"],
-        profile["paths"]["triage"]["pending"],
-        profile["paths"]["triage"]["resolved"],
-        profile["paths"]["triage"]["rejected"],
-        profile["layout"]["areas_root"],
-        "_PROFILE/history",
-    ]
-    roots = profile.get("layout", {}).get("roots", {})
-    for root_dir in roots.values():
-        if root_dir and root_dir not in dirs_to_create:
-            dirs_to_create.append(root_dir)
-    for rel in dirs_to_create:
-        (project_root / rel).mkdir(parents=True, exist_ok=True)
+    runtime = profile_v2_to_runtime(profile, project_root)
+    ensure_project_structure(project_root, runtime)
 
-    areas_root = project_root / profile["layout"]["areas_root"]
-    for af in profile["layout"].get("area_folders", []):
-        folder = af.get("folder")
-        if folder:
-            (areas_root / folder).mkdir(parents=True, exist_ok=True)
-
-    profile_path = project_root / "_PROFILE" / "profile.json"
-    profile_json = json.dumps(profile, ensure_ascii=False, indent=2)
-    profile_path.write_text(profile_json, encoding="utf-8")
-
-    history_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ__v01.json")
-    (project_root / "_PROFILE" / "history" / history_name).write_text(profile_json, encoding="utf-8")
-
-    index_path = project_root / "_INDEX.md"
-    if not index_path.exists():
-        index_path.write_text(
-            "# _INDEX\n\n"
-            "| doc_id | project_id | area | original_filename | canonical_filename | decision | confidence | path |\n"
-            "|---|---|---|---|---|---|---:|---|\n",
-            encoding="utf-8",
-        )
-
+    status = "criado" if created else "já existia"
+    print(f"OK: projeto inicializado em {project_root} (profile {status})")
+    print(f"  project_id = {profile.project_id}")
+    print(f"  template   = {template_slug}")
+    print(f"  version    = {profile.version}")
     return project_root
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Bootstrap de projeto AtlasFile com template estilo Kaidô")
-    parser.add_argument("--name", required=True, help='Nome da pasta do projeto, ex: "kaidô_teste"')
-    parser.add_argument("--id", default=None, help='ID do projeto, ex: "kaido_teste"')
-    parser.add_argument("--label", default=None, help='Label legivel do projeto')
-    parser.add_argument("--projects-root", default=str(DEFAULT_PROJECTS_ROOT), help="Raiz de projetos")
+    parser = argparse.ArgumentParser(
+        description="Bootstrap de projeto AtlasFile (usa os mesmos módulos do backend)"
+    )
+    parser.add_argument("--name", required=True, help="Nome da pasta do projeto")
+    parser.add_argument("--id", default=None, help="ID do projeto (default: slugify do name)")
+    parser.add_argument("--label", default=None, help="Label legível do projeto")
+    parser.add_argument("--template", default="default", help="Slug do template (default: default)")
+    parser.add_argument(
+        "--projects-root",
+        default=str(DEFAULT_PROJECTS_ROOT),
+        help=f"Raiz de projetos (default: {DEFAULT_PROJECTS_ROOT})",
+    )
     args = parser.parse_args()
 
-    project_name = args.name
-    project_id = args.id or slugify(project_name)
-    project_label = args.label or project_name
-    projects_root = Path(args.projects_root)
-
-    root = bootstrap_project(
-        projects_root=projects_root,
-        project_dir_name=project_name,
-        project_id=project_id,
-        project_label=project_label,
+    bootstrap_project(
+        projects_root=Path(args.projects_root),
+        project_dir_name=args.name,
+        project_id=args.id or _slugify(args.name),
+        project_label=args.label or args.name,
+        template_slug=args.template,
     )
-    print(f"OK: projeto inicializado em {root}")
-    print(f"project_id={project_id}")
 
 
 if __name__ == "__main__":

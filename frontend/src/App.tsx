@@ -1,4 +1,4 @@
-import { File, FileSpreadsheet, FileText, LayoutDashboard, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Sun } from "lucide-react";
+import { File, FileSpreadsheet, FileText, FolderCog, LayoutDashboard, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Sun } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createChatSession,
@@ -10,6 +10,7 @@ import {
   fetchProjectAreas,
   fetchProjects,
   fetchReconcileStatus,
+  fetchStats,
   fetchTriage,
   getFileDownloadUrl,
   getReconcileStatusStreamUrl,
@@ -27,6 +28,8 @@ import { ProfileLayoutWorkspace } from "./features/profile-layout/ProfileLayoutW
 import { buildEvidenceGroups, formatLocationLabel, topLocations } from "./features/search/searchFormatters";
 import { AssistantSettingsModal } from "./features/settings/AssistantSettingsModal";
 import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
+import { TemplateSelectModal } from "./features/templates/TemplateSelectModal";
+import { TemplateEditorView } from "./features/templates/TemplateEditorView";
 import type {
   ChatContentPart,
   ChatMessage as ChatMessageType,
@@ -35,7 +38,9 @@ import type {
   Project,
   ProjectArea,
   ReconcileStatus,
+  SearchFilters,
   SearchHit,
+  StatsResponse,
   StoredChatMessage,
   TriageItem
 } from "./types";
@@ -48,7 +53,7 @@ const CHAT_SHOW_THINKING_KEY = "atlasfile-chat-show-thinking";
 const OPENAI_API_KEY_STORAGE = "atlasfile-openai-api-key";
 const ANTHROPIC_API_KEY_STORAGE = "atlasfile-anthropic-api-key";
 type ThemeMode = "system" | "light" | "dark";
-type ViewKind = "operacional" | "assistente";
+type ViewKind = "operacional" | "assistente" | "templates";
 type InputLikeEvent = { target: { value: string } };
 type KeyboardLikeEvent = { key: string };
 type KeyboardEventLike = { key: string; shiftKey?: boolean; preventDefault?: () => void };
@@ -85,6 +90,9 @@ function App() {
   const [fullTotalPages, setFullTotalPages] = useState(1);
   const [fullTotal, setFullTotal] = useState(0);
   const [fullLoading, setFullLoading] = useState(false);
+  const [fullSearchInput, setFullSearchInput] = useState("");
+  const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [searchStats, setSearchStats] = useState<StatsResponse | null>(null);
   const [triageItems, setTriageItems] = useState<TriageItem[]>([]);
   const [reconcileStatus, setReconcileStatus] = useState<ReconcileStatus | null>(null);
   const [status, setStatus] = useState("Pronto");
@@ -97,6 +105,7 @@ function App() {
   const reconcileEsRef = useRef<EventSource | null>(null);
 
   const [view, setView] = useState<ViewKind>("operacional");
+  const [templateModalProject, setTemplateModalProject] = useState<{ ref: string; label: string } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessageType[]>([]);
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -403,9 +412,12 @@ function App() {
     setModalHits([]);
     setFullResults([]);
     setFullQuery("");
+    setFullSearchInput("");
     setFullPage(1);
     setFullTotalPages(1);
     setFullTotal(0);
+    setSearchFilters({});
+    setSearchStats(null);
     setStatus("Busca limpa");
   }
 
@@ -431,23 +443,28 @@ function App() {
   }
 
   async function handleSelectProject(nextProject: string) {
-    setSelectedProject(nextProject);
-    if (nextProject === ALL_PROJECTS) return;
+    if (nextProject === ALL_PROJECTS) {
+      setSelectedProject(nextProject);
+      return;
+    }
 
     const target = projects.find((project) => project.project_id === nextProject);
-    if (!target || target.initialized) return;
+    if (!target) return;
 
-    setInitializingProjectId(nextProject);
-    setStatus(`Inicializando projeto ${target.project_label} sem alterar conteudo existente...`);
-    try {
-      await initializeProject(nextProject);
-      await refreshProjects();
-      setStatus(`Projeto ${target.project_label} inicializado com seguranca`);
-    } catch {
-      setStatus(`Falha ao inicializar projeto ${target.project_label}`);
-    } finally {
-      setInitializingProjectId(null);
+    if (target.initialized) {
+      setSelectedProject(nextProject);
+      return;
     }
+
+    setTemplateModalProject({ ref: nextProject, label: target.project_label });
+  }
+
+  async function handleTemplateInitialized() {
+    const ref = templateModalProject?.ref;
+    setTemplateModalProject(null);
+    await refreshProjects();
+    if (ref) setSelectedProject(ref);
+    setStatus("Projeto inicializado com sucesso");
   }
 
   async function handleReconcileNow() {
@@ -539,18 +556,28 @@ function App() {
     }
   }
 
-  async function runFullSearch(page = 1) {
-    const q = query.trim();
+  async function runFullSearch(page = 1, overrideQuery?: string, overrideFilters?: SearchFilters) {
+    const q = (overrideQuery ?? (fullSearchInput || query)).trim();
     if (q.length < 2) return;
+    const filters = overrideFilters ?? searchFilters;
+    const activeFilters: SearchFilters = {};
+    if (filters.doc_kind) activeFilters.doc_kind = filters.doc_kind;
+    if (filters.document_type) activeFilters.document_type = filters.document_type;
+    if (filters.area_key) activeFilters.area_key = filters.area_key;
     setFullLoading(true);
     try {
-      const data = await searchDocuments(q, selectedProject === ALL_PROJECTS ? undefined : selectedProject, page, 20);
+      const projectScope = selectedProject === ALL_PROJECTS ? undefined : selectedProject;
+      const data = await searchDocuments(q, projectScope, page, 20, Object.keys(activeFilters).length > 0 ? activeFilters : undefined);
       setFullQuery(q);
+      setFullSearchInput(q);
       setFullResults(data.hits);
       setFullPage(data.page);
       setFullTotal(data.total);
       setFullTotalPages(data.total_pages);
       setStatus(`${data.total} resultado(s)`);
+      if (!searchStats) {
+        fetchStats(projectScope).then(setSearchStats).catch(() => {});
+      }
     } catch {
       setStatus("Falha na busca");
     } finally {
@@ -875,6 +902,16 @@ function App() {
             <MessageCircle size={18} strokeWidth={2} aria-hidden />
             <span className="view-tab-label">Assistente</span>
           </button>
+          <button
+            type="button"
+            className={view === "templates" ? "active" : ""}
+            onClick={() => setView("templates")}
+            aria-current={view === "templates" ? "page" : undefined}
+            title="Templates"
+          >
+            <FolderCog size={18} strokeWidth={2} aria-hidden />
+            <span className="view-tab-label">Templates</span>
+          </button>
         </nav>
         <div className="topbar-center">
           <div className="header-search-card">
@@ -1035,13 +1072,95 @@ function App() {
             </h2>
             <div className="panel-head-right">
               <span className="sub">
-                consulta: "{fullQuery}" | {fullTotal} resultado(s)
+                {fullTotal} resultado(s)
               </span>
               <button type="button" className="btn search-clear-btn" onClick={clearSearch} title="Limpar busca">
                 Limpar busca
               </button>
             </div>
           </div>
+
+          <div className="full-search-bar">
+            <div className="full-search-input-wrap">
+              <Search size={16} className="full-search-icon" />
+              <input
+                className="full-search-input"
+                value={fullSearchInput}
+                onChange={(e: InputLikeEvent) => setFullSearchInput(e.target.value)}
+                onKeyDown={(e: KeyboardLikeEvent) => {
+                  if (e.key === "Enter") void runFullSearch(1, fullSearchInput);
+                }}
+                placeholder="Refinar busca..."
+              />
+              <button
+                className="btn btn-sm"
+                disabled={fullLoading || fullSearchInput.trim().length < 2}
+                onClick={() => void runFullSearch(1, fullSearchInput)}
+              >
+                Buscar
+              </button>
+            </div>
+
+            {searchStats && (
+              <details className="pl-collapsible full-search-filters">
+                <summary className="pl-collapsible-header">Filtros</summary>
+                <div className="full-search-filters-row">
+                  <label className="full-search-filter-label">
+                    <span className="sub">Formato</span>
+                    <select
+                      value={searchFilters.doc_kind || ""}
+                      onChange={(e) => {
+                        const v = e.target.value || undefined;
+                        const next = { ...searchFilters, doc_kind: v };
+                        setSearchFilters(next);
+                        void runFullSearch(1, undefined, next);
+                      }}
+                    >
+                      <option value="">Todos</option>
+                      {searchStats.by_doc_kind.map((b) => (
+                        <option key={b.key} value={b.key}>{b.key} ({b.count})</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="full-search-filter-label">
+                    <span className="sub">Tipo</span>
+                    <select
+                      value={searchFilters.document_type || ""}
+                      onChange={(e) => {
+                        const v = e.target.value || undefined;
+                        const next = { ...searchFilters, document_type: v };
+                        setSearchFilters(next);
+                        void runFullSearch(1, undefined, next);
+                      }}
+                    >
+                      <option value="">Todos</option>
+                      {searchStats.by_document_type.map((b) => (
+                        <option key={b.key} value={b.key}>{b.key} ({b.count})</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="full-search-filter-label">
+                    <span className="sub">Área</span>
+                    <select
+                      value={searchFilters.area_key || ""}
+                      onChange={(e) => {
+                        const v = e.target.value || undefined;
+                        const next = { ...searchFilters, area_key: v };
+                        setSearchFilters(next);
+                        void runFullSearch(1, undefined, next);
+                      }}
+                    >
+                      <option value="">Todas</option>
+                      {searchStats.by_area_key.map((b) => (
+                        <option key={b.key} value={b.key}>{b.key} ({b.count})</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </details>
+            )}
+          </div>
+
           <ul className="list search-list">
             {fullResults.map((hit) => (
               <li key={`full-${hit.doc_id}`} className="list-item search-item">
@@ -1140,8 +1259,23 @@ function App() {
         />
       )}
 
+      {view === "templates" && (
+        <TemplateEditorView />
+      )}
+
       <footer className="status">{status}</footer>
       </main>
+
+      {templateModalProject && (
+        <TemplateSelectModal
+          open={!!templateModalProject}
+          projectRef={templateModalProject.ref}
+          projectLabel={templateModalProject.label}
+          onClose={() => setTemplateModalProject(null)}
+          onInitialized={() => void handleTemplateInitialized()}
+          onCreateTemplate={() => { setTemplateModalProject(null); setView("templates"); }}
+        />
+      )}
 
       {searchModalOpen && (
         <div className="search-modal-overlay" role="dialog" aria-modal="true" aria-label="Busca global">
@@ -1157,7 +1291,8 @@ function App() {
                     else setSearchModalOpen(false);
                   }
                   if (e.key === "Enter") {
-                    void runFullSearch(1);
+                    setFullSearchInput(query.trim());
+                    void runFullSearch(1, query.trim());
                     setSearchModalOpen(false);
                   }
                 }}

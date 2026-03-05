@@ -29,13 +29,14 @@ def search_documents(
     project_id: str | None = None,
     area_key: str | None = None,
     document_type: str | None = None,
+    doc_kind: str | None = None,
     tags: list[str] | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     page: int = 1,
     size: int = 20,
 ) -> str:
-    """Search documents by full-text query with optional filters: project_id, area_key, document_type, tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights)."""
+    """Search documents by full-text query with optional filters: project_id, area_key, document_type, doc_kind (pdf, docx, xlsx, pptx, plain_text, html, msg, archive_listing), tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights, evidences)."""
     params: dict[str, Any] = {"q": query, "page": page, "size": size}
     if project_id:
         params["project_id"] = project_id
@@ -43,6 +44,8 @@ def search_documents(
         params["area_key"] = area_key
     if document_type:
         params["document_type"] = document_type
+    if doc_kind:
+        params["doc_kind"] = doc_kind
     if tags:
         params["tags"] = tags
     if date_from:
@@ -50,6 +53,16 @@ def search_documents(
     if date_to:
         params["date_to"] = date_to
     data = get("/api/search", params=params)
+    return json.dumps(data, ensure_ascii=False)
+
+
+@mcp.tool()
+def get_stats(project_id: str | None = None) -> str:
+    """Get document statistics and counts. Returns total_documents and breakdowns by doc_kind (pdf, docx, xlsx, pptx, plain_text...), area_key, document_type, extension, and tags. Each breakdown has key and count. Use this to answer quantity questions like 'how many PDFs?' or 'document distribution by area'."""
+    params: dict[str, Any] = {}
+    if project_id:
+        params["project_id"] = project_id
+    data = get("/api/stats", params=params or None)
     return json.dumps(data, ensure_ascii=False)
 
 

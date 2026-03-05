@@ -320,6 +320,8 @@ show_plan() {
 
 run_compose_up() {
   export PROJECTS_HOST_ROOT
+  # Pre-create with user permissions to avoid Docker creating it as root
+  mkdir -p "$PROJECTS_HOST_ROOT"
   run_with_spinner "Validating docker compose" docker compose -f "$COMPOSE_FILE" config >/dev/null
   run_with_spinner "Starting AtlasFile stack" docker compose -f "$COMPOSE_FILE" up -d --build
 }

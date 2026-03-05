@@ -42,13 +42,15 @@ Ferramentas expostas hoje (e só essas):
 
 | Ferramenta              | Descrição (resumo do docstring) |
 |-------------------------|----------------------------------|
-| `search_documents`      | Busca full-text com filtros (project_id, area_key, document_type, tags, datas, page, size) |
-| `get_document`          | Obtém documento por doc_id (metadata, excerpt, content_chunks) |
+| `search_documents`      | Busca full-text com filtros (project_id, area_key, document_type, doc_kind, tags, datas, page, size) |
+| `get_stats`             | Estatísticas e contagens: total_documents + breakdowns por doc_kind, area_key, document_type, extension, tags |
+| `get_document`          | Obtém documento por doc_id (metadata, excerpt, content_chunks; trunca docs longos) |
+| `get_document_chunks`   | Retorna chunks específicos por localização (page:N, sheet:Name), sem carregar o documento inteiro |
 | `apply_tags`            | Adiciona/remove tags de um documento |
 | `set_metadata`          | Atualiza document_type, correspondent, area_key, review_status |
 | `list_tags`             | Lista tags únicas (opcionalmente por project_id) |
 | `create_review_marker`  | Marca documento para revisão (legal_review, finance_review, needs_review) |
-| `submit_classification` | Usado pelo fluxo de classificação: document_type, tags, confidence |
+| `submit_classification` | Usado pelo fluxo de classificação: document_type, tags, confidence, area_key, topics, explanation |
 
 Não existe no nosso código nenhuma ferramenta `multi_tool_use.parallel` nem “functions.search_documents” como namespace; o nome enviado ao LLM é exatamente o nome da função (ex.: `search_documents`).
 

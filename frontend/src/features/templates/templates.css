@@ -1,0 +1,459 @@
+/* ── Template Modals & Views ── */
+
+.modal.tmpl-select-modal {
+  width: min(600px, 95vw);
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tmpl-select-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.tmpl-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+.tmpl-loading {
+  font-size: 0.82rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.tmpl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tmpl-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--duration-normal);
+}
+
+.tmpl-item:hover {
+  border-color: var(--accent);
+}
+
+.tmpl-item.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.tmpl-item > input[type="radio"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  max-width: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.tmpl-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.tmpl-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tmpl-item-content strong {
+  font-size: 0.88rem;
+}
+
+.tmpl-badge-default {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tmpl-areas-count {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.tmpl-desc {
+  width: 100%;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 2px 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tmpl-create-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--accent);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 10px;
+}
+
+.tmpl-create-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Preview ── */
+
+.tmpl-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+  font-size: 0.82rem;
+}
+
+.tmpl-preview summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tmpl-preview-list {
+  padding: 4px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tmpl-preview-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.tmpl-preview-area code {
+  min-width: 24px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.tmpl-preview-key {
+  font-weight: 500;
+  min-width: 160px;
+}
+
+.tmpl-preview-aliases {
+  color: var(--muted);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Template Editor View ── */
+
+.tmpl-editor-view {
+  padding: 0;
+}
+
+.tmpl-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.tmpl-editor-header h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.tmpl-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tmpl-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg-elevated);
+}
+
+.tmpl-card-info {
+  flex: 1;
+}
+
+.tmpl-card-info strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.92rem;
+}
+
+.tmpl-card-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tmpl-card-slug {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  opacity: 0.6;
+  padding: 1px 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.tmpl-badge-source {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tmpl-badge-source--builtin {
+  background: rgba(128, 128, 128, 0.15);
+  color: var(--muted);
+}
+
+.tmpl-badge-source--user {
+  background: rgba(59, 130, 246, 0.15);
+  color: rgb(96, 165, 250);
+}
+
+.tmpl-card-desc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.tmpl-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Template Editor Modal ── */
+
+.modal.tmpl-editor-modal {
+  width: min(920px, 95vw);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.tmpl-editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.tmpl-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tmpl-editor-field label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.tmpl-editor-field input,
+.tmpl-editor-field textarea {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.tmpl-editor-field input:read-only {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tmpl-editor-field textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+/* ── Editor: 2-column grid for small field groups ── */
+
+.tmpl-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.tmpl-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.tmpl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tmpl-field label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.tmpl-field input,
+.tmpl-field select {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.tmpl-field input[type="number"] {
+  max-width: 120px;
+}
+
+.tmpl-field input:read-only {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Editor: LLM toggle row ── */
+
+.tmpl-llm-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tmpl-llm-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.tmpl-toggle {
+  position: relative;
+  width: 38px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--border);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--duration-normal);
+}
+
+.tmpl-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform var(--duration-normal);
+}
+
+.tmpl-toggle.active {
+  background: var(--accent);
+}
+
+.tmpl-toggle.active::after {
+  transform: translateX(18px);
+}
+
+/* ── Editor: guardrails sub-section ── */
+
+.tmpl-guardrails-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+.tmpl-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.tmpl-checkbox input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Confirm Delete Modal ── */
+
+.tmpl-confirm-modal {
+  width: min(420px, 90vw);
+}
+
+/* ── Save as Template ── */
+
+.tmpl-save-as-modal {
+  width: min(480px, 95vw);
+}

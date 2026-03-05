@@ -2,33 +2,58 @@
 
 ## Fases
 
-### Fase 0 - Framework e contratos
+### Fase 0 — Framework e contratos (concluída)
 
-- aprovar estrutura, naming, indices e profile template.
+- Estrutura de projeto, naming convention, índices e profile template definidos.
+- Documentação de referência: benchmarking, gap analysis, modelo de índice.
 
-### Fase 1 - MVP operacional
+### Fase 1 — MVP operacional (concluída)
 
-- ingestao por `_INBOX_DROP`;
-- classificacao por profile;
-- triagem no frontend;
-- busca BM25.
+- Ingestão por `_INBOX_DROP` com classificação por routing rules + alias scoring.
+- Triagem humana no frontend (`Approve`, `Correct`, `Reject`).
+- Busca full-text BM25 com highlight e autocomplete.
+- Indexação em OpenSearch com 35+ campos.
+- MCP server com tools de busca, tags e metadados.
+- Assistente LLM com chat multi-modelo e sessões persistentes.
 
-### Fase 2 - Hardening
+### Fase 2 — Hardening (em andamento)
 
-- observabilidade;
-- reprocessamento;
-- tuning de regras.
+- Profile V2 (JSON) com schema validado (Pydantic).
+- Templates CRUD (builtin + user) com editor visual.
+- Dedup precoce por SHA256.
+- Histórico de ingestões persistente (FIFO, cap 50).
+- Word boundary matching + sqrt normalization no classificador.
+- Reconciliação automática (filesystem ↔ OpenSearch).
+- Extração multi-formato (PDF, DOCX, XLSX, PPTX, HTML, MSG, ZIP, RAR).
+- Layout workspace (simulação e aplicação de migração de pastas).
+- Endpoint de estatísticas agregadas (`GET /api/stats`).
+- Filtros de busca por `doc_kind` e `area_key`.
 
-### Fase 3 - Evolucao IA
+### Fase 3 — Evolução IA (em andamento)
 
-- reranking semantico;
-- aprendizado supervisionado com historico de triagem.
+- LLM no fluxo de classificação (3 modos: tag_only, review, full_override).
+- Contexto de projeto injetado no prompt (áreas, aliases, topics).
+- LLM visibility: campos `rule_area_key`, `llm_explanation`, `llm_proposed_area`.
+- Auto-criação de áreas quando LLM propõe área inexistente.
+- Guardrails configuráveis (confiança mínima para override, exigir explicação).
+- Topics semânticos via dicionário (`config/topics_v1.yaml`).
+
+### Fase 4 — Próximos passos (planejado)
+
+- Reranking semântico (embeddings).
+- Aprendizado supervisionado com histórico de triagem.
+- Política de retenção e arquivamento (ver `06_retention_policy.md`).
+- Observabilidade e métricas operacionais.
 
 ## KPIs
 
-- `auto_classification_rate`
-- `triage_rate`
-- `triage_sla_breach_rate`
-- `search_first_result_success_rate`
-- `indexing_latency_p95`
-- `traceability_completeness_rate`
+| KPI | Descrição |
+|-----|-----------|
+| `auto_classification_rate` | % de documentos classificados automaticamente (sem triagem) |
+| `triage_rate` | % de documentos enviados para triagem humana |
+| `triage_sla_breach_rate` | % de triagens pendentes acima do SLA (48h) |
+| `search_first_result_success_rate` | % de buscas onde o 1o resultado é relevante |
+| `indexing_latency_p95` | Latência p95 de indexação após ingestão |
+| `traceability_completeness_rate` | % de documentos com rastreabilidade completa (original → canônico → SHA256) |
+| `duplicate_detection_rate` | % de duplicatas detectadas antes do fluxo completo |
+| `llm_override_accuracy` | % de overrides do LLM aceitos (não corrigidos na triagem) |

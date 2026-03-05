@@ -17,8 +17,8 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _template_path() -> Path:
-    return _repo_root() / "config" / "templates" / "profile_v2_default.json"
+def _template_path(slug: str = "default") -> Path:
+    return _repo_root() / "config" / "templates" / f"{slug}.json"
 
 
 def _profile_dir(project_root: Path) -> Path:
@@ -68,8 +68,15 @@ def _read_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def create_default_profile(*, project_root: Path, project_id: str | None = None, project_label: str | None = None) -> ProjectProfileV2:
-    template = _read_json(_template_path())
+def create_default_profile(
+    *,
+    project_root: Path,
+    project_id: str | None = None,
+    project_label: str | None = None,
+    template_slug: str = "default",
+) -> ProjectProfileV2:
+    template = _read_json(_template_path(template_slug))
+    template.pop("template_meta", None)
     template["project_id"] = project_id or project_root.name
     template["project_label"] = project_label or project_root.name
     template["project_root"] = str(project_root)
@@ -150,11 +157,17 @@ def ensure_profile(
     project_root: Path,
     project_id: str | None = None,
     project_label: str | None = None,
+    template_slug: str = "default",
 ) -> tuple[ProjectProfileV2, bool]:
     try:
         return load_profile(project_root), False
     except FileNotFoundError:
-        created = create_default_profile(project_root=project_root, project_id=project_id, project_label=project_label)
+        created = create_default_profile(
+            project_root=project_root,
+            project_id=project_id,
+            project_label=project_label,
+            template_slug=template_slug,
+        )
         saved = save_profile(project_root=project_root, profile=created, if_match_version=None, updated_by="system:init")
         return saved, True
 

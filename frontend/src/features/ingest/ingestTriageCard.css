@@ -432,6 +432,79 @@ details.itc-history-entry[open] > .itc-history-summary::before {
   cursor: default;
 }
 
+/* ── LLM Visibility ── */
+
+.itc-row-clickable {
+  cursor: pointer;
+}
+
+.itc-area-override {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 0.72rem;
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+.itc-llm-detail-row td {
+  padding: 0 8px 8px !important;
+}
+
+.itc-llm-detail-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.itc-llm-detail-card strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.itc-llm-detail-card p {
+  margin: 2px 0;
+}
+
+.itc-llm-detail-card code {
+  background: var(--bg-elevated);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.82rem;
+}
+
+.itc-proposed-area {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.itc-triage-llm-context {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin: 6px 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.itc-triage-llm-context p {
+  margin: 2px 0;
+}
+
+.itc-triage-llm-context code {
+  background: var(--bg-elevated);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.82rem;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 768px) {

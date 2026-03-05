@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { createTemplate } from "../../api";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { applyLayout, getProfile, getProfileHistory, planLayout, saveProfile, validateProfile } from "./api";
 import { LayoutPlanPreview } from "./LayoutPlanPreview";
 import { ProfileLayoutEditor } from "./ProfileLayoutEditor";
@@ -45,6 +47,12 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
   const [cleanupEmptyDirs, setCleanupEmptyDirs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string>("");
+  const [saveAsTemplateOpen, setSaveAsTemplateOpen] = useState(false);
+  useEscapeKey(saveAsTemplateOpen ? () => setSaveAsTemplateOpen(false) : null);
+  const [templateName, setTemplateName] = useState("");
+  const [templateSlug, setTemplateSlug] = useState("");
+  const [templateDesc, setTemplateDesc] = useState("");
+  const [templateSaving, setTemplateSaving] = useState(false);
 
   const isDirty = useMemo(() => {
     if (!profile || !draft) return false;
@@ -210,6 +218,9 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
         <button className="btn primary" onClick={() => void handleSave()} disabled={!draft || !isDirty || loading || saving}>
           Salvar Profile
         </button>
+        <button className="btn" onClick={() => setSaveAsTemplateOpen(true)} disabled={!profile || loading}>
+          Salvar como Template
+        </button>
       </div>
 
       {loading && <p className="card-intro">Carregando profile...</p>}
@@ -311,6 +322,61 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
             </div>
           </div>
         </details>
+      )}
+      {saveAsTemplateOpen && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Salvar como template">
+          <div className="modal tmpl-save-as-modal">
+            <h3>Salvar profile como template</h3>
+            <div className="tmpl-editor-fields">
+              <div className="tmpl-editor-field">
+                <label htmlFor="tmpl-save-name">Nome</label>
+                <input id="tmpl-save-name" value={templateName} onChange={(e) => {
+                  setTemplateName(e.target.value);
+                  if (!templateSlug || templateSlug === templateName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) {
+                    setTemplateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""));
+                  }
+                }} />
+              </div>
+              <div className="tmpl-editor-field">
+                <label htmlFor="tmpl-save-slug">Slug</label>
+                <input id="tmpl-save-slug" value={templateSlug} onChange={(e) => setTemplateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} />
+              </div>
+              <div className="tmpl-editor-field">
+                <label htmlFor="tmpl-save-desc">Descrição</label>
+                <textarea id="tmpl-save-desc" value={templateDesc} onChange={(e) => setTemplateDesc(e.target.value)} />
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setSaveAsTemplateOpen(false)} disabled={templateSaving}>Cancelar</button>
+              <button
+                className="btn primary"
+                disabled={templateSaving || !templateSlug || !templateName}
+                onClick={async () => {
+                  setTemplateSaving(true);
+                  try {
+                    await createTemplate({
+                      from_profile: projectRef,
+                      slug: templateSlug,
+                      name: templateName,
+                      description: templateDesc,
+                    });
+                    onStatus?.("Template salvo com sucesso");
+                    setSaveAsTemplateOpen(false);
+                    setTemplateName("");
+                    setTemplateSlug("");
+                    setTemplateDesc("");
+                  } catch {
+                    onStatus?.("Falha ao salvar template");
+                  } finally {
+                    setTemplateSaving(false);
+                  }
+                }}
+              >
+                {templateSaving ? "Salvando..." : "Salvar template"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

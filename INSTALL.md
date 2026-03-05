@@ -1,18 +1,19 @@
-# AtlasFile - Guia de Instalacao (Mac e Windows)
+# AtlasFile - Guia de Instalação (Mac, Linux e Windows)
 
 Este guia cobre o setup completo para qualquer pessoa rodar o AtlasFile localmente.
 
 ---
 
-## 1) Pre-requisitos
+## 1) Pré-requisitos
 
-### Obrigatorio
+### Obrigatório
 
 - Docker Desktop instalado
   - Mac: <https://www.docker.com/products/docker-desktop/>
   - Windows: <https://www.docker.com/products/docker-desktop/>
+  - Linux: <https://docs.docker.com/engine/install/>
 
-### Validacao rapida
+### Validação rápida
 
 Abra o terminal e rode:
 
@@ -21,13 +22,13 @@ docker version
 docker compose version
 ```
 
-Se os dois responderem sem erro, o Docker esta pronto.
+Se os dois responderem sem erro, o Docker está pronto.
 
 ---
 
 ## 2) Obter o projeto
 
-Clone ou copie o repositorio e entre na pasta:
+Clone ou copie o repositório e entre na pasta:
 
 ```bash
 cd AtlasFile
@@ -35,81 +36,98 @@ cd AtlasFile
 
 ---
 
-## 3) Ajustar caminho de projetos no host
+## 3) Configurar variáveis de ambiente
 
-O backend precisa montar uma pasta local com os projetos.
+Copie o arquivo de exemplo e edite:
 
-No `docker-compose.yml`, ajuste o bind mount do servico `api`:
-
-```yaml
-services:
-  api:
-    volumes:
-      - <CAMINHO_LOCAL_PROJETOS>:/projects
+```bash
+cp .env.example .env
 ```
 
-### Exemplos de caminho
+O campo **obrigatório** é `PROJECTS_HOST_ROOT` — o path absoluto no host onde ficam seus projetos. Este diretório será montado como `/projects` dentro do container.
 
-- Mac:
-  - `/Users/<seu_usuario>/Documents/Projects:/projects`
-- Windows (Docker Desktop + WSL/Compose):
-  - `C:\Users\<seu_usuario>\Documents\Projects:/projects`
+### Exemplos
 
-> Dica: confirme que a pasta existe e que o Docker Desktop tem permissao para acessa-la.
+```bash
+# macOS
+PROJECTS_HOST_ROOT=/Users/seu_usuario/Documents/Projects
+
+# Linux
+PROJECTS_HOST_ROOT=/home/seu_usuario/Documents/Projects
+
+# Windows (WSL)
+PROJECTS_HOST_ROOT=/mnt/c/Users/seu_usuario/Documents/Projects
+```
+
+Se a pasta não existir, o AtlasFile a cria automaticamente no primeiro uso.
+
+### Variáveis opcionais
+
+```bash
+# Chaves LLM (para chat e classificação assistida)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Habilitar LLM no fluxo de ingestão (default: false)
+CLASSIFICATION_LLM_ENABLED=true
+```
+
+Veja `.env.example` para a lista completa de variáveis (CORS, OpenSearch, reconciliação, etc.).
 
 ---
 
-## 4) Testes antes de atualizar o Docker
+## 4) Testes antes de subir
 
-Antes de subir ou atualizar os containers, rode os testes para garantir que backend e frontend estao ok:
-
-```bash
-bash scripts/ci.sh
-```
-
-Ou `./scripts/ci.sh` (se executavel: `chmod +x scripts/ci.sh`). Se tiver Make instalado:
+Antes de subir ou atualizar os containers, rode os testes:
 
 ```bash
 make test
 ```
 
-Comandos individuais:
+Ou individualmente:
 
-- Backend: `cd backend && python -m pytest tests/ -v` (requer `pip install -r requirements-dev.txt`)
+- Backend: `cd backend && python -m pytest tests/ -v` (requer virtualenv com `pip install -r requirements.txt`)
 - Frontend: `cd frontend && npm run test`
-
-Apos os testes passarem, atualize **sempre os dois servicos** (api e web) para garantir que esteja usando as ultimas versoes:
-
-```bash
-docker compose up -d --build api web
-docker compose ps
-```
 
 ---
 
-## 5) Subir os servicos
+## 5) Subir os serviços
 
-Na raiz do projeto (primeira vez ou rebuild completo):
+### Primeira vez ou rebuild completo
+
+```bash
+make docker-update
+```
+
+Isso roda os testes, faz build das imagens, sobe todos os serviços e executa o smoke test de inicialização.
+
+### Alternativa manual
 
 ```bash
 docker compose up -d --build
+```
+
+### Serviços esperados
+
+```bash
 docker compose ps
 ```
 
-Servicos esperados:
-
-- `atlasfile-opensearch`
-- `atlasfile-api`
-- `atlasfile-web`
-- `atlasfile-dashboards`
+| Container | Serviço | Porta |
+|-----------|---------|-------|
+| `atlasfile-opensearch` | OpenSearch 2.17 | 9200 |
+| `atlasfile-dashboards` | OpenSearch Dashboards | 5601 |
+| `atlasfile-api` | Backend FastAPI | 8000 |
+| `atlasfile-mcp` | MCP Server (tools para LLM) | 8001 |
+| `atlasfile-web` | Frontend React | 5173 |
 
 ---
 
-## 6) Verificacao de saude
+## 6) Verificação de saúde
 
 ### Frontend
 
-- <http://localhost:5173>
+Abra <http://localhost:5173> — a interface deve carregar com o seletor de projetos no header.
 
 ### Backend
 
@@ -117,11 +135,7 @@ Servicos esperados:
 curl http://localhost:8000/health
 ```
 
-Resposta esperada:
-
-```json
-{"status":"ok"}
-```
+Resposta esperada: `{"status":"ok"}`
 
 ### OpenSearch
 
@@ -131,109 +145,122 @@ curl -k -u "admin:Kaid0Search!2026X" https://localhost:9200
 
 ---
 
-## 7) Criar projeto de teste (bootstrap)
+## 7) Criar um projeto
 
-Exemplo (template estilo Kaido):
+### Via UI (recomendado)
 
-```bash
-python3 scripts/bootstrap_project.py --name "kaido_teste" --id "kaido_teste"
+1. No seletor de projetos do header, selecione uma pasta do seu `PROJECTS_HOST_ROOT`.
+2. O modal de inicialização aparece com templates disponíveis.
+3. Selecione um template (ex: "M&A / Carve-out") e clique em "Inicializar com template".
+4. O AtlasFile cria a estrutura completa:
+
+```
+/<PROJETO>/
+├── _INBOX_DROP/
+├── _TRIAGE_REVIEW/pending|resolved|rejected
+├── _PROFILE/profile.json
+├── 01_contratos_comunicacao/
+├── 02_financeiro/
+├── ...
+└── _INDEX.md
 ```
 
-Isso cria:
-
-- `/_INBOX_DROP`
-- `/_TRIAGE_REVIEW/pending|resolved|rejected`
-- `/_WORK/01_* ... 09_*`
-- `/_PROJECT_PROFILE.md`
-- `/_INDEX.md`
-
----
-
-## 8) Teste funcional rapido (fim-a-fim)
-
-1. Copie um arquivo para:
-   - `<ProjectsRoot>/kaido_teste/_INBOX_DROP`
-
-2. Dispare o scan:
+### Via script (requer virtualenv do backend)
 
 ```bash
-curl -X POST http://localhost:8000/api/ingest/scan/kaido_teste
+# Template padrão (M&A / Carve-out)
+python3 scripts/bootstrap_project.py --name "meu_projeto"
+
+# Com template específico e label legível
+python3 scripts/bootstrap_project.py --name "due_diligence" --template default --label "Due Diligence Alfa"
 ```
 
-3. Abra o frontend:
-   - <http://localhost:5173>
-
-4. Resultado esperado:
-   - arquivo roteado para `/_WORK/NN_area` (se confianca alta), ou
-   - item em triagem para `Approve/Correct/Reject`.
+O script reutiliza os mesmos módulos do backend (`profile_store`, `bootstrap`), garantindo que o `profile.json` e a estrutura de pastas sejam idênticos ao que a API produz.
 
 ---
 
-## 9) Operacao diaria
+## 8) Teste funcional rápido (fim a fim)
 
-- Ingestao:
-  - coloque arquivos em `/<PROJETO>/_INBOX_DROP`
-- Triagem humana:
-  - use a tela do frontend para decidir pendencias
-- Busca:
-  - use o campo de busca no frontend (BM25)
+1. Copie um arquivo para `<PROJECTS_HOST_ROOT>/meu_projeto/_INBOX_DROP/`
+
+2. Na UI (<http://localhost:5173>), selecione o projeto e clique em **Processar INBOX** no card "Ingestão e triagem".
+
+3. Resultado esperado:
+   - Arquivo roteado para `NN_area/` (se confiança alta), ou
+   - Item em triagem pendente para `Approve/Correct/Reject`.
+
+4. Use a busca (Cmd+K ou Enter) para localizar o documento indexado.
+
+### Via API (alternativa)
+
+```bash
+curl -X POST http://localhost:8000/api/ingest/scan/meu_projeto
+```
 
 ---
 
-## 10) Atualizacao Docker apos mudancas de codigo
+## 9) Operação diária
 
-Antes de fazer rebuild, rode os testes (secao 4): `bash scripts/ci.sh` ou `make test`.
+- **Ingestão**: coloque arquivos em `/<PROJETO>/_INBOX_DROP/`
+- **Processamento**: clique em "Processar INBOX" na UI ou aguarde reconciliação automática
+- **Triagem**: decida pendências no card de triagem (Approve, Correct, Reject)
+- **Busca**: use Cmd+K para busca rápida ou o card "Resultados completos" com filtros
+- **Chat**: use o assistente LLM (aba "Assistente") para perguntas sobre os documentos
 
-**Recomendado:** para garantir que esteja sempre usando as ultimas versoes dos pares backend/api e frontend/web, atualize **sempre os dois servicos** apos os testes:
+---
+
+## 10) Atualização Docker após mudanças de código
+
+O comando recomendado roda testes, faz rebuild e smoke test:
 
 ```bash
 make docker-update
 ```
 
-Ou manualmente:
+### Opções adicionais
 
 ```bash
-docker compose up -d --build api web
-docker compose ps
-```
+# Resetar índice OpenSearch (requer reconciliação depois)
+make docker-update RESET_INDEX=1
 
-### Rebuild apenas um servico (opcional)
-
-Use apenas se tiver certeza de que so alterou um lado:
-
-- Só backend: `docker compose up -d --build api`
-- Só frontend: `docker compose up -d --build web`
-
-### Rebuild completo (todas as imagens)
-
-```bash
+# Rebuild completo (todas as imagens, do zero)
 docker compose down
 docker compose up -d --build
+
+# Rebuild de um serviço específico
+docker compose up -d --build api
+docker compose up -d --build web
 ```
 
 ---
 
-## 11) Troubleshooting
+## 11) Makefile targets
+
+| Target | O que faz |
+|--------|-----------|
+| `make test` | Roda todos os testes (backend + frontend) |
+| `make docker-update` | Testa + rebuild + sobe stack + smoke test |
+| `make docker-up` | Sobe stack sem rodar testes |
+| `make docker-build` | Testa + build das imagens (sem subir) |
+| `make reset-index` | Remove índice OpenSearch para recriar com mapping atualizado |
+
+---
+
+## 12) Troubleshooting
 
 ### Docker Desktop: "Integrity issue detected"
 
 1. Clique em **Repair**
 2. Reinicie o Docker Desktop
-3. Rode novamente:
-   - `docker version`
-   - `docker compose version`
+3. Rode: `docker version && docker compose version`
 
-### API nao sobe
-
-Verifique logs:
+### API não sobe
 
 ```bash
 docker compose logs api --tail=200
 ```
 
-### OpenSearch nao sobe
-
-Verifique logs:
+### OpenSearch não sobe
 
 ```bash
 docker compose logs opensearch --tail=200
@@ -241,28 +268,56 @@ docker compose logs opensearch --tail=200
 
 ### Subiu parcialmente
 
-Recrie stack:
-
 ```bash
 docker compose down
 docker compose up -d --build
 ```
 
-### Limpar ambiente local (containers + rede + volume do projeto)
+### Limpar ambiente local (containers + rede + volumes)
 
 ```bash
 docker compose down -v
 ```
 
+### Reset do índice OpenSearch
+
+Para recriar o índice com mapping atualizado (ex.: após upgrade):
+
+1. Com o stack no ar: `make reset-index`
+2. Na UI, execute **Reconciliar INDEX** para repopular a partir dos `_INDEX.md` dos projetos.
+
 ---
 
-## 12) Credenciais e portas (dev)
+## 13) Credenciais e portas (dev)
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000`
-- OpenSearch: `https://localhost:9200`
-- Dashboards: `http://localhost:5601`
-- OpenSearch user: `admin`
-- OpenSearch pass: `Kaid0Search!2026X`
+| Serviço | URL | Credenciais |
+|---------|-----|-------------|
+| Frontend | http://localhost:5173 | — |
+| Backend API | http://localhost:8000 | — |
+| MCP Server | http://localhost:8001 | — |
+| OpenSearch | https://localhost:9200 | admin / Kaid0Search!2026X |
+| Dashboards | http://localhost:5601 | admin / Kaid0Search!2026X |
 
-> Ambiente local de desenvolvimento. Nao usar credenciais fixas em producao.
+> Ambiente local de desenvolvimento. Não usar credenciais fixas em produção.
+
+---
+
+## 14) Dashboard programático (OpenSearch Dashboards)
+
+Os saved objects estão em `dashboards/atlasfile.ndjson`.
+
+1. Com o stack no ar, importe: `./scripts/import-dashboards.sh`
+2. Faça login em http://localhost:5601 (admin / senha do OpenSearch) e mantenha o tenant padrão.
+3. Abra o dashboard pelo link direto: http://localhost:5601/app/dashboards#/view/atlasfile-overview
+
+---
+
+## 15) Backup
+
+Para gerar um backup versionado do repositório (exclui `node_modules`, `.venv`, `dist`, etc.):
+
+```bash
+./backup-atlasfile.sh
+```
+
+Saída: `AtlasFile_v<versão>_YYYYMMDD.tar.gz` no diretório pai do projeto.

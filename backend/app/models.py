@@ -144,3 +144,18 @@ class ChatSessionCreate(BaseModel):
 class ChatSessionUpdate(BaseModel):
     title: Optional[str] = None
     messages: Optional[list[StoredChatMessage]] = None  # full replacement when appending
+
+
+class StatsBucket(BaseModel):
+    key: str
+    count: int
+
+
+class StatsResponse(BaseModel):
+    project_id: Optional[str] = None
+    total_documents: int = 0
+    by_doc_kind: list[StatsBucket] = Field(default_factory=list)
+    by_area_key: list[StatsBucket] = Field(default_factory=list)
+    by_document_type: list[StatsBucket] = Field(default_factory=list)
+    by_extension: list[StatsBucket] = Field(default_factory=list)
+    by_tags: list[StatsBucket] = Field(default_factory=list)

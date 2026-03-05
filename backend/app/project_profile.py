@@ -55,7 +55,13 @@ def load_project_profile(project_root: Path) -> dict[str, Any]:
     return profile_v2_to_runtime(profile, project_root)
 
 
+_HIDDEN_DIRS = {"_ATLASFILE", ".DS_Store"}
+
+
 def list_project_roots(projects_root: Path) -> list[Path]:
     if not projects_root.exists():
         return []
-    return sorted([p for p in projects_root.iterdir() if p.is_dir()], key=lambda p: p.name.lower())
+    return sorted(
+        [p for p in projects_root.iterdir() if p.is_dir() and p.name not in _HIDDEN_DIRS],
+        key=lambda p: p.name.lower(),
+    )

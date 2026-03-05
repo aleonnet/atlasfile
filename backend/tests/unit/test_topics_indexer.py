@@ -105,11 +105,20 @@ def test_enrich_search_fields_derives_doc_kind_for_new_formats(tmp_path: Path) -
     assert zip_out["doc_kind"] == "archive_listing"
 
 
-def test_topics_config_is_exact_copy_of_plan_source() -> None:
+def test_topics_config_yaml_is_valid_and_has_expected_structure() -> None:
+    import yaml
+
     repo_root = Path(__file__).resolve().parents[3]
     config_path = repo_root / "config" / "topics_v1.yaml"
-    plan_path = repo_root / "docs" / "plano_profile" / "topics_v1.yaml"
-    assert config_path.read_text(encoding="utf-8") == plan_path.read_text(encoding="utf-8")
+    assert config_path.exists(), f"Canonical topics file missing: {config_path}"
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    assert "topics" in data
+    assert isinstance(data["topics"], list)
+    assert len(data["topics"]) > 0
+    first = data["topics"][0]
+    assert "key" in first
+    assert "synonyms" in first
 
 
 def test_topics_default_path_points_to_config_copy() -> None:

@@ -11,9 +11,13 @@ import type {
   ProjectProfileV2,
   ReconcileStatus,
   ScanResult,
+  SearchFilters,
   SearchResponse,
+  StatsResponse,
   StoredChatMessage,
   SuggestResponse,
+  TemplateData,
+  TemplateMeta,
   TriageItem
 } from "./types";
 
@@ -34,10 +38,50 @@ export async function fetchProjects(): Promise<Project[]> {
   return res.json();
 }
 
-export async function initializeProject(projectRef: string): Promise<{ status: string; already_initialized: boolean }> {
-  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/initialize`, { method: "POST" });
+export async function initializeProject(projectRef: string, templateSlug?: string): Promise<{ status: string; already_initialized: boolean }> {
+  const params = templateSlug ? `?template=${encodeURIComponent(templateSlug)}` : "";
+  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/initialize${params}`, { method: "POST" });
   if (!res.ok) throw new Error("Falha ao inicializar projeto");
   return res.json();
+}
+
+/* ── Templates ── */
+
+export async function listTemplates(): Promise<TemplateMeta[]> {
+  const res = await fetch(`${API_URL}/api/templates`);
+  if (!res.ok) throw new Error("Falha ao listar templates");
+  return res.json();
+}
+
+export async function getTemplate(slug: string): Promise<TemplateData> {
+  const res = await fetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`);
+  if (!res.ok) throw new Error("Template não encontrado");
+  return res.json();
+}
+
+export async function saveTemplate(slug: string, data: Record<string, unknown>): Promise<TemplateMeta> {
+  const res = await fetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Falha ao salvar template");
+  return res.json();
+}
+
+export async function createTemplate(data: Record<string, unknown>): Promise<TemplateMeta> {
+  const res = await fetch(`${API_URL}/api/templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Falha ao criar template");
+  return res.json();
+}
+
+export async function deleteTemplate(slug: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Falha ao excluir template");
 }
 
 export async function fetchProjectAreas(projectRef: string): Promise<ProjectArea[]> {
@@ -138,14 +182,31 @@ export async function fetchIngestHistory(projectId: string): Promise<IngestHisto
   return res.json();
 }
 
-export async function searchDocuments(query: string, projectId?: string, page = 1, size = 20): Promise<SearchResponse> {
+export async function searchDocuments(
+  query: string,
+  projectId?: string,
+  page = 1,
+  size = 20,
+  filters?: SearchFilters
+): Promise<SearchResponse> {
   const url = new URL(`${API_URL}/api/search`);
   url.searchParams.set("q", query);
   url.searchParams.set("page", String(page));
   url.searchParams.set("size", String(size));
   if (projectId) url.searchParams.set("project_id", projectId);
+  if (filters?.doc_kind) url.searchParams.set("doc_kind", filters.doc_kind);
+  if (filters?.document_type) url.searchParams.set("document_type", filters.document_type);
+  if (filters?.area_key) url.searchParams.set("area_key", filters.area_key);
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Falha na busca");
+  return res.json();
+}
+
+export async function fetchStats(projectId?: string): Promise<StatsResponse> {
+  const url = new URL(`${API_URL}/api/stats`);
+  if (projectId) url.searchParams.set("project_id", projectId);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Falha ao carregar estatísticas");
   return res.json();
 }
 

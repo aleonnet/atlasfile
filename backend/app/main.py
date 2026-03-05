@@ -41,6 +41,8 @@ from .models import (
     SearchHit,
     SearchResponse,
     SearchSuggestion,
+    StatsBucket,
+    StatsResponse,
     StoredChatMessage,
     SuggestResponse,
     TriageDecisionRequest,
@@ -48,7 +50,14 @@ from .models import (
 from .opensearch_client import ensure_chat_sessions_index, ensure_index, get_client
 from .project_profile import list_project_roots, load_project_profile
 from .profile_runtime import inbox_rel
-from .profile_store import ensure_profile
+from .profile_store import ensure_profile, load_profile, save_profile
+from .template_store import (
+    create_profile_from_template,
+    delete_template as _delete_template,
+    get_template as _get_template,
+    list_templates as _list_templates,
+    save_template as _save_template,
+)
 from .services.reconcile_service import count_rows_to_process, run_reconcile
 from .triage import (
     ensure_triage_dirs,
@@ -706,9 +715,16 @@ def get_projects() -> list[dict[str, Any]]:
 
 
 @app.post("/api/projects/{project_ref}/initialize")
-def initialize_project(project_ref: str) -> dict[str, Any]:
+def initialize_project(project_ref: str, template: str = Query("default")) -> dict[str, Any]:
     project_root = _resolve_project_root(project_ref)
-    profile, created = _initialize_project_if_needed(project_root)
+    _, created = ensure_profile(
+        project_root=project_root,
+        project_id=project_root.name,
+        project_label=project_root.name,
+        template_slug=template,
+    )
+    profile = load_project_profile(project_root)
+    ensure_project_structure(project_root, profile)
     return {
         "status": "ok",
         "already_initialized": not created,
@@ -719,6 +735,60 @@ def initialize_project(project_ref: str) -> dict[str, Any]:
             "initialized": True,
         },
     }
+
+
+# ── Template CRUD ──
+
+@app.get("/api/templates")
+def api_list_templates() -> list[dict[str, Any]]:
+    return _list_templates()
+
+
+@app.get("/api/templates/{slug}")
+def api_get_template(slug: str) -> dict[str, Any]:
+    try:
+        return _get_template(slug)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Template não encontrado: {slug}")
+
+
+@app.post("/api/templates")
+def api_create_template(body: dict[str, Any]) -> dict[str, Any]:
+    from_profile = body.pop("from_profile", None)
+    if from_profile:
+        project_root = _resolve_project_root(from_profile)
+        profile_data = load_project_profile(project_root)
+        slug = body.get("slug") or body.get("template_meta", {}).get("slug") or from_profile.lower().replace(" ", "_")
+        name = body.get("name") or body.get("template_meta", {}).get("name") or from_profile
+        description = body.get("description") or body.get("template_meta", {}).get("description") or f"Template derivado de {from_profile}"
+        profile_data.pop("version", None)
+        profile_data.pop("updated_at", None)
+        profile_data.pop("updated_by", None)
+        profile_data["project_id"] = "__PROJECT_ID__"
+        profile_data["project_label"] = "__PROJECT_LABEL__"
+        profile_data["project_root"] = "__PROJECT_ROOT__"
+        profile_data["template_meta"] = {"slug": slug, "name": name, "description": description}
+        return _save_template(slug, profile_data)
+    slug = body.get("template_meta", {}).get("slug") or body.get("slug", "")
+    if not slug:
+        raise HTTPException(status_code=400, detail="slug obrigatório")
+    return _save_template(slug, body)
+
+
+@app.put("/api/templates/{slug}")
+def api_update_template(slug: str, body: dict[str, Any]) -> dict[str, Any]:
+    return _save_template(slug, body)
+
+
+@app.delete("/api/templates/{slug}")
+def api_delete_template(slug: str) -> dict[str, str]:
+    try:
+        _delete_template(slug)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Template não encontrado: {slug}")
+    return {"status": "ok"}
 
 
 @app.get("/api/projects/{project_ref}/areas")
@@ -1029,6 +1099,39 @@ def list_tags(project_id: str | None = Query(None, description="Filter by projec
     return {"tags": tags_list}
 
 
+@app.get("/api/stats", response_model=StatsResponse)
+def get_stats(project_id: str | None = Query(None, description="Filter by project")) -> StatsResponse:
+    """Aggregate document statistics: total count and breakdowns by doc_kind, area_key, document_type, extension, tags."""
+    query: dict[str, Any] = {"match_all": {}}
+    if project_id:
+        query = {"bool": {"filter": [_project_scope_filter(project_id)]}}
+    aggs: dict[str, Any] = {
+        "by_doc_kind": {"terms": {"field": "doc_kind", "size": 20}},
+        "by_area_key": {"terms": {"field": "area_key", "size": 50}},
+        "by_document_type": {"terms": {"field": "document_type", "size": 50}},
+        "by_extension": {"terms": {"field": "extension", "size": 30}},
+        "by_tags": {"terms": {"field": "tags", "size": 100}},
+    }
+    body: dict[str, Any] = {"size": 0, "query": query, "aggs": aggs}
+    result = os_client.search(index=settings.opensearch_index, body=body)
+    total_hit = result.get("hits", {}).get("total", {})
+    total_documents = total_hit["value"] if isinstance(total_hit, dict) else int(total_hit or 0)
+    aggregations = result.get("aggregations") or {}
+
+    def _buckets(name: str) -> list[StatsBucket]:
+        return [StatsBucket(key=b["key"], count=b["doc_count"]) for b in (aggregations.get(name, {}).get("buckets") or []) if b.get("key")]
+
+    return StatsResponse(
+        project_id=project_id,
+        total_documents=total_documents,
+        by_doc_kind=_buckets("by_doc_kind"),
+        by_area_key=_buckets("by_area_key"),
+        by_document_type=_buckets("by_document_type"),
+        by_extension=_buckets("by_extension"),
+        by_tags=_buckets("by_tags"),
+    )
+
+
 @app.get("/api/models", response_model=list[ModelOption])
 def get_models() -> list[ModelOption]:
     """Return catalog of supported LLM models (OpenAI and Anthropic), with context_tokens and max_output_tokens."""
@@ -1203,6 +1306,29 @@ def get_triage(project_id: str) -> list[dict[str, Any]]:
     return [item.model_dump() for item in list_pending(project_root)]
 
 
+def _ensure_area_in_profile(project_root: Path, profile: dict[str, Any], area_key: str) -> dict[str, Any]:
+    """Add area_key to work_areas + area_folders if missing, save profile, return updated dict."""
+    work_areas = profile.get("classification", {}).get("work_areas", [])
+    existing_keys = {str(a.get("key", "")).strip() for a in work_areas}
+    if area_key in existing_keys:
+        return profile
+
+    area_folders = profile.get("layout", {}).get("area_folders", [])
+
+    used_jd = {int(a.get("jd_number", 0)) for a in work_areas if a.get("jd_number")}
+    next_jd = max(used_jd, default=0) + 1
+
+    folder_name = f"{next_jd:02d}_{area_key}"
+    work_areas.append({"key": area_key, "jd_number": next_jd, "aliases": [area_key.replace("_", " ")]})
+    area_folders.append({"area_key": area_key, "folder": folder_name})
+
+    profile["classification"]["work_areas"] = work_areas
+    profile["layout"]["area_folders"] = area_folders
+
+    saved = save_profile(project_root=project_root, profile=profile, updated_by="triage:auto_area")
+    return saved.model_dump(mode="json")
+
+
 @app.post("/api/triage/{project_id}/{doc_id}/decision")
 def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) -> dict[str, Any]:
     project_root = _resolve_project_root(project_id)
@@ -1257,6 +1383,11 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
 
     if not target_area:
         raise HTTPException(status_code=400, detail="Area alvo nao definida para aprovacao/correcao")
+
+    # Auto-create area if it doesn't exist in the profile
+    area_exists = any(a.get("key") == target_area for a in profile.get("work_areas", []))
+    if not area_exists:
+        profile = _ensure_area_in_profile(project_root, profile, target_area)
 
     area_path = resolve_area_path(
         project_root=project_root,
@@ -1314,6 +1445,7 @@ def search(
     area_key: str | None = None,
     tags: list[str] | None = Query(None, description="Filter by tags (any match)"),
     document_type: str | None = Query(None, description="Filter by document_type"),
+    doc_kind: str | None = Query(None, description="Filter by doc_kind (pdf, docx, xlsx, pptx, plain_text, html, msg...)"),
     date_from: str | None = Query(None, description="Filter ingested_at >= (ISO date)"),
     date_to: str | None = Query(None, description="Filter ingested_at <= (ISO date)"),
     page: int = Query(1, ge=1),
@@ -1421,6 +1553,8 @@ def search(
         filters.append({"terms": {"tags": tags}})
     if document_type:
         filters.append({"term": {"document_type": document_type}})
+    if doc_kind:
+        filters.append({"term": {"doc_kind": doc_kind}})
     if date_from:
         filters.append({"range": {"ingested_at": {"gte": date_from}}})
     if date_to:

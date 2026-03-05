@@ -1,0 +1,153 @@
+"""Tests that _apply_llm_policy preserves LLM visibility fields.
+
+Frente B: ensure rule_area_key, rule_confidence, llm_explanation,
+and llm_proposed_area survive through the classification pipeline.
+"""
+from __future__ import annotations
+
+from app.ingestion import _apply_llm_policy
+
+
+def _base_profile(mode: str = "tag_only") -> dict:
+    return {
+        "work_areas": [
+            {"key": "financeiro", "jd_number": 4, "aliases": []},
+            {"key": "contratos_comunicacao", "jd_number": 5, "aliases": []},
+        ],
+        "llm_policy": {
+            "enabled": True,
+            "mode": mode,
+            "allow_override_fields": ["confidence", "tags", "document_type", "topics"],
+            "override_guardrails": {
+                "area_override_only_if_rule_confidence_below": 0.65,
+                "require_explanation": True,
+                "max_area_changes": 1,
+            },
+        },
+    }
+
+
+def test_preserves_rule_area_key_and_confidence():
+    classification = {
+        "area_key": "contratos_comunicacao",
+        "confidence": 0.40,
+        "reason": "alias_scoring",
+        "top_candidates": [],
+    }
+    llm_result = {
+        "area_key": "financeiro",
+        "confidence": 0.85,
+        "explanation": "Resumo financeiro com EBITDA e receita",
+        "tags": ["financeiro"],
+    }
+    result, _ = _apply_llm_policy(
+        profile=_base_profile("review"),
+        classification=classification,
+        llm_result=llm_result,
+    )
+    assert result["_rule_area_key"] == "contratos_comunicacao"
+    assert result["_rule_confidence"] == 0.40
+
+
+def test_preserves_llm_explanation_in_review_mode():
+    classification = {
+        "area_key": "contratos_comunicacao",
+        "confidence": 0.40,
+        "reason": "alias_scoring",
+        "top_candidates": [],
+    }
+    llm_result = {
+        "area_key": "financeiro",
+        "confidence": 0.85,
+        "explanation": "Documento financeiro com EBITDA",
+    }
+    result, force_triage = _apply_llm_policy(
+        profile=_base_profile("review"),
+        classification=classification,
+        llm_result=llm_result,
+    )
+    assert result["llm_explanation"] == "Documento financeiro com EBITDA"
+    assert force_triage is True
+
+
+def test_preserves_llm_explanation_in_tag_only_mode():
+    classification = {
+        "area_key": "financeiro",
+        "confidence": 0.60,
+        "reason": "alias_scoring",
+        "top_candidates": [],
+    }
+    llm_result = {
+        "area_key": "financeiro",
+        "confidence": 0.85,
+        "explanation": "Classificacao confirmada pelo LLM",
+    }
+    result, _ = _apply_llm_policy(
+        profile=_base_profile("tag_only"),
+        classification=classification,
+        llm_result=llm_result,
+    )
+    assert result["llm_explanation"] == "Classificacao confirmada pelo LLM"
+
+
+def test_preserves_llm_proposed_area_when_not_in_areas():
+    classification = {
+        "area_key": "contratos_comunicacao",
+        "confidence": 0.30,
+        "reason": "alias_scoring",
+        "top_candidates": [],
+    }
+    llm_result = {
+        "area_key": "esg_sustentabilidade",
+        "confidence": 0.80,
+        "explanation": "Relatorio ESG sem area existente adequada",
+    }
+    result, _ = _apply_llm_policy(
+        profile=_base_profile("review"),
+        classification=classification,
+        llm_result=llm_result,
+    )
+    assert result["llm_proposed_area"] == "esg_sustentabilidade"
+    assert result["llm_explanation"] == "Relatorio ESG sem area existente adequada"
+    assert result["area_key"] == "contratos_comunicacao"
+
+
+def test_full_override_preserves_all_fields():
+    classification = {
+        "area_key": "contratos_comunicacao",
+        "confidence": 0.30,
+        "reason": "alias_scoring",
+        "top_candidates": [],
+    }
+    llm_result = {
+        "area_key": "financeiro",
+        "confidence": 0.85,
+        "explanation": "Doc financeiro",
+    }
+    result, _ = _apply_llm_policy(
+        profile=_base_profile("full_override"),
+        classification=classification,
+        llm_result=llm_result,
+    )
+    assert result["_rule_area_key"] == "contratos_comunicacao"
+    assert result["_rule_confidence"] == 0.30
+    assert result["llm_explanation"] == "Doc financeiro"
+    assert result["area_key"] == "financeiro"
+    assert result["reason"] == "llm_full_override"
+
+
+def test_no_llm_result_returns_unchanged():
+    classification = {
+        "area_key": "financeiro",
+        "confidence": 0.90,
+        "reason": "alias_scoring",
+        "top_candidates": [],
+    }
+    result, force = _apply_llm_policy(
+        profile=_base_profile("review"),
+        classification=classification,
+        llm_result=None,
+    )
+    assert "_rule_area_key" not in result
+    assert "llm_explanation" not in result
+    assert force is False

@@ -54,7 +54,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
-      - ${PROJECTS_HOST_ROOT:-/Users/alessandro/Library/CloudStorage/OneDrive-Personal/Documentos/Projects}:/projects
+      - ${PROJECTS_HOST_ROOT}:/projects
     ports:
       - "8000:8000"
     depends_on:

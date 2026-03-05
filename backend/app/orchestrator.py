@@ -272,6 +272,40 @@ async def _run_chat_anthropic(
     return {"content": "(max tool loops reached)", "tool_calls_used": tool_calls_used}
 
 
+def _build_project_context(profile: dict[str, Any] | None) -> str:
+    """Build a context block describing the project's work areas and valid topics for the LLM."""
+    if profile is None:
+        return ""
+    parts: list[str] = []
+
+    work_areas = profile.get("work_areas") or (profile.get("classification") or {}).get("work_areas") or []
+    if work_areas:
+        lines = ["Áreas disponíveis neste projeto:"]
+        for wa in work_areas:
+            key = str(wa.get("key", "")).strip()
+            if not key:
+                continue
+            aliases = wa.get("aliases") or []
+            alias_str = ", ".join(str(a) for a in aliases if str(a).strip())
+            line = f"- {key}"
+            if alias_str:
+                line += f" (aliases: {alias_str})"
+            lines.append(line)
+        if len(lines) > 1:
+            parts.append("\n".join(lines))
+
+    from app.topics import get_topic_keys
+    topic_keys = get_topic_keys(profile)
+    if topic_keys:
+        parts.append(f"Topics válidos: {', '.join(topic_keys[:40])}")
+
+    parts.append(
+        "Se nenhuma área existente for adequada, proponha uma nova area_key descritiva e explique o motivo em \"explanation\".\n"
+        "Se a classificação for ambígua entre áreas, use confidence < 0.6."
+    )
+    return "\n\n".join(parts)
+
+
 async def classify_with_llm(
     doc_id: str,
     text_excerpt: str,
@@ -279,6 +313,7 @@ async def classify_with_llm(
     api_key: str | None = None,
     provider_override: str | None = None,
     model_override: str | None = None,
+    profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Classify document excerpt via LLM; LLM must call submit_classification.
@@ -293,12 +328,14 @@ async def classify_with_llm(
     if not submit_only:
         return {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
 
+    project_context = _build_project_context(profile)
+
     if provider == "openai":
         tools_api = mcp_tools_to_openai(submit_only)
-        content = await _classify_openai(doc_id, text_excerpt, filename, model, tools_api, api_key)
+        content = await _classify_openai(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
     elif provider == "anthropic":
         tools_api = mcp_tools_to_anthropic(submit_only)
-        content = await _classify_anthropic(doc_id, text_excerpt, filename, model, tools_api, api_key)
+        content = await _classify_anthropic(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
     else:
         return {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
 
@@ -321,11 +358,13 @@ async def _classify_openai(
     model: str,
     tools_api: list[dict],
     api_key: str | None,
+    project_context: str = "",
 ) -> dict[str, Any]:
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=api_key or None)
-    user_content = f"Documento: {filename}\nDoc ID: {doc_id}\n\nTrecho:\n{text_excerpt[:8000]}"
+    context_block = f"\n\n{project_context}\n\n" if project_context else "\n\n"
+    user_content = f"Documento: {filename}\nDoc ID: {doc_id}{context_block}Trecho:\n{text_excerpt[:8000]}"
     resp = await client.chat.completions.create(
         model=model,
         messages=[
@@ -355,11 +394,13 @@ async def _classify_anthropic(
     model: str,
     tools_api: list[dict],
     api_key: str | None,
+    project_context: str = "",
 ) -> dict[str, Any]:
     from anthropic import AsyncAnthropic
 
     client = AsyncAnthropic(api_key=api_key or None)
-    user_content = f"Documento: {filename}\nDoc ID: {doc_id}\n\nTrecho:\n{text_excerpt[:8000]}"
+    context_block = f"\n\n{project_context}\n\n" if project_context else "\n\n"
+    user_content = f"Documento: {filename}\nDoc ID: {doc_id}{context_block}Trecho:\n{text_excerpt[:8000]}"
     resp = await client.messages.create(
         model=model,
         max_tokens=1024,

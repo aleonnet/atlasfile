@@ -1,4 +1,11 @@
 {
+  "template_meta": {
+    "slug": "default",
+    "name": "M&A / Carve-out",
+    "description": "Template padrão para projetos de M&A e carve-out com 9 áreas pré-definidas cobrindo societário, jurídico, ativos, financeiro, contratos, pessoas, sistemas, processos e entregáveis.",
+    "created_at": "2026-03-05T00:00:00+00:00",
+    "updated_at": "2026-03-05T00:00:00+00:00"
+  },
   "profile_version": 2,
   "project_id": "__PROJECT_ID__",
   "project_label": "__PROJECT_LABEL__",
@@ -70,7 +77,12 @@
           "cnpj",
           "filiais",
           "incorporacao",
-          "estabelecimentos"
+          "estabelecimentos",
+          "imposto",
+          "tributo",
+          "aliquota",
+          "regime",
+          "enquadramento"
         ]
       },
       {
@@ -81,7 +93,12 @@
           "passivo",
           "contingencia",
           "parecer",
-          "juridica"
+          "juridica",
+          "litigio",
+          "sentenca",
+          "agravo",
+          "mandado",
+          "procuracao"
         ]
       },
       {
@@ -92,7 +109,11 @@
           "imobilizado",
           "cmdb",
           "segregacao_ativos",
-          "doacao"
+          "doacao",
+          "patrimonio",
+          "inventario_ativos",
+          "depreciacao",
+          "cessao"
         ]
       },
       {
@@ -100,12 +121,22 @@
         "jd_number": 4,
         "aliases": [
           "carveout",
-          "cp",
           "contabil",
           "seguros",
           "garantias",
           "fianca",
-          "fiscal"
+          "receita",
+          "ebitda",
+          "custos",
+          "margem",
+          "resultado",
+          "dre",
+          "demonstrativo",
+          "orcamento",
+          "balanco",
+          "fluxo_caixa",
+          "budget",
+          "pnl"
         ]
       },
       {
@@ -114,10 +145,13 @@
         "aliases": [
           "contrato",
           "fornecedor",
-          "cliente",
           "comunicacao",
           "preambulo",
-          "eml"
+          "eml",
+          "aditivo",
+          "distrato",
+          "sla",
+          "nda"
         ]
       },
       {
@@ -130,7 +164,13 @@
           "hc",
           "organograma",
           "gerencia",
-          "diretoria"
+          "diretoria",
+          "folha",
+          "ferias",
+          "rescisao",
+          "admissao",
+          "treinamento",
+          "headcount"
         ]
       },
       {
@@ -140,7 +180,11 @@
           "sistema",
           "plataforma",
           "migracao_sistemas",
-          "sap"
+          "sap",
+          "integracao",
+          "banco_dados",
+          "cloud",
+          "infra"
         ]
       },
       {
@@ -151,7 +195,11 @@
           "sox",
           "processo_operacional",
           "atendimento",
-          "pos-closing"
+          "pos-closing",
+          "procedimento",
+          "fluxograma",
+          "manual_operacional",
+          "instrucao"
         ]
       },
       {
@@ -161,9 +209,12 @@
           "output",
           "visao_consolidada",
           "framework_3ps",
-          "inventario",
           "metricas",
-          "escopo"
+          "escopo",
+          "milestone",
+          "cronograma",
+          "baseline",
+          "workstream"
         ]
       }
     ],
@@ -179,7 +230,6 @@
         "when_filename_contains": [
           "contrato",
           "fornecedor",
-          "cliente",
           "preambulo"
         ],
         "route_to": "contratos_comunicacao",
@@ -211,6 +261,46 @@
           "gh_"
         ],
         "route_to": "pessoas",
+        "confidence": 0.9
+      },
+      {
+        "when_filename_contains": [
+          "parecer",
+          "litigio",
+          "mandado",
+          "procuracao"
+        ],
+        "route_to": "juridica",
+        "confidence": 0.9
+      },
+      {
+        "when_filename_contains": [
+          "dre",
+          "ebitda",
+          "budget",
+          "orcamento",
+          "balanco",
+          "pnl"
+        ],
+        "route_to": "financeiro",
+        "confidence": 0.9
+      },
+      {
+        "when_filename_contains": [
+          "migracao",
+          "sap",
+          "integracao"
+        ],
+        "route_to": "sistemas_migracao",
+        "confidence": 0.9
+      },
+      {
+        "when_filename_contains": [
+          "tsa",
+          "sox",
+          "fluxograma"
+        ],
+        "route_to": "processos_tsa",
         "confidence": 0.9
       }
     ],

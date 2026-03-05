@@ -97,6 +97,10 @@ export interface TriageItem {
   top_candidates: { area_key: string; score: number }[];
   source_path: string;
   metadata_path: string;
+  llm_explanation?: string;
+  llm_proposed_area?: string;
+  rule_area_key?: string;
+  rule_confidence?: number;
 }
 
 /** Parte de conteúdo multimodal (texto ou imagem) enviada ao LLM. */
@@ -176,7 +180,7 @@ export interface ProjectProfileV2 {
   };
   classification: {
     work_areas: Array<{ key: string; jd_number?: number | null; aliases: string[] }>;
-    routing_rules: Array<Record<string, unknown>>;
+    routing_rules: RoutingRule[];
     confidence_thresholds: {
       auto_route_min: number;
       triage_min: number;
@@ -207,6 +211,15 @@ export interface ProfileHistoryEntry {
   etag: string;
 }
 
+/* ── Routing Rules ── */
+
+export interface RoutingRule {
+  when_path_contains?: string[];
+  when_filename_contains?: string[];
+  route_to: string;
+  confidence: number;
+}
+
 /* ── Ingest / Scan ── */
 
 export interface ScanFileResult {
@@ -226,6 +239,11 @@ export interface ScanFileResult {
   topics_source?: string;
   review_status?: string;
   duplicate_of?: string;
+  rule_area_key?: string;
+  rule_confidence?: number;
+  llm_explanation?: string;
+  llm_proposed_area?: string;
+  classification_reason?: string;
 }
 
 export interface ScanResult {
@@ -250,6 +268,29 @@ export interface IngestHistoryResponse {
   entries: IngestHistoryEntry[];
 }
 
+/* ── Search Filters & Stats ── */
+
+export interface SearchFilters {
+  doc_kind?: string;
+  document_type?: string;
+  area_key?: string;
+}
+
+export interface StatsBucket {
+  key: string;
+  count: number;
+}
+
+export interface StatsResponse {
+  project_id: string | null;
+  total_documents: number;
+  by_doc_kind: StatsBucket[];
+  by_area_key: StatsBucket[];
+  by_document_type: StatsBucket[];
+  by_extension: StatsBucket[];
+  by_tags: StatsBucket[];
+}
+
 /* ── LLM Policy ── */
 
 export interface LLMOverrideGuardrails {
@@ -265,6 +306,22 @@ export interface LLMPolicy {
   mode: "tag_only" | "review" | "full_override";
   allow_override_fields: string[];
   override_guardrails: LLMOverrideGuardrails;
+}
+
+/* ── Templates ── */
+
+export interface TemplateMeta {
+  slug: string;
+  name: string;
+  description: string;
+  areas_count: number;
+  created_at: string;
+  updated_at: string;
+  source: "builtin" | "user";
+}
+
+export interface TemplateData extends TemplateMeta {
+  profile: ProjectProfileV2;
 }
 
 /* ── Layout ── */

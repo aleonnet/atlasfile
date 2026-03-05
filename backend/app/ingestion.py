@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 import shutil
 import uuid
@@ -18,13 +19,30 @@ from .profile_runtime import areas_root_rel, triage_paths
 from .triage import save_pending_metadata
 from .utils import build_canonical_filename, normalize_text, sanitize_token, sha256_file, utc_now_iso
 
+_wb_cache: dict[str, re.Pattern[str]] = {}
+
+
+def _match_normalize(text: str) -> str:
+    """Replace underscores/hyphens with spaces so \b works on separated tokens."""
+    return text.replace("_", " ").replace("-", " ")
+
+
+def _wb_pattern(token: str) -> re.Pattern[str]:
+    """Compiled word-boundary pattern, cached. Token is already match-normalized."""
+    pat = _wb_cache.get(token)
+    if pat is None:
+        pat = re.compile(rf"\b{re.escape(token)}\b")
+        _wb_cache[token] = pat
+    return pat
+
 
 def _score_area(area: dict[str, Any], text: str) -> float:
-    aliases = [normalize_text(a) for a in area.get("aliases", [])]
+    aliases = [_match_normalize(normalize_text(a)) for a in area.get("aliases", [])]
     if not aliases:
         return 0.0
-    hits = sum(1 for alias in aliases if alias in text)
-    return hits / len(aliases)
+    mtext = _match_normalize(text)
+    hits = sum(1 for alias in aliases if _wb_pattern(alias).search(mtext))
+    return min(1.0, hits / max(1.0, math.sqrt(len(aliases))))
 
 
 def classify(
@@ -37,10 +55,12 @@ def classify(
     path_text = normalize_text(str(source_path))
     full_text = f"{fname} {path_text} {normalize_text(text_excerpt)}"
 
-    # 1) explicit routing rules
+    # 1) explicit routing rules (word-boundary matching)
+    mpath = _match_normalize(path_text)
+    mfname = _match_normalize(fname)
     for rule in profile.get("routing_rules", []):
         for token in rule.get("when_path_contains", []):
-            if normalize_text(token) in path_text:
+            if _wb_pattern(_match_normalize(normalize_text(token))).search(mpath):
                 return {
                     "area_key": rule["route_to"],
                     "confidence": float(rule.get("confidence", 0.9)),
@@ -48,7 +68,7 @@ def classify(
                     "top_candidates": [],
                 }
         for token in rule.get("when_filename_contains", []):
-            if normalize_text(token) in fname:
+            if _wb_pattern(_match_normalize(normalize_text(token))).search(mfname):
                 return {
                     "area_key": rule["route_to"],
                     "confidence": float(rule.get("confidence", 0.9)),
@@ -112,8 +132,16 @@ def _apply_llm_policy(
 
     rule_conf = float(classification.get("confidence") or 0.0)
     llm_conf = float(llm_result.get("confidence") or 0.0)
-    llm_area = str(llm_result.get("area_key") or "").strip() or None
+    raw_llm_area = str(llm_result.get("area_key") or "").strip() or None
     explanation = str(llm_result.get("explanation") or "").strip()
+
+    # Preserve rule-based results before any mutation
+    classification["_rule_area_key"] = classification.get("area_key")
+    classification["_rule_confidence"] = rule_conf
+
+    # Always preserve explanation
+    if explanation:
+        classification["llm_explanation"] = explanation
 
     if "confidence" in allow and llm_conf > 0:
         classification["confidence"] = llm_conf
@@ -124,7 +152,10 @@ def _apply_llm_policy(
     if "topics" in allow and llm_result.get("topics"):
         classification["suggested_topics"] = [str(t).strip() for t in (llm_result.get("topics") or []) if str(t).strip()]
 
-    if llm_area and llm_area not in area_keys:
+    # Preserve the raw LLM area even if it doesn't exist in current areas
+    llm_area = raw_llm_area
+    if raw_llm_area and raw_llm_area not in area_keys:
+        classification["llm_proposed_area"] = raw_llm_area
         llm_area = None
 
     current_area = str(classification.get("area_key") or "").strip() or None
@@ -150,8 +181,6 @@ def _apply_llm_policy(
         if can_override:
             classification["area_key"] = llm_area
             classification["reason"] = "llm_full_override"
-            if explanation:
-                classification["llm_explanation"] = explanation
             return classification, force_triage_pending
 
         classification["reason"] = "llm_override_guardrail_blocked"
@@ -351,6 +380,7 @@ def process_inbox_file(
                     inbox_file.name,
                     provider_override=provider_override,
                     model_override=model_override,
+                    profile=profile,
                 )
             )
         except Exception:
@@ -432,6 +462,13 @@ def process_inbox_file(
             "sha256": sha,
             "ingested_at": ingested_at,
         }
+        if classification.get("_rule_area_key"):
+            meta["rule_area_key"] = classification["_rule_area_key"]
+            meta["rule_confidence"] = classification.get("_rule_confidence", 0)
+        if classification.get("llm_explanation"):
+            meta["llm_explanation"] = classification["llm_explanation"]
+        if classification.get("llm_proposed_area"):
+            meta["llm_proposed_area"] = classification["llm_proposed_area"]
         meta_path = save_pending_metadata(project_root, doc_id, meta)
         meta["metadata_path"] = str(meta_path)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -463,6 +500,13 @@ def process_inbox_file(
             "sha256": sha,
             "ingested_at": ingested_at,
         }
+        if classification.get("_rule_area_key"):
+            meta["rule_area_key"] = classification["_rule_area_key"]
+            meta["rule_confidence"] = classification.get("_rule_confidence", 0)
+        if classification.get("llm_explanation"):
+            meta["llm_explanation"] = classification["llm_explanation"]
+        if classification.get("llm_proposed_area"):
+            meta["llm_proposed_area"] = classification["llm_proposed_area"]
         meta_path = save_pending_metadata(project_root, doc_id, meta)
         meta["metadata_path"] = str(meta_path)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -500,6 +544,16 @@ def process_inbox_file(
         payload["topics_source"] = "llm_policy"
     if confidence < auto_route_min or (llm_result and (llm_result.get("confidence") or 0) < auto_route_min):
         payload["review_status"] = "needs_review"
+
+    # LLM visibility fields
+    if classification.get("_rule_area_key"):
+        payload["rule_area_key"] = classification["_rule_area_key"]
+        payload["rule_confidence"] = classification.get("_rule_confidence", 0)
+    if classification.get("llm_explanation"):
+        payload["llm_explanation"] = classification["llm_explanation"]
+    if classification.get("llm_proposed_area"):
+        payload["llm_proposed_area"] = classification["llm_proposed_area"]
+    payload["classification_reason"] = classification.get("reason", "")
 
     if decision == "auto":
         index_document(client, payload, profile=profile)

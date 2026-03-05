@@ -1,3 +1,4 @@
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import type { ModelOption } from "../../types";
 
 type InputLikeEvent = { target: { value: string } };
@@ -29,6 +30,7 @@ export function AssistantSettingsModal({
   onChangeAnthropicKey,
   onClose
 }: Props) {
+  useEscapeKey(open ? onClose : null);
   if (!open) return null;
   const chatProvider = selectedModel ? selectedModel.split("/")[0]?.toLowerCase() : null;
   const triageProvider = selectedModelTriage ? selectedModelTriage.split("/")[0]?.toLowerCase() : null;

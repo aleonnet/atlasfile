@@ -777,6 +777,62 @@ button.danger:hover,
   color: var(--text);
 }
 
+/* Full results card -- search bar + filters */
+.full-search-bar {
+  padding: 10px 14px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.full-search-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+.full-search-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.full-search-input {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  outline: none;
+}
+.full-search-input:focus {
+  border-color: var(--accent);
+}
+.full-search-filters {
+  margin-top: 8px;
+}
+.full-search-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 0 6px;
+}
+.full-search-filter-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8125rem;
+}
+.full-search-filter-label .sub {
+  font-size: 0.75rem;
+}
+.full-search-filter-label select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8125rem;
+  min-width: 120px;
+}
+
 /* Modal de busca — estilo openclaw/docs, sensível ao tema */
 .search-modal-overlay {
   position: fixed;
@@ -1038,6 +1094,56 @@ a {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.modal-llm-context {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.modal-llm-context p { margin: 2px 0; }
+.modal-llm-context code {
+  background: var(--bg-elevated);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.82rem;
+}
+
+.modal-new-area {
+  margin-top: 12px;
+}
+
+.modal-new-area label {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.modal-new-area input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: var(--font-mono);
+}
+
+.modal-new-area-warning {
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 200, 50, 0.1);
+  border: 1px solid rgba(255, 200, 50, 0.25);
+  font-size: 0.78rem;
+  color: var(--text);
 }
 
 /* ========== View Assistente (Chat) ========== */
