@@ -1,0 +1,245 @@
+{
+  "profile_version": 2,
+  "project_id": "__PROJECT_ID__",
+  "project_label": "__PROJECT_LABEL__",
+  "project_root": "__PROJECT_ROOT__",
+  "paths": {
+    "inbox": "_INBOX_DROP",
+    "triage": {
+      "pending": "_TRIAGE_REVIEW/pending",
+      "resolved": "_TRIAGE_REVIEW/resolved",
+      "rejected": "_TRIAGE_REVIEW/rejected"
+    }
+  },
+  "layout": {
+    "mode": "para_jd",
+    "roots": {
+      "projects": "01_PROJECTS",
+      "areas": "02_AREAS",
+      "resources": "03_RESOURCES",
+      "archive": "04_ARCHIVE"
+    },
+    "areas_root": "02_AREAS",
+    "area_folders": [
+      {
+        "area_key": "societario_fiscal",
+        "folder": "01_societario_fiscal"
+      },
+      {
+        "area_key": "juridica",
+        "folder": "02_juridica"
+      },
+      {
+        "area_key": "ativos",
+        "folder": "03_ativos"
+      },
+      {
+        "area_key": "financeiro",
+        "folder": "04_financeiro"
+      },
+      {
+        "area_key": "contratos_comunicacao",
+        "folder": "05_contratos_comunicacao"
+      },
+      {
+        "area_key": "pessoas",
+        "folder": "06_pessoas"
+      },
+      {
+        "area_key": "sistemas_migracao",
+        "folder": "07_sistemas_migracao"
+      },
+      {
+        "area_key": "processos_tsa",
+        "folder": "08_processos_tsa"
+      },
+      {
+        "area_key": "entregaveis",
+        "folder": "09_entregaveis"
+      }
+    ]
+  },
+  "classification": {
+    "work_areas": [
+      {
+        "key": "societario_fiscal",
+        "jd_number": 1,
+        "aliases": [
+          "societario",
+          "fiscal",
+          "cnpj",
+          "filiais",
+          "incorporacao",
+          "estabelecimentos"
+        ]
+      },
+      {
+        "key": "juridica",
+        "jd_number": 2,
+        "aliases": [
+          "juridico",
+          "passivo",
+          "contingencia",
+          "parecer",
+          "juridica"
+        ]
+      },
+      {
+        "key": "ativos",
+        "jd_number": 3,
+        "aliases": [
+          "ativo",
+          "imobilizado",
+          "cmdb",
+          "segregacao_ativos",
+          "doacao"
+        ]
+      },
+      {
+        "key": "financeiro",
+        "jd_number": 4,
+        "aliases": [
+          "carveout",
+          "cp",
+          "contabil",
+          "seguros",
+          "garantias",
+          "fianca",
+          "fiscal"
+        ]
+      },
+      {
+        "key": "contratos_comunicacao",
+        "jd_number": 5,
+        "aliases": [
+          "contrato",
+          "fornecedor",
+          "cliente",
+          "comunicacao",
+          "preambulo",
+          "eml"
+        ]
+      },
+      {
+        "key": "pessoas",
+        "jd_number": 6,
+        "aliases": [
+          "colaborador",
+          "rh",
+          "beneficio",
+          "hc",
+          "organograma",
+          "gerencia",
+          "diretoria"
+        ]
+      },
+      {
+        "key": "sistemas_migracao",
+        "jd_number": 7,
+        "aliases": [
+          "sistema",
+          "plataforma",
+          "migracao_sistemas",
+          "sap"
+        ]
+      },
+      {
+        "key": "processos_tsa",
+        "jd_number": 8,
+        "aliases": [
+          "tsa",
+          "sox",
+          "processo_operacional",
+          "atendimento",
+          "pos-closing"
+        ]
+      },
+      {
+        "key": "entregaveis",
+        "jd_number": 9,
+        "aliases": [
+          "output",
+          "visao_consolidada",
+          "framework_3ps",
+          "inventario",
+          "metricas",
+          "escopo"
+        ]
+      }
+    ],
+    "routing_rules": [
+      {
+        "when_path_contains": [
+          "output/"
+        ],
+        "route_to": "entregaveis",
+        "confidence": 0.98
+      },
+      {
+        "when_filename_contains": [
+          "contrato",
+          "fornecedor",
+          "cliente",
+          "preambulo"
+        ],
+        "route_to": "contratos_comunicacao",
+        "confidence": 0.9
+      },
+      {
+        "when_filename_contains": [
+          "filiais",
+          "cnpj",
+          "estabelecimentos"
+        ],
+        "route_to": "societario_fiscal",
+        "confidence": 0.9
+      },
+      {
+        "when_filename_contains": [
+          "cmdb",
+          "ativo",
+          "imobilizado",
+          "doacao"
+        ],
+        "route_to": "ativos",
+        "confidence": 0.9
+      },
+      {
+        "when_filename_contains": [
+          "colaboradores",
+          "organograma",
+          "gh_"
+        ],
+        "route_to": "pessoas",
+        "confidence": 0.9
+      }
+    ],
+    "confidence_thresholds": {
+      "auto_route_min": 0.85,
+      "triage_min": 0.5
+    },
+    "llm_policy": {
+      "enabled": false,
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "mode": "tag_only",
+      "allow_override_fields": [
+        "document_type",
+        "tags",
+        "confidence",
+        "topics"
+      ],
+      "override_guardrails": {
+        "area_override_only_if_rule_confidence_below": 0.65,
+        "require_explanation": true,
+        "max_area_changes": 1
+      }
+    }
+  },
+  "indexing": {
+    "topics_path": "config/topics_v1.yaml",
+    "extraction_max_chars": 50000,
+    "extraction_mode": "all"
+  },
+  "version": 1
+}

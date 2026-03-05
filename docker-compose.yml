@@ -34,7 +34,8 @@ services:
 
   api:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: atlasfile-api
     environment:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
@@ -61,7 +62,8 @@ services:
 
   mcp:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: atlasfile-mcp
     command: ["python", "-m", "app.mcp.server"]
     environment:

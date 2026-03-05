@@ -3,32 +3,56 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
+from .profile_schema_v2 import ProjectProfileV2
+from .profile_store import PROFILE_DIR, PROFILE_FILE, load_profile
 
 
-def parse_frontmatter_md(md_path: Path) -> dict[str, Any]:
-    text = md_path.read_text(encoding="utf-8")
-    if not text.startswith("---\n"):
-        raise ValueError(f"Arquivo sem frontmatter YAML: {md_path}")
-
-    end = text.find("\n---", 4)
-    if end == -1:
-        raise ValueError(f"Frontmatter invalido: {md_path}")
-
-    yaml_text = text[4:end]
-    data = yaml.safe_load(yaml_text) or {}
-    if not isinstance(data, dict):
-        raise ValueError(f"Frontmatter deve ser objeto YAML: {md_path}")
+def _routing_rule_to_dict(rule: Any) -> dict[str, Any]:
+    data = rule.model_dump(mode="json")
+    if data.get("when_path_contains") is None:
+        data.pop("when_path_contains", None)
+    if data.get("when_filename_contains") is None:
+        data.pop("when_filename_contains", None)
     return data
 
 
+def profile_v2_to_runtime(profile: ProjectProfileV2, project_root: Path) -> dict[str, Any]:
+    area_folder_map = {af.area_key: af.folder for af in profile.layout.area_folders}
+    work_areas: list[dict[str, Any]] = []
+    for area in profile.classification.work_areas:
+        work_areas.append(
+            {
+                "key": area.key,
+                "jd_number": area.jd_number,
+                "aliases": list(area.aliases),
+                "folder": area_folder_map.get(area.key),
+            }
+        )
+
+    return {
+        "project_id": profile.project_id,
+        "project_label": profile.project_label,
+        "project_root": profile.project_root,
+        "inbox_path": profile.paths.inbox,
+        "triage_path": profile.paths.triage.pending,
+        "triage_paths": profile.paths.triage.model_dump(mode="json"),
+        "work_root": profile.layout.areas_root,
+        "work_areas": work_areas,
+        "routing_rules": [_routing_rule_to_dict(r) for r in profile.classification.routing_rules],
+        "confidence_thresholds": profile.classification.confidence_thresholds.model_dump(mode="json"),
+        "llm_policy": profile.classification.llm_policy.model_dump(mode="json"),
+        "layout": profile.layout.model_dump(mode="json"),
+        "paths": profile.paths.model_dump(mode="json"),
+        "classification": profile.classification.model_dump(mode="json"),
+        "indexing": profile.indexing.model_dump(mode="json"),
+        "version": profile.version,
+        "_profile_path": str(project_root / PROFILE_DIR / PROFILE_FILE),
+    }
+
+
 def load_project_profile(project_root: Path) -> dict[str, Any]:
-    profile_path = project_root / "_PROJECT_PROFILE.md"
-    if not profile_path.exists():
-        raise FileNotFoundError(f"_PROJECT_PROFILE.md nao encontrado em {project_root}")
-    profile = parse_frontmatter_md(profile_path)
-    profile["_profile_path"] = str(profile_path)
-    return profile
+    profile = load_profile(project_root)
+    return profile_v2_to_runtime(profile, project_root)
 
 
 def list_project_roots(projects_root: Path) -> list[Path]:

@@ -1,7 +1,7 @@
 # AtlasFile - test and build targets
 # Recomendado: make docker-update (testa e sobe api + web + mcp).
 
-.PHONY: test test-backend test-frontend docker-build docker-up docker-update reset-index
+.PHONY: test test-backend test-frontend docker-build docker-up docker-update docker-smoke-init reset-index
 
 test: test-backend test-frontend
 	@echo "All tests passed."
@@ -24,8 +24,12 @@ docker-up:
 docker-update: test
 	@if [ -n "$${RESET_INDEX}" ]; then $(MAKE) reset-index; fi
 	docker compose up -d --build opensearch opensearch-dashboards api mcp web
+	$(MAKE) docker-smoke-init
 	docker image prune -f
 	@echo "OpenSearch, Dashboards, API, MCP e Web atualizados."
+
+docker-smoke-init:
+	@bash ./scripts/smoke-project-init.sh
 
 # Deleta o índice OpenSearch para recriar com mapping atualizado; depois rode Reconcile na UI.
 # Chamado automaticamente por docker-update apenas se RESET_INDEX=1.

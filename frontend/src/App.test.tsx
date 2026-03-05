@@ -28,9 +28,40 @@ vi.mock("./api", () => ({
     Promise.resolve({ total: 0, page: 1, page_size: 20, total_pages: 0, hits: [] })
   ),
   getFileDownloadUrl: vi.fn((path: string) => `http://api/files?path=${path}`),
+  fetchModels: vi.fn(() => Promise.resolve([{ provider: "openai", model: "gpt-4o-mini", label: "OpenAI gpt-4o-mini (base)" }])),
   initializeProject: vi.fn(() => Promise.resolve({ status: "ok", already_initialized: false })),
   runReconcile: vi.fn(() => Promise.resolve({ status: "started" })),
-  triggerScan: vi.fn(() => Promise.resolve()),
+  triggerScan: vi.fn(() => Promise.resolve({ project_id: "p1", processed_count: 0, failed_count: 0, items: [], errors: [] })),
+  fetchIngestHistory: vi.fn(() => Promise.resolve({ project_id: "p1", entries: [] })),
+  fetchProjectProfile: vi.fn(() =>
+    Promise.resolve({
+      profile: {
+        profile_version: 2,
+        project_id: "p1",
+        project_label: "Projeto 1",
+        project_root: "/p1",
+        paths: { inbox: "_INBOX_DROP", triage: { pending: "_TRIAGE_REVIEW/pending", resolved: "_TRIAGE_REVIEW/resolved", rejected: "_TRIAGE_REVIEW/rejected" } },
+        layout: { mode: "para_jd", roots: { projects: "01_PROJECTS", areas: "02_AREAS", resources: "03_RESOURCES", archive: "04_ARCHIVE" }, areas_root: "02_AREAS", area_folders: [] },
+        classification: {
+          work_areas: [],
+          routing_rules: [],
+          confidence_thresholds: { auto_route_min: 0.85, triage_min: 0.5 },
+          llm_policy: { enabled: false, provider: "openai", model: "gpt-4o-mini", mode: "tag_only", allow_override_fields: ["document_type", "tags", "confidence", "topics"], override_guardrails: { area_override_only_if_rule_confidence_below: 0.65, require_explanation: true, max_area_changes: 1 } }
+        },
+        indexing: { topics_path: "config/topics_v1.yaml", extraction_max_chars: 50000, extraction_mode: "all" },
+        version: 1
+      },
+      etag: "abc",
+      version: 1
+    })
+  ),
+  updateProjectProfile: vi.fn(() =>
+    Promise.resolve({
+      profile: { profile_version: 2, project_id: "p1", version: 2, classification: { llm_policy: { enabled: true } } },
+      etag: "def",
+      version: 2
+    })
+  ),
   triageDecision: vi.fn(() => Promise.resolve())
 }));
 

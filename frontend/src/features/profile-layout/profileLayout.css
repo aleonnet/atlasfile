@@ -1,0 +1,573 @@
+/* ───────────────────────────────────────────
+   Profile & Layout — alinhado ao mockup v4
+   Usa design tokens do AtlasFile (styles.css)
+   ─────────────────────────────────────────── */
+
+/* === Shell === */
+.pl-shell {
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--panel), var(--bg-elevated));
+}
+
+/* === Cabeçalho do projeto === */
+.pl-project-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.pl-project-header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pl-project-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pl-project-meta-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  letter-spacing: 0.02em;
+}
+
+.pl-project-header-meta {
+  display: flex;
+  gap: 18px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pl-project-header-meta code {
+  font-family: var(--font-body);
+  color: var(--text);
+}
+
+.pl-project-header-meta strong {
+  color: var(--text);
+}
+
+/* === Toolbar === */
+.pl-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* === Seções genéricas === */
+.pl-section {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.pl-section-inline {
+  padding: 12px 16px;
+}
+
+.pl-section-title {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+/* === Seções colapsáveis === */
+.pl-collapsible {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.pl-collapsible-header {
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  padding: 2px 0;
+}
+
+.pl-collapsible-header::-webkit-details-marker {
+  display: none;
+}
+
+.pl-collapsible-header::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform var(--duration-normal) var(--ease-out);
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.pl-collapsible[open] > .pl-collapsible-header::before {
+  transform: rotate(90deg);
+}
+
+.pl-collapsible-body {
+  padding-top: 10px;
+}
+
+.pl-sub-label {
+  display: block;
+  margin-top: 14px;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pl-field-areas-root {
+  margin-top: 14px;
+}
+
+/* === Campo genérico === */
+.pl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pl-field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.pl-field-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pl-input {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 7px 10px;
+  min-height: 36px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  transition: border-color var(--duration-normal) var(--ease-out);
+}
+
+.pl-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.pl-input-table {
+  width: 100%;
+  padding: 5px 8px;
+}
+
+/* === Modo (radio row) === */
+.pl-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pl-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pl-radio input[type="radio"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* === Grid de raízes (4 cols) === */
+.pl-roots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+/* === Tabela de áreas → pastas === */
+.pl-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.pl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pl-table thead {
+  background: var(--panel-strong);
+}
+
+.pl-table th {
+  padding: 8px 10px;
+  text-align: left;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.pl-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.pl-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.pl-table tbody tr:hover {
+  background: var(--card-highlight);
+}
+
+.pl-btn-icon {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  transition: color var(--duration-normal), background var(--duration-normal);
+}
+
+.pl-btn-icon:hover {
+  color: var(--danger);
+  background: rgba(255, 107, 127, 0.1);
+}
+
+.pl-add-btn {
+  margin-top: 10px;
+}
+
+/* === Seção migração === */
+.pl-migration-section {
+  border-color: var(--border-strong);
+}
+
+.pl-migration-warning {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 90, 54, 0.06);
+  border: 1px solid var(--accent-soft);
+}
+
+.pl-migration-icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pl-migration-warn-text {
+  margin: 0;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pl-migration-warn-sub {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pl-migration-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.pl-migration-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pl-strategy-label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pl-strategy-radios {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pl-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pl-checkbox input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+}
+
+.pl-cleanup-check {
+  margin-top: 0;
+}
+
+/* === Preview do plano === */
+.pl-plan-preview {
+  border-color: var(--accent-soft);
+}
+
+.pl-plan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.pl-plan-summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--panel-strong);
+}
+
+.pl-kpi {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pl-kpi strong {
+  color: var(--text);
+}
+
+.pl-plan-ops {
+  margin-bottom: 10px;
+}
+
+.pl-plan-ops-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pl-plan-ops-list {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.pl-plan-op-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.pl-plan-op-row:last-child {
+  border-bottom: 0;
+}
+
+.pl-op-badge {
+  font-weight: 600;
+  font-size: 11px;
+  font-family: var(--font-body);
+}
+
+.pl-op-mkdir {
+  color: var(--ok);
+}
+
+.pl-op-move {
+  color: var(--accent-light);
+}
+
+.pl-op-rename {
+  color: #a78bfa;
+}
+
+.pl-op-conflict {
+  color: var(--danger);
+}
+
+.pl-op-path {
+  color: var(--text);
+  word-break: break-all;
+}
+
+.pl-op-dest {
+  color: var(--muted);
+  word-break: break-all;
+  padding-left: 18px;
+}
+
+.pl-plan-conflicts {
+  border-top: 1px dashed var(--border-strong);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.pl-plan-conflict-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.pl-plan-strategy {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pl-plan-strategy strong {
+  color: var(--text);
+}
+
+/* === Ações do plano === */
+.pl-plan-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.pl-confirm-check {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: rgba(255, 107, 127, 0.04);
+}
+
+/* === Mensagens === */
+.pl-msg-ok {
+  color: var(--ok);
+  margin: 6px 0;
+  font-size: 13px;
+}
+
+.pl-msg-error {
+  color: var(--danger);
+  margin: 6px 0;
+  font-size: 13px;
+}
+
+.pl-msg-muted {
+  color: var(--muted);
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.pl-msg-idle {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+/* === Histórico === */
+.pl-history-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.pl-history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 0;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.pl-history-row:last-child {
+  border-bottom: 0;
+}
+
+.pl-history-row small {
+  color: var(--muted);
+}
+
+/* === Reuse pill from old design === */
+.profile-layout-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+}

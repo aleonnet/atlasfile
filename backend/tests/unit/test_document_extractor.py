@@ -1,7 +1,10 @@
 """Unit tests for app.document_extractor (chunks, format, plain text)."""
 from __future__ import annotations
 
+import sys
 import tempfile
+import types
+import zipfile
 from pathlib import Path
 
 from docx import Document
@@ -71,6 +74,132 @@ def test_extract_plain_text_txt_file() -> None:
         assert "Hello" in result.text_excerpt
         assert result.extraction_status == "ok"
         assert result.content_type == "plain_text"
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_html_file() -> None:
+    html = """
+    <html>
+      <head>
+        <title>Ata de Reuniao</title>
+        <style>.x { color: red; }</style>
+      </head>
+      <body>
+        <script>console.log("ignore")</script>
+        <h1>Conteudo principal</h1>
+      </body>
+    </html>
+    """
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8") as f:
+        f.write(html)
+        path = Path(f.name)
+    try:
+        result = extract_document_content(path, max_chars=1000)
+        assert result.content_type == "html"
+        assert result.extraction_status == "ok"
+        assert "Ata de Reuniao" in result.text_excerpt
+        assert "Conteudo principal" in result.text_excerpt
+        assert "console.log" not in result.text_excerpt
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_archive_zip_listing() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
+        path = Path(f.name)
+    try:
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("pasta/doc1.txt", "abc")
+            archive.writestr("doc2.pdf", "xyz")
+        result = extract_document_content(path, max_chars=1000)
+        assert result.content_type == "archive"
+        assert result.extraction_status == "ok"
+        assert "pasta/doc1.txt" in result.text_excerpt
+        assert "doc2.pdf" in result.text_excerpt
+        assert result.metadata["items_listed"] == 2
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_archive_rar_listing_with_stubbed_parser(monkeypatch) -> None:
+    fake_module = types.ModuleType("rarfile")
+
+    class _Info:
+        def __init__(self, filename: str) -> None:
+            self.filename = filename
+
+    class _RarFile:
+        def __init__(self, _path: Path) -> None:
+            self._items = [_Info("pasta/doc1.txt"), _Info("doc2.pdf")]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def infolist(self):
+            return self._items
+
+    fake_module.RarFile = _RarFile
+    monkeypatch.setitem(sys.modules, "rarfile", fake_module)
+
+    with tempfile.NamedTemporaryFile(suffix=".rar", delete=False) as f:
+        path = Path(f.name)
+    try:
+        result = extract_document_content(path, max_chars=1000)
+        assert result.content_type == "archive"
+        assert result.extraction_status == "ok"
+        assert "pasta/doc1.txt" in result.text_excerpt
+        assert "doc2.pdf" in result.text_excerpt
+        assert result.metadata["items_listed"] == 2
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_plain_text_xml_extension() -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False, encoding="utf-8") as f:
+        f.write("<root><name>Atlas</name></root>")
+        path = Path(f.name)
+    try:
+        result = extract_document_content(path, max_chars=200)
+        assert result.content_type == "plain_text"
+        assert result.extraction_status == "ok"
+        assert "<name>Atlas</name>" in result.text_excerpt
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_msg_with_stubbed_module(monkeypatch) -> None:
+    fake_module = types.ModuleType("extract_msg")
+
+    class _Attachment:
+        def __init__(self, name: str) -> None:
+            self.longFilename = name
+            self.shortFilename = ""
+
+    class _Message:
+        def __init__(self, _path: str) -> None:
+            self.subject = "Assunto Teste"
+            self.body = "Corpo Teste"
+            self.attachments = [_Attachment("arquivo.pdf")]
+
+        def process(self) -> None:
+            return None
+
+    fake_module.Message = _Message
+    monkeypatch.setitem(sys.modules, "extract_msg", fake_module)
+
+    with tempfile.NamedTemporaryFile(suffix=".msg", delete=False) as f:
+        path = Path(f.name)
+    try:
+        result = extract_document_content(path, max_chars=1000)
+        assert result.content_type == "msg"
+        assert result.extraction_status == "ok"
+        assert "Assunto Teste" in result.text_excerpt
+        assert "Corpo Teste" in result.text_excerpt
+        assert "arquivo.pdf" in result.text_excerpt
     finally:
         path.unlink(missing_ok=True)
 

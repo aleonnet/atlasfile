@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.reconcile import _is_ignored_file, _parse_index_rows
+from app.reconcile import _is_ignored_file, _parse_index_rows, _project_scope_query
 
 
 def test_is_ignored_file() -> None:
@@ -46,3 +46,10 @@ def test_parse_index_rows_valid_row() -> None:
         assert rows[0]["path"] == "proj1/_WORK/03_ativos/f.pdf"
     finally:
         path.unlink(missing_ok=True)
+
+
+def test_project_scope_query_includes_project_id_and_path_prefix() -> None:
+    query = _project_scope_query("Kaidô", Path("/projects/Kaidô"))
+    should = query["bool"]["should"]
+    assert {"term": {"project_id": "Kaidô"}} in should
+    assert {"prefix": {"path": "/projects/Kaidô/"}} in should

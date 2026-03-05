@@ -282,7 +282,7 @@ async def classify_with_llm(
 ) -> dict[str, Any]:
     """
     Classify document excerpt via LLM; LLM must call submit_classification.
-    Returns { document_type?: str, tags: list[str], confidence: float }.
+    Returns { document_type?: str, tags: list[str], confidence: float, area_key?: str, topics?: list[str], explanation?: str }.
     """
     if provider_override and model_override:
         provider, model = provider_override, model_override
@@ -291,7 +291,7 @@ async def classify_with_llm(
     tools_mcp = await mcp_list_tools()
     submit_only = [t for t in tools_mcp if t["name"] == "submit_classification"]
     if not submit_only:
-        return {"document_type": None, "tags": [], "confidence": 0.0}
+        return {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
 
     if provider == "openai":
         tools_api = mcp_tools_to_openai(submit_only)
@@ -300,15 +300,18 @@ async def classify_with_llm(
         tools_api = mcp_tools_to_anthropic(submit_only)
         content = await _classify_anthropic(doc_id, text_excerpt, filename, model, tools_api, api_key)
     else:
-        return {"document_type": None, "tags": [], "confidence": 0.0}
+        return {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
 
     if isinstance(content, dict):
         return {
             "document_type": content.get("document_type"),
             "tags": content.get("tags") or [],
             "confidence": float(content.get("confidence", 0.0)),
+            "area_key": content.get("area_key"),
+            "topics": content.get("topics") or [],
+            "explanation": content.get("explanation"),
         }
-    return {"document_type": None, "tags": [], "confidence": 0.0}
+    return {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
 
 
 async def _classify_openai(

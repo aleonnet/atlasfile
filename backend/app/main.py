@@ -15,15 +15,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import yaml
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
+from .api.layout import router as layout_router
+from .api.profile import router as profile_router
 from .area_resolver import resolve_area_path
 from .bootstrap import ensure_project_structure
 from .config import settings
 from .indexer import backfill_search_fields, index_document, read_text_excerpt
+from .ingest_history import append_ingest_entry, load_ingest_history
 from .ingestion import process_inbox_file
 from .models import (
     ChatRequest,
@@ -45,7 +47,9 @@ from .models import (
 )
 from .opensearch_client import ensure_chat_sessions_index, ensure_index, get_client
 from .project_profile import list_project_roots, load_project_profile
-from .reconcile import rebuild_search_index, reconcile_project_index, sync_search_index_for_project
+from .profile_runtime import inbox_rel
+from .profile_store import ensure_profile
+from .services.reconcile_service import count_rows_to_process, run_reconcile
 from .triage import (
     ensure_triage_dirs,
     list_pending,
@@ -123,19 +127,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-_DEFAULT_PROJECT_AREAS: list[tuple[str, int, list[str]]] = [
-    ("societario_fiscal", 1, ["societario", "fiscal", "cnpj", "filiais", "incorporacao", "estabelecimentos"]),
-    ("juridica", 2, ["juridico", "passivo", "contingencia", "parecer", "juridica"]),
-    ("ativos", 3, ["ativo", "imobilizado", "cmdb", "segregacao_ativos", "doacao"]),
-    ("financeiro", 4, ["carveout", "cp", "contabil", "seguros", "garantias", "fianca", "fiscal"]),
-    ("contratos_comunicacao", 5, ["contrato", "fornecedor", "cliente", "comunicacao", "preambulo", "eml"]),
-    ("pessoas", 6, ["colaborador", "rh", "beneficio", "hc", "organograma", "gerencia", "diretoria"]),
-    ("sistemas_migracao", 7, ["sistema", "plataforma", "migracao_sistemas", "sap"]),
-    ("processos_tsa", 8, ["tsa", "sox", "processo_operacional", "atendimento", "pos-closing"]),
-    ("entregaveis", 9, ["output", "visao_consolidada", "framework_3ps", "inventario", "metricas", "escopo"]),
-]
-
+app.include_router(profile_router)
+app.include_router(layout_router)
 
 def _normalize_query_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value or "")
@@ -596,183 +589,66 @@ def _resolve_project_root(project_id: str) -> Path:
     raise HTTPException(status_code=404, detail=f"Projeto nao encontrado: {project_id}")
 
 
-def _build_default_profile(project_root: Path) -> dict[str, Any]:
-    work_areas = [
-        {"key": key, "jd_number": jd_number, "aliases": aliases}
-        for key, jd_number, aliases in _DEFAULT_PROJECT_AREAS
-    ]
-    return {
-        "project_id": project_root.name,
-        "project_label": project_root.name,
-        "project_root": str(project_root),
-        "inbox_path": "_INBOX_DROP",
-        "triage_path": "_TRIAGE_REVIEW/pending",
-        "work_root": "_WORK",
-        "work_areas": work_areas,
-        "routing_rules": [
-            {"when_path_contains": ["output/"], "route_to": "entregaveis", "confidence": 0.98},
-            {
-                "when_filename_contains": ["contrato", "fornecedor", "cliente", "preambulo"],
-                "route_to": "contratos_comunicacao",
-                "confidence": 0.9,
-            },
-            {
-                "when_filename_contains": ["filiais", "cnpj", "estabelecimentos"],
-                "route_to": "societario_fiscal",
-                "confidence": 0.9,
-            },
-            {
-                "when_filename_contains": ["cmdb", "ativo", "imobilizado", "doacao"],
-                "route_to": "ativos",
-                "confidence": 0.9,
-            },
-            {
-                "when_filename_contains": ["colaboradores", "organograma", "gh_"],
-                "route_to": "pessoas",
-                "confidence": 0.9,
-            },
-        ],
-        "confidence_thresholds": {"auto_route_min": 0.85, "triage_min": 0.5},
-    }
+def _project_scope_filter(project_ref: str) -> dict[str, Any]:
+    """Build a resilient filter for project-scoped search.
 
+    Supports current project_id plus path-prefix fallback to avoid empty results
+    when legacy indexed docs still carry an older project_id.
+    """
+    ref = str(project_ref or "").strip()
+    if not ref:
+        return {"match_all": {}}
 
-def _render_profile_markdown(profile: dict[str, Any]) -> str:
-    frontmatter = yaml.safe_dump(profile, sort_keys=False, allow_unicode=True).strip()
-    return (
-        f"---\n{frontmatter}\n---\n\n"
-        "# Project Profile\n\n"
-        "Perfil de classificacao do projeto para uso pelo motor AtlasFile.\n"
-    )
+    aliases: set[str] = {ref}
+    path_prefix: str | None = None
+    try:
+        project_root = _resolve_project_root(ref)
+    except HTTPException:
+        project_root = None
+
+    if project_root is not None:
+        aliases.add(project_root.name)
+        root_str = str(project_root).rstrip("/")
+        if root_str:
+            path_prefix = f"{root_str}/"
+        try:
+            profile = load_project_profile(project_root)
+            profile_project_id = str(profile.get("project_id") or "").strip()
+            if profile_project_id:
+                aliases.add(profile_project_id)
+        except Exception:
+            pass
+
+    should: list[dict[str, Any]] = [{"term": {"project_id": alias}} for alias in sorted(a for a in aliases if a)]
+    if path_prefix:
+        should.append({"prefix": {"path": path_prefix}})
+    if not should:
+        return {"term": {"project_id": ref}}
+    if len(should) == 1:
+        return should[0]
+    return {"bool": {"should": should, "minimum_should_match": 1}}
 
 
 def _initialize_project_if_needed(project_root: Path) -> tuple[dict[str, Any], bool]:
-    profile_path = project_root / "_PROJECT_PROFILE.md"
-    created = False
-    if profile_path.exists():
-        profile = load_project_profile(project_root)
-    else:
-        profile = _build_default_profile(project_root)
-        profile_path.write_text(_render_profile_markdown(profile), encoding="utf-8")
-        created = True
+    _, created = ensure_profile(project_root=project_root, project_id=project_root.name, project_label=project_root.name)
+    profile = load_project_profile(project_root)
     ensure_project_structure(project_root, profile)
     return profile, created
 
 
 def _count_rows_to_process(valid_projects: list[tuple[Path, str]]) -> int:
-    from .reconcile import _is_ignored_file, _parse_index_rows
-
-    total = 0
-    for project_root, _ in valid_projects:
-        for row in _parse_index_rows(project_root / "_INDEX.md"):
-            if row["decision"] not in {"auto", "approved", "corrected"}:
-                continue
-            p = Path(row["path"])
-            if not p.exists() or not p.is_file():
-                continue
-            if _is_ignored_file(p):
-                continue
-            total += 1
-    return total
+    return count_rows_to_process(valid_projects)
 
 
 def _run_reconcile(project_roots: list[Path], *, reindex_search: bool, reindex_mode: str = "full") -> dict[str, Any]:
-    started_at = utc_now_iso()
-    started_ts = time.time()
-    with _reconcile_lock:
-        _reconcile_status["running"] = True
-        _reconcile_status["phase"] = "search_index" if reindex_search else "reconcile_index"
-        _reconcile_status["progress_current"] = 0
-        _reconcile_status["progress_total"] = 0
-        _reconcile_status["progress_file"] = None
-        _reconcile_status["progress_project"] = None
-        _reconcile_status["progress_skipped"] = 0
-        _reconcile_status["progress_file_pct"] = 0
-        _reconcile_status["last_failure_message"] = None
-        _reconcile_status["last_failed_doc_id"] = None
-
-        project_reports: list[dict[str, Any]] = []
-        valid_roots: list[Path] = []
-        valid_projects: list[tuple[Path, str]] = []
-        skipped: list[dict[str, str]] = []
-        for root in project_roots:
-            try:
-                profile = load_project_profile(root)
-            except Exception as exc:
-                skipped.append({"project_root": str(root), "reason": str(exc)})
-                continue
-            ensure_project_structure(root, profile)
-            project_reports.append(reconcile_project_index(root, profile))
-            valid_roots.append(root)
-            valid_projects.append((root, str(profile.get("project_id", root.name))))
-
-        progress_total = _count_rows_to_process(valid_projects) if reindex_search else 0
-        _reconcile_status["progress_total"] = progress_total
-
-        search_report = {"indexed_docs": 0, "deleted_docs": 0, "skipped_docs": 0}
-        if reindex_search:
-            if reindex_mode == "incremental":
-                indexed_docs = 0
-                deleted_docs = 0
-                skipped_docs = 0
-                failed_docs = 0
-                for root, project_id in valid_projects:
-                    _reconcile_status["progress_project"] = project_id
-                    report = sync_search_index_for_project(
-                        os_client, root, project_id, progress=_reconcile_status
-                    )
-                    indexed_docs += int(report.get("indexed_docs", 0))
-                    deleted_docs += int(report.get("deleted_docs", 0))
-                    skipped_docs += int(report.get("skipped_docs", 0))
-                    failed_docs += int(report.get("failed_docs", 0))
-                search_report = {
-                    "indexed_docs": indexed_docs,
-                    "deleted_docs": deleted_docs,
-                    "skipped_docs": skipped_docs,
-                    "failed_docs": failed_docs,
-                }
-            else:
-                search_report = rebuild_search_index(
-                    os_client, valid_roots, project_ids=valid_projects, progress=_reconcile_status
-                )
-
-        finished_at = utc_now_iso()
-        duration_seconds = round(time.time() - started_ts, 3)
-        summary = {
-            "project_count": len(project_reports),
-            "skipped_count": len(skipped),
-            "rows_written": sum(int(r.get("rows_written", 0)) for r in project_reports),
-            "added_rows": sum(int(r.get("added_rows", 0)) for r in project_reports),
-            "removed_rows": sum(int(r.get("removed_rows", 0)) for r in project_reports),
-            "adjustments_applied": sum(int(r.get("adjustments_applied", 0)) for r in project_reports),
-            "indexed_docs": int(search_report.get("indexed_docs", 0)),
-            "skipped_docs": int(search_report.get("skipped_docs", 0)),
-            "failed_docs": int(search_report.get("failed_docs", 0)),
-        }
-        report = {
-            "projects": project_reports,
-            "skipped_projects": skipped,
-            "search": search_report,
-            "summary": summary,
-            "started_at": started_at,
-            "finished_at": finished_at,
-            "duration_seconds": duration_seconds,
-        }
-        _reconcile_status.update(
-            {
-                "last_run_started_at": started_at,
-                "last_run_finished_at": finished_at,
-                "duration_seconds": duration_seconds,
-                "summary": summary,
-                "running": False,
-                "phase": "idle",
-                "progress_current": _reconcile_status.get("progress_current", 0),
-                "progress_total": _reconcile_status.get("progress_total", 0),
-                "progress_file": None,
-                "progress_project": None,
-                "progress_skipped": _reconcile_status.get("progress_skipped", 0),
-            }
-        )
-        return report
+    return run_reconcile(
+        project_roots=project_roots,
+        reindex_search=reindex_search,
+        reindex_mode=reindex_mode,
+        status=_reconcile_status,
+        lock=_reconcile_lock,
+        os_client=os_client,
+    )
 
 
 def _start_auto_reconcile_if_enabled() -> None:
@@ -791,7 +667,8 @@ def _start_auto_reconcile_if_enabled() -> None:
                     reindex_search=bool(settings.auto_reconcile_reindex_search),
                 )
             except Exception:
-                # Keep service running even if one reconcile cycle fails.
+                _reconcile_status["running"] = False
+                _reconcile_status["phase"] = "idle"
                 continue
 
     thread = threading.Thread(target=loop, name="atlasfile-auto-reconcile", daemon=True)
@@ -929,7 +806,7 @@ def reconcile_all_projects(reindex_search: bool = True):
 def scan_project_inbox(project_id: str) -> dict[str, Any]:
     project_root = _resolve_project_root(project_id)
     profile, _ = _initialize_project_if_needed(project_root)
-    inbox = project_root / profile.get("inbox_path", "_INBOX_DROP")
+    inbox = project_root / inbox_rel(profile)
     inbox.mkdir(parents=True, exist_ok=True)
 
     processed: list[dict[str, Any]] = []
@@ -949,13 +826,24 @@ def scan_project_inbox(project_id: str) -> dict[str, Any]:
         except Exception as exc:
             failed.append({"filename": f.name, "path": str(f), "error": str(exc)})
 
-    return {
+    result = {
         "project_id": project_id,
         "processed_count": len(processed),
         "failed_count": len(failed),
         "items": processed,
         "errors": failed,
     }
+
+    append_ingest_entry(project_root, scan_result=result)
+
+    return result
+
+
+@app.get("/api/ingest/history/{project_id}")
+def get_ingest_history(project_id: str) -> dict[str, Any]:
+    project_root = _resolve_project_root(project_id)
+    entries = load_ingest_history(project_root)
+    return {"project_id": project_id, "entries": entries}
 
 
 @app.get("/api/files/download")
@@ -1405,7 +1293,7 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
         "sha256": data.get("sha256", ""),
         "tags": [target_area],
     }
-    index_document(os_client, indexed_payload)
+    index_document(os_client, indexed_payload, profile=profile)
 
     data["decision"] = indexed_payload["decision"]
     data["processed_at"] = indexed_payload["processed_at"]
@@ -1526,7 +1414,7 @@ def search(
         )
     filters: list[dict[str, Any]] = []
     if project_id:
-        filters.append({"term": {"project_id": project_id}})
+        filters.append(_project_scope_filter(project_id))
     if area_key:
         filters.append({"term": {"area_key": area_key}})
     if tags:
@@ -1628,7 +1516,7 @@ def suggest(
     suggest_size = size if size is not None else settings.suggest_size
     filters: list[dict[str, Any]] = []
     if project_id:
-        filters.append({"term": {"project_id": project_id}})
+        filters.append(_project_scope_filter(project_id))
 
     body = {
         "size": suggest_size,

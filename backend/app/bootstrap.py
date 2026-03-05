@@ -4,14 +4,22 @@ from pathlib import Path
 from typing import Any
 
 from .area_resolver import resolve_area_path
+from .profile_runtime import areas_root_rel, inbox_rel, triage_paths
 
 
 def ensure_project_structure(project_root: Path, profile: dict[str, Any]) -> None:
-    (project_root / "_INBOX_DROP").mkdir(parents=True, exist_ok=True)
-    (project_root / "_TRIAGE_REVIEW" / "pending").mkdir(parents=True, exist_ok=True)
-    (project_root / "_TRIAGE_REVIEW" / "resolved").mkdir(parents=True, exist_ok=True)
-    (project_root / "_TRIAGE_REVIEW" / "rejected").mkdir(parents=True, exist_ok=True)
-    (project_root / "_WORK").mkdir(parents=True, exist_ok=True)
+    triage = triage_paths(profile)
+    (project_root / inbox_rel(profile)).mkdir(parents=True, exist_ok=True)
+    (project_root / triage["pending"]).mkdir(parents=True, exist_ok=True)
+    (project_root / triage["resolved"]).mkdir(parents=True, exist_ok=True)
+    (project_root / triage["rejected"]).mkdir(parents=True, exist_ok=True)
+    (project_root / areas_root_rel(profile)).mkdir(parents=True, exist_ok=True)
+    (project_root / "_PROFILE" / "history").mkdir(parents=True, exist_ok=True)
+
+    roots = (profile.get("layout") or {}).get("roots", {})
+    for root_dir in roots.values():
+        if root_dir:
+            (project_root / root_dir).mkdir(parents=True, exist_ok=True)
 
     for area in profile.get("work_areas", []):
         area_key = area.get("key")

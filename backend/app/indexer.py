@@ -9,6 +9,7 @@ from opensearchpy.helpers import bulk, scan
 
 from .config import settings
 from .document_extractor import extract_document_content
+from .topics import match_topics
 from .utils import normalize_text, sha256_file
 
 
@@ -111,8 +112,14 @@ def _trim_payload_to_limit(enriched: dict[str, Any], limit_bytes: int) -> dict[s
     return final
 
 
-def index_document(client: OpenSearch, payload: dict[str, Any], *, refresh: bool = True) -> None:
-    enriched = _enrich_search_fields(payload)
+def index_document(
+    client: OpenSearch,
+    payload: dict[str, Any],
+    *,
+    refresh: bool = True,
+    profile: dict[str, Any] | None = None,
+) -> None:
+    enriched = _enrich_search_fields(payload, profile=profile)
     limit_bytes = _indexing_pressure_limit_bytes(client)
     if isinstance(limit_bytes, int) and limit_bytes > 0:
         enriched = _trim_payload_to_limit(enriched, limit_bytes)
@@ -124,7 +131,48 @@ def index_document(client: OpenSearch, payload: dict[str, Any], *, refresh: bool
     )
 
 
-def _enrich_search_fields(payload: dict[str, Any]) -> dict[str, Any]:
+def _derive_doc_kind_from_extension(ext: str) -> str:
+    ext = (ext or "").lower()
+    if ext in {".html", ".htm"}:
+        return "html"
+    if ext == ".msg":
+        return "msg"
+    if ext == ".pdf":
+        return "pdf"
+    if ext == ".docx":
+        return "docx"
+    if ext in {".xlsx", ".xlsm", ".xltx", ".xltm"}:
+        return "xlsx"
+    if ext == ".pptx":
+        return "pptx"
+    if ext in {".txt", ".md", ".csv", ".json", ".log", ".eml", ".xml", ".yaml", ".yml"}:
+        return "plain_text"
+    if ext in {".doc", ".xls", ".ppt"}:
+        return "legacy_office_binary"
+    if ext in {".zip", ".rar"}:
+        return "archive_listing"
+    return "unsupported"
+
+
+def _profile_extraction_settings(profile: dict[str, Any] | None) -> tuple[str, int]:
+    mode = None
+    max_chars = None
+    if isinstance(profile, dict):
+        idx = profile.get("indexing") or {}
+        mode = idx.get("extraction_mode")
+        max_chars = idx.get("extraction_max_chars")
+
+    if not isinstance(mode, str) or mode.strip().lower() not in {"all", "excerpt"}:
+        mode = str(getattr(settings, "extraction_mode", "excerpt")).strip().lower()
+    if mode not in {"all", "excerpt"}:
+        mode = "excerpt"
+
+    if not isinstance(max_chars, int) or max_chars <= 0:
+        max_chars = int(getattr(settings, "extraction_max_chars", 20000))
+    return (mode, max_chars)
+
+
+def _enrich_search_fields(payload: dict[str, Any], *, profile: dict[str, Any] | None = None) -> dict[str, Any]:
     enriched = dict(payload)
     extracted_text = str(enriched.get("content", "") or "")
     chunk_text = ""
@@ -145,7 +193,8 @@ def _enrich_search_fields(payload: dict[str, Any]) -> dict[str, Any]:
     if path_value:
         path_obj = Path(path_value)
         if path_obj.exists() and path_obj.is_file():
-            max_chars = None if settings.extraction_mode == "all" else settings.extraction_max_chars
+            mode, max_chars_cfg = _profile_extraction_settings(profile)
+            max_chars = None if mode == "all" else max_chars_cfg
             extracted = extract_document_content(path_obj, max_chars=max_chars)
             extracted_text = extracted.text_excerpt or extracted_text
             chunk_text = extracted.chunk_text
@@ -173,6 +222,9 @@ def _enrich_search_fields(payload: dict[str, Any]) -> dict[str, Any]:
     enriched["content_type"] = content_type
     enriched["extraction_status"] = extraction_status
     enriched["extraction_metadata"] = extraction_metadata
+    extension = str(Path(path_value).suffix.lower()) if path_value else ""
+    enriched["extension"] = extension
+    enriched["doc_kind"] = _derive_doc_kind_from_extension(extension)
 
     title = str(enriched.get("title", ""))
     content = str(enriched.get("content", ""))
@@ -189,6 +241,24 @@ def _enrich_search_fields(payload: dict[str, Any]) -> dict[str, Any]:
     enriched["canonical_filename_normalized"] = normalize_text(canonical_filename)
     enriched["title_suggest"] = title or original_filename
     enriched["original_filename_suggest"] = original_filename
+    pre_topics = enriched.get("topics")
+    pre_source = str(enriched.get("topics_source") or "").strip()
+    if isinstance(pre_topics, list) and pre_topics and pre_source in {"llm", "llm_policy"}:
+        enriched["topics"] = [str(t).strip() for t in pre_topics if str(t).strip()]
+        enriched["topics_source"] = pre_source
+    else:
+        topics_input = "\n".join(
+            s
+            for s in [title, original_filename, canonical_filename, extracted_text]
+            if isinstance(s, str) and s.strip()
+        )
+        topics, topics_source = match_topics(
+            text=topics_input,
+            area_key=str(enriched.get("area_key", "") or "").strip() or None,
+            profile=profile,
+        )
+        enriched["topics"] = topics
+        enriched["topics_source"] = topics_source
     return enriched
 
 

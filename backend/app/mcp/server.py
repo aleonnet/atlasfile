@@ -140,13 +140,19 @@ def submit_classification(
     document_type: str | None = None,
     tags: list[str] | None = None,
     confidence: float = 0.0,
+    area_key: str | None = None,
+    topics: list[str] | None = None,
+    explanation: str | None = None,
 ) -> str:
-    """Used by the classification flow only: submit suggested document_type, tags, and confidence (0-1). Returns ok; the orchestrator uses the arguments for the ingest pipeline."""
+    """Used by the classification flow only: submit suggested metadata for ingest policy."""
     return json.dumps({
         "status": "ok",
         "document_type": document_type,
         "tags": tags or [],
         "confidence": confidence,
+        "area_key": area_key,
+        "topics": topics or [],
+        "explanation": explanation,
     })
 
 

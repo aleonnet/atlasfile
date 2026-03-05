@@ -1,23 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 
 DEFAULT_PROJECTS_ROOT = Path("/Users/alessandro/Library/CloudStorage/OneDrive-Personal/Documentos/Projects")
-
-
-TEMPLATE_AREAS = [
-    ("societario_fiscal", 1, ["societario", "fiscal", "cnpj", "filiais", "incorporacao", "estabelecimentos"]),
-    ("juridica", 2, ["juridico", "passivo", "contingencia", "parecer", "juridica"]),
-    ("ativos", 3, ["ativo", "imobilizado", "cmdb", "segregacao_ativos", "doacao"]),
-    ("financeiro", 4, ["carveout", "cp", "contabil", "seguros", "garantias", "fianca", "fiscal"]),
-    ("contratos_comunicacao", 5, ["contrato", "fornecedor", "cliente", "comunicacao", "preambulo", "eml"]),
-    ("pessoas", 6, ["colaborador", "rh", "beneficio", "hc", "organograma", "gerencia", "diretoria"]),
-    ("sistemas_migracao", 7, ["sistema", "plataforma", "migracao_sistemas", "sap"]),
-    ("processos_tsa", 8, ["tsa", "sox", "processo_operacional", "atendimento", "pos-closing"]),
-    ("entregaveis", 9, ["output", "visao_consolidada", "framework_3ps", "inventario", "metricas", "escopo"]),
-]
 
 
 def slugify(value: str) -> str:
@@ -27,59 +16,28 @@ def slugify(value: str) -> str:
     return "".join(ch for ch in out if ch.isalnum() or ch == "_").strip("_")
 
 
-def build_profile(
-    *,
-    project_id: str,
-    project_label: str,
-    project_root: Path,
-) -> str:
-    areas_yaml = []
-    for key, jd_number, aliases in TEMPLATE_AREAS:
-        alias_yaml = ", ".join(f'"{a}"' for a in aliases)
-        areas_yaml.append(
-            f'  - key: {key}\n'
-            f"    jd_number: {jd_number}\n"
-            f"    aliases: [{alias_yaml}]"
-        )
-    areas_block = "\n".join(areas_yaml)
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
 
-    return f"""---
-project_id: {project_id}
-project_label: "{project_label}"
-project_root: "{project_root}"
-inbox_path: "_INBOX_DROP"
-triage_path: "_TRIAGE_REVIEW/pending"
-work_root: "_WORK"
 
-work_areas:
-{areas_block}
+def _load_default_template() -> dict:
+    template_path = _repo_root() / "config" / "templates" / "profile_v2_default.json"
+    raw = template_path.read_text(encoding="utf-8")
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError(f"Template invalido: {template_path}")
+    return data
 
-routing_rules:
-  - when_path_contains: ["output/"]
-    route_to: "entregaveis"
-    confidence: 0.98
-  - when_filename_contains: ["contrato", "fornecedor", "cliente", "preambulo"]
-    route_to: "contratos_comunicacao"
-    confidence: 0.9
-  - when_filename_contains: ["filiais", "cnpj", "estabelecimentos"]
-    route_to: "societario_fiscal"
-    confidence: 0.9
-  - when_filename_contains: ["cmdb", "ativo", "imobilizado", "doacao"]
-    route_to: "ativos"
-    confidence: 0.9
-  - when_filename_contains: ["colaboradores", "organograma", "gh_"]
-    route_to: "pessoas"
-    confidence: 0.9
 
-confidence_thresholds:
-  auto_route_min: 0.85
-  triage_min: 0.5
----
-
-# Project Profile
-
-Perfil de classificacao do projeto para uso pelo motor AtlasFile.
-"""
+def build_profile(*, project_id: str, project_label: str, project_root: Path) -> dict:
+    profile = _load_default_template()
+    profile["project_id"] = project_id
+    profile["project_label"] = project_label
+    profile["project_root"] = str(project_root)
+    profile["updated_at"] = datetime.now(timezone.utc).isoformat()
+    profile["updated_by"] = "bootstrap_project.py"
+    profile["version"] = 1
+    return profile
 
 
 def bootstrap_project(
@@ -92,24 +50,39 @@ def bootstrap_project(
     project_root = projects_root / project_dir_name
     project_root.mkdir(parents=True, exist_ok=True)
 
-    for rel in [
-        "_INBOX_DROP",
-        "_TRIAGE_REVIEW/pending",
-        "_TRIAGE_REVIEW/resolved",
-        "_TRIAGE_REVIEW/rejected",
-        "_WORK",
-    ]:
-        (project_root / rel).mkdir(parents=True, exist_ok=True)
-
-    for key, jd_number, _ in TEMPLATE_AREAS:
-        (project_root / f"_WORK/{jd_number:02d}_{key}").mkdir(parents=True, exist_ok=True)
-
-    profile_content = build_profile(
+    profile = build_profile(
         project_id=project_id,
         project_label=project_label,
         project_root=project_root,
     )
-    (project_root / "_PROJECT_PROFILE.md").write_text(profile_content, encoding="utf-8")
+
+    dirs_to_create = [
+        profile["paths"]["inbox"],
+        profile["paths"]["triage"]["pending"],
+        profile["paths"]["triage"]["resolved"],
+        profile["paths"]["triage"]["rejected"],
+        profile["layout"]["areas_root"],
+        "_PROFILE/history",
+    ]
+    roots = profile.get("layout", {}).get("roots", {})
+    for root_dir in roots.values():
+        if root_dir and root_dir not in dirs_to_create:
+            dirs_to_create.append(root_dir)
+    for rel in dirs_to_create:
+        (project_root / rel).mkdir(parents=True, exist_ok=True)
+
+    areas_root = project_root / profile["layout"]["areas_root"]
+    for af in profile["layout"].get("area_folders", []):
+        folder = af.get("folder")
+        if folder:
+            (areas_root / folder).mkdir(parents=True, exist_ok=True)
+
+    profile_path = project_root / "_PROFILE" / "profile.json"
+    profile_json = json.dumps(profile, ensure_ascii=False, indent=2)
+    profile_path.write_text(profile_json, encoding="utf-8")
+
+    history_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ__v01.json")
+    (project_root / "_PROFILE" / "history" / history_name).write_text(profile_json, encoding="utf-8")
 
     index_path = project_root / "_INDEX.md"
     if not index_path.exists():

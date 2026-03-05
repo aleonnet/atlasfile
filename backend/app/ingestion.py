@@ -14,6 +14,7 @@ from .area_resolver import resolve_area_path
 from .bootstrap import ensure_project_structure
 from .config import settings
 from .indexer import index_document, read_text_excerpt
+from .profile_runtime import areas_root_rel, triage_paths
 from .triage import save_pending_metadata
 from .utils import build_canonical_filename, normalize_text, sanitize_token, sha256_file, utc_now_iso
 
@@ -78,6 +79,88 @@ def classify(
     }
 
 
+def _llm_policy(profile: dict[str, Any]) -> dict[str, Any]:
+    policy = dict(profile.get("llm_policy") or {})
+    classification_policy = ((profile.get("classification") or {}).get("llm_policy") or {})
+    for k, v in classification_policy.items():
+        policy.setdefault(k, v)
+    policy.setdefault("enabled", False)
+    policy.setdefault("mode", "tag_only")
+    policy.setdefault("allow_override_fields", ["document_type", "tags", "confidence", "topics"])
+    guardrails = dict(policy.get("override_guardrails") or {})
+    guardrails.setdefault("area_override_only_if_rule_confidence_below", 0.65)
+    guardrails.setdefault("require_explanation", True)
+    guardrails.setdefault("max_area_changes", 1)
+    policy["override_guardrails"] = guardrails
+    return policy
+
+
+def _apply_llm_policy(
+    *,
+    profile: dict[str, Any],
+    classification: dict[str, Any],
+    llm_result: dict[str, Any] | None,
+) -> tuple[dict[str, Any], bool]:
+    if not llm_result:
+        return classification, False
+
+    policy = _llm_policy(profile)
+    mode = str(policy.get("mode") or "tag_only")
+    allow = {str(x).strip() for x in (policy.get("allow_override_fields") or [])}
+    area_keys = {str(a.get("key") or "").strip() for a in profile.get("work_areas", [])}
+    force_triage_pending = False
+
+    rule_conf = float(classification.get("confidence") or 0.0)
+    llm_conf = float(llm_result.get("confidence") or 0.0)
+    llm_area = str(llm_result.get("area_key") or "").strip() or None
+    explanation = str(llm_result.get("explanation") or "").strip()
+
+    if "confidence" in allow and llm_conf > 0:
+        classification["confidence"] = llm_conf
+    if "tags" in allow and llm_result.get("tags"):
+        classification["suggested_tags"] = list(llm_result.get("tags") or [])
+    if "document_type" in allow and llm_result.get("document_type"):
+        classification["document_type"] = llm_result.get("document_type")
+    if "topics" in allow and llm_result.get("topics"):
+        classification["suggested_topics"] = [str(t).strip() for t in (llm_result.get("topics") or []) if str(t).strip()]
+
+    if llm_area and llm_area not in area_keys:
+        llm_area = None
+
+    current_area = str(classification.get("area_key") or "").strip() or None
+    if not llm_area or llm_area == current_area:
+        return classification, force_triage_pending
+
+    if mode == "review":
+        classification["reason"] = "llm_review_divergence"
+        force_triage_pending = True
+        return classification, force_triage_pending
+
+    if mode == "full_override":
+        guardrails = dict(policy.get("override_guardrails") or {})
+        threshold = float(guardrails.get("area_override_only_if_rule_confidence_below") or 0.65)
+        require_explanation = bool(guardrails.get("require_explanation", True))
+        max_area_changes = int(guardrails.get("max_area_changes", 1) or 1)
+        can_override = (
+            max_area_changes > 0
+            and rule_conf < threshold
+            and llm_conf >= rule_conf
+            and (not require_explanation or bool(explanation))
+        )
+        if can_override:
+            classification["area_key"] = llm_area
+            classification["reason"] = "llm_full_override"
+            if explanation:
+                classification["llm_explanation"] = explanation
+            return classification, force_triage_pending
+
+        classification["reason"] = "llm_override_guardrail_blocked"
+        force_triage_pending = True
+        return classification, force_triage_pending
+
+    return classification, force_triage_pending
+
+
 def _append_index_md(project_root: Path, row: dict[str, Any]) -> None:
     index_path = project_root / "_INDEX.md"
     if not index_path.exists():
@@ -125,6 +208,7 @@ def _append_index_md(project_root: Path, row: dict[str, Any]) -> None:
 def _find_latest_version(
     *,
     project_root: Path,
+    profile: dict[str, Any],
     project_id: str,
     area_key: str,
     title_token: str,
@@ -138,7 +222,7 @@ def _find_latest_version(
     version_re = re.compile(r"__v(\d+)" + re.escape(suffix.lower()) + r"$")
 
     # inspect existing work files
-    work_root = project_root / "_WORK"
+    work_root = project_root / areas_root_rel(profile)
     if work_root.exists():
         for f in work_root.rglob(f"*{suffix.lower()}"):
             if not f.is_file():
@@ -162,12 +246,11 @@ def _find_latest_version(
     return latest
 
 
-def _sha_exists_in_triage(project_root: Path, sha256: str) -> bool:
-    triage_root = project_root / "_TRIAGE_REVIEW"
-    if not triage_root.exists():
-        return False
-    for state in ("pending", "resolved", "rejected"):
-        d = triage_root / state
+def _find_original_in_triage(project_root: Path, profile: dict[str, Any], sha256: str) -> dict[str, Any] | None:
+    """Return metadata of the first existing document matching sha256 in triage dirs."""
+    triage = triage_paths(profile)
+    for rel in (triage["pending"], triage["resolved"], triage["rejected"]):
+        d = project_root / rel
         if not d.exists():
             continue
         for meta in d.glob("*.json"):
@@ -176,11 +259,12 @@ def _sha_exists_in_triage(project_root: Path, sha256: str) -> bool:
             except Exception:
                 continue
             if data.get("sha256") == sha256:
-                return True
-    return False
+                return data
+    return None
 
 
-def _sha_exists_in_search_index(client: OpenSearch, project_id: str, sha256: str) -> bool:
+def _find_original_in_search_index(client: OpenSearch, project_id: str, sha256: str) -> dict[str, Any] | None:
+    """Return the _source of the first indexed document matching sha256."""
     query = {
         "query": {
             "bool": {
@@ -195,9 +279,12 @@ def _sha_exists_in_search_index(client: OpenSearch, project_id: str, sha256: str
     }
     try:
         result = client.search(index=settings.opensearch_index, body=query)
-        return len(result.get("hits", {}).get("hits", [])) > 0
+        hits = result.get("hits", {}).get("hits", [])
+        if hits:
+            return hits[0].get("_source", {})
     except Exception:
-        return False
+        pass
+    return None
 
 
 def _build_unique_triage_pending_path(*, pending_dir: Path, original_name: str, doc_id: str) -> Path:
@@ -219,23 +306,61 @@ def process_inbox_file(
     ensure_project_structure(project_root, profile)
 
     project_id = profile["project_id"]
+    sha = sha256_file(inbox_file)
+
+    # ── Early dedup: SHA256 check before any classification/LLM work ──
+    original_triage = _find_original_in_triage(project_root, profile, sha)
+    original_index = _find_original_in_search_index(client, project_id, sha) if not original_triage else None
+    original = original_triage or original_index
+
+    if original:
+        inbox_file.unlink()
+        return {
+            "doc_id": original.get("doc_id", ""),
+            "project_id": project_id,
+            "area_key": original.get("area_key") or original.get("suggested_area") or "unclassified",
+            "title": original.get("title") or inbox_file.stem,
+            "original_filename": inbox_file.name,
+            "canonical_filename": original.get("canonical_filename", ""),
+            "path": original.get("path") or original.get("source_path", ""),
+            "decision": "duplicate",
+            "confidence_score": float(original.get("confidence_score") or original.get("confidence", 0.0)),
+            "sha256": sha,
+            "tags": original.get("tags", []),
+            "duplicate_of": original.get("doc_id", ""),
+        }
+
+    # ── Classification pipeline (only for non-duplicates) ──
     doc_id = str(uuid.uuid4())
     text_excerpt = read_text_excerpt(inbox_file)
     classification = classify(profile=profile, source_path=inbox_file, text_excerpt=text_excerpt)
 
     llm_result: dict[str, Any] | None = None
-    if getattr(settings, "classification_llm_enabled", False):
+    policy = _llm_policy(profile)
+    llm_enabled = bool(policy.get("enabled")) or bool(getattr(settings, "classification_llm_enabled", False))
+    if llm_enabled:
         try:
             from .orchestrator import classify_with_llm
-            llm_result = asyncio.run(classify_with_llm(doc_id, text_excerpt, inbox_file.name))
+
+            provider_override = policy.get("provider") if policy.get("enabled") else None
+            model_override = policy.get("model") if policy.get("enabled") else None
+            llm_result = asyncio.run(
+                classify_with_llm(
+                    doc_id,
+                    text_excerpt,
+                    inbox_file.name,
+                    provider_override=provider_override,
+                    model_override=model_override,
+                )
+            )
         except Exception:
             llm_result = None
-    if llm_result and (llm_result.get("confidence") or 0) > 0:
-        classification["confidence"] = llm_result.get("confidence", classification.get("confidence", 0))
-        if llm_result.get("tags"):
-            classification["suggested_tags"] = llm_result["tags"]
-        if llm_result.get("document_type"):
-            classification["document_type"] = llm_result["document_type"]
+
+    classification, force_triage_pending = _apply_llm_policy(
+        profile=profile,
+        classification=classification,
+        llm_result=llm_result,
+    )
 
     auto_route_min = float(profile.get("confidence_thresholds", {}).get("auto_route_min", 0.85))
     triage_min = float(profile.get("confidence_thresholds", {}).get("triage_min", 0.5))
@@ -248,68 +373,15 @@ def process_inbox_file(
             profile=profile,
             area_key=area_key,
             create_if_missing=True,
-        ) or "_WORK"
+        ) or areas_root_rel(profile)
     else:
-        area_path = "_WORK"
+        area_path = areas_root_rel(profile)
 
-    sha = sha256_file(inbox_file)
     ingested_at = utc_now_iso()
-
-    # Dedup by project + sha256.
-    if _sha_exists_in_triage(project_root, sha) or _sha_exists_in_search_index(client, project_id, sha):
-        dup_doc_id = str(uuid.uuid4())
-        rejected_dir = project_root / "_TRIAGE_REVIEW" / "rejected"
-        rejected_dir.mkdir(parents=True, exist_ok=True)
-        target_name = inbox_file.name
-        target_path = rejected_dir / target_name
-        if target_path.exists():
-            target_path = rejected_dir / f"{inbox_file.stem}__dup_{dup_doc_id[:8]}{inbox_file.suffix}"
-        shutil.move(str(inbox_file), str(target_path))
-
-        meta = {
-            "doc_id": dup_doc_id,
-            "filename": target_path.name,
-            "project_id": project_id,
-            "suggested_area": classification.get("area_key"),
-            "suggested_path": None,
-            "confidence_score": float(classification.get("confidence", 0.0)),
-            "reason": "duplicate_sha256",
-            "top_candidates": classification.get("top_candidates", []),
-            "source_path": str(target_path),
-            "metadata_path": str(rejected_dir / f"{dup_doc_id}.json"),
-            "original_filename": inbox_file.name,
-            "canonical_filename": "",
-            "sha256": sha,
-            "ingested_at": ingested_at,
-            "decision": "duplicate",
-        }
-        (rejected_dir / f"{dup_doc_id}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-
-        payload = {
-            "doc_id": dup_doc_id,
-            "project_id": project_id,
-            "area_key": classification.get("area_key") or "unclassified",
-            "title": inbox_file.stem,
-            "content": text_excerpt,
-            "original_filename": inbox_file.name,
-            "canonical_filename": "",
-            "path": str(target_path),
-            "source_channel": "",
-            "source_ref": "",
-            "sender": "",
-            "received_at": None,
-            "ingested_at": ingested_at,
-            "processed_at": utc_now_iso(),
-            "decision": "duplicate",
-            "confidence_score": float(classification.get("confidence", 0.0)),
-            "sha256": sha,
-            "tags": [classification.get("area_key") or "unclassified"],
-        }
-        _append_index_md(project_root, payload)
-        return payload
 
     next_version = _find_latest_version(
         project_root=project_root,
+        profile=profile,
         project_id=project_id,
         area_key=area_key or "unclassified",
         title_token=inbox_file.stem,
@@ -324,15 +396,16 @@ def process_inbox_file(
         version=next_version,
     )
 
-    if confidence >= auto_route_min and area_key:
+    if confidence >= auto_route_min and area_key and not force_triage_pending:
         dest_dir = project_root / area_path
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = dest_dir / canonical_filename
         shutil.move(str(inbox_file), str(dest_file))
         decision = "auto"
         path_for_index = str(dest_file)
-    elif confidence >= triage_min:
-        dest_dir = project_root / "_TRIAGE_REVIEW" / "pending"
+    elif confidence >= triage_min or force_triage_pending:
+        triage = triage_paths(profile)
+        dest_dir = project_root / triage["pending"]
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = _build_unique_triage_pending_path(
             pending_dir=dest_dir,
@@ -350,7 +423,7 @@ def process_inbox_file(
             "suggested_area": area_key,
             "suggested_path": area_path,
             "confidence_score": confidence,
-            "reason": classification["reason"],
+            "reason": classification.get("reason", "triage_pending"),
             "top_candidates": classification["top_candidates"],
             "source_path": str(dest_file),
             "metadata_path": "",
@@ -363,7 +436,8 @@ def process_inbox_file(
         meta["metadata_path"] = str(meta_path)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     else:
-        dest_dir = project_root / "_TRIAGE_REVIEW" / "pending"
+        triage = triage_paths(profile)
+        dest_dir = project_root / triage["pending"]
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = _build_unique_triage_pending_path(
             pending_dir=dest_dir,
@@ -421,11 +495,14 @@ def process_inbox_file(
     }
     if classification.get("document_type"):
         payload["document_type"] = classification["document_type"]
+    if classification.get("suggested_topics"):
+        payload["topics"] = list(classification.get("suggested_topics") or [])
+        payload["topics_source"] = "llm_policy"
     if confidence < auto_route_min or (llm_result and (llm_result.get("confidence") or 0) < auto_route_min):
         payload["review_status"] = "needs_review"
 
     if decision == "auto":
-        index_document(client, payload)
+        index_document(client, payload, profile=profile)
 
     _append_index_md(project_root, payload)
     return payload

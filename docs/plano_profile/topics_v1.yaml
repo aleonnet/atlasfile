@@ -1,0 +1,629 @@
+version: 1
+language: pt-BR
+max_topics_per_document: 8
+
+topics:
+  - key: kpis
+    label: KPIs / Indicadores
+    synonyms:
+      - kpi
+      - kpis
+      - indicador
+      - indicadores
+      - metricas
+      - métricas
+      - performance
+      - dashboard
+      - painel
+    area_bias: [juridica, financeiro, pessoas, processos_tsa, entregaveis]
+
+  - key: estrutura_organizacional
+    label: Estrutura / Organograma
+    synonyms:
+      - estrutura
+      - organograma
+      - org chart
+      - hierarquia
+      - diretoria
+      - gerencia
+      - gerência
+      - headcount
+      - hc
+    area_bias: [pessoas, juridica, entregaveis]
+
+  - key: cronograma
+    label: Cronograma / Timeline
+    synonyms:
+      - cronograma
+      - timeline
+      - linha do tempo
+      - roadmap
+      - marcos
+      - milestones
+      - plano de acao
+      - plano de ação
+    area_bias: [entregaveis, processos_tsa, sistemas_migracao]
+
+  - key: status_report
+    label: Status / Reporte
+    synonyms:
+      - status
+      - reporte
+      - report
+      - weekly
+      - semanal
+      - update
+      - comite
+      - comitê
+    area_bias: [entregaveis, processos_tsa, juridica, financeiro]
+
+  - key: governanca
+    label: Governança
+    synonyms:
+      - governanca
+      - governança
+      - comite
+      - comitê
+      - steering
+      - rito
+      - ritos
+      - cadence
+    area_bias: [entregaveis, processos_tsa]
+
+  - key: riscos
+    label: Riscos
+    synonyms:
+      - risco
+      - riscos
+      - risk
+      - issue
+      - issues
+      - impedimento
+      - impedimentos
+      - mitigacao
+      - mitigação
+    area_bias: [entregaveis, processos_tsa, juridica]
+
+  - key: escopo
+    label: Escopo / Perímetro
+    synonyms:
+      - escopo
+      - perimetro
+      - perímetro
+      - scope
+      - abrangencia
+      - abrangência
+      - delimitacao
+      - delimitação
+    area_bias: [entregaveis, ativos, processos_tsa]
+
+  - key: inventario
+    label: Inventário
+    synonyms:
+      - inventario
+      - inventário
+      - lista
+      - listagem
+      - catalogo
+      - catálogo
+    area_bias: [ativos, entregaveis, sistemas_migracao]
+
+  - key: segregacao
+    label: Segregação / Carve-out
+    synonyms:
+      - segregacao
+      - segregação
+      - carveout
+      - carve-out
+      - separacao
+      - separação
+      - perimetro
+      - perímetro
+    area_bias: [ativos, financeiro, sistemas_migracao, entregaveis]
+
+  - key: tsa
+    label: TSA
+    synonyms:
+      - tsa
+      - transitional service
+      - transitional services
+      - acordo de transicao
+      - acordo de transição
+      - pos closing
+      - pós closing
+      - pos-closing
+      - pós-closing
+    area_bias: [processos_tsa, entregaveis, juridica]
+
+  - key: sox_controles
+    label: SOX / Controles
+    synonyms:
+      - sox
+      - controles
+      - control
+      - compliance
+      - auditoria
+      - audit
+      - 404
+    area_bias: [processos_tsa, financeiro]
+
+  - key: sap
+    label: SAP / ERP
+    synonyms:
+      - sap
+      - erp
+      - s4
+      - s/4
+      - hana
+      - ecc
+    area_bias: [sistemas_migracao, financeiro]
+
+  - key: sistemas_integracoes
+    label: Sistemas / Integrações
+    synonyms:
+      - sistema
+      - sistemas
+      - integracao
+      - integração
+      - interface
+      - apis
+      - api
+      - middleware
+    area_bias: [sistemas_migracao]
+
+  - key: migracao
+    label: Migração
+    synonyms:
+      - migracao
+      - migração
+      - cutover
+      - transicao
+      - transição
+      - move
+      - moving
+    area_bias: [sistemas_migracao, processos_tsa]
+
+  - key: arquitetura
+    label: Arquitetura (TI)
+    synonyms:
+      - arquitetura
+      - target architecture
+      - arquitetura alvo
+      - as-is
+      - to-be
+      - desenho
+    area_bias: [sistemas_migracao]
+
+  - key: cmdb
+    label: CMDB
+    synonyms:
+      - cmdb
+      - configuracao
+      - configuração
+      - configuration management
+      - item de configuracao
+      - item de configuração
+    area_bias: [ativos, sistemas_migracao]
+
+  - key: ativos_imobilizado
+    label: Ativos / Imobilizado
+    synonyms:
+      - ativo
+      - ativos
+      - imobilizado
+      - patrimonio
+      - patrimônio
+      - equipamento
+      - equipamentos
+      - doacao
+      - doação
+    area_bias: [ativos]
+
+  - key: rede_infra
+    label: Rede / Infra
+    synonyms:
+      - rede
+      - infraestrutura
+      - backbone
+      - fibra
+      - datacenter
+      - data center
+      - colo
+      - colocation
+    area_bias: [ativos, sistemas_migracao]
+
+  - key: contratos
+    label: Contratos
+    synonyms:
+      - contrato
+      - contratos
+      - agreement
+      - aditivo
+      - aditivos
+      - sla
+      - mss
+      - msa
+      - mla
+    area_bias: [juridica, contratos_comunicacao]
+
+  - key: fornecedores
+    label: Fornecedores
+    synonyms:
+      - fornecedor
+      - fornecedores
+      - vendor
+      - procurement
+      - compras
+      - rfp
+    area_bias: [contratos_comunicacao, financeiro]
+
+  - key: clientes
+    label: Clientes
+    synonyms:
+      - cliente
+      - clientes
+      - customer
+      - receita
+      - faturamento
+      - churn
+    area_bias: [contratos_comunicacao, financeiro]
+
+  - key: docusign
+    label: DocuSign / Assinatura
+    synonyms:
+      - docusign
+      - assinatura
+      - assinado
+      - signed
+      - sign
+      - envelope
+    area_bias: [juridica, contratos_comunicacao]
+
+  - key: spa
+    label: SPA / Operação
+    synonyms:
+      - spa
+      - share purchase agreement
+      - asset purchase agreement
+      - purchase agreement
+      - contrato de compra
+      - contrato de venda
+    area_bias: [juridica]
+
+  - key: nda
+    label: NDA / Confidencialidade
+    synonyms:
+      - nda
+      - confidencialidade
+      - non disclosure
+      - non-disclosure
+      - sigilo
+    area_bias: [juridica]
+
+  - key: procuracao
+    label: Procuração / Poderes
+    synonyms:
+      - procuracao
+      - procuração
+      - mandato
+      - poderes
+      - poderes de representacao
+      - poderes de representação
+    area_bias: [juridica]
+
+  - key: parecer
+    label: Parecer / Nota Jurídica
+    synonyms:
+      - parecer
+      - nota
+      - nota juridica
+      - nota jurídica
+      - legal memo
+      - memorandum
+    area_bias: [juridica]
+
+  - key: contencioso
+    label: Contencioso / Litígios
+    synonyms:
+      - contencioso
+      - litigio
+      - litígio
+      - processo
+      - processos
+      - acao
+      - ação
+      - judicial
+    area_bias: [juridica]
+
+  - key: contingencias
+    label: Contingências / Passivo
+    synonyms:
+      - contingencia
+      - contingências
+      - contingencia
+      - passivo
+      - provisao
+      - provisão
+      - exposure
+    area_bias: [juridica, financeiro]
+
+  - key: falencia_rj
+    label: Falência / Recuperação Judicial
+    synonyms:
+      - falencia
+      - falência
+      - recuperacao judicial
+      - recuperação judicial
+      - rj
+      - chapter 11
+      - assembleia de credores
+      - assembleia geral de credores
+    area_bias: [juridica, financeiro]
+
+  - key: compliance
+    label: Compliance
+    synonyms:
+      - compliance
+      - conformidade
+      - anticorrupcao
+      - anticorrupção
+      - etica
+      - ética
+      - codigo de conduta
+      - código de conduta
+    area_bias: [juridica, processos_tsa]
+
+  - key: privacidade_lgpd
+    label: Privacidade / LGPD
+    synonyms:
+      - lgpd
+      - privacidade
+      - dados pessoais
+      - dpo
+      - encarregado
+      - tratamento de dados
+    area_bias: [juridica, sistemas_migracao]
+
+  - key: societario
+    label: Societário
+    synonyms:
+      - societario
+      - societário
+      - incorporacao
+      - incorporação
+      - cisao
+      - cisão
+      - fusao
+      - fusão
+      - holdings
+    area_bias: [societario_fiscal]
+
+  - key: cnpj_filiais
+    label: CNPJ / Filiais
+    synonyms:
+      - cnpj
+      - filial
+      - filiais
+      - estabelecimento
+      - estabelecimentos
+      - ie
+      - inscricao estadual
+      - inscrição estadual
+      - inscricao municipal
+      - inscrição municipal
+    area_bias: [societario_fiscal]
+
+  - key: fiscal_tributos
+    label: Fiscal / Tributos
+    synonyms:
+      - fiscal
+      - tributo
+      - tributos
+      - icms
+      - iss
+      - pis
+      - cofins
+      - irpj
+      - csll
+    area_bias: [societario_fiscal, financeiro]
+
+  - key: contabilidade
+    label: Contabilidade
+    synonyms:
+      - contabil
+      - contábil
+      - contabilidade
+      - balanco
+      - balanço
+      - dre
+      - ebitda
+      - fechamento
+    area_bias: [financeiro]
+
+  - key: fluxo_caixa
+    label: Caixa / Fluxo de Caixa
+    synonyms:
+      - caixa
+      - fluxo de caixa
+      - cash flow
+      - tesouraria
+      - treasury
+    area_bias: [financeiro]
+
+  - key: garantias
+    label: Garantias / Fianças
+    synonyms:
+      - garantia
+      - garantias
+      - fianca
+      - fiança
+      - seguro garantia
+      - carta fiança
+      - aval
+    area_bias: [financeiro, juridica]
+
+  - key: seguros
+    label: Seguros
+    synonyms:
+      - seguro
+      - seguros
+      - apolice
+      - apólice
+      - sinistro
+    area_bias: [financeiro]
+
+  - key: precificacao
+    label: Precificação / Valuation
+    synonyms:
+      - valuation
+      - preco
+      - preço
+      - precificacao
+      - precificação
+      - modelagem
+      - business case
+    area_bias: [financeiro]
+
+  - key: faturamento
+    label: Faturamento / Receita
+    synonyms:
+      - faturamento
+      - receita
+      - billing
+      - invoice
+      - nf
+      - nota fiscal
+      - nfs-e
+      - nfse
+    area_bias: [financeiro, contratos_comunicacao]
+
+  - key: rh_beneficios
+    label: RH / Benefícios
+    synonyms:
+      - rh
+      - recursos humanos
+      - beneficio
+      - benefícios
+      - plano de saude
+      - plano de saúde
+      - vale
+      - sindicato
+    area_bias: [pessoas]
+
+  - key: folha_pagamento
+    label: Folha / Remuneração
+    synonyms:
+      - folha
+      - folha de pagamento
+      - payroll
+      - salario
+      - salário
+      - bonus
+      - bônus
+      - plr
+    area_bias: [pessoas, financeiro]
+
+  - key: contratos_trabalhistas
+    label: Contratos / Relações Trabalhistas
+    synonyms:
+      - trabalhista
+      - clt
+      - acordo coletivo
+      - sindicato
+      - dissidio
+      - dissídio
+    area_bias: [pessoas, juridica]
+
+  - key: comunicacao
+    label: Comunicação / Stakeholders
+    synonyms:
+      - comunicacao
+      - comunicação
+      - stakeholder
+      - stakeholders
+      - comunicados
+      - alinhamento
+    area_bias: [contratos_comunicacao, entregaveis]
+
+  - key: apresentacao
+    label: Apresentação / Deck
+    synonyms:
+      - apresentacao
+      - apresentação
+      - deck
+      - ppt
+      - pptx
+      - slides
+      - slide
+    area_bias: [entregaveis, juridica, financeiro, pessoas]
+
+  - key: minuta_template
+    label: Minutas / Templates
+    synonyms:
+      - minuta
+      - modelo
+      - template
+      - padrao
+      - padrão
+      - boilerplate
+    area_bias: [juridica, contratos_comunicacao, societario_fiscal]
+
+  - key: decisao_sentenca
+    label: Decisões / Sentenças
+    synonyms:
+      - decisao
+      - decisão
+      - sentenca
+      - sentença
+      - acórdão
+      - acordao
+      - despacho
+      - liminar
+    area_bias: [juridica]
+
+  - key: due_diligence
+    label: Due Diligence
+    synonyms:
+      - due diligence
+      - dd
+      - diligencia
+      - diligência
+      - levantamento
+      - data room
+      - vdr
+    area_bias: [entregaveis, juridica, financeiro]
+
+  - key: dados_bases
+    label: Bases / Planilhas
+    synonyms:
+      - base
+      - bases
+      - planilha
+      - planilhas
+      - xlsx
+      - csv
+      - extracao
+      - extração
+    area_bias: [ativos, financeiro, pessoas, sistemas_migracao]
+
+  - key: email_correspondencia
+    label: E-mails / Correspondências
+    synonyms:
+      - email
+      - e-mail
+      - msg
+      - eml
+      - correspondencia
+      - correspondência
+      - mensagem
+    area_bias: [juridica, contratos_comunicacao, financeiro]
+
+  - key: archive_zip
+    label: Arquivos compactados
+    synonyms:
+      - zip
+      - rar
+      - compactado
+      - anexos
+      - anexo
+    area_bias: [entregaveis, juridica, contratos_comunicacao]

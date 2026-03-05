@@ -68,6 +68,10 @@ def ensure_index(client: OpenSearch) -> None:
         "document_type": {"type": "keyword"},
         "correspondent": {"type": "keyword"},
         "review_status": {"type": "keyword"},
+        "doc_kind": {"type": "keyword"},
+        "extension": {"type": "keyword"},
+        "topics": {"type": "keyword"},
+        "topics_source": {"type": "keyword"},
     }
 
     if client.indices.exists(index=index_name):

@@ -115,12 +115,18 @@ def _format_chunks(tag: str, index: int, text: str, overlap: int = 150) -> list[
     return out
 
 
+def _safe_excerpt(text: str, max_chars: int) -> str:
+    if not max_chars:
+        return ""
+    return (text or "")[:max_chars]
+
+
 def _extract_plain_text(path: Path, max_chars: int) -> ExtractionResult:
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
     except Exception:
         text = ""
-    excerpt = text[:max_chars]
+    excerpt = _safe_excerpt(text, max_chars)
     chunks = _format_chunks("section", 1, excerpt)
     return ExtractionResult(
         text_excerpt=excerpt,
@@ -128,8 +134,44 @@ def _extract_plain_text(path: Path, max_chars: int) -> ExtractionResult:
         chunk_locations=[loc for loc, _ in chunks],
         chunks=_chunks_from_rows(chunks),
         content_type="plain_text",
-        extraction_status="ok",
+        extraction_status="ok" if excerpt else "partial",
         metadata={"extension": path.suffix.lower()},
+    )
+
+
+def _extract_html(path: Path, max_chars: int) -> ExtractionResult:
+    """Best-effort HTML text extraction with zero extra deps."""
+    try:
+        raw = path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        raw = ""
+
+    title = ""
+    m = re.search(r"<title[^>]*>(.*?)</title>", raw, flags=re.IGNORECASE | re.DOTALL)
+    if m:
+        title = re.sub(r"\s+", " ", m.group(1)).strip()
+
+    cleaned = re.sub(r"<script\b[^>]*>.*?</script>", " ", raw, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"<style\b[^>]*>.*?</style>", " ", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+    cleaned = cleaned.replace("&nbsp;", " ").replace("&#160;", " ")
+    cleaned = cleaned.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&apos;", "'")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    combined = cleaned
+    if title and title.lower() not in combined[:300].lower():
+        combined = f"{title}\n{combined}"
+
+    excerpt = _safe_excerpt(combined, max_chars)
+    chunks = _format_chunks("section", 1, excerpt)
+    return ExtractionResult(
+        text_excerpt=excerpt,
+        chunk_text="\n".join(chunk for _, chunk in chunks),
+        chunk_locations=[loc for loc, _ in chunks],
+        chunks=_chunks_from_rows(chunks),
+        content_type="html",
+        extraction_status="ok" if excerpt else "partial",
+        metadata={"extension": path.suffix.lower(), "title": title},
     )
 
 
@@ -158,13 +200,18 @@ def _ocr_pdf_page(pdf_path: Path, page_number_1based: int, min_chars: int) -> st
 def _extract_pdf(path: Path, max_chars: int) -> ExtractionResult:
     from pypdf import PdfReader
 
-    from app.config import settings
-
     reader = PdfReader(str(path))
     chunk_rows: list[tuple[str, str]] = []
     pages = len(reader.pages)
-    use_ocr = getattr(settings, "pdf_ocr_enabled", True)
-    ocr_min_chars = getattr(settings, "pdf_ocr_min_chars", 50)
+    use_ocr = True
+    ocr_min_chars = 50
+    try:
+        from app.config import settings
+
+        use_ocr = getattr(settings, "pdf_ocr_enabled", True)
+        ocr_min_chars = getattr(settings, "pdf_ocr_min_chars", 50)
+    except Exception:
+        pass
 
     for idx, page in enumerate(reader.pages, start=1):
         page_text = (page.extract_text() or "").strip()
@@ -179,7 +226,7 @@ def _extract_pdf(path: Path, max_chars: int) -> ExtractionResult:
             break
 
     chunk_text = "\n".join(value for _, value in chunk_rows)
-    excerpt = chunk_text[:max_chars]
+    excerpt = _safe_excerpt(chunk_text, max_chars)
     return ExtractionResult(
         text_excerpt=excerpt,
         chunk_text=chunk_text,
@@ -259,7 +306,7 @@ def _extract_docx(path: Path, max_chars: int) -> ExtractionResult:
                 paragraph_in_page = 0
 
     chunk_text = "\n".join(value for _, value in chunk_rows)
-    excerpt = chunk_text[:max_chars]
+    excerpt = _safe_excerpt(chunk_text, max_chars)
     pages_detected = 0
     if chunk_rows:
         marker = "docx_page_est:" if estimated_mode else "docx_page:"
@@ -324,7 +371,7 @@ def _extract_xlsx(path: Path, max_chars: int) -> ExtractionResult:
             break
 
     chunk_text = "\n".join(value for _, value in chunk_rows)
-    excerpt = chunk_text[:max_chars]
+    excerpt = _safe_excerpt(chunk_text, max_chars)
     return ExtractionResult(
         text_excerpt=excerpt,
         chunk_text=chunk_text,
@@ -398,7 +445,7 @@ def _extract_legacy_binary(path: Path, max_chars: int) -> ExtractionResult:
         text = raw.decode("latin-1", errors="ignore")
     cleaned = "".join(ch if ch.isprintable() else " " for ch in text)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    excerpt = cleaned[:max_chars]
+    excerpt = _safe_excerpt(cleaned, max_chars)
     chunks = _format_chunks("section", 1, excerpt)
     return ExtractionResult(
         text_excerpt=excerpt,
@@ -411,6 +458,111 @@ def _extract_legacy_binary(path: Path, max_chars: int) -> ExtractionResult:
     )
 
 
+def _extract_msg(path: Path, max_chars: int) -> ExtractionResult:
+    """Extract subject/body + attachment names from Outlook .msg with extract-msg."""
+    try:
+        import extract_msg  # type: ignore
+    except Exception:
+        return ExtractionResult(
+            text_excerpt="",
+            chunk_text="",
+            chunk_locations=[],
+            chunks=[],
+            content_type="msg",
+            extraction_status="partial",
+            metadata={"extension": ".msg", "fallback": "extract-msg-not-installed"},
+        )
+
+    try:
+        msg = extract_msg.Message(str(path))
+        msg.process()
+        subject = (getattr(msg, "subject", "") or "").strip()
+        body = (getattr(msg, "body", "") or "").strip()
+        attachments: list[str] = []
+        for a in (getattr(msg, "attachments", None) or []):
+            name = getattr(a, "longFilename", None) or getattr(a, "shortFilename", None) or ""
+            name = (name or "").strip()
+            if name:
+                attachments.append(name)
+
+        combined_parts = []
+        if subject:
+            combined_parts.append(f"Subject: {subject}")
+        if body:
+            combined_parts.append(body)
+        if attachments:
+            combined_parts.append("Attachments: " + ", ".join(attachments))
+        combined = "\n".join(combined_parts).strip()
+
+        excerpt = _safe_excerpt(combined, max_chars)
+        chunks = _format_chunks("section", 1, excerpt)
+        return ExtractionResult(
+            text_excerpt=excerpt,
+            chunk_text="\n".join(chunk for _, chunk in chunks),
+            chunk_locations=[loc for loc, _ in chunks],
+            chunks=_chunks_from_rows(chunks),
+            content_type="msg",
+            extraction_status="ok" if excerpt else "partial",
+            metadata={"extension": ".msg", "attachments": attachments[:200]},
+        )
+    except Exception as exc:
+        return ExtractionResult(
+            text_excerpt="",
+            chunk_text="",
+            chunk_locations=[],
+            chunks=[],
+            content_type="msg",
+            extraction_status="error",
+            metadata={"extension": ".msg", "error": str(exc)},
+        )
+
+
+def _extract_archive_listing(path: Path, max_chars: int) -> ExtractionResult:
+    ext = path.suffix.lower()
+    items: list[str] = []
+    fallback: str | None = None
+
+    if ext == ".zip":
+        try:
+            with zipfile.ZipFile(path) as z:
+                for info in z.infolist()[:5000]:
+                    items.append(info.filename)
+        except Exception as exc:
+            fallback = f"zip-error:{exc}"
+            items = []
+    elif ext == ".rar":
+        try:
+            import rarfile  # type: ignore
+        except Exception:
+            fallback = "rarfile-not-installed"
+        else:
+            try:
+                with rarfile.RarFile(path) as archive:
+                    for info in archive.infolist()[:5000]:
+                        name = str(getattr(info, "filename", "") or "").strip()
+                        if name:
+                            items.append(name)
+            except Exception as exc:
+                fallback = f"rar-error:{exc}"
+                items = []
+
+    text = "\n".join(items)
+    excerpt = _safe_excerpt(text, max_chars)
+    chunks = _format_chunks("archive_item", 1, excerpt, overlap=0) if excerpt else []
+    metadata: dict[str, Any] = {"extension": ext, "items_listed": len(items)}
+    if fallback:
+        metadata["fallback"] = fallback
+    return ExtractionResult(
+        text_excerpt=excerpt,
+        chunk_text="\n".join(chunk for _, chunk in chunks),
+        chunk_locations=[loc for loc, _ in chunks],
+        chunks=_chunks_from_rows(chunks),
+        content_type="archive",
+        extraction_status="ok" if items else "partial",
+        metadata=metadata,
+    )
+
+
 # Valor usado internamente quando não há limite (extraction_mode "all"); extração processa o documento inteiro.
 _EXTRACTION_NO_LIMIT = 100_000_000
 
@@ -419,10 +571,12 @@ def extract_document_content(path: Path, max_chars: int | None = None) -> Extrac
     if max_chars is None:
         max_chars = _EXTRACTION_NO_LIMIT
     ext = path.suffix.lower()
-    plain_exts = {".txt", ".md", ".csv", ".json", ".log", ".eml"}
+    plain_exts = {".txt", ".md", ".csv", ".json", ".log", ".eml", ".xml", ".yaml", ".yml"}
     try:
         if ext in plain_exts:
             return _extract_plain_text(path, max_chars=max_chars)
+        if ext in {".html", ".htm"}:
+            return _extract_html(path, max_chars=max_chars)
         if ext == ".pdf":
             return _extract_pdf(path, max_chars=max_chars)
         if ext == ".docx":
@@ -431,6 +585,10 @@ def extract_document_content(path: Path, max_chars: int | None = None) -> Extrac
             return _extract_xlsx(path, max_chars=max_chars)
         if ext == ".pptx":
             return _extract_pptx(path, max_chars=max_chars)
+        if ext == ".msg":
+            return _extract_msg(path, max_chars=max_chars)
+        if ext in {".zip", ".rar"}:
+            return _extract_archive_listing(path, max_chars=max_chars)
         if ext in {".doc", ".xls", ".ppt"}:
             return _extract_legacy_binary(path, max_chars=max_chars)
         return ExtractionResult(

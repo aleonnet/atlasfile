@@ -6,23 +6,40 @@ from pathlib import Path
 from typing import Any
 
 from .models import TriageItem
+from .profile_runtime import triage_paths
+from .project_profile import load_project_profile
 from .utils import utc_now_iso
 
 
 def triage_base(project_root: Path) -> Path:
-    return project_root / "_TRIAGE_REVIEW"
+    profile = _safe_profile(project_root)
+    pending = triage_paths(profile)["pending"]
+    parts = Path(pending).parts
+    if len(parts) <= 1:
+        return project_root / "_TRIAGE_REVIEW"
+    return project_root / Path(*parts[:-1])
+
+
+def _safe_profile(project_root: Path) -> dict[str, Any]:
+    try:
+        return load_project_profile(project_root)
+    except Exception:
+        return {}
 
 
 def triage_pending_dir(project_root: Path) -> Path:
-    return triage_base(project_root) / "pending"
+    profile = _safe_profile(project_root)
+    return project_root / triage_paths(profile)["pending"]
 
 
 def triage_resolved_dir(project_root: Path) -> Path:
-    return triage_base(project_root) / "resolved"
+    profile = _safe_profile(project_root)
+    return project_root / triage_paths(profile)["resolved"]
 
 
 def triage_rejected_dir(project_root: Path) -> Path:
-    return triage_base(project_root) / "rejected"
+    profile = _safe_profile(project_root)
+    return project_root / triage_paths(profile)["rejected"]
 
 
 def ensure_triage_dirs(project_root: Path) -> None:

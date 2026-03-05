@@ -2,10 +2,15 @@ import type {
   ChatMessage,
   ChatResponse,
   ChatSession,
+  IngestHistoryResponse,
   ModelOption,
+  LayoutPlanResponse,
   Project,
   ProjectArea,
+  ProjectProfileResponse,
+  ProjectProfileV2,
   ReconcileStatus,
+  ScanResult,
   SearchResponse,
   StoredChatMessage,
   SuggestResponse,
@@ -42,9 +47,95 @@ export async function fetchProjectAreas(projectRef: string): Promise<ProjectArea
   return (data.areas || []) as ProjectArea[];
 }
 
-export async function triggerScan(projectId: string): Promise<void> {
+export async function fetchProjectProfile(projectRef: string): Promise<ProjectProfileResponse> {
+  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile`);
+  if (!res.ok) throw new Error("Falha ao carregar profile do projeto");
+  return res.json();
+}
+
+export async function validateProjectProfile(projectRef: string, profile: ProjectProfileV2): Promise<{ valid: boolean; profile: ProjectProfileV2 }> {
+  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile })
+  });
+  if (!res.ok) throw new Error("Falha ao validar profile");
+  return res.json();
+}
+
+export async function updateProjectProfile(
+  projectRef: string,
+  profile: ProjectProfileV2,
+  ifMatchVersion: number,
+  updatedBy?: string
+): Promise<ProjectProfileResponse> {
+  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      profile,
+      if_match_version: ifMatchVersion,
+      updated_by: updatedBy
+    })
+  });
+  if (!res.ok) throw new Error("Falha ao salvar profile");
+  return res.json();
+}
+
+export async function fetchProfileHistory(projectRef: string): Promise<{ entries: Array<{ entry: string; version: number; updated_at: string | null; updated_by: string | null; etag: string }> }> {
+  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile/history`);
+  if (!res.ok) throw new Error("Falha ao carregar histórico de profile");
+  return res.json();
+}
+
+export async function planProjectLayout(
+  projectRef: string,
+  profile: ProjectProfileV2,
+  options?: { strategy?: "rename_with_suffix" | "skip" | "overwrite"; cleanup_empty_dirs?: boolean }
+): Promise<LayoutPlanResponse> {
+  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/layout/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      profile,
+      strategy: options?.strategy ?? "rename_with_suffix",
+      cleanup_empty_dirs: options?.cleanup_empty_dirs ?? false
+    })
+  });
+  if (!res.ok) throw new Error("Falha ao gerar plano de layout");
+  return res.json();
+}
+
+export async function applyProjectLayout(
+  projectRef: string,
+  payload: {
+    profile: ProjectProfileV2;
+    plan_id: string;
+    confirm: boolean;
+    strategy?: "rename_with_suffix" | "skip" | "overwrite";
+    cleanup_empty_dirs?: boolean;
+    if_match_version?: number;
+  }
+): Promise<{ ok: boolean; plan_id: string; profile_version: number; apply: Record<string, unknown> }> {
+  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/layout/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error("Falha ao aplicar layout");
+  return res.json();
+}
+
+export async function triggerScan(projectId: string): Promise<ScanResult> {
   const res = await fetch(`${API_URL}/api/ingest/scan/${projectId}`, { method: "POST" });
   if (!res.ok) throw new Error("Falha ao escanear inbox");
+  return res.json();
+}
+
+export async function fetchIngestHistory(projectId: string): Promise<IngestHistoryResponse> {
+  const res = await fetch(`${API_URL}/api/ingest/history/${encodeURIComponent(projectId)}`);
+  if (!res.ok) throw new Error("Falha ao carregar histórico de ingestão");
+  return res.json();
 }
 
 export async function searchDocuments(query: string, projectId?: string, page = 1, size = 20): Promise<SearchResponse> {

@@ -1,10 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  applyProjectLayout,
   fetchProjects,
+  fetchProfileHistory,
+  fetchProjectProfile,
   fetchReconcileStatus,
   fetchSuggestions,
   getFileDownloadUrl,
-  searchDocuments
+  planProjectLayout,
+  searchDocuments,
+  updateProjectProfile,
+  validateProjectProfile
 } from "./api";
 
 describe("getFileDownloadUrl", () => {
@@ -110,5 +116,111 @@ describe("fetchReconcileStatus", () => {
     } as Response);
     const result = await fetchReconcileStatus();
     expect(result).toEqual(mockStatus);
+  });
+});
+
+describe("profile/layout api", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const profilePayload = {
+    profile_version: 2 as const,
+    project_id: "p1",
+    project_label: "Projeto 1",
+    project_root: "/tmp/p1",
+    paths: {
+      inbox: "_INBOX_DROP",
+      triage: {
+        pending: "_TRIAGE_REVIEW/pending",
+        resolved: "_TRIAGE_REVIEW/resolved",
+        rejected: "_TRIAGE_REVIEW/rejected"
+      }
+    },
+    layout: {
+      mode: "para_jd",
+      roots: { projects: "01_PROJECTS", areas: "02_AREAS", resources: "03_RESOURCES", archive: "04_ARCHIVE" },
+      areas_root: "02_AREAS",
+      area_folders: [{ area_key: "juridica", folder: "02_juridica" }]
+    },
+    classification: {
+      work_areas: [{ key: "juridica", aliases: ["juridico"] }],
+      routing_rules: [],
+      confidence_thresholds: { auto_route_min: 0.85, triage_min: 0.5 },
+      llm_policy: {}
+    },
+    indexing: { topics_path: "config/topics_v1.yaml", extraction_max_chars: 20000, extraction_mode: "excerpt" as const },
+    version: 1
+  };
+
+  it("fetchProjectProfile hits profile endpoint", async () => {
+    let capturedUrl = "";
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      capturedUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ profile: profilePayload, etag: "e1", version: 1 })
+      } as Response);
+    });
+    const result = await fetchProjectProfile("p1");
+    expect(capturedUrl).toContain("/api/projects/p1/profile");
+    expect(result.version).toBe(1);
+  });
+
+  it("validate/update/profile-history send expected payloads", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/validate")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { profile?: unknown };
+        expect(body.profile).toBeTruthy();
+      }
+      if (url.endsWith("/profile") && init?.method === "PUT") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { if_match_version?: number };
+        expect(body.if_match_version).toBe(3);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ entries: [] }) } as Response);
+    });
+
+    await validateProjectProfile("p1", profilePayload);
+    await updateProjectProfile("p1", profilePayload, 3, "frontend:test");
+    await fetchProfileHistory("p1");
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("plan/apply layout call layout endpoints", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes("/layout/plan")) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              plan_id: "plan1",
+              summary: { moves: 1, conflicts: 0, mkdirs: 0, ops: 1 },
+              plan: {
+                project_root: "/tmp/p1",
+                from_areas_root: "/tmp/p1/02_AREAS",
+                to_areas_root: "/tmp/p1/02_AREAS",
+                ops: [],
+                conflicts: 0,
+                moves: 1,
+                mkdirs: 0,
+                strategy: "rename_with_suffix",
+                cleanup_empty_dirs: false
+              }
+            })
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, plan_id: "plan1", profile_version: 2, apply: {} })
+      } as Response);
+    });
+
+    const plan = await planProjectLayout("p1", profilePayload);
+    expect(plan.plan_id).toBe("plan1");
+    const apply = await applyProjectLayout("p1", { profile: profilePayload, plan_id: "plan1", confirm: true, if_match_version: 2 });
+    expect(apply.ok).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,4 +1,4 @@
-import { File, FileSpreadsheet, FileText, LayoutDashboard, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Settings, Sun } from "lucide-react";
+import { File, FileSpreadsheet, FileText, LayoutDashboard, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Sun } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createChatSession,
@@ -18,11 +18,15 @@ import {
   searchDocuments,
   sendChatMessage,
   triageDecision,
-  triggerScan,
   updateChatSession
 } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import type { ChatAttachment } from "./components/ChatPanel";
+import { IngestTriageCard } from "./features/ingest/IngestTriageCard";
+import { ProfileLayoutWorkspace } from "./features/profile-layout/ProfileLayoutWorkspace";
+import { buildEvidenceGroups, formatLocationLabel, topLocations } from "./features/search/searchFormatters";
+import { AssistantSettingsModal } from "./features/settings/AssistantSettingsModal";
+import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
 import type {
   ChatContentPart,
   ChatMessage as ChatMessageType,
@@ -31,7 +35,6 @@ import type {
   Project,
   ProjectArea,
   ReconcileStatus,
-  SearchEvidence,
   SearchHit,
   StoredChatMessage,
   TriageItem
@@ -85,7 +88,6 @@ function App() {
   const [triageItems, setTriageItems] = useState<TriageItem[]>([]);
   const [reconcileStatus, setReconcileStatus] = useState<ReconcileStatus | null>(null);
   const [status, setStatus] = useState("Pronto");
-  const [loading, setLoading] = useState(false);
   const [initializingProjectId, setInitializingProjectId] = useState<string | null>(null);
   const [reconcilingNow, setReconcilingNow] = useState(false);
   const [correctModalItem, setCorrectModalItem] = useState<TriageItem | null>(null);
@@ -207,7 +209,7 @@ function App() {
   }, [anthropicApiKey]);
 
   useEffect(() => {
-    if (view === "assistente" && models.length === 0) {
+    if (models.length === 0) {
       fetchModels()
         .then((list) => {
           setModels(list);
@@ -220,7 +222,7 @@ function App() {
         })
         .catch(() => setModels([]));
     }
-  }, [view, models.length]);
+  }, [models.length]);
 
   useEffect(() => {
     let mounted = true;
@@ -421,105 +423,6 @@ function App() {
     return <File size={16} />;
   }
 
-  function formatLocationLabel(loc: string): string {
-    const normalized = (loc || "").trim().toLowerCase();
-    const docxMatch = normalized.match(/^docx_page(_est)?:([0-9]+):paragraph:([0-9]+)(?::part:([0-9]+))?$/);
-    if (docxMatch) {
-      const estimated = docxMatch[1] === "_est";
-      const page = docxMatch[2];
-      const paragraph = docxMatch[3];
-      const part = docxMatch[4] ? ` (parte ${docxMatch[4]})` : "";
-      if (estimated) return `Pagina ~${page} / ${paragraph}o paragrafo${part} (estimada)`;
-      return `Pagina ${page} / ${paragraph}o paragrafo${part}`;
-    }
-    if (normalized.startsWith("sheet ")) {
-      const m = normalized.match(/^sheet\s+(.+?)\s+row\s+(\d+)\s+col\s+([a-z]+)(?:\s+part\s+(\d+))?$/i);
-      if (m) {
-        const sheetName = m[1].charAt(0).toUpperCase() + m[1].slice(1);
-        const part = m[4] ? ` (parte ${m[4]})` : "";
-        return `${sheetName}, linha ${m[2]}, Coluna ${m[3].toUpperCase()}${part}`;
-      }
-      return normalized.replace(/^sheet\s+/i, "Planilha ");
-    }
-    if (normalized.startsWith("slide ")) return normalized.replace(/^slide\s+/i, "Slide ");
-    if (normalized.startsWith("page ")) return normalized.replace(/^page\s+/i, "Pagina ");
-    if (normalized.startsWith("section ")) return normalized.replace(/^section\s+/i, "Secao ");
-    if (normalized === "content_chunk") return "Trecho de conteudo";
-    if (normalized === "content") return "Conteudo";
-    if (normalized === "title") return "Titulo";
-    if (normalized === "original_filename") return "Nome original";
-    if (normalized === "canonical_filename") return "Nome canonico";
-    return loc;
-  }
-
-  function pageKeyFromLocation(loc: string): string | null {
-    const m = (loc || "").trim().toLowerCase().match(/^page:(\d+)(?::\d+)?$/);
-    if (!m) return null;
-    return `page:${m[1]}`;
-  }
-
-  function countSnippetMatches(snippet: string): number {
-    const matches = (snippet || "").match(/<em>/gi);
-    return matches?.length ?? 0;
-  }
-
-  function evidenceMatchCount(ev: SearchEvidence): number {
-    return Math.max(1, Number(ev.match_count) || countSnippetMatches(ev.snippet));
-  }
-
-  function buildPageOccurrenceCounts(evidences: SearchEvidence[]): Map<string, number> {
-    const counts = new Map<string, number>();
-    for (const ev of evidences || []) {
-      const key = pageKeyFromLocation(ev.location);
-      if (!key) continue;
-      const inc = evidenceMatchCount(ev);
-      counts.set(key, (counts.get(key) ?? 0) + inc);
-    }
-    return counts;
-  }
-
-  function formatEvidenceLocation(loc: string, pageCounts: Map<string, number>): string {
-    const key = pageKeyFromLocation(loc);
-    if (key) {
-      const total = pageCounts.get(key) ?? 0;
-      if (total > 0) return `${key} (${total} ocorrência${total === 1 ? "" : "s"})`;
-      return key;
-    }
-    return formatLocationLabel(loc);
-  }
-
-  type EvidenceGroup = {
-    key: string;
-    label: string;
-    count: number;
-    snippets: string[];
-  };
-
-  function buildEvidenceGroups(evidences: SearchEvidence[]): EvidenceGroup[] {
-    const pageCounts = buildPageOccurrenceCounts(evidences);
-    const groups = new Map<string, EvidenceGroup>();
-    for (const ev of evidences || []) {
-      const pageKey = pageKeyFromLocation(ev.location);
-      const key = pageKey ?? ev.location;
-      const label = formatEvidenceLocation(ev.location, pageCounts);
-      const groupCount = pageKey ? pageCounts.get(pageKey) ?? evidenceMatchCount(ev) : evidenceMatchCount(ev);
-      const existing = groups.get(key);
-      if (!existing) {
-        groups.set(key, { key, label, count: groupCount, snippets: [ev.snippet] });
-        continue;
-      }
-      if (!existing.snippets.includes(ev.snippet) && existing.snippets.length < 2) {
-        existing.snippets.push(ev.snippet);
-      }
-    }
-    return Array.from(groups.values());
-  }
-
-  function topLocations(locations: string[], max = 3): string[] {
-    if (!locations?.length) return [];
-    return locations.slice(0, max).map(formatLocationLabel);
-  }
-
   function formatTimestamp(value: string | null | undefined): string {
     if (!value) return "-";
     const parsed = new Date(value);
@@ -616,27 +519,6 @@ function App() {
         setStatus(msg);
         setReconcilingNow(false);
       }
-    }
-  }
-
-  async function handleScan() {
-    if (!selectedProject) return;
-    setLoading(true);
-    setStatus("Processando inbox...");
-    try {
-      if (selectedProject === ALL_PROJECTS) {
-        for (const project of projects) {
-          await triggerScan(project.project_id);
-        }
-      } else {
-        await triggerScan(selectedProject);
-      }
-      await loadTriage();
-      setStatus("Inbox processado");
-    } catch {
-      setStatus("Falha ao processar inbox");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -1124,39 +1006,26 @@ function App() {
         )}
       </section>
 
-      <section className="panel card">
-        <div className="panel-head card-header">
-          <h2>Ingestao e triagem</h2>
-          <button className="btn primary" disabled={loading || !selectedProject || initializingProjectId === selectedProject} onClick={handleScan}>
-            <RefreshCw size={14} className={loading ? "spin" : ""} />
-            {loading ? "Processando..." : "Processar INBOX"}
-          </button>
-        </div>
-        <div className="card-intro">
-          <p>Projeto selecionado: {selectedProjectLabel || "-"}</p>
-          <p>Itens pendentes: {triageItems.length}</p>
-        </div>
-        <ul className="list">
-          {triageItems.map((item) => (
-            <li key={item.doc_id} className="list-item">
-              <strong className="list-title">{item.filename}</strong>
-              <div className="sub list-meta">
-                projeto: {projectLabelById.get(item.project_id) || item.project_id} | sugestao:{" "}
-                {item.suggested_area || "sem sugestao"} | confianca: {item.confidence_score.toFixed(2)}
-              </div>
-              <div className="row">
-                <button className="btn" disabled={!item.suggested_area} title={!item.suggested_area ? "Sem sugestao de area" : ""} onClick={() => handleDecision(item, "approve")}>
-                  Aprovar
-                </button>
-                <button className="btn" onClick={() => handleDecision(item, "correct")}>Corrigir</button>
-                <button className="btn danger" onClick={() => handleDecision(item, "reject")}>
-                  Rejeitar
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <IngestTriageCard
+        selectedProject={selectedProject}
+        selectedProjectLabel={selectedProjectLabel}
+        projects={projects}
+        projectLabelById={projectLabelById}
+        triageItems={triageItems}
+        initializingProjectId={initializingProjectId}
+        onDecision={handleDecision}
+        onLoadTriage={loadTriage}
+        onStatus={setStatus}
+        openaiApiKey={openaiApiKey}
+        anthropicApiKey={anthropicApiKey}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+
+      <ProfileLayoutWorkspace
+        projectRef={selectedProject}
+        disabled={selectedProject === ALL_PROJECTS}
+        onStatus={setStatus}
+      />
 
       {fullQuery && (
         <section className="panel card">
@@ -1361,115 +1230,29 @@ function App() {
         </div>
       )}
 
-      {settingsOpen && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Configuração do Assistente" onClick={() => setSettingsOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Configuração do Assistente</h3>
-            <p className="sub">Modelo de triagem (classificação no ingest) e modelo de chat podem ser diferentes. Chaves são enviadas só na requisição e não ficam no servidor. Hoje: API Key; OAuth/assinatura planejado (ref. OpenClaw auth-profiles).</p>
-            <div className="field">
-              <label htmlFor="settings-model-triage">Modelo triagem</label>
-              <select
-                id="settings-model-triage"
-                value={selectedModelTriage}
-                onChange={(e: InputLikeEvent) => setSelectedModelTriage(e.target.value)}
-              >
-                {models.map((m) => (
-                  <option key={`triage-${m.label}`} value={`${m.provider}/${m.model}`}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="settings-model-chat">Modelo chat</label>
-              <select
-                id="settings-model-chat"
-                value={selectedModel}
-                onChange={(e: InputLikeEvent) => setSelectedModel(e.target.value)}
-              >
-                {models.map((m) => (
-                  <option key={`chat-${m.label}`} value={`${m.provider}/${m.model}`}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {(() => {
-              const chatProvider = selectedModel ? selectedModel.split("/")[0]?.toLowerCase() : null;
-              const triageProvider = selectedModelTriage ? selectedModelTriage.split("/")[0]?.toLowerCase() : null;
-              const needOpenAI = chatProvider === "openai" || triageProvider === "openai";
-              const needAnthropic = chatProvider === "anthropic" || triageProvider === "anthropic";
-              return (
-                <>
-                  {needOpenAI && (
-                    <div className="field">
-                      <label htmlFor="settings-openai-key">OpenAI API Key</label>
-                      <input
-                        id="settings-openai-key"
-                        type="password"
-                        value={openaiApiKey}
-                        onChange={(e: InputLikeEvent) => setOpenaiApiKey(e.target.value)}
-                        placeholder="sk-..."
-                        autoComplete="off"
-                      />
-                    </div>
-                  )}
-                  {needAnthropic && (
-                    <div className="field">
-                      <label htmlFor="settings-anthropic-key">Anthropic API Key</label>
-                      <input
-                        id="settings-anthropic-key"
-                        type="password"
-                        value={anthropicApiKey}
-                        onChange={(e: InputLikeEvent) => setAnthropicApiKey(e.target.value)}
-                        placeholder="sk-ant-..."
-                        autoComplete="off"
-                      />
-                    </div>
-                  )}
-                </>
-              );
-            })()}
-            <div className="modal-actions">
-              <button type="button" className="btn primary" onClick={() => setSettingsOpen(false)}>
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AssistantSettingsModal
+        open={settingsOpen}
+        selectedModel={selectedModel}
+        selectedModelTriage={selectedModelTriage}
+        models={models}
+        openaiApiKey={openaiApiKey}
+        anthropicApiKey={anthropicApiKey}
+        onChangeModel={setSelectedModel}
+        onChangeModelTriage={setSelectedModelTriage}
+        onChangeOpenAiKey={setOpenaiApiKey}
+        onChangeAnthropicKey={setAnthropicApiKey}
+        onClose={() => setSettingsOpen(false)}
+      />
 
-      {correctModalItem && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Aprovar com correcao">
-          <div className="modal">
-            <h3>Aprovar com correcao</h3>
-            <p>
-              Arquivo: <strong>{correctModalItem.filename}</strong>
-            </p>
-            <label htmlFor="area-select">Area destino</label>
-            <select
-              id="area-select"
-              value={correctAreaValue}
-              onChange={(e: InputLikeEvent) => setCorrectAreaValue(e.target.value)}
-              disabled={correctSubmitting}
-            >
-              {correctAreaOptions.map((area) => (
-                <option key={area.key} value={area.key}>
-                  {area.label} ({area.key})
-                </option>
-              ))}
-            </select>
-            <div className="modal-actions">
-              <button className="btn" disabled={correctSubmitting} onClick={() => setCorrectModalItem(null)}>
-                Cancelar
-              </button>
-              <button className="btn primary" disabled={correctSubmitting || !correctAreaValue} onClick={submitCorrectDecision}>
-                {correctSubmitting ? "Aprovando..." : "Aprovar e mover"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CorrectDecisionModal
+        item={correctModalItem}
+        submitting={correctSubmitting}
+        areaValue={correctAreaValue}
+        areaOptions={correctAreaOptions}
+        onChangeArea={setCorrectAreaValue}
+        onCancel={() => setCorrectModalItem(null)}
+        onSubmit={submitCorrectDecision}
+      />
     </div>
   );
 }

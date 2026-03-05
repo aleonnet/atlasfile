@@ -15,6 +15,8 @@ from opensearchpy.exceptions import TransportError
 from .config import settings
 from .indexer import index_document, read_text_excerpt
 from .opensearch_client import ensure_index
+from .profile_runtime import area_folder_map, areas_root_rel, triage_paths
+from .project_profile import load_project_profile
 from .utils import sha256_file
 
 
@@ -47,22 +49,26 @@ def _parse_index_rows(index_path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def _infer_area_from_work_path(work_file: Path, project_root: Path) -> str:
-    rel = work_file.relative_to(project_root / "_WORK")
+def _infer_area_from_layout_path(work_file: Path, project_root: Path, profile: dict[str, Any], scan_root: Path | None = None) -> str:
+    base = scan_root if scan_root is not None else (project_root / areas_root_rel(profile))
+    try:
+        rel = work_file.relative_to(base)
+    except ValueError:
+        return "unclassified"
     first = rel.parts[0] if rel.parts else ""
+    folder_to_area = {folder: area for area, folder in area_folder_map(profile).items()}
+    if first in folder_to_area:
+        return folder_to_area[first]
     if "_" in first:
         return first.split("_", 1)[1]
     return "unclassified"
 
 
-def _triage_rows(project_root: Path, project_id: str) -> list[dict[str, str]]:
+def _triage_rows(project_root: Path, project_id: str, profile: dict[str, Any]) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
-    triage_root = project_root / "_TRIAGE_REVIEW"
-    if not triage_root.exists():
-        return out
-
-    for state in ("pending", "rejected"):
-        state_dir = triage_root / state
+    triage = triage_paths(profile)
+    for state, rel in (("pending", triage["pending"]), ("rejected", triage["rejected"])):
+        state_dir = project_root / rel
         if not state_dir.exists():
             continue
         for meta in sorted(state_dir.glob("*.json"), key=lambda p: p.name):
@@ -109,20 +115,32 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
     }
 
     work_rows: list[dict[str, str]] = []
-    work_root = project_root / "_WORK"
-    if work_root.exists():
-        for f in sorted(work_root.rglob("*"), key=lambda p: str(p).lower()):
+    work_root = project_root / areas_root_rel(profile)
+    # Scan primary areas_root + legacy _WORK/ fallback to avoid orphaning docs
+    # during profile migrations that change areas_root without moving files.
+    scan_roots = [work_root]
+    legacy_work = project_root / "_WORK"
+    if legacy_work.exists() and legacy_work.resolve() != work_root.resolve():
+        scan_roots.append(legacy_work)
+    seen_paths: set[str] = set()
+    for scan_dir in scan_roots:
+        if not scan_dir.exists():
+            continue
+        for f in sorted(scan_dir.rglob("*"), key=lambda p: str(p).lower()):
             if not f.is_file():
                 continue
             if _is_ignored_file(f.relative_to(project_root)):
                 continue
             p = str(f)
+            if p in seen_paths:
+                continue
+            seen_paths.add(p)
             prev = existing_work_rows.get(p)
             work_rows.append(
                 {
                     "doc_id": (prev or {}).get("doc_id", str(uuid.uuid4())),
                     "project_id": project_id,
-                    "area": (prev or {}).get("area", _infer_area_from_work_path(f, project_root)),
+                    "area": (prev or {}).get("area", _infer_area_from_layout_path(f, project_root, profile, scan_root=scan_dir)),
                     "original_filename": (prev or {}).get("original_filename", f.name),
                     "canonical_filename": f.name,
                     "decision": (prev or {}).get("decision", "auto"),
@@ -131,7 +149,7 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
                 }
             )
 
-    triage_rows = _triage_rows(project_root, project_id)
+    triage_rows = _triage_rows(project_root, project_id, profile)
 
     rows: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
@@ -209,6 +227,19 @@ def _build_doc_payload(row: dict[str, str], p: Path, current_sha: str) -> dict[s
     }
 
 
+def _project_scope_query(project_id: str, project_root: Path) -> dict[str, Any]:
+    root_prefix = f"{str(project_root).rstrip('/')}/"
+    return {
+        "bool": {
+            "should": [
+                {"term": {"project_id": project_id}},
+                {"prefix": {"path": root_prefix}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
 def rebuild_search_index(
     client: OpenSearch,
     project_roots: list[Path],
@@ -222,6 +253,10 @@ def rebuild_search_index(
         ensure_index(client)
         indexed = 0
         for project_root in project_roots:
+            try:
+                profile = load_project_profile(project_root)
+            except Exception:
+                profile = {}
             for row in _parse_index_rows(project_root / "_INDEX.md"):
                 if row["decision"] not in {"auto", "approved", "corrected"}:
                     continue
@@ -232,7 +267,7 @@ def rebuild_search_index(
                     continue
                 current_sha = sha256_file(p)
                 payload = _build_doc_payload(row, p, current_sha)
-                index_document(client, payload, refresh=False)
+                index_document(client, payload, refresh=False, profile=profile)
                 indexed += 1
                 if progress is not None:
                     progress["progress_current"] = progress.get("progress_current", 0) + 1
@@ -262,10 +297,17 @@ def sync_search_index_for_project(
     project_root: Path,
     project_id: str,
     progress: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
 ) -> dict[str, int]:
     """Synchronize one project's search docs without dropping global index."""
     ensure_index(client)
     use_incremental = getattr(settings, "search_index_incremental_by_sha256", True)
+    if profile is None:
+        try:
+            profile = load_project_profile(project_root)
+        except Exception:
+            profile = {}
+
     rows = [
         r
         for r in _parse_index_rows(project_root / "_INDEX.md")
@@ -277,7 +319,7 @@ def sync_search_index_for_project(
     if not use_incremental:
         delete_result = client.delete_by_query(
             index=settings.opensearch_index,
-            body={"query": {"term": {"project_id": project_id}}},
+            body={"query": _project_scope_query(project_id, project_root)},
             conflicts="proceed",
             refresh=True,
         )
@@ -287,7 +329,7 @@ def sync_search_index_for_project(
             p = Path(row["path"])
             current_sha = sha256_file(p)
             payload = _build_doc_payload(row, p, current_sha)
-            index_document(client, payload, refresh=False)
+            index_document(client, payload, refresh=False, profile=profile)
             indexed_docs += 1
             if progress is not None:
                 progress["progress_current"] = progress.get("progress_current", 0) + 1
@@ -300,7 +342,7 @@ def sync_search_index_for_project(
     res = client.search(
         index=settings.opensearch_index,
         body={
-            "query": {"term": {"project_id": project_id}},
+            "query": _project_scope_query(project_id, project_root),
             "size": 10000,
             "_source": False,
         },
@@ -348,7 +390,7 @@ def sync_search_index_for_project(
             payload = _build_doc_payload(row, p, current_sha)
             for attempt in range(3):
                 try:
-                    index_document(client, payload, refresh=False)
+                    index_document(client, payload, refresh=False, profile=profile)
                     indexed_docs += 1
                     if progress is not None:
                         progress["progress_file_pct"] = 100

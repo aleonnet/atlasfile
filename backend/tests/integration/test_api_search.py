@@ -1,6 +1,7 @@
 """Integration tests: /api/search and /api/search/suggest with mocked OpenSearch."""
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -67,6 +68,21 @@ def test_search_requires_min_length(client: TestClient) -> None:
     assert r.status_code == 422
 
 
+def test_search_project_filter_uses_path_scope_for_legacy_project_ids(client: TestClient) -> None:
+    with patch("app.main.os_client") as mock_client:
+        mock_client.search.return_value = _make_search_result(total=1)
+        with patch("app.main._resolve_project_root", return_value=Path("/projects/Kaidô")):
+            with patch("app.main.load_project_profile", return_value={"project_id": "Kaidô"}):
+                r = client.get("/api/search", params={"q": "ab", "project_id": "Kaidô"})
+
+    assert r.status_code == 200
+    body = mock_client.search.call_args.kwargs["body"]
+    filters = body["query"]["bool"]["filter"]
+    project_scope = filters[0]["bool"]["should"]
+    assert {"term": {"project_id": "Kaidô"}} in project_scope
+    assert {"prefix": {"path": "/projects/Kaidô/"}} in project_scope
+
+
 def test_suggest_returns_200_with_mock(client: TestClient) -> None:
     with patch("app.main.os_client") as mock_client:
         mock_client.search.return_value = {
@@ -96,3 +112,34 @@ def test_suggest_returns_200_with_mock(client: TestClient) -> None:
 def test_suggest_requires_min_length(client: TestClient) -> None:
     r = client.get("/api/search/suggest", params={"q": "ab"})
     assert r.status_code == 422
+
+
+def test_suggest_project_filter_uses_path_scope_for_legacy_project_ids(client: TestClient) -> None:
+    with patch("app.main.os_client") as mock_client:
+        mock_client.search.return_value = {
+            "hits": {
+                "total": {"value": 1},
+                "hits": [
+                    {
+                        "_source": {
+                            "doc_id": "d1",
+                            "project_id": "legacy_kaido",
+                            "original_filename": "doc.pdf",
+                            "canonical_filename": "doc.pdf",
+                            "path": "/projects/Kaidô/_TRIAGE_REVIEW/pending/doc.pdf",
+                        },
+                        "highlight": {"title": ["<em>doc</em>"]},
+                    }
+                ],
+            }
+        }
+        with patch("app.main._resolve_project_root", return_value=Path("/projects/Kaidô")):
+            with patch("app.main.load_project_profile", return_value={"project_id": "Kaidô"}):
+                r = client.get("/api/search/suggest", params={"q": "doc", "project_id": "Kaidô"})
+
+    assert r.status_code == 200
+    body = mock_client.search.call_args.kwargs["body"]
+    filters = body["query"]["bool"]["filter"]
+    project_scope = filters[0]["bool"]["should"]
+    assert {"term": {"project_id": "Kaidô"}} in project_scope
+    assert {"prefix": {"path": "/projects/Kaidô/"}} in project_scope
