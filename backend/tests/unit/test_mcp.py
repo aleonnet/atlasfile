@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.mcp.server import get_document_chunks, get_document, run_server, search_documents
+from app.mcp.server import get_document_chunks, get_document, list_documents, run_server, search_documents
 
 
 def test_mcp_server_imports() -> None:
@@ -56,3 +56,36 @@ def test_get_document_chunks_calls_api_and_returns_json() -> None:
     call_args = mock_get.call_args
     assert "/chunks" in call_args[0][0]
     assert call_args[1]["params"]["locations"] == ["page:1"]
+
+
+def test_list_documents_tool_calls_api() -> None:
+    """list_documents calls GET /api/documents with correct params."""
+    with patch("app.mcp.server.get") as mock_get:
+        mock_get.return_value = {"total": 1, "page": 1, "page_size": 10, "items": []}
+        result = list_documents(project_id="proj_a", doc_kind="pdf", page=2, size=10)
+    data = json.loads(result)
+    assert data["total"] == 1
+    mock_get.assert_called_once()
+    call_args = mock_get.call_args
+    assert call_args[0][0] == "/api/documents"
+    params = call_args[1].get("params") or call_args[0][1] if len(call_args[0]) > 1 else call_args[1]["params"]
+    assert params["project_id"] == "proj_a"
+    assert params["doc_kind"] == "pdf"
+    assert params["page"] == 2
+    assert params["size"] == 10
+
+
+def test_search_documents_short_query_returns_error() -> None:
+    """search_documents with query < 2 chars returns JSON error without calling API."""
+    result = search_documents(query="*")
+    data = json.loads(result)
+    assert "error" in data
+    assert "2 characters" in data["error"]
+
+
+def test_search_documents_empty_query_returns_error() -> None:
+    """search_documents with empty/whitespace query returns JSON error."""
+    result = search_documents(query="  ")
+    data = json.loads(result)
+    assert "error" in data
+    assert "list_documents" in data["error"]

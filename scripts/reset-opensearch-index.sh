@@ -1,18 +1,39 @@
 #!/usr/bin/env bash
-# Remove o índice atlasfile_documents para que o backend o recrie com o mapping
-# atualizado (document_type, correspondent, review_status, etc.) no próximo startup.
-# Uso: após rodar este script, suba o stack e execute Reconcile na UI para repopular.
+# Remove índices OpenSearch para que o backend os recrie com mapping atualizado.
+# Uso:
+#   ./reset-opensearch-index.sh                  → deleta índice de documentos
+#   ./reset-opensearch-index.sh chat              → deleta índice de sessões de chat
+#   ./reset-opensearch-index.sh all               → deleta ambos
 set -e
 OPENSEARCH_HOST="${OPENSEARCH_HOST:-https://localhost:9200}"
 OPENSEARCH_USER="${OPENSEARCH_USER:-admin}"
 OPENSEARCH_PASSWORD="${OPENSEARCH_PASSWORD:-Kaid0Search!2026X}"
-INDEX="${OPENSEARCH_INDEX:-atlasfile_documents}"
-echo "Deletando índice ${INDEX} em ${OPENSEARCH_HOST}..."
-code=$(curl -s -k -o /dev/null -w "%{http_code}" -u "${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}" -X DELETE "${OPENSEARCH_HOST}/${INDEX}")
-if [[ "$code" == "200" || "$code" == "404" ]]; then
-  echo "OK (${code}). Índice removido ou já inexistente."
-else
-  echo "Erro HTTP ${code}. Verifique host e credenciais."
-  exit 1
-fi
+DOCS_INDEX="${OPENSEARCH_INDEX:-atlasfile_documents}"
+CHAT_INDEX="${OPENSEARCH_CHAT_INDEX:-atlasfile_chat_sessions}"
+
+delete_index() {
+  local idx="$1"
+  echo "Deletando índice ${idx} em ${OPENSEARCH_HOST}..."
+  code=$(curl -s -k -o /dev/null -w "%{http_code}" -u "${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}" -X DELETE "${OPENSEARCH_HOST}/${idx}")
+  if [[ "$code" == "200" || "$code" == "404" ]]; then
+    echo "  OK (${code}). Índice ${idx} removido ou já inexistente."
+  else
+    echo "  Erro HTTP ${code} ao deletar ${idx}. Verifique host e credenciais."
+    exit 1
+  fi
+}
+
+MODE="${1:-docs}"
+case "$MODE" in
+  chat)
+    delete_index "$CHAT_INDEX"
+    ;;
+  all)
+    delete_index "$DOCS_INDEX"
+    delete_index "$CHAT_INDEX"
+    ;;
+  *)
+    delete_index "$DOCS_INDEX"
+    ;;
+esac
 echo "Suba o stack (docker compose up -d) e rode Reconcile na UI para repopular."

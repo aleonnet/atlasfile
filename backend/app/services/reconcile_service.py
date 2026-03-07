@@ -9,7 +9,7 @@ from opensearchpy import OpenSearch
 
 from ..bootstrap import ensure_project_structure
 from ..project_profile import load_project_profile
-from ..reconcile import rebuild_search_index, reconcile_project_index, sync_search_index_for_project
+from ..reconcile import cleanup_orphan_projects, rebuild_search_index, reconcile_project_index, sync_search_index_for_project
 from ..utils import utc_now_iso
 
 
@@ -38,6 +38,7 @@ def run_reconcile(
     status: dict[str, Any],
     lock: Lock,
     os_client: OpenSearch,
+    cleanup_orphans: bool = True,
 ) -> dict[str, Any]:
     started_at = utc_now_iso()
     started_ts = time.time()
@@ -99,6 +100,12 @@ def run_reconcile(
                     progress=status,
                 )
 
+        orphan_report = {"orphan_projects_found": 0, "orphan_docs_deleted": 0}
+        if reindex_search and valid_projects and cleanup_orphans:
+            valid_ids = {pid for _, pid in valid_projects}
+            valid_roots = [r for r, _ in valid_projects]
+            orphan_report = cleanup_orphan_projects(os_client, valid_ids, valid_roots)
+
         finished_at = utc_now_iso()
         duration_seconds = round(time.time() - started_ts, 3)
         summary = {
@@ -111,11 +118,14 @@ def run_reconcile(
             "indexed_docs": int(search_report.get("indexed_docs", 0)),
             "skipped_docs": int(search_report.get("skipped_docs", 0)),
             "failed_docs": int(search_report.get("failed_docs", 0)),
+            "orphan_projects_found": orphan_report.get("orphan_projects_found", 0),
+            "orphan_docs_deleted": orphan_report.get("orphan_docs_deleted", 0),
         }
         report = {
             "projects": project_reports,
             "skipped_projects": skipped,
             "search": search_report,
+            "orphan_cleanup": orphan_report,
             "summary": summary,
             "started_at": started_at,
             "finished_at": finished_at,

@@ -220,8 +220,14 @@ make docker-update
 ### Opções adicionais
 
 ```bash
-# Resetar índice OpenSearch (requer reconciliação depois)
+# Resetar índice de documentos (requer reconciliação depois)
 make docker-update RESET_INDEX=1
+
+# Resetar índice de sessões de chat
+make docker-update RESET_CHAT=1
+
+# Resetar ambos os índices
+make docker-update RESET_INDEX=1 RESET_CHAT=1
 
 # Rebuild completo (todas as imagens, do zero)
 docker compose down
@@ -240,9 +246,12 @@ docker compose up -d --build web
 |--------|-----------|
 | `make test` | Roda todos os testes (backend + frontend) |
 | `make docker-update` | Testa + rebuild + sobe stack + smoke test |
+| `make docker-update RESET_INDEX=1` | Idem + reseta índice de documentos |
+| `make docker-update RESET_CHAT=1` | Idem + reseta índice de sessões de chat |
 | `make docker-up` | Sobe stack sem rodar testes |
 | `make docker-build` | Testa + build das imagens (sem subir) |
-| `make reset-index` | Remove índice OpenSearch para recriar com mapping atualizado |
+| `make reset-index` | Remove índice de documentos |
+| `make reset-chat` | Remove índice de sessões de chat |
 
 ---
 
@@ -279,12 +288,13 @@ docker compose up -d --build
 docker compose down -v
 ```
 
-### Reset do índice OpenSearch
+### Reset de índices OpenSearch
 
-Para recriar o índice com mapping atualizado (ex.: após upgrade):
+Para recriar índices com mapping atualizado (ex.: após upgrade):
 
-1. Com o stack no ar: `make reset-index`
-2. Na UI, execute **Reconciliar INDEX** para repopular a partir dos `_INDEX.md` dos projetos.
+1. Documentos: `make reset-index` — depois execute **Reconciliar INDEX** na UI para repopular
+2. Sessões de chat: `make reset-chat` — limpa histórico de conversas do assistente
+3. Ambos: `make docker-update RESET_INDEX=1 RESET_CHAT=1`
 
 ---
 

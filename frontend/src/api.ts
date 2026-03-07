@@ -1,4 +1,6 @@
 import type {
+  ChannelConfig,
+  ChannelStatusResponse,
   ChatMessage,
   ChatResponse,
   ChatSession,
@@ -30,6 +32,22 @@ export const API_URL = API_BASE;
 
 export function getFileDownloadUrl(filePath: string): string {
   return `${API_URL}/api/files/download?path=${encodeURIComponent(filePath)}`;
+}
+
+/* ── Setup / Onboarding ── */
+
+export interface SetupStatus {
+  app_env: string;
+  projects_root: string;
+  total_project_dirs: number;
+  initialized_projects: number;
+  onboarding_suggested: boolean;
+}
+
+export async function fetchSetupStatus(): Promise<SetupStatus> {
+  const res = await fetch(`${API_URL}/api/setup/status`);
+  if (!res.ok) throw new Error("Falha ao verificar status de setup");
+  return res.json();
 }
 
 export async function fetchProjects(): Promise<Project[]> {
@@ -362,4 +380,28 @@ export async function updateChatSession(
 export async function deleteChatSession(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Falha ao excluir sessão");
+}
+
+/* ── Channels ── */
+
+export async function fetchChannelConfig(): Promise<ChannelConfig> {
+  const res = await fetch(`${API_URL}/api/channels/config`);
+  if (!res.ok) throw new Error("Falha ao carregar config de canais");
+  return res.json();
+}
+
+export async function updateChannelConfig(config: ChannelConfig): Promise<ChannelConfig> {
+  const res = await fetch(`${API_URL}/api/channels/config`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error("Falha ao salvar config de canais");
+  return res.json();
+}
+
+export async function fetchChannelStatus(): Promise<ChannelStatusResponse> {
+  const res = await fetch(`${API_URL}/api/channels/status`);
+  if (!res.ok) throw new Error("Falha ao carregar status dos canais");
+  return res.json();
 }

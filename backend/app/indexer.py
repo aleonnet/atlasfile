@@ -43,10 +43,6 @@ def _indexing_pressure_limit_bytes(client: OpenSearch) -> int | None:
 def _rebuild_chunk_fields(enriched: dict[str, Any], chunks: list[dict[str, Any]]) -> None:
     enriched["content_chunks"] = chunks
     enriched["chunk_locations"] = [str(c.get("location", "")) for c in chunks if c.get("location")]
-    enriched["content_chunks_text"] = ""
-    enriched["content_chunks_normalized"] = ""
-    enriched["content"] = ""
-    enriched["content_normalized"] = ""
 
 
 def _trim_payload_to_limit(enriched: dict[str, Any], limit_bytes: int) -> dict[str, Any]:
@@ -57,26 +53,7 @@ def _trim_payload_to_limit(enriched: dict[str, Any], limit_bytes: int) -> dict[s
     all_chunks = list(trimmed.get("content_chunks") or [])
     total_chunks = len(all_chunks)
 
-    # Step 1: drop duplicate aggregate text fields first, keep all chunks.
-    no_aggregate = dict(trimmed)
-    no_aggregate["content"] = ""
-    no_aggregate["content_normalized"] = ""
-    no_aggregate["content_chunks_text"] = ""
-    no_aggregate["content_chunks_normalized"] = ""
-    if _json_size_bytes(no_aggregate) <= limit_bytes:
-        metadata = dict(no_aggregate.get("extraction_metadata", {}) or {})
-        metadata["payload_reduction_mode"] = "drop_aggregate_fields"
-        metadata["content_truncated_for_indexing_pressure"] = False
-        metadata["chunks_kept"] = total_chunks
-        metadata["chunks_total"] = total_chunks
-        no_aggregate["extraction_metadata"] = metadata
-        return no_aggregate
-
     base = dict(trimmed)
-    base["content"] = ""
-    base["content_normalized"] = ""
-    base["content_chunks_text"] = ""
-    base["content_chunks_normalized"] = ""
     base["chunk_locations"] = []
     base["content_chunks"] = []
 
@@ -204,8 +181,7 @@ def _enrich_search_fields(payload: dict[str, Any], *, profile: dict[str, Any] | 
             extraction_metadata = extracted.metadata
             extraction_metadata["extractor_version"] = current_extractor_version
 
-    enriched["content"] = extracted_text
-    enriched["content_chunks_text"] = chunk_text
+    enriched.pop("content", None)
     enriched["chunk_locations"] = chunk_locations
     chunks_raw = getattr(extracted, "chunks", None) if extracted else None
     if chunks_raw:
@@ -227,14 +203,10 @@ def _enrich_search_fields(payload: dict[str, Any], *, profile: dict[str, Any] | 
     enriched["doc_kind"] = _derive_doc_kind_from_extension(extension)
 
     title = str(enriched.get("title", ""))
-    content = str(enriched.get("content", ""))
-    content_chunks_text = str(enriched.get("content_chunks_text", ""))
     original_filename = str(enriched.get("original_filename", ""))
     canonical_filename = str(enriched.get("canonical_filename", ""))
 
     enriched["title_normalized"] = normalize_text(title)
-    enriched["content_normalized"] = normalize_text(content)
-    enriched["content_chunks_normalized"] = normalize_text(content_chunks_text)
     enriched["original_filename_text"] = original_filename
     enriched["original_filename_normalized"] = normalize_text(original_filename)
     enriched["canonical_filename_text"] = canonical_filename
@@ -281,9 +253,6 @@ def backfill_search_fields(client: OpenSearch) -> int:
             field not in src
             for field in (
                 "title_normalized",
-                "content_normalized",
-                "content_chunks_text",
-                "content_chunks_normalized",
                 "original_filename_text",
                 "original_filename_normalized",
                 "canonical_filename_text",

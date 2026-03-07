@@ -212,6 +212,8 @@
   justify-content: space-between;
   gap: 12px;
   background: var(--bg-elevated);
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .tmpl-card-info {
@@ -331,6 +333,7 @@
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-top: 6px;
+  align-items: start;
 }
 
 .tmpl-grid-3 {
@@ -456,4 +459,9 @@
 
 .tmpl-save-as-modal {
   width: min(480px, 95vw);
+}
+
+@media (max-width: 1024px) {
+  .tmpl-grid-3 { grid-template-columns: 1fr 1fr; }
+  .tmpl-grid-2 { grid-template-columns: 1fr; }
 }

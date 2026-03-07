@@ -19,3 +19,4 @@ openai>=1.0.0
 anthropic>=0.39.0
 extract-msg==0.55.0
 rarfile==4.2
+aiogram>=3.26.0

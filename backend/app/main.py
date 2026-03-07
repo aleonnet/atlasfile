@@ -37,6 +37,8 @@ from .models import (
     ClassifyResponse,
     DocumentMetadataUpdate,
     DocumentTagsUpdate,
+    ListDocumentItem,
+    ListDocumentsResponse,
     ModelOption,
     SearchHit,
     SearchResponse,
@@ -47,6 +49,7 @@ from .models import (
     SuggestResponse,
     TriageDecisionRequest,
 )
+from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from .opensearch_client import ensure_chat_sessions_index, ensure_index, get_client
 from .project_profile import list_project_roots, load_project_profile
 from .profile_runtime import inbox_rel
@@ -68,11 +71,36 @@ from .triage import (
 )
 from .llm_catalog import LLM_MODEL_CATALOG
 from .orchestrator import classify_with_llm, get_llm_config, run_chat_loop
-from .utils import utc_now_iso
+from .utils import DEFAULT_CANONICAL_PATTERN, build_canonical_filename, normalize_text, utc_now_iso
+from .channels import ChannelManager, ChannelMessage
+from .channels.telegram import TelegramChannel
+
+import logging as _logging
+
+_logger = _logging.getLogger(__name__)
 
 os_client = get_client()
 _reconcile_lock = threading.Lock()
 _reconcile_stop = threading.Event()
+
+channel_manager: ChannelManager | None = None
+
+
+async def _handle_channel_message(msg: ChannelMessage) -> str:
+    """Dispatch inbound channel message to the orchestrator (same as web chat, all-projects mode)."""
+    provider, model = get_llm_config("chat")
+    messages = [{"role": "user", "content": msg.text}]
+    result = await run_chat_loop(messages, provider, model)
+    return result.get("content", "") if isinstance(result, dict) else str(result)
+
+
+def _build_channel_config() -> dict[str, Any]:
+    return {
+        "telegram": {
+            "enabled": settings.telegram_enabled,
+            "bot_token": settings.telegram_bot_token,
+        },
+    }
 _reconcile_status: dict[str, Any] = {
     "last_run_started_at": None,
     "last_run_finished_at": None,
@@ -101,7 +129,8 @@ _reconcile_status: dict[str, Any] = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: ensure OpenSearch index and optional auto-reconcile. Shutdown: signal reconcile thread to stop."""
+    """Startup: ensure OpenSearch index, optional auto-reconcile, and channels. Shutdown: stop channels and reconcile."""
+    global channel_manager
     max_attempts = 30
     last_error: Exception | None = None
     for _ in range(max_attempts):
@@ -117,7 +146,20 @@ async def lifespan(app: FastAPI):
     else:
         if last_error:
             raise last_error
+
+    if settings.channels_enabled:
+        channel_manager = ChannelManager(on_message=_handle_channel_message)
+        channel_manager.register(TelegramChannel(on_message=channel_manager.dispatch))
+        try:
+            await channel_manager.start_all(_build_channel_config())
+            _logger.info("Channels started")
+        except Exception:
+            _logger.exception("Channel startup failed (non-fatal)")
+
     yield
+
+    if channel_manager:
+        await channel_manager.stop_all()
     _reconcile_stop.set()
 
 
@@ -136,8 +178,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+from .api.channels import router as channels_router
+
 app.include_router(profile_router)
 app.include_router(layout_router)
+app.include_router(channels_router)
 
 def _normalize_query_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value or "")
@@ -151,169 +196,77 @@ def _strip_html_tags(value: str) -> str:
 SNIPPET_TOTAL_MAX = settings.snippet_total_max
 
 
-def _snippet_word_boundary_before(text: str, from_pos: int, max_chars: int) -> int:
-    """Posição inicial para que text[start:from_pos] tenha no máximo max_chars e comece em palavra completa."""
-    start = max(0, from_pos - max_chars)
-    if start == 0:
-        return 0
-    if start < from_pos and text[start] not in " \n\t":
-        space = text.rfind(" ", 0, start + 1)
-        start = (space + 1) if space >= 0 else 0
-    return start
-
-
-def _snippet_word_boundary_after(text: str, from_pos: int, max_chars: int) -> int:
-    """Posição final para que text[from_pos:end] tenha no máximo max_chars e termine em palavra completa."""
-    end = min(len(text), from_pos + max_chars)
-    if end == len(text):
-        return end
-    if end > from_pos and text[end - 1] not in " \n\t":
-        last_space = text.rfind(" ", from_pos, end)
-        end = (last_space + 1) if last_space >= 0 else end
-    return end
-
-
-def _build_evidence_snippet(chunk_text: str, query: str) -> str:
-    """Snippet com regra única: 80 chars total, subtrai o termo, metade antes/metade depois, palavras completas.
-    Se não houver nada à esquerda, usa os caracteres à direita (e vice-versa).
-    """
-    if not chunk_text:
-        return ""
-    chunk_text = chunk_text or ""
-    query = (query or "").strip()
-    if not query:
-        return html_module.escape(chunk_text[:SNIPPET_TOTAL_MAX])
-
-    norm_str_parts: list[str] = []
-    norm_to_orig: list[tuple[int, int]] = []
-    for i, c in enumerate(chunk_text):
-        n = unicodedata.normalize("NFKD", c)
-        n = "".join(ch for ch in n if not unicodedata.combining(ch)).lower()
-        for d in n:
-            norm_str_parts.append(d)
-            norm_to_orig.append((i, i + 1))
-    norm_str = "".join(norm_str_parts)
-    norm_q = _normalize_query_text(query)
-    if not norm_q:
-        return html_module.escape(chunk_text[:SNIPPET_TOTAL_MAX])
-
-    idx = norm_str.find(norm_q)
-    if idx < 0:
-        return html_module.escape(chunk_text[:SNIPPET_TOTAL_MAX])
-
-    n_end = idx + len(norm_q)
-    orig_start = norm_to_orig[idx][0]
-    orig_end = norm_to_orig[n_end - 1][1]
-    match = chunk_text[orig_start:orig_end]
-    remaining = SNIPPET_TOTAL_MAX - len(match)
-    if remaining <= 0:
-        return "<em>" + html_module.escape(match) + "</em>"
-
-    if orig_start == 0:
-        max_before, max_after = 0, remaining
-    elif orig_end >= len(chunk_text):
-        max_before, max_after = remaining, 0
-    else:
-        max_before = remaining // 2
-        max_after = remaining - max_before
-
-    before_start = _snippet_word_boundary_before(chunk_text, orig_start, max_before) if max_before else orig_start
-    after_limit = max(0, max_after - 4) if max_after else 0
-    after_end = _snippet_word_boundary_after(chunk_text, orig_end, after_limit) if after_limit else orig_end
-    before = chunk_text[before_start:orig_start]
-    if max_before and len(before) > max_before:
-        before = before[-max_before:]
-        if before and before[0] not in " \n\t":
-            sp = before.find(" ", 1)
-            before = (before[sp + 1 :] if sp >= 0 else before).lstrip()
-        before = ("... " + before) if before_start > 0 else before
-    after_raw = chunk_text[orig_end:after_end]
-    truncated_after = after_end < len(chunk_text)
-    if truncated_after and after_limit and len(after_raw) > after_limit:
-        after_raw = after_raw[: after_limit]
-        if after_raw and after_raw[-1] not in " \n\t":
-            sp = after_raw.rfind(" ")
-            after_raw = after_raw[: sp + 1] if sp >= 0 else after_raw
-    after = after_raw.rstrip() + (" ..." if truncated_after else "")
-
-    return (
-        html_module.escape(before)
-        + "<em>"
-        + html_module.escape(match)
-        + "</em>"
-        + html_module.escape(after)
-    )
-
-
-def _rehighlight_snippet(snippet: str, query: str) -> str:
-    """Reaplica o highlight para a query inteira no snippet (mesmo critério da busca).
-    O OpenSearch pode destacar só parte do termo; aqui garantimos a frase completa em <em>.
-    """
-    if not snippet or not (query or "").strip():
-        return _trim_highlight_to_80(snippet)
-    plain = _strip_html_tags(snippet)
-    if not plain:
-        return _trim_highlight_to_80(snippet)
-    norm_q = _normalize_query_text(query)
-    if not norm_q:
-        return _trim_highlight_to_80(snippet)
-    norm_parts: list[str] = []
-    norm_to_orig: list[tuple[int, int]] = []
-    for i, c in enumerate(plain):
-        n = unicodedata.normalize("NFKD", c)
-        n = "".join(ch for ch in n if not unicodedata.combining(ch)).lower()
-        for d in n:
-            norm_parts.append(d)
-            norm_to_orig.append((i, i + 1))
-    norm_str = "".join(norm_parts)
-    idx = norm_str.find(norm_q)
-    if idx < 0:
-        return _trim_highlight_to_80(snippet)
-    n_end = idx + len(norm_q)
-    orig_start = norm_to_orig[idx][0]
-    orig_end = norm_to_orig[n_end - 1][1]
-    new_snippet = plain[:orig_start] + "<em>" + plain[orig_start:orig_end] + "</em>" + plain[orig_end:]
-    return _trim_highlight_to_80(new_snippet)
-
-
-def _trim_highlight_to_80(snippet: str) -> str:
-    """Aplica a mesma regra de 80 chars aos highlights do OpenSearch (autocomplete e busca)."""
-    plain = _strip_html_tags(snippet)
-    if not snippet or len(plain) <= SNIPPET_TOTAL_MAX:
+def _trim_highlight(snippet: str) -> str:
+    """Trim snippet to SNIPPET_TOTAL_MAX plain-text chars, preserving ALL <em> tags within the window."""
+    if not snippet:
         return snippet
-    m = re.search(r"<em>(.*?)</em>", snippet, re.DOTALL)
-    if not m:
-        return plain[:SNIPPET_TOTAL_MAX].rstrip()
-    match = m.group(1)
-    before_plain = _strip_html_tags(snippet[: m.start()])
-    after_plain = _strip_html_tags(snippet[m.end() :])
-    remaining = SNIPPET_TOTAL_MAX - len(match)
-    if remaining <= 0:
-        return "<em>" + match + "</em>"
-    budget = remaining - 4  # reservar para " ..."
-    if budget <= 0:
-        return "<em>" + match + "</em>"
-    if not before_plain.strip():
-        max_before, max_after = 0, budget
-    elif not after_plain.strip():
-        max_before, max_after = budget, 0
-    else:
-        max_before = budget // 2
-        max_after = budget - max_before
+    plain = _strip_html_tags(snippet)
+    if len(plain) <= SNIPPET_TOTAL_MAX:
+        return snippet
 
-    if max_before and len(before_plain) > max_before:
-        start = max(0, len(before_plain) - max_before)
-        if start > 0 and before_plain[start] not in " \n\t":
-            space = before_plain.rfind(" ", 0, start)
-            start = (space + 1) if space >= 0 else 0
-        before_plain = ("... " + before_plain[start :] if start > 0 else before_plain).lstrip()
-    if max_after and len(after_plain) > max_after:
-        end = max_after
-        if end < len(after_plain) and after_plain[end - 1] not in " \n\t":
-            last_space = after_plain.rfind(" ", 0, end)
-            end = last_space + 1 if last_space >= 0 else end
-        after_plain = after_plain[:end].rstrip() + " ..."
-    return before_plain + "<em>" + match + "</em>" + after_plain
+    em_mask = [False] * len(plain)
+    plain_idx = 0
+    in_em = False
+    si = 0
+    while si < len(snippet):
+        if snippet[si] == "<":
+            tag_end = snippet.find(">", si)
+            if tag_end < 0:
+                break
+            tag = snippet[si : tag_end + 1].lower()
+            if tag == "<em>":
+                in_em = True
+            elif tag == "</em>":
+                in_em = False
+            si = tag_end + 1
+        else:
+            if plain_idx < len(plain):
+                em_mask[plain_idx] = in_em
+                plain_idx += 1
+            si += 1
+
+    first_em = next((i for i, v in enumerate(em_mask) if v), None)
+    if first_em is None:
+        return plain[:SNIPPET_TOTAL_MAX].rstrip()
+
+    ellipsis_reserve = 8
+    budget = max(SNIPPET_TOTAL_MAX - ellipsis_reserve, SNIPPET_TOTAL_MAX // 2)
+    half = budget // 2
+    win_start = max(0, first_em - half)
+    win_end = min(len(plain), win_start + budget)
+    if win_end - win_start < budget:
+        win_start = max(0, win_end - budget)
+
+    prefix_ellipsis = win_start > 0
+    suffix_ellipsis = win_end < len(plain)
+    if prefix_ellipsis:
+        sp = plain.find(" ", win_start)
+        if 0 <= sp < win_start + 15:
+            win_start = sp + 1
+    if suffix_ellipsis:
+        sp = plain.rfind(" ", max(win_start, win_end - 15), win_end)
+        if sp > win_start:
+            win_end = sp
+
+    parts: list[str] = []
+    cur_em = False
+    for pos in range(win_start, win_end):
+        if em_mask[pos] and not cur_em:
+            parts.append("<em>")
+            cur_em = True
+        elif not em_mask[pos] and cur_em:
+            parts.append("</em>")
+            cur_em = False
+        parts.append(plain[pos])
+    if cur_em:
+        parts.append("</em>")
+
+    body = "".join(parts)
+    if prefix_ellipsis:
+        body = "... " + body
+    if suffix_ellipsis:
+        body = body.rstrip() + " ..."
+    return body
 
 
 def _tokenize_normalized(value: str) -> list[str]:
@@ -396,9 +349,9 @@ def _highlights_with_full_phrase_first(ordered: list[str], query: str) -> list[s
     norm_q = _normalize_query_text(query)
     if not norm_q:
         return ordered
-    rehighlighted = [_rehighlight_snippet(s, query) for s in ordered]
-    contains_full = [s for s in rehighlighted if norm_q in _normalize_query_text(_strip_html_tags(s))]
-    others = [s for s in rehighlighted if s not in contains_full]
+    trimmed = [_trim_highlight(s) for s in ordered]
+    contains_full = [s for s in trimmed if norm_q in _normalize_query_text(_strip_html_tags(s))]
+    others = [s for s in trimmed if s not in contains_full]
     return contains_full + others
 
 
@@ -588,10 +541,18 @@ def _resolve_project_root(project_id: str) -> Path:
     if candidate.exists():
         return candidate
 
+    # accent+case+space/underscore canonical form for fuzzy comparison
+    def _canonical(s: str) -> str:
+        return normalize_text(s).replace(" ", "_")
+
+    canonical_id = _canonical(project_id)
     for proj in list_project_roots(Path(settings.projects_root)):
+        if _canonical(proj.name) == canonical_id:
+            return proj
         try:
             profile = load_project_profile(proj)
-            if profile.get("project_id") == project_id:
+            pid = str(profile.get("project_id") or "")
+            if pid == project_id or _canonical(pid) == canonical_id:
                 return proj
         except Exception:
             continue
@@ -609,6 +570,16 @@ def _project_scope_filter(project_ref: str) -> dict[str, Any]:
         return {"match_all": {}}
 
     aliases: set[str] = {ref}
+    normalized_ref = normalize_text(ref)
+    if normalized_ref and normalized_ref != ref:
+        aliases.add(normalized_ref)
+    # space<->underscore tolerance: "kaido teste" also matches "kaido_teste"
+    for variant in (ref.replace(" ", "_"), ref.replace("_", " ")):
+        if variant != ref:
+            aliases.add(variant)
+            norm_variant = normalize_text(variant)
+            if norm_variant and norm_variant != variant:
+                aliases.add(norm_variant)
     path_prefix: str | None = None
     try:
         project_root = _resolve_project_root(ref)
@@ -649,7 +620,13 @@ def _count_rows_to_process(valid_projects: list[tuple[Path, str]]) -> int:
     return count_rows_to_process(valid_projects)
 
 
-def _run_reconcile(project_roots: list[Path], *, reindex_search: bool, reindex_mode: str = "full") -> dict[str, Any]:
+def _run_reconcile(
+    project_roots: list[Path],
+    *,
+    reindex_search: bool,
+    reindex_mode: str = "full",
+    cleanup_orphans: bool = True,
+) -> dict[str, Any]:
     return run_reconcile(
         project_roots=project_roots,
         reindex_search=reindex_search,
@@ -657,6 +634,7 @@ def _run_reconcile(project_roots: list[Path], *, reindex_search: bool, reindex_m
         status=_reconcile_status,
         lock=_reconcile_lock,
         os_client=os_client,
+        cleanup_orphans=cleanup_orphans,
     )
 
 
@@ -689,6 +667,25 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/setup/status")
+def setup_status() -> dict[str, Any]:
+    roots = list_project_roots(Path(settings.projects_root))
+    initialized_count = 0
+    for r in roots:
+        try:
+            load_project_profile(r)
+            initialized_count += 1
+        except Exception:
+            pass
+    return {
+        "app_env": settings.app_env,
+        "projects_root": settings.projects_root,
+        "total_project_dirs": len(roots),
+        "initialized_projects": initialized_count,
+        "onboarding_suggested": initialized_count == 0,
+    }
+
+
 @app.get("/api/projects")
 def get_projects() -> list[dict[str, Any]]:
     projects: list[dict[str, Any]] = []
@@ -716,7 +713,8 @@ def get_projects() -> list[dict[str, Any]]:
 
 @app.post("/api/projects/{project_ref}/initialize")
 def initialize_project(project_ref: str, template: str = Query("default")) -> dict[str, Any]:
-    project_root = _resolve_project_root(project_ref)
+    project_root = Path(settings.projects_root) / project_ref
+    project_root.mkdir(parents=True, exist_ok=True)
     _, created = ensure_profile(
         project_root=project_root,
         project_id=project_root.name,
@@ -833,9 +831,11 @@ async def stream_reconcile_status() -> StreamingResponse:
     )
 
 
-def _run_reconcile_background(project_roots: list[Path], reindex_search: bool, reindex_mode: str) -> None:
+def _run_reconcile_background(
+    project_roots: list[Path], reindex_search: bool, reindex_mode: str, cleanup_orphans: bool = True,
+) -> None:
     try:
-        _run_reconcile(project_roots, reindex_search=reindex_search, reindex_mode=reindex_mode)
+        _run_reconcile(project_roots, reindex_search=reindex_search, reindex_mode=reindex_mode, cleanup_orphans=cleanup_orphans)
     except Exception:
         _reconcile_status["running"] = False
         _reconcile_status["phase"] = "idle"
@@ -849,7 +849,7 @@ def reconcile_project(project_id: str, reindex_search: bool = True):
     project_root = _resolve_project_root(project_id)
     thread = threading.Thread(
         target=_run_reconcile_background,
-        args=([project_root], reindex_search, "incremental"),
+        args=([project_root], reindex_search, "incremental", False),
         name="atlasfile-reconcile-project",
         daemon=True,
     )
@@ -864,7 +864,7 @@ def reconcile_all_projects(reindex_search: bool = True):
     roots = list_project_roots(Path(settings.projects_root))
     thread = threading.Thread(
         target=_run_reconcile_background,
-        args=(roots, reindex_search, "full"),
+        args=(roots, reindex_search, "incremental"),
         name="atlasfile-reconcile-all",
         daemon=True,
     )
@@ -984,6 +984,8 @@ def get_document(doc_id: str) -> dict[str, Any]:
     src = hit.get("_source", {})
     if not src:
         raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    chunks = list(src.get("content_chunks") or [])
+    content_from_chunks = "\n".join(c.get("text", "") for c in chunks)
     data = {
         "doc_id": src.get("doc_id"),
         "project_id": src.get("project_id"),
@@ -992,8 +994,8 @@ def get_document(doc_id: str) -> dict[str, Any]:
         "original_filename": src.get("original_filename"),
         "canonical_filename": src.get("canonical_filename"),
         "path": src.get("path"),
-        "content": src.get("content"),
-        "content_chunks": src.get("content_chunks", []),
+        "content": content_from_chunks,
+        "content_chunks": chunks,
         "tags": src.get("tags", []),
         "document_type": src.get("document_type"),
         "correspondent": src.get("correspondent"),
@@ -1093,7 +1095,10 @@ def list_tags(project_id: str | None = Query(None, description="Filter by projec
     if project_id:
         query["query"] = {"bool": {"filter": [{"term": {"project_id": project_id}}]}}
     body = {"size": 0, "query": query["query"], "aggs": aggs}
-    result = os_client.search(index=settings.opensearch_index, body=body)
+    try:
+        result = os_client.search(index=settings.opensearch_index, body=body)
+    except OSNotFoundError:
+        return {"tags": []}
     buckets = (result.get("aggregations") or {}).get("tags", {}).get("buckets") or []
     tags_list = [b["key"] for b in buckets if b.get("key")]
     return {"tags": tags_list}
@@ -1111,9 +1116,14 @@ def get_stats(project_id: str | None = Query(None, description="Filter by projec
         "by_document_type": {"terms": {"field": "document_type", "size": 50}},
         "by_extension": {"terms": {"field": "extension", "size": 30}},
         "by_tags": {"terms": {"field": "tags", "size": 100}},
+        "by_project_id": {"terms": {"field": "project_id", "size": 100}},
     }
     body: dict[str, Any] = {"size": 0, "query": query, "aggs": aggs}
-    result = os_client.search(index=settings.opensearch_index, body=body)
+    _empty_stats = StatsResponse(project_id=project_id, total_documents=0, by_doc_kind=[], by_area_key=[], by_document_type=[], by_extension=[], by_tags=[], by_project_id=[])
+    try:
+        result = os_client.search(index=settings.opensearch_index, body=body)
+    except OSNotFoundError:
+        return _empty_stats
     total_hit = result.get("hits", {}).get("total", {})
     total_documents = total_hit["value"] if isinstance(total_hit, dict) else int(total_hit or 0)
     aggregations = result.get("aggregations") or {}
@@ -1129,6 +1139,7 @@ def get_stats(project_id: str | None = Query(None, description="Filter by projec
         by_document_type=_buckets("by_document_type"),
         by_extension=_buckets("by_extension"),
         by_tags=_buckets("by_tags"),
+        by_project_id=_buckets("by_project_id"),
     )
 
 
@@ -1251,19 +1262,23 @@ def create_chat_session(body: ChatSessionCreate) -> ChatSession:
 
 @app.patch("/api/chat/sessions/{session_id}", response_model=ChatSession)
 def update_chat_session(session_id: str, body: ChatSessionUpdate) -> ChatSession:
-    """Update session title and/or messages (full replacement for messages)."""
+    """Update session title and/or messages via partial _update (avoids full GET+INDEX)."""
+    partial: dict[str, Any] = {"updatedAt": int(time.time() * 1000)}
+    if body.title is not None:
+        partial["title"] = body.title
+    if body.messages is not None:
+        partial["messages"] = [m.model_dump() for m in body.messages]
     try:
-        hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
+        os_client.update(
+            index=_CHAT_SESSIONS_INDEX,
+            id=session_id,
+            body={"doc": partial},
+            refresh=True,
+        )
     except Exception:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
-    src = hit["_source"]
-    if body.title is not None:
-        src["title"] = body.title
-    if body.messages is not None:
-        src["messages"] = [m.model_dump() for m in body.messages]
-    src["updatedAt"] = int(time.time() * 1000)
-    os_client.index(index=_CHAT_SESSIONS_INDEX, id=session_id, body=src, refresh=True)
-    return _session_doc_to_model(session_id, src)
+    hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
+    return _session_doc_to_model(session_id, hit["_source"])
 
 
 @app.delete("/api/chat/sessions/{session_id}", status_code=204)
@@ -1398,7 +1413,20 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
     if not area_path:
         raise HTTPException(status_code=400, detail=f"Area invalida: {target_area}")
 
-    canonical_filename = data.get("canonical_filename") or source_path.name
+    canonical_filename = data.get("canonical_filename") or ""
+    if not canonical_filename:
+        naming = profile.get("naming") or {}
+        canonical_filename = build_canonical_filename(
+            pattern=naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN),
+            date_format=naming.get("date_format", "%Y%m%d"),
+            fields={
+                "project": project_id,
+                "area": target_area,
+                "original_name": data.get("original_filename", source_path.stem),
+                "document_type": data.get("document_type", ""),
+            },
+            original_suffix=source_path.suffix or ".bin",
+        )
     dest_dir = project_root / area_path
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_path = dest_dir / canonical_filename
@@ -1438,6 +1466,60 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
     return {"status": "ok", "action": indexed_payload["decision"], "doc_id": doc_id}
 
 
+@app.get("/api/documents", response_model=ListDocumentsResponse)
+def list_documents(
+    project_id: str | None = None,
+    doc_kind: str | None = None,
+    document_type: str | None = None,
+    area_key: str | None = None,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+) -> ListDocumentsResponse:
+    """List/browse documents with optional filters. No text search required."""
+    filters: list[dict[str, Any]] = []
+    if project_id:
+        filters.append(_project_scope_filter(project_id))
+    if doc_kind:
+        filters.append({"term": {"doc_kind": doc_kind}})
+    if document_type:
+        filters.append({"term": {"document_type": document_type}})
+    if area_key:
+        filters.append({"term": {"area_key": area_key}})
+
+    body: dict[str, Any] = {
+        "query": {"bool": {"filter": filters}} if filters else {"match_all": {}},
+        "sort": [{"ingested_at": {"order": "desc", "unmapped_type": "date"}}],
+        "from": (page - 1) * size,
+        "size": size,
+        "_source": [
+            "project_id", "title", "original_filename", "path",
+            "doc_kind", "document_type", "area_key", "tags", "ingested_at",
+        ],
+    }
+    try:
+        res = os_client.search(index=settings.opensearch_index, body=body)
+    except Exception:
+        return ListDocumentsResponse(total=0, page=page, page_size=size, items=[])
+
+    total = res.get("hits", {}).get("total", {}).get("value", 0)
+    items: list[ListDocumentItem] = []
+    for hit in res.get("hits", {}).get("hits", []):
+        src = hit.get("_source", {})
+        items.append(ListDocumentItem(
+            doc_id=hit["_id"],
+            project_id=src.get("project_id", ""),
+            title=src.get("title", ""),
+            original_filename=src.get("original_filename", ""),
+            path=src.get("path", ""),
+            doc_kind=src.get("doc_kind"),
+            document_type=src.get("document_type"),
+            area_key=src.get("area_key"),
+            tags=src.get("tags") or [],
+            ingested_at=src.get("ingested_at"),
+        ))
+    return ListDocumentsResponse(total=total, page=page, page_size=size, items=items)
+
+
 @app.get("/api/search", response_model=SearchResponse)
 def search(
     q: str = Query(..., min_length=2),
@@ -1468,8 +1550,6 @@ def search(
             "original_filename_text^4",
             "canonical_filename_text^3",
             "tags^2",
-            "content_chunks_text^2",
-            "content",
         ],
         "fuzziness": "AUTO",
         "prefix_length": 1,
@@ -1482,8 +1562,6 @@ def search(
             "title_normalized^4",
             "original_filename_normalized^4",
             "canonical_filename_normalized^3",
-            "content_chunks_normalized^2",
-            "content_normalized",
         ],
         "fuzziness": "AUTO",
         "prefix_length": 1,
@@ -1492,6 +1570,37 @@ def search(
     if strict_mode:
         broad_match_raw["minimum_should_match"] = "75%"
         broad_match_normalized["minimum_should_match"] = "75%"
+    inner_hits_size = int(max(settings.search_inner_hits_size, settings.search_evidences_max_per_hit))
+    nested_content_query: dict[str, Any] = {
+        "nested": {
+            "path": "content_chunks",
+            "query": {
+                "bool": {
+                    "should": [
+                        {"multi_match": {"query": q, "fields": ["content_chunks.text^2"], "fuzziness": "AUTO", "prefix_length": 1, "operator": "or"}},
+                        {"multi_match": {"query": normalized_q, "fields": ["content_chunks.text_normalized^2"], "fuzziness": "AUTO", "prefix_length": 1, "operator": "or"}},
+                        {"match_phrase": {"content_chunks.text_normalized": {"query": normalized_q, "slop": 0, "boost": 6}}},
+                        {"match_phrase": {"content_chunks.text_normalized": {"query": normalized_q, "slop": 2, "boost": 4}}},
+                        {"match_phrase": {"content_chunks.text": {"query": q, "slop": 2, "boost": 3}}},
+                    ],
+                    "minimum_should_match": 1,
+                }
+            },
+            "score_mode": "max",
+            "inner_hits": {
+                "name": "chunks",
+                "size": inner_hits_size,
+                "highlight": {
+                    "fields": {
+                        "content_chunks.text": {"fragment_size": fragment_size, "number_of_fragments": 2},
+                        "content_chunks.text_normalized": {"fragment_size": fragment_size, "number_of_fragments": 2},
+                    },
+                    "pre_tags": ["<em>"],
+                    "post_tags": ["</em>"],
+                },
+            },
+        }
+    }
     should: list[dict[str, Any]] = [
         {"multi_match": broad_match_raw},
         {"multi_match": broad_match_normalized},
@@ -1503,44 +1612,26 @@ def search(
                 "boost": 2,
             }
         },
-        {"match_phrase": {"content_chunks_normalized": {"query": normalized_q, "slop": 0, "boost": 12}}},
-        {"match_phrase": {"content_chunks_normalized": {"query": normalized_q, "slop": 2, "boost": 8}}},
-        {"match_phrase": {"content_normalized": {"query": normalized_q, "slop": 0, "boost": 8}}},
         {"match_phrase": {"title_normalized": {"query": normalized_q, "slop": 0, "boost": 6}}},
         {"match_phrase": {"original_filename_normalized": {"query": normalized_q, "slop": 0, "boost": 5}}},
         {"match_phrase": {"canonical_filename_normalized": {"query": normalized_q, "slop": 0, "boost": 4}}},
-        {
-            "nested": {
-                "path": "content_chunks",
-                "query": {
-                    "bool": {
-                        "should": [
-                            {"match_phrase": {"content_chunks.text_normalized": {"query": normalized_q, "slop": 0}}},
-                            {"match_phrase": {"content_chunks.text": {"query": q, "slop": 2}}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                },
-                "inner_hits": {
-                    "name": "chunks",
-                    "size": int(max(settings.search_inner_hits_size, settings.search_evidences_max_per_hit)),
-                },
-            }
-        },
+        nested_content_query,
     ]
     if strict_mode:
         should.append(
             {
-                "multi_match": {
-                    "query": normalized_q,
-                    "type": "best_fields",
-                    "fields": [
-                        "content_chunks_normalized^6",
-                        "content_normalized^4",
-                        "title_normalized^2",
-                    ],
-                    "operator": "and",
-                    "boost": 10,
+                "nested": {
+                    "path": "content_chunks",
+                    "query": {
+                        "multi_match": {
+                            "query": normalized_q,
+                            "type": "best_fields",
+                            "fields": ["content_chunks.text_normalized^6"],
+                            "operator": "and",
+                            "boost": 10,
+                        }
+                    },
+                    "score_mode": "max",
                 }
             }
         )
@@ -1569,10 +1660,9 @@ def search(
         "highlight": {
             "require_field_match": False,
             "order": "score",
+            "max_analyzer_offset": 1_000_000,
             "fields": {
                 "title": {},
-                "content": {},
-                "content_chunks_text": {},
                 "original_filename_text": {},
                 "canonical_filename_text": {},
             },
@@ -1587,14 +1677,25 @@ def search(
         },
     }
 
-    result = os_client.search(index=settings.opensearch_index, body=body)
+    try:
+        result = os_client.search(index=settings.opensearch_index, body=body)
+    except OSNotFoundError:
+        return SearchResponse(total=0, page=page, hits=[])
     hits: list[SearchHit] = []
     for h in result["hits"]["hits"]:
         src = h["_source"]
-        highlighted_by_field = h.get("highlight", {})
+        highlighted_by_field = dict(h.get("highlight", {}))
+        for nh in (h.get("inner_hits", {}).get("chunks", {}).get("hits", {}).get("hits", [])):
+            for fld, snippets in (nh.get("highlight") or {}).items():
+                highlighted_by_field.setdefault(fld, []).extend(snippets)
         highlights = _highlights_with_full_phrase_first(_ordered_highlights(highlighted_by_field, q), q)
+        inner_chunk_locations: list[str] = []
+        for nh in (h.get("inner_hits", {}).get("chunks", {}).get("hits", {}).get("hits", [])):
+            loc = (nh.get("_source") or {}).get("location", "")
+            if loc:
+                inner_chunk_locations.append(loc)
         match_locations = _prioritize_locations(
-            _extract_locations_from_chunk_text(str(src.get("content_chunks_text", "")), q)
+            inner_chunk_locations
             + _extract_chunk_markers(highlights)
             + list({_field_to_location(field_name) for field_name in highlighted_by_field.keys()})
         )
@@ -1609,12 +1710,22 @@ def search(
             for nh in ihits:
                 loc = (nh.get("_source") or {}).get("location", "")
                 raw_text = (nh.get("_source") or {}).get("text", "")
-                snippet = _build_evidence_snippet(raw_text, q)
+                nh_hl = nh.get("highlight") or {}
+                hl_text = nh_hl.get("content_chunks.text", [])
+                hl_norm = nh_hl.get("content_chunks.text_normalized", [])
+                chosen = hl_text or hl_norm
+                if not chosen:
+                    continue
+                snippet = _trim_highlight(chosen[0])
                 match_count = _count_query_occurrences_in_text(raw_text, q)
                 if match_count <= 0:
                     match_count = max(1, snippet.lower().count("<em>"))
                 evidences.append({"location": loc, "snippet": snippet, "match_count": match_count})
             evidences.sort(key=lambda e: _evidence_location_sort_key(e.get("location", "")))
+            if evidences:
+                best_idx = max(range(len(evidences)), key=lambda i: int(evidences[i].get("match_count", 0)))
+                if best_idx > 0:
+                    evidences.insert(0, evidences.pop(best_idx))
             max_ev = settings.search_evidences_max_per_hit
             omitted_evidences = max(0, total_evidences - min(len(evidences), max_ev))
             evidences = evidences[:max_ev]
@@ -1696,16 +1807,30 @@ def suggest(
                         "multi_match": {
                             "query": q,
                             "type": "best_fields",
-                            "fields": ["title^3", "content_chunks_text^2", "content", "tags^2"],
+                            "fields": ["title^3", "tags^2"],
                             "fuzziness": "AUTO",
                             "prefix_length": 1,
                             "operator": "or",
                         }
                     },
+                    {
+                        "nested": {
+                            "path": "content_chunks",
+                            "query": {
+                                "bool": {
+                                    "should": [
+                                        {"multi_match": {"query": q, "fields": ["content_chunks.text^2"], "fuzziness": "AUTO", "prefix_length": 1, "operator": "or"}},
+                                        {"match_phrase_prefix": {"content_chunks.text_normalized": {"query": _normalize_query_text(q)}}},
+                                    ],
+                                    "minimum_should_match": 1,
+                                }
+                            },
+                            "score_mode": "max",
+                        }
+                    },
                     {"match_phrase_prefix": {"title_normalized": {"query": _normalize_query_text(q)}}},
                     {"match_phrase_prefix": {"original_filename_normalized": {"query": _normalize_query_text(q)}}},
                     {"match_phrase_prefix": {"canonical_filename_normalized": {"query": _normalize_query_text(q)}}},
-                    {"match_phrase_prefix": {"content_chunks_normalized": {"query": _normalize_query_text(q)}}},
                 ],
                 "minimum_should_match": 1,
             }
@@ -1717,15 +1842,14 @@ def suggest(
             "original_filename",
             "canonical_filename",
             "path",
-            "content_chunks_text",
             "content_type",
         ],
         "highlight": {
+            "max_analyzer_offset": 1_000_000,
             "fields": {
                 "title": {},
                 "original_filename_text": {},
                 "canonical_filename_text": {},
-                "content_chunks_text": {},
             },
             "fragment_size": settings.suggest_highlight_fragment_size,
             "number_of_fragments": settings.suggest_highlight_number_of_fragments,
@@ -1734,7 +1858,10 @@ def suggest(
         },
     }
 
-    result = os_client.search(index=settings.opensearch_index, body=body)
+    try:
+        result = os_client.search(index=settings.opensearch_index, body=body)
+    except OSNotFoundError:
+        return SuggestResponse(items=[])
     items: list[SearchSuggestion] = []
     by_filename: dict[str, SearchSuggestion] = {}
     for h in result.get("hits", {}).get("hits", []):
@@ -1751,7 +1878,7 @@ def suggest(
                 matched_in.append("original_filename")
             elif q_norm and q_norm in _normalize_query_text(str(src.get("title", ""))):
                 matched_in.append("title")
-            elif q_norm and q_norm in _normalize_query_text(str(src.get("content_chunks_text", ""))):
+            else:
                 matched_in.append("content_chunk")
         matched_in = _prioritize_locations(matched_in)
         original_filename = src.get("original_filename", "")
@@ -1761,7 +1888,7 @@ def suggest(
             src.get("title", ""),
             original_filename,
             canonical_filename,
-            src.get("content_chunks_text", ""),
+            "",
         )
         suggestion = SearchSuggestion(
             doc_id=src.get("doc_id", ""),

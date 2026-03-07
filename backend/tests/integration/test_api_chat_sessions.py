@@ -125,7 +125,7 @@ def test_create_chat_session_200(client: TestClient) -> None:
 
 def test_update_chat_session_404(client: TestClient) -> None:
     with patch("app.main.os_client") as mock_os:
-        mock_os.get.side_effect = Exception("not found")
+        mock_os.update.side_effect = Exception("not found")
         r = client.patch(
             "/api/chat/sessions/inexistente",
             json={"title": "Novo título"},
@@ -135,13 +135,14 @@ def test_update_chat_session_404(client: TestClient) -> None:
 
 def test_update_chat_session_200(client: TestClient) -> None:
     with patch("app.main.os_client") as mock_os:
+        mock_os.update.return_value = {"result": "updated"}
         mock_os.get.return_value = {
             "_source": {
-                "title": "Antigo",
+                "title": "Título atualizado",
                 "messages": [{"role": "user", "content": "Oi"}],
                 "model": "openai/gpt-4o-mini",
                 "createdAt": 1000,
-                "updatedAt": 1000,
+                "updatedAt": 2000,
             }
         }
         r = client.patch(
@@ -151,10 +152,10 @@ def test_update_chat_session_200(client: TestClient) -> None:
     assert r.status_code == 200
     data = r.json()
     assert data["title"] == "Título atualizado"
-    mock_os.index.assert_called_once()
-    body = mock_os.index.call_args[1]["body"]
-    assert body["title"] == "Título atualizado"
-    assert body["updatedAt"] >= body["createdAt"]
+    mock_os.update.assert_called_once()
+    update_body = mock_os.update.call_args[1]["body"]["doc"]
+    assert update_body["title"] == "Título atualizado"
+    assert "updatedAt" in update_body
 
 
 def test_delete_chat_session_404(client: TestClient) -> None:

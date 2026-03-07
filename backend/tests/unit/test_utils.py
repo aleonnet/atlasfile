@@ -6,7 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from app.utils import build_canonical_filename, normalize_text, sanitize_token, sha256_file
+from app.utils import (
+    DEFAULT_CANONICAL_PATTERN,
+    build_canonical_filename,
+    extract_original_name_from_canonical,
+    fs_safe,
+    normalize_text,
+    sanitize_token,
+    sha256_file,
+)
 
 
 def test_normalize_text_empty() -> None:
@@ -54,15 +62,99 @@ def test_sha256_file() -> None:
         path.unlink(missing_ok=True)
 
 
-def test_build_canonical_filename() -> None:
+# ── fs_safe ──
+
+
+def test_fs_safe_preserves_case_and_accents() -> None:
+    assert fs_safe("Relatório_Final") == "Relatório_Final"
+
+
+def test_fs_safe_removes_invalid_chars() -> None:
+    assert fs_safe('file:name*with<bad>chars') == "filenamewithbadchars"
+    assert fs_safe("path/to\\file") == "pathtofile"
+
+
+def test_fs_safe_preserves_underscores_and_hyphens() -> None:
+    assert fs_safe("foo__bar--baz") == "foo__bar--baz"
+
+
+# ── build_canonical_filename (new API) ──
+
+
+def test_build_canonical_filename_default_pattern() -> None:
     out = build_canonical_filename(
-        project_id="Kaidô",
-        area_key="contratos_comunicacao",
-        short_title="Contrato Original",
+        fields={
+            "project": "Kaidô",
+            "original_name": "Contrato Original",
+        },
         original_suffix=".pdf",
         version=1,
     )
-    assert out.endswith(".pdf")
-    assert "v01" in out
-    assert "kaido" in out or "contratos" in out
-    assert "__" in out
+    assert out.endswith("__v01.pdf")
+    assert "kaido" in out
+    assert "Contrato Original" in out
+
+
+def test_build_canonical_filename_with_area_pattern() -> None:
+    out = build_canonical_filename(
+        pattern="{date}__{project}__{area}__{original_name}",
+        fields={
+            "project": "Kaidô",
+            "area": "financeiro",
+            "original_name": "DRE_2026",
+        },
+        original_suffix=".xlsx",
+        version=3,
+    )
+    assert out.endswith("__v03.xlsx")
+    assert "__kaido__financeiro__DRE_2026__" in out
+
+
+def test_build_canonical_filename_original_name_preserved_intact() -> None:
+    out = build_canonical_filename(
+        fields={
+            "project": "test",
+            "original_name": "DocuSign_Project_Neptune___SPA__Anexos_v_A",
+        },
+        original_suffix=".pdf",
+    )
+    assert "DocuSign_Project_Neptune___SPA__Anexos_v_A" in out
+
+
+def test_build_canonical_filename_missing_original_name_uses_default() -> None:
+    out = build_canonical_filename(
+        fields={"project": "test"},
+        original_suffix=".pdf",
+    )
+    assert "documento" in out
+
+
+# ── extract_original_name_from_canonical ──
+
+
+def test_extract_original_name_default_pattern() -> None:
+    canonical = "20260302__kaido__DocuSign_Project_Neptune___SPA__Anexos_v_A__v01.pdf"
+    result = extract_original_name_from_canonical(canonical)
+    assert result == "DocuSign_Project_Neptune___SPA__Anexos_v_A.pdf"
+
+
+def test_extract_original_name_with_area_pattern() -> None:
+    canonical = "20260302__kaido__financeiro__DRE_2026__v03.xlsx"
+    result = extract_original_name_from_canonical(
+        canonical, "{date}__{project}__{area}__{original_name}"
+    )
+    assert result == "DRE_2026.xlsx"
+
+
+def test_extract_original_name_minimal_pattern() -> None:
+    canonical = "Contrato_Final__v01.pdf"
+    result = extract_original_name_from_canonical(canonical, "{original_name}")
+    assert result == "Contrato_Final.pdf"
+
+
+def test_extract_original_name_returns_none_for_non_canonical() -> None:
+    assert extract_original_name_from_canonical("plain_file.pdf") is None
+
+
+def test_extract_original_name_returns_none_for_too_few_segments() -> None:
+    assert extract_original_name_from_canonical("__v01.pdf") is None

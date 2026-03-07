@@ -1,0 +1,33 @@
+# Planos Concluídos — AtlasFile
+
+Registro dos planos de implementação executados, organizados por versão.
+
+---
+
+## 0.4.0 (2026-03-06)
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [simplificar_formato_canonico](simplificar_formato_canonico_765c9e08.plan.md) | Formato canônico configurável via `naming.canonical_pattern`; remoção de `area_key` do nome; preservação do nome original intacto; `_fs_safe` e `extract_original_name_from_canonical` |
+| 2 | [naming_pattern_migration](naming_pattern_migration_43076f52.plan.md) | Coluna `naming_pattern` per-file no `_INDEX.md`; parsing reverso usa pattern da row (não do profile); backward-compat com fallback |
+| 3 | [para_roots_scan](para_roots_scan_7de6d48a.plan.md) | Scan de todas as roots PARA (`01_PROJECTS`, `02_AREAS`, `03_RESOURCES`, `04_ARCHIVE`); remoção do fallback legado `_WORK/`; `area_key` por categoria PARA |
+| 4 | [content_indexing_architecture](content_indexing_architecture_6b04708a.plan.md) | Arquitetura Pure Nested: remoção de 4 campos flat (`content`, `content_normalized`, `content_chunks_text`, `content_chunks_normalized`); busca full-text migrada para nested queries; highlight via `inner_hits` |
+| 5 | [fix_search_highlighting](fix_search_highlighting_781facff.plan.md) | Dual highlight nativo (text + text_normalized); eliminação de funções manuais; `_trim_highlight` preserva todos `<em>`; snippet 120 chars; ordenação híbrida |
+| 6 | [list_documents_+_mcp_fixes](list_documents_+_mcp_fixes_a27cba5a.plan.md) | Endpoint `GET /api/documents` (listagem/browse); tool MCP `list_documents`; guard `min_length` no `search_documents` |
+| 7 | [controle_operacional_+_responsividade](controle_operacional_+_responsividade_7ee57b2a.plan.md) | Controle operacional redesenhado; dashboard stats; responsividade 1024-1280px; mini-table de projetos |
+| 8 | [onboarding_ui_+_install](onboarding_ui_+_install_94d25d7b.plan.md) | `OnboardingWizard`; endpoint `GET /api/setup/status`; detecção automática de primeira execução |
+| 9 | [atlasfile_channel_integration](atlasfile_channel_integration_79e456ca.plan.md) | Camada nativa de channels (protocol Channel + ChannelManager); TelegramChannel via aiogram 3.x; endpoints `/api/channels/*`; UI no modal do Assistente |
+
+---
+
+## 0.3.0 (2026-03-05)
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [classifier_scoring_improvement](classifier_scoring_improvement_15688aec.plan.md) | Word boundary matching; normalização sqrt; routing rules completas |
+| 2 | [llm_visibility_templates_aliases](llm_visibility_templates_aliases_9e3f44f1.plan.md) | Campos de visibilidade LLM; contexto de projeto no prompt; prompt de chat enriquecido |
+| 3 | [template_editor_completo](template_editor_completo_58250547.plan.md) | Template store backend; CRUD API; editor visual; seleção na inicialização |
+| 4 | [search_filters_stats_llm_context](search_filters_stats_llm_context_f0eb431c.plan.md) | Endpoint `GET /api/stats`; filtros `doc_kind` e `area_key` na busca |
+| 5 | [atlasfile_profile_v2_cutover](atlasfile_profile_v2_cutover_58945536.plan.md) | Migração para Profile v2 com schema Pydantic; validação; histórico |
+| 6 | [profile_v2_e_layout_llm](profile_v2_e_layout_llm_5b350c4b.plan.md) | Layout plan/apply; editor de profile; seções colapsáveis |
+| 7 | [nested_chunks_inner_hits](nested_chunks_inner_hits_a1b2c3d4.plan.md) | Nested chunks com inner_hits; localização por chunk; highlight por trecho |

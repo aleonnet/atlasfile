@@ -24,6 +24,29 @@ mcp = FastMCP(
 
 
 @mcp.tool()
+def list_documents(
+    project_id: str | None = None,
+    doc_kind: str | None = None,
+    document_type: str | None = None,
+    area_key: str | None = None,
+    page: int = 1,
+    size: int = 20,
+) -> str:
+    """List/browse documents with optional filters (no text search required). Returns doc_id, title, filename, project_id, doc_kind, document_type, area_key, tags, ingested_at for each document. Use to enumerate documents in a project or browse by type/area. For text search use search_documents instead."""
+    params: dict[str, Any] = {"page": page, "size": size}
+    if project_id:
+        params["project_id"] = project_id
+    if doc_kind:
+        params["doc_kind"] = doc_kind
+    if document_type:
+        params["document_type"] = document_type
+    if area_key:
+        params["area_key"] = area_key
+    data = get("/api/documents", params=params)
+    return json.dumps(data, ensure_ascii=False)
+
+
+@mcp.tool()
 def search_documents(
     query: str,
     project_id: str | None = None,
@@ -37,6 +60,11 @@ def search_documents(
     size: int = 20,
 ) -> str:
     """Search documents by full-text query with optional filters: project_id, area_key, document_type, doc_kind (pdf, docx, xlsx, pptx, plain_text, html, msg, archive_listing), tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights, evidences)."""
+    if len(query.strip()) < 2:
+        return json.dumps(
+            {"error": "query must have at least 2 characters. Use list_documents to browse without a text query."},
+            ensure_ascii=False,
+        )
     params: dict[str, Any] = {"q": query, "page": page, "size": size}
     if project_id:
         params["project_id"] = project_id

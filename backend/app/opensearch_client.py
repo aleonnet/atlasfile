@@ -31,10 +31,6 @@ def ensure_index(client: OpenSearch) -> None:
         "title": {"type": "text"},
         "title_normalized": {"type": "text"},
         "title_suggest": {"type": "search_as_you_type"},
-        "content": {"type": "text"},
-        "content_normalized": {"type": "text"},
-        "content_chunks_text": {"type": "text"},
-        "content_chunks_normalized": {"type": "text"},
         "chunk_locations": {"type": "keyword"},
         "content_chunks": {
             "type": "nested",
@@ -80,7 +76,7 @@ def ensure_index(client: OpenSearch) -> None:
         return
 
     mapping: dict[str, Any] = {
-        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0}},
+        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0, "highlight.max_analyzed_offset": 10_000_000}},
         "mappings": {"properties": properties},
     }
     client.indices.create(index=index_name, body=mapping)

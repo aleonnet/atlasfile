@@ -12,6 +12,7 @@ Sistema local de organização documental por projeto, com classificação híbr
 - **Extração** de texto: PDF, DOCX, XLSX, PPTX, HTML, MSG, ZIP, RAR
 - **Assistente LLM** com chat multi-modelo (OpenAI, Anthropic), MCP tools e sessões persistentes
 - **Templates de projeto** com CRUD (builtin + user), editor visual e inicialização via UI
+- **Canais de comunicação** plugáveis (Telegram via aiogram, Discord/Slack em breve) — consultas ao assistente de qualquer app de mensagem
 - **Rastreabilidade** completa: nome original → nome canônico → SHA256 → `_INDEX.md` → OpenSearch
 
 ## Stack
@@ -31,7 +32,8 @@ Sistema local de organização documental por projeto, com classificação híbr
 AtlasFile/
 ├── backend/                 # API FastAPI, classificador, indexador, MCP server
 │   ├── app/                 # Código principal (main, ingestion, orchestrator, ...)
-│   │   ├── api/             # Routers (profile, layout)
+│   │   ├── api/             # Routers (profile, layout, channels)
+│   │   ├── channels/        # Camada de canais (Telegram, Discord, Slack)
 │   │   ├── mcp/             # MCP server (tools)
 │   │   ├── mcp_client/      # Cliente MCP (chat/orchestrator)
 │   │   └── prompts/         # System prompts (classify, chat)
@@ -104,8 +106,11 @@ make docker-update
 |--------|-----------|
 | `make test` | Roda todos os testes (backend + frontend) |
 | `make docker-update` | Testa + rebuild + sobe stack + smoke test |
+| `make docker-update RESET_INDEX=1` | Idem + reseta índice de documentos |
+| `make docker-update RESET_CHAT=1` | Idem + reseta índice de sessões de chat |
 | `make docker-up` | Sobe stack sem rodar testes |
-| `make reset-index` | Remove índice OpenSearch para recriar com mapping atualizado |
+| `make reset-index` | Remove índice de documentos |
+| `make reset-chat` | Remove índice de sessões de chat |
 
 ## Fluxo de classificação
 
@@ -135,11 +140,15 @@ Arquivo entra em _INBOX_DROP
 
 ## Convenção de nomes (canonical)
 
+Formato configurável via `naming.canonical_pattern` no template/profile. Default:
+
 ```
-YYYYMMDD__<project_id>__<area_key>__<short_title>__vNN.<ext>
+{date}__{project}__{original_name}__v{version}{ext}
 ```
 
-Exemplo: `20260301__kaido__contratos_comunicacao__migracao_clientes__v01.xlsx`
+Exemplo: `20260301__kaido__Contrato_Migracao_Clientes__v01.xlsx`
+
+O nome original do arquivo é preservado intacto (case, acentos, underscores). Veja `docs/04_naming_convention.md` para detalhes.
 
 ## Variáveis de ambiente
 
@@ -159,8 +168,9 @@ Veja `.env.example` para a lista completa.
 
 | Tool | Descrição |
 |------|-----------|
+| `list_documents` | Listagem/browse de documentos com filtros (projeto, área, tipo) sem query textual |
 | `search_documents` | Busca full-text com filtros (projeto, área, tipo, tags, datas) |
-| `get_stats` | Estatísticas agregadas (por doc_kind, area_key, document_type) |
+| `get_stats` | Estatísticas agregadas (por doc_kind, area_key, document_type, project_id) |
 | `get_document` | Metadados + chunks de um documento |
 | `get_document_chunks` | Chunks específicos por localização (page:N, sheet:Name) |
 | `apply_tags` | Adiciona/remove tags |

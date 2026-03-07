@@ -6,6 +6,15 @@ import App from "./App";
 
 vi.mock("./api", () => ({
   fetchHealth: vi.fn(() => Promise.resolve({ ok: true })),
+  fetchSetupStatus: vi.fn(() =>
+    Promise.resolve({
+      app_env: "dev",
+      projects_root: "/projects",
+      total_project_dirs: 1,
+      initialized_projects: 1,
+      onboarding_suggested: false,
+    })
+  ),
   fetchProjects: vi.fn(() =>
     Promise.resolve([
       { project_id: "p1", project_label: "Projeto 1", root: "/p1", initialized: true }
@@ -71,7 +80,8 @@ vi.mock("./api", () => ({
       by_area_key: [{ key: "juridica", count: 4 }],
       by_document_type: [{ key: "contrato", count: 3 }],
       by_extension: [{ key: ".pdf", count: 3 }],
-      by_tags: [{ key: "juridica", count: 4 }]
+      by_tags: [{ key: "juridica", count: 4 }],
+      by_project_id: [{ key: "p1", count: 5 }]
     })
   )
 }));
@@ -125,6 +135,59 @@ describe("App", () => {
     expect(screen.getByText(/10/)).toBeInTheDocument();
   });
 
+  it("shows onboarding when no projects exist", async () => {
+    const { fetchSetupStatus, fetchProjects } = await import("./api");
+    vi.mocked(fetchSetupStatus).mockResolvedValue({
+      app_env: "dev",
+      projects_root: "/projects",
+      total_project_dirs: 0,
+      initialized_projects: 0,
+      onboarding_suggested: true,
+    });
+    vi.mocked(fetchProjects).mockResolvedValue([]);
+    localStorage.removeItem("atlasfile-onboarding-done");
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText(/Bem-vindo ao AtlasFile/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows dashboard when projects exist", async () => {
+    const { fetchSetupStatus } = await import("./api");
+    vi.mocked(fetchSetupStatus).mockResolvedValue({
+      app_env: "dev",
+      projects_root: "/projects",
+      total_project_dirs: 1,
+      initialized_projects: 1,
+      onboarding_suggested: false,
+    });
+    localStorage.removeItem("atlasfile-onboarding-done");
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText(/Ingestão e triagem|Ingestao e triagem/i)).toBeInTheDocument();
+    });
+  });
+
+  it("replay onboarding button visible in dev mode", async () => {
+    const { fetchSetupStatus } = await import("./api");
+    vi.mocked(fetchSetupStatus).mockResolvedValue({
+      app_env: "dev",
+      projects_root: "/projects",
+      total_project_dirs: 1,
+      initialized_projects: 1,
+      onboarding_suggested: false,
+    });
+    localStorage.setItem("atlasfile-onboarding-done", "true");
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText(/Ingestão e triagem|Ingestao e triagem/i)).toBeInTheDocument();
+    });
+    expect(screen.getByTitle(/Replay Onboarding/)).toBeInTheDocument();
+  });
+
   it("formats DOCX location as pagina/paragrafo", async () => {
     const { searchDocuments } = await import("./api");
     vi.mocked(searchDocuments).mockResolvedValue({
@@ -165,5 +228,35 @@ describe("App", () => {
     fireEvent.change(input, { target: { value: "Fornecedores" } });
 
     expect(await screen.findByText(/Pagina 135 \/ 1o paragrafo/i)).toBeInTheDocument();
+  });
+
+  it("renders control card with stats and project table", async () => {
+    const { fetchReconcileStatus, fetchProjects, fetchSetupStatus } = await import("./api");
+    vi.mocked(fetchSetupStatus).mockResolvedValue({
+      app_env: "dev", projects_root: "/projects", total_project_dirs: 1, initialized_projects: 1, onboarding_suggested: false,
+    });
+    vi.mocked(fetchProjects).mockResolvedValue([
+      { project_id: "p1", project_label: "Projeto 1", root: "/p1", initialized: true }
+    ]);
+    vi.mocked(fetchReconcileStatus).mockResolvedValue({
+      running: false,
+      phase: "idle",
+      summary: { project_count: 0, skipped_count: 0, rows_written: 0, added_rows: 0, removed_rows: 0, adjustments_applied: 0, indexed_docs: 0, skipped_docs: 0 },
+      last_run_started_at: null,
+      last_run_finished_at: null,
+      duration_seconds: null,
+      progress_current: 0,
+      progress_total: 0
+    });
+    render(<App />);
+    expect(await screen.findByText(/Controle operacional/, {}, { timeout: 5000 })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/projetos inicializados/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/documentos indexados/)).toBeInTheDocument();
+    expect(screen.getByText(/\.PDF/)).toBeInTheDocument();
+    const miniTable = document.querySelector(".mini-table");
+    expect(miniTable).toBeInTheDocument();
+    expect(miniTable!.textContent).toContain("Projeto 1");
   });
 });

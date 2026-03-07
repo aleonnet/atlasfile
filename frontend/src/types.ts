@@ -67,6 +67,8 @@ export interface ReconcileSummary {
   indexed_docs: number;
   skipped_docs?: number;
   failed_docs?: number;
+  orphan_projects_found?: number;
+  orphan_docs_deleted?: number;
 }
 
 export interface ReconcileStatus {
@@ -187,6 +189,10 @@ export interface ProjectProfileV2 {
     };
     llm_policy: LLMPolicy;
   };
+  naming?: {
+    canonical_pattern?: string;
+    date_format?: string;
+  };
   indexing: {
     topics_path: string;
     extraction_max_chars: number;
@@ -289,6 +295,7 @@ export interface StatsResponse {
   by_document_type: StatsBucket[];
   by_extension: StatsBucket[];
   by_tags: StatsBucket[];
+  by_project_id: StatsBucket[];
 }
 
 /* ── LLM Policy ── */
@@ -355,4 +362,30 @@ export interface LayoutPlanResponse {
     ops: number;
   };
   plan: LayoutPlan;
+}
+
+/* ── Channels ── */
+
+export interface ChannelConfigTelegram {
+  enabled: boolean;
+  bot_token: string;
+}
+
+export interface ChannelConfig {
+  channels_enabled: boolean;
+  telegram: ChannelConfigTelegram;
+}
+
+export interface ChannelStatusItem {
+  channel_id: string;
+  name: string;
+  running: boolean;
+  connected: boolean;
+  error: string | null;
+  uptime_seconds: number;
+}
+
+export interface ChannelStatusResponse {
+  channels_enabled: boolean;
+  channels: ChannelStatusItem[];
 }

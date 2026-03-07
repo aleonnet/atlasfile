@@ -5,6 +5,7 @@ import {
   fetchProfileHistory,
   fetchProjectProfile,
   fetchReconcileStatus,
+  fetchSetupStatus,
   fetchStats,
   fetchSuggestions,
   getFileDownloadUrl,
@@ -20,6 +21,33 @@ describe("getFileDownloadUrl", () => {
     expect(url).toContain("/api/files/download");
     expect(url).toContain("path=");
     expect(url).toContain(encodeURIComponent("proj/_WORK/file.pdf"));
+  });
+});
+
+describe("fetchSetupStatus", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns setup status on 200", async () => {
+    const mockStatus = {
+      app_env: "dev",
+      projects_root: "/projects",
+      total_project_dirs: 1,
+      initialized_projects: 1,
+      onboarding_suggested: false,
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockStatus),
+    } as Response);
+    const result = await fetchSetupStatus();
+    expect(result).toEqual(mockStatus);
+  });
+
+  it("throws on !res.ok", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false } as Response);
+    await expect(fetchSetupStatus()).rejects.toThrow("Falha ao verificar status de setup");
   });
 });
 

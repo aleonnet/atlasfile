@@ -39,16 +39,16 @@ Registro local em Markdown com campos mínimos por documento ingerido:
 | `title_normalized` | text | `normalize_text(title)` |
 | `title_suggest` | search_as_you_type | Autocomplete |
 
-### Conteúdo
+### Conteúdo (Pure Nested Architecture)
+
+Todo o conteúdo textual é armazenado exclusivamente em `content_chunks` (nested). Campos flat de conteúdo foram removidos na v0.4.0.
 
 | Campo | Tipo | Origem |
 |-------|------|--------|
-| `content` | text | `extract_document_content()` |
-| `content_normalized` | text | `normalize_text(content)` |
-| `content_chunks` | nested | `{location, text, text_normalized}` — chunking (1200 chars) |
-| `content_chunks_text` | text | Chunks concatenados |
-| `content_chunks_normalized` | text | Chunks normalizados |
+| `content_chunks` | nested | `{location, text, text_normalized}` — chunking (~1200 chars/chunk). Fonte única para busca full-text, highlight e retrieval |
 | `chunk_locations` | keyword | IDs dos chunks (ex: `page:1`, `sheet:Plan1`) |
+
+**Campos removidos (v0.4.0):** `content`, `content_normalized`, `content_chunks_text`, `content_chunks_normalized` — eram cópias redundantes do texto dos chunks.
 
 ### Extração
 
@@ -66,7 +66,7 @@ Registro local em Markdown com campos mínimos por documento ingerido:
 | `original_filename_text` | text | Full-text search |
 | `original_filename_normalized` | text | Normalizado |
 | `original_filename_suggest` | search_as_you_type | Autocomplete |
-| `canonical_filename` | keyword | `YYYYMMDD__proj__area__title__vNN.ext` |
+| `canonical_filename` | keyword | Configurável via `naming.canonical_pattern` (default: `{date}__{project}__{original_name}__vNN.ext`) |
 | `canonical_filename_text` | text | Full-text search |
 | `canonical_filename_normalized` | text | Normalizado |
 

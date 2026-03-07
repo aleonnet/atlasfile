@@ -32,7 +32,6 @@ def test_get_document_200(client: TestClient) -> None:
                 "title": "Doc title",
                 "original_filename": "file.pdf",
                 "path": "p1/_WORK/03_ativos/file.pdf",
-                "content": "excerpt",
                 "content_chunks": [{"location": "page:1", "text": "chunk1"}],
                 "tags": ["TAG1"],
                 "document_type": "contrato",
@@ -44,6 +43,7 @@ def test_get_document_200(client: TestClient) -> None:
     data = r.json()
     assert data["doc_id"] == "doc1"
     assert data["area_key"] == "ativos"
+    assert data["content"] == "chunk1"
     assert data["content_chunks"] == [{"location": "page:1", "text": "chunk1"}]
     assert data["tags"] == ["TAG1"]
 

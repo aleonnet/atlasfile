@@ -65,6 +65,75 @@ def test_api_get_document_chunks_404() -> None:
     assert r.status_code == 404
 
 
+def test_api_get_document_content_computed_from_chunks() -> None:
+    """GET /api/documents/{doc_id} computes content on-the-fly from content_chunks."""
+    _ensure_app_importable()
+    from app.main import app
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    with patch("app.main.os_client") as mock:
+        mock.get.return_value = {
+            "_source": {
+                "doc_id": "doc1",
+                "project_id": "p1",
+                "area_key": "a",
+                "title": "T",
+                "original_filename": "f.pdf",
+                "canonical_filename": "f.pdf",
+                "path": "p/f.pdf",
+                "content_chunks": [
+                    {"location": "page:1", "text": "First chunk text."},
+                    {"location": "page:2", "text": "Second chunk text."},
+                ],
+                "tags": [],
+                "document_type": None,
+                "correspondent": None,
+                "review_status": None,
+                "content_type": "application/pdf",
+                "ingested_at": None,
+                "processed_at": None,
+            }
+        }
+        r = client.get("/api/documents/doc1")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["content"] == "First chunk text.\nSecond chunk text."
+    assert len(d["content_chunks"]) == 2
+
+
+def test_api_get_document_content_empty_when_no_chunks() -> None:
+    """GET /api/documents/{doc_id} returns empty content when no chunks."""
+    _ensure_app_importable()
+    from app.main import app
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    with patch("app.main.os_client") as mock:
+        mock.get.return_value = {
+            "_source": {
+                "doc_id": "doc2",
+                "project_id": "p1",
+                "area_key": "a",
+                "title": "T",
+                "original_filename": "f.txt",
+                "canonical_filename": "f.txt",
+                "path": "p/f.txt",
+                "content_chunks": [],
+                "tags": [],
+                "document_type": None,
+                "correspondent": None,
+                "review_status": None,
+                "content_type": "text/plain",
+                "ingested_at": None,
+                "processed_at": None,
+            }
+        }
+        r = client.get("/api/documents/doc2")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["content"] == ""
+    assert d["content_chunks"] == []
+
+
 def test_api_get_document_chunks_200_filtered() -> None:
     _ensure_app_importable()
     from app.main import app

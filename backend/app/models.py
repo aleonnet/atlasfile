@@ -159,3 +159,51 @@ class StatsResponse(BaseModel):
     by_document_type: list[StatsBucket] = Field(default_factory=list)
     by_extension: list[StatsBucket] = Field(default_factory=list)
     by_tags: list[StatsBucket] = Field(default_factory=list)
+    by_project_id: list[StatsBucket] = Field(default_factory=list)
+
+
+class ListDocumentItem(BaseModel):
+    doc_id: str
+    project_id: str
+    title: str
+    original_filename: str
+    path: str
+    doc_kind: str | None = None
+    document_type: str | None = None
+    area_key: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    ingested_at: str | None = None
+
+
+class ListDocumentsResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[ListDocumentItem]
+
+
+# --- Channel config / status ---
+
+
+class ChannelConfigTelegram(BaseModel):
+    enabled: bool = False
+    bot_token: str = ""
+
+
+class ChannelConfigUpdate(BaseModel):
+    channels_enabled: bool = False
+    telegram: ChannelConfigTelegram = Field(default_factory=ChannelConfigTelegram)
+
+
+class ChannelStatusItem(BaseModel):
+    channel_id: str
+    name: str
+    running: bool
+    connected: bool
+    error: str | None = None
+    uptime_seconds: float = 0.0
+
+
+class ChannelStatusResponse(BaseModel):
+    channels_enabled: bool
+    channels: list[ChannelStatusItem] = Field(default_factory=list)

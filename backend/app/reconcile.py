@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import uuid
 from pathlib import Path
@@ -15,9 +16,17 @@ from opensearchpy.exceptions import TransportError
 from .config import settings
 from .indexer import index_document, read_text_excerpt
 from .opensearch_client import ensure_index
-from .profile_runtime import area_folder_map, areas_root_rel, triage_paths
+from .profile_runtime import area_folder_map, areas_root_rel, para_scan_roots, triage_paths
 from .project_profile import load_project_profile
-from .utils import sha256_file
+from .utils import (
+    DEFAULT_CANONICAL_PATTERN,
+    extract_original_name_from_canonical,
+    normalize_text,
+    sanitize_token,
+    sha256_file,
+)
+
+_VERSION_TAIL_RE = re.compile(r"__v(\d{2})(\.\w+)$")
 
 
 def _is_ignored_file(path: Path) -> bool:
@@ -34,18 +43,20 @@ def _parse_index_rows(index_path: Path) -> list[dict[str, str]]:
         cols = [c.strip() for c in raw.strip().strip("|").split("|")]
         if len(cols) < 8:
             continue
-        rows.append(
-            {
-                "doc_id": cols[0],
-                "project_id": cols[1],
-                "area": cols[2],
-                "original_filename": cols[3],
-                "canonical_filename": cols[4],
-                "decision": cols[5],
-                "confidence": cols[6],
-                "path": cols[7],
-            }
-        )
+        if cols[0] == "doc_id":
+            continue
+        row = {
+            "doc_id": cols[0],
+            "project_id": cols[1],
+            "area": cols[2],
+            "original_filename": cols[3],
+            "canonical_filename": cols[4],
+            "decision": cols[5],
+            "confidence": cols[6],
+            "path": cols[7],
+            "naming_pattern": cols[8] if len(cols) > 8 else "",
+        }
+        rows.append(row)
     return rows
 
 
@@ -64,7 +75,58 @@ def _infer_area_from_layout_path(work_file: Path, project_root: Path, profile: d
     return "unclassified"
 
 
+def _try_migrate_old_format(f: Path, profile: dict[str, Any]) -> Path | None:
+    """Rename a file from old canonical format (with area segment) to new format.
+
+    Old: ``YYYYMMDD__proj__area__title__vNN.ext``
+    New: ``YYYYMMDD__proj__title__vNN.ext``
+
+    Returns the new Path if renamed, ``None`` otherwise.
+    """
+    tail = _VERSION_TAIL_RE.search(f.name)
+    if not tail:
+        return None
+
+    prefix = f.name[: tail.start()]
+    parts = prefix.split("__")
+
+    # Old format produces exactly 4 segments (sanitize_token never yields __)
+    if len(parts) != 4:
+        return None
+
+    date_part, proj_part, candidate_area, title_part = parts
+    if not (len(date_part) == 8 and date_part.isdigit()):
+        return None
+
+    area_keys: set[str] = set()
+    for wa in (profile.get("classification") or {}).get("work_areas", []):
+        k = wa.get("key", "")
+        if k:
+            area_keys.add(sanitize_token(k))
+    for af in (profile.get("layout") or {}).get("area_folders", []):
+        k = af.get("area_key", "")
+        if k:
+            area_keys.add(sanitize_token(k))
+    area_keys.add("unclassified")
+
+    if candidate_area not in area_keys:
+        return None
+
+    version_suffix = tail.group(0)
+    new_name = f"{date_part}__{proj_part}__{title_part}{version_suffix}"
+    new_path = f.parent / new_name
+    if new_path.exists():
+        logger.warning("Migration skip: %s -> %s (destination exists)", f.name, new_name)
+        return None
+
+    f.rename(new_path)
+    logger.info("Migration: renamed %s -> %s", f.name, new_name)
+    return new_path
+
+
 def _triage_rows(project_root: Path, project_id: str, profile: dict[str, Any]) -> list[dict[str, str]]:
+    naming = profile.get("naming") or {}
+    current_pattern = naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN)
     out: list[dict[str, str]] = []
     triage = triage_paths(profile)
     for state, rel in (("pending", triage["pending"]), ("rejected", triage["rejected"])):
@@ -87,13 +149,14 @@ def _triage_rows(project_root: Path, project_id: str, profile: dict[str, Any]) -
                     "decision": decision,
                     "confidence": f"{float(data.get('confidence_score') or 0.0):.2f}",
                     "path": str(data.get("source_path") or ""),
+                    "naming_pattern": str(data.get("naming_pattern") or current_pattern),
                 }
             )
     return out
 
 
 def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict[str, Any]:
-    project_id = str(profile.get("project_id", project_root.name))
+    project_id = normalize_text(str(profile.get("project_id", project_root.name)))
     index_path = project_root / "_INDEX.md"
 
     existing_rows = _parse_index_rows(index_path)
@@ -107,6 +170,7 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
             row.get("decision", ""),
             row.get("confidence", ""),
             row.get("path", ""),
+            row.get("naming_pattern", ""),
         )
         for row in existing_rows
     }
@@ -114,16 +178,15 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
         row["path"]: row for row in existing_rows if row.get("decision") in {"auto", "approved", "corrected"}
     }
 
+    naming = profile.get("naming") or {}
+    naming_pattern = naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN)
+
     work_rows: list[dict[str, str]] = []
-    work_root = project_root / areas_root_rel(profile)
-    # Scan primary areas_root + legacy _WORK/ fallback to avoid orphaning docs
-    # during profile migrations that change areas_root without moving files.
-    scan_roots = [work_root]
-    legacy_work = project_root / "_WORK"
-    if legacy_work.exists() and legacy_work.resolve() != work_root.resolve():
-        scan_roots.append(legacy_work)
+    # Scan all PARA roots (projects, areas, resources, archive)
+    scan_entries = para_scan_roots(profile)
     seen_paths: set[str] = set()
-    for scan_dir in scan_roots:
+    for folder_rel, category in scan_entries:
+        scan_dir = project_root / folder_rel
         if not scan_dir.exists():
             continue
         for f in sorted(scan_dir.rglob("*"), key=lambda p: str(p).lower()):
@@ -131,21 +194,51 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
                 continue
             if _is_ignored_file(f.relative_to(project_root)):
                 continue
+
+            # Auto-migrate old canonical format -> new (remove area segment)
+            old_path_str = str(f)
+            new_path = _try_migrate_old_format(f, profile)
+            if new_path is not None:
+                f = new_path
+
             p = str(f)
             if p in seen_paths:
                 continue
             seen_paths.add(p)
-            prev = existing_work_rows.get(p)
+            prev = existing_work_rows.get(old_path_str) or existing_work_rows.get(p)
+
+            # Reconstruct original_filename when no previous record exists
+            orig_fn = (prev or {}).get("original_filename") or None
+            # Use per-file pattern from previous index row when available
+            row_pattern = (prev or {}).get("naming_pattern") or ""
+            if not orig_fn:
+                parse_pattern = row_pattern or naming_pattern
+                extracted = extract_original_name_from_canonical(f.name, parse_pattern)
+                if not extracted:
+                    extracted = extract_original_name_from_canonical(
+                        f.name, "{date}__{project}__{area}__{original_name}"
+                    )
+                if not extracted and parse_pattern != naming_pattern:
+                    extracted = extract_original_name_from_canonical(f.name, naming_pattern)
+                orig_fn = extracted or f.name
+
+            # area_key: infer from subfolder for "areas" root; use PARA category otherwise
+            if category == "areas":
+                inferred_area = _infer_area_from_layout_path(f, project_root, profile, scan_root=scan_dir)
+            else:
+                inferred_area = category
+
             work_rows.append(
                 {
                     "doc_id": (prev or {}).get("doc_id", str(uuid.uuid4())),
                     "project_id": project_id,
-                    "area": (prev or {}).get("area", _infer_area_from_layout_path(f, project_root, profile, scan_root=scan_dir)),
-                    "original_filename": (prev or {}).get("original_filename", f.name),
+                    "area": (prev or {}).get("area", inferred_area),
+                    "original_filename": orig_fn,
                     "canonical_filename": f.name,
                     "decision": (prev or {}).get("decision", "auto"),
                     "confidence": (prev or {}).get("confidence", "0.90"),
                     "path": p,
+                    "naming_pattern": row_pattern or naming_pattern,
                 }
             )
 
@@ -171,6 +264,7 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
             row.get("decision", ""),
             row.get("confidence", ""),
             row.get("path", ""),
+            row.get("naming_pattern", ""),
         )
         for row in rows
     }
@@ -179,13 +273,13 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
 
     header = (
         "# _INDEX\n\n"
-        "| doc_id | project_id | area | original_filename | canonical_filename | decision | confidence | path |\n"
-        "|---|---|---|---|---|---|---:|---|\n"
+        "| doc_id | project_id | area | original_filename | canonical_filename | decision | confidence | path | naming_pattern |\n"
+        "|---|---|---|---|---|---|---:|---|---|\n"
     )
     lines = [
         (
             f"| {r['doc_id']} | {r['project_id']} | {r['area']} | {r['original_filename']} | "
-            f"{r['canonical_filename']} | {r['decision']} | {r['confidence']} | {r['path']} |"
+            f"{r['canonical_filename']} | {r['decision']} | {r['confidence']} | {r['path']} | {r.get('naming_pattern', '')} |"
         )
         for r in rows
     ]
@@ -292,6 +386,62 @@ def rebuild_search_index(
     }
 
 
+def cleanup_orphan_projects(
+    client: OpenSearch,
+    valid_project_ids: set[str],
+    valid_project_roots: list[Path],
+) -> dict[str, int]:
+    """Remove OpenSearch docs belonging to projects that no longer exist on disk."""
+    try:
+        res = client.search(
+            index=settings.opensearch_index,
+            body={
+                "size": 0,
+                "aggs": {
+                    "project_ids": {
+                        "terms": {"field": "project_id", "size": 1000}
+                    }
+                },
+            },
+        )
+    except Exception:
+        logger.exception("Failed to query project_id aggregation for orphan cleanup")
+        return {"orphan_projects_found": 0, "orphan_docs_deleted": 0}
+
+    valid_path_prefixes = {f"{str(r).rstrip('/')}/" for r in valid_project_roots}
+    buckets = res.get("aggregations", {}).get("project_ids", {}).get("buckets", [])
+    indexed_ids = {b["key"] for b in buckets}
+
+    # Normalize valid project IDs so accented/cased variants don't become orphans
+    valid_normalized = {normalize_text(pid).replace(" ", "_") for pid in valid_project_ids}
+    orphan_ids = {
+        iid for iid in indexed_ids
+        if normalize_text(iid).replace(" ", "_") not in valid_normalized
+    }
+
+    total_deleted = 0
+    for orphan_id in orphan_ids:
+        query: dict[str, Any] = {"term": {"project_id": orphan_id}}
+        try:
+            del_res = client.delete_by_query(
+                index=settings.opensearch_index,
+                body={"query": query},
+                conflicts="proceed",
+                refresh=False,
+            )
+            total_deleted += int(del_res.get("deleted", 0))
+        except Exception:
+            logger.exception("Failed to delete orphan docs for project_id=%s", orphan_id)
+
+    if total_deleted > 0:
+        try:
+            client.indices.refresh(index=settings.opensearch_index)
+        except Exception:
+            pass
+
+    return {"orphan_projects_found": len(orphan_ids), "orphan_docs_deleted": total_deleted}
+
+
 def sync_search_index_for_project(
     client: OpenSearch,
     project_root: Path,
@@ -370,9 +520,14 @@ def sync_search_index_for_project(
             progress["progress_file_pct"] = 0
         current_sha = sha256_file(p)
         try:
-            get_res = client.get(index=settings.opensearch_index, id=doc_id, _source=["sha256"])
-            existing_sha = (get_res.get("_source") or {}).get("sha256") or ""
-            if existing_sha == current_sha:
+            get_res = client.get(
+                index=settings.opensearch_index, id=doc_id, _source=["sha256", "project_id"]
+            )
+            src = get_res.get("_source") or {}
+            existing_sha = src.get("sha256") or ""
+            existing_pid = src.get("project_id") or ""
+            # Skip only when both content hash AND project_id match
+            if existing_sha == current_sha and existing_pid == row["project_id"]:
                 skipped_docs += 1
                 if progress is not None:
                     progress["progress_skipped"] = progress.get("progress_skipped", 0) + 1

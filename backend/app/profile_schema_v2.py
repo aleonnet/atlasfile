@@ -148,6 +148,20 @@ class ClassificationConfig(BaseModel):
         return [a.key for a in self.work_areas]
 
 
+class NamingConfig(BaseModel):
+    canonical_pattern: str = Field(
+        default="{date}__{project}__{original_name}",
+        description="Pattern for canonical filenames. {original_name} is required.",
+    )
+    date_format: str = Field(default="%Y%m%d", description="strftime format for {date} field")
+
+    @model_validator(mode="after")
+    def _validate_pattern(self) -> "NamingConfig":
+        if "{original_name}" not in self.canonical_pattern:
+            raise ValueError("canonical_pattern must contain {original_name}")
+        return self
+
+
 class IndexingConfig(BaseModel):
     topics_path: str = "config/topics_v1.yaml"
     extraction_max_chars: int = 20000
@@ -162,6 +176,7 @@ class ProjectProfileV2(BaseModel):
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
     layout: LayoutConfig = Field(default_factory=LayoutConfig)
     classification: ClassificationConfig = Field(default_factory=ClassificationConfig)
+    naming: NamingConfig = Field(default_factory=NamingConfig)
     indexing: IndexingConfig = Field(default_factory=IndexingConfig)
     updated_at: datetime | None = None
     updated_by: str | None = None

@@ -507,10 +507,13 @@ details.itc-history-entry[open] > .itc-history-summary::before {
 
 /* ── Responsive ── */
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .itc-llm-fields {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 768px) {
 
   .itc-th-area,
   .itc-scan-area {

@@ -152,6 +152,34 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
         </div>
       </details>
 
+      {/* ── Naming (formato canônico) ── */}
+      <details className="pl-collapsible">
+        <summary className="pl-collapsible-header">Naming (formato canônico)</summary>
+        <div className="pl-collapsible-body">
+          <div className="pl-roots-grid">
+            <label className="pl-field">
+              <span className="pl-field-label">Canonical pattern</span>
+              <input
+                className="pl-input"
+                value={profile.naming?.canonical_pattern ?? "{date}__{project}__{original_name}"}
+                onChange={(e) => onChange({ ...profile, naming: { ...profile.naming, canonical_pattern: e.target.value } })}
+              />
+              <span style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 2 }}>
+                Campos: {"{date}"}, {"{project}"}, {"{area}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext automático.
+              </span>
+            </label>
+            <label className="pl-field">
+              <span className="pl-field-label">Date format</span>
+              <input
+                className="pl-input"
+                value={profile.naming?.date_format ?? "%Y%m%d"}
+                onChange={(e) => onChange({ ...profile, naming: { ...profile.naming, date_format: e.target.value } })}
+              />
+            </label>
+          </div>
+        </div>
+      </details>
+
       {/* ── Geral (collapsed by default) ── */}
       <details className="pl-collapsible">
         <summary className="pl-collapsible-header">Geral</summary>

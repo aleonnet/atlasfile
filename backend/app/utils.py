@@ -33,17 +33,60 @@ def normalize_text(value: str) -> str:
     return ascii_like.lower()
 
 
+_FS_INVALID_RE = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
+_CANONICAL_TAIL_RE = re.compile(r"__v(\d{2})(\.\w+)$")
+DEFAULT_CANONICAL_PATTERN = "{date}__{project}__{original_name}"
+
+
+def fs_safe(value: str) -> str:
+    """Remove only filesystem-invalid chars. Preserves case, accents and underscores."""
+    return _FS_INVALID_RE.sub("", value).strip()
+
+
 def build_canonical_filename(
     *,
-    project_id: str,
-    area_key: str,
-    short_title: str,
+    pattern: str = DEFAULT_CANONICAL_PATTERN,
+    date_format: str = "%Y%m%d",
+    fields: dict[str, str],
     original_suffix: str,
     version: int = 1,
 ) -> str:
-    date_prefix = datetime.now().strftime("%Y%m%d")
-    title_token = sanitize_token(short_title) or "documento"
-    return (
-        f"{date_prefix}__{sanitize_token(project_id)}__{sanitize_token(area_key)}__"
-        f"{title_token}__v{version:02d}{original_suffix.lower()}"
-    )
+    """Build a canonical filename from *pattern* and *fields*.
+
+    ``pattern`` is the user-configurable prefix (from profile ``naming.canonical_pattern``).
+    The mandatory suffix ``__v{version:02d}{ext}`` is always appended by the system.
+    """
+    resolved: dict[str, str] = {
+        "date": datetime.now().strftime(date_format),
+        "project": sanitize_token(fields.get("project", "")),
+        "area": sanitize_token(fields.get("area", "")),
+        "original_name": fs_safe(fields.get("original_name", "")) or "documento",
+        "document_type": sanitize_token(fields.get("document_type", "")),
+    }
+    prefix = pattern.format_map(resolved)
+    return f"{prefix}__v{version:02d}{original_suffix.lower()}"
+
+
+def extract_original_name_from_canonical(
+    canonical: str,
+    pattern: str = DEFAULT_CANONICAL_PATTERN,
+) -> str | None:
+    """Extract the original filename (with extension) from a canonical filename.
+
+    Returns ``None`` when *canonical* doesn't match the expected structure.
+    Uses *pattern* to determine how many ``__``-separated prefix segments to skip
+    before reaching ``{original_name}``.
+    """
+    tail = _CANONICAL_TAIL_RE.search(canonical)
+    if not tail:
+        return None
+    ext = tail.group(2)
+    without_tail = canonical[: tail.start()]
+    prefix_part = pattern.split("{original_name}")[0]
+    # Count separators before {original_name} to know how many segments to skip
+    n_sep = prefix_part.count("__")
+    n_skip = n_sep + (1 if prefix_part and not prefix_part.endswith("__") else 0)
+    parts = without_tail.split("__", n_skip)
+    if len(parts) <= n_skip:
+        return None
+    return parts[n_skip] + ext

@@ -711,3 +711,7 @@ img.chat-avatar {
 .chat-image-modal__close:hover {
   background: var(--hover, rgba(255, 255, 255, 0.1));
 }
+
+@media (max-width: 1024px) {
+  .chat-panel-toolbar { flex-wrap: wrap; }
+}

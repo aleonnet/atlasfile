@@ -24,6 +24,18 @@ def areas_root_rel(profile: dict[str, Any]) -> str:
     return str(layout.get("areas_root") or profile.get("work_root") or "_WORK")
 
 
+def para_scan_roots(profile: dict[str, Any]) -> list[tuple[str, str]]:
+    """Return ``(folder, category)`` pairs for all PARA roots in ``layout.roots``.
+
+    Falls back to ``[(areas_root, "areas")]`` when ``layout.roots`` is absent.
+    """
+    layout = profile.get("layout") or {}
+    roots = layout.get("roots") or {}
+    if not roots:
+        return [(areas_root_rel(profile), "areas")]
+    return [(folder, category) for category, folder in roots.items() if folder]
+
+
 def area_folder_map(profile: dict[str, Any]) -> dict[str, str]:
     layout = profile.get("layout") or {}
     mapped: dict[str, str] = {}

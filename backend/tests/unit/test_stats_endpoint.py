@@ -23,6 +23,7 @@ def _mock_stats_response(total: int = 5) -> dict:
             "by_document_type": {"buckets": [{"key": "contrato", "doc_count": 3}]},
             "by_extension": {"buckets": [{"key": ".pdf", "doc_count": 3}, {"key": ".docx", "doc_count": 2}]},
             "by_tags": {"buckets": [{"key": "juridica", "doc_count": 4}]},
+            "by_project_id": {"buckets": [{"key": "Kaido", "doc_count": 3}, {"key": "Teste", "doc_count": 2}]},
         },
     }
 
@@ -42,6 +43,9 @@ def test_stats_returns_aggregations(client):
     assert len(data["by_document_type"]) == 1
     assert len(data["by_extension"]) == 2
     assert len(data["by_tags"]) == 1
+    assert len(data["by_project_id"]) == 2
+    assert data["by_project_id"][0]["key"] == "Kaido"
+    assert data["by_project_id"][0]["count"] == 3
 
 
 def test_stats_with_project_id(client):
@@ -70,6 +74,7 @@ def test_stats_empty_index(client):
                 "by_document_type": {"buckets": []},
                 "by_extension": {"buckets": []},
                 "by_tags": {"buckets": []},
+                "by_project_id": {"buckets": []},
             },
         }
         resp = client.get("/api/stats")
@@ -78,3 +83,4 @@ def test_stats_empty_index(client):
     assert data["total_documents"] == 0
     assert data["by_doc_kind"] == []
     assert data["by_area_key"] == []
+    assert data["by_project_id"] == []

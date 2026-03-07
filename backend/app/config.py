@@ -56,8 +56,8 @@ class Settings(BaseSettings):
     search_index_incremental_by_sha256: bool = True
 
     # --- Snippet (evidências e highlights) ---
-    # Tamanho total máximo do snippet em caracteres (antes + termo + depois). Regra única para autocomplete e busca.
-    snippet_total_max: int = 80
+    # Tamanho total máximo do snippet em caracteres (plain text, sem tags HTML). Regra única para autocomplete e busca.
+    snippet_total_max: int = 120
 
     # --- GET /api/documents (conteúdo para o agente) ---
     # Limite de caracteres (content + content_chunks) retornados por get_document, para caber no contexto do modelo.
@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     classification_llm_enabled: bool = False
     # CORS: origens permitidas separadas por vírgula. Ex.: http://localhost:5173,http://192.168.1.5:5173
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    # --- Channels (messaging) ---
+    channels_enabled: bool = False
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

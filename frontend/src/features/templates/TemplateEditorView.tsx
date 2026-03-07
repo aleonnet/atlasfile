@@ -76,6 +76,7 @@ export function TemplateEditorView() {
           confidence_thresholds: { auto_route_min: 0.85, triage_min: 0.5 },
           llm_policy: { enabled: false, provider: "openai", model: "gpt-4o-mini", mode: "tag_only", allow_override_fields: ["document_type", "tags", "confidence", "topics"], override_guardrails: { area_override_only_if_rule_confidence_below: 0.65, require_explanation: true, max_area_changes: 1 } },
         },
+        naming: { canonical_pattern: "{date}__{project}__{original_name}", date_format: "%Y%m%d" },
         indexing: { topics_path: "config/topics_v1.yaml", extraction_max_chars: 50000, extraction_mode: "all" },
         version: 1,
       },
@@ -144,6 +145,7 @@ export function TemplateEditorView() {
     const thresholds = (cls?.confidence_thresholds as Record<string, number>) ?? { auto_route_min: 0.85, triage_min: 0.5 };
     const llm = (cls?.llm_policy as Record<string, unknown>) ?? {};
     const guardrails = (llm.override_guardrails as Record<string, unknown>) ?? {};
+    const naming = (editor.profileData?.naming as Record<string, unknown>) ?? {};
     const indexing = (editor.profileData?.indexing as Record<string, unknown>) ?? {};
     const areaKeys = areas.map((a) => String(a.key ?? "")).filter(Boolean);
 
@@ -164,6 +166,12 @@ export function TemplateEditorView() {
 
     function updateGuardrails(field: string, value: unknown) {
       updateLlmPolicy("override_guardrails", { ...guardrails, [field]: value });
+    }
+
+    function updateNaming(field: string, value: unknown) {
+      if (!editor?.profileData) return;
+      const n = { ...(editor.profileData.naming as Record<string, unknown> ?? {}), [field]: value };
+      setEditor({ ...editor, profileData: { ...editor.profileData, naming: n } });
     }
 
     function updateIndexing(field: string, value: unknown) {
@@ -231,7 +239,6 @@ export function TemplateEditorView() {
         <div className="modal tmpl-editor-modal">
           <div className="modal-header">
             <h3>{editor.isNew ? "Novo template" : `Editar template: ${editor.name}`}</h3>
-            <button className="modal-close" onClick={() => setEditor(null)} aria-label="Fechar">&times;</button>
           </div>
 
           <div className="tmpl-editor-fields">
@@ -253,6 +260,36 @@ export function TemplateEditorView() {
               <textarea id="tmpl-desc" value={editor.description} onChange={(e) => setEditor({ ...editor, description: e.target.value })} />
             </div>
           </div>
+
+          {/* ── Naming ── */}
+          <details className="itc-collapsible" open>
+            <summary className="itc-collapsible-header">Naming (formato canônico)</summary>
+            <div className="itc-collapsible-body">
+              <div className="tmpl-grid-2">
+                <div className="tmpl-field">
+                  <label htmlFor="tmpl-naming-pattern">Canonical pattern</label>
+                  <input
+                    id="tmpl-naming-pattern"
+                    value={String(naming.canonical_pattern ?? "{date}__{project}__{original_name}")}
+                    onChange={(e) => updateNaming("canonical_pattern", e.target.value)}
+                    placeholder="{date}__{project}__{original_name}"
+                  />
+                  <p className="onboarding-hint" style={{ margin: "4px 0 0", fontSize: "0.75rem" }}>
+                    Campos: {"{date}"}, {"{project}"}, {"{area}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext adicionado automaticamente.
+                  </p>
+                </div>
+                <div className="tmpl-field">
+                  <label htmlFor="tmpl-naming-datefmt">Date format</label>
+                  <input
+                    id="tmpl-naming-datefmt"
+                    value={String(naming.date_format ?? "%Y%m%d")}
+                    onChange={(e) => updateNaming("date_format", e.target.value)}
+                    placeholder="%Y%m%d"
+                  />
+                </div>
+              </div>
+            </div>
+          </details>
 
           {/* ── Estrutura de Layout ── */}
           <details className="itc-collapsible" open>
@@ -568,7 +605,6 @@ export function TemplateEditorView() {
           <div className="modal tmpl-confirm-modal">
             <div className="modal-header">
               <h3>Excluir template</h3>
-              <button className="modal-close" onClick={() => setConfirmDelete(null)} aria-label="Fechar">&times;</button>
             </div>
             <p style={{ margin: "12px 0 18px", fontSize: "0.88rem", color: "var(--text)" }}>
               Tem certeza que deseja excluir o template <strong>{confirmDelete}</strong>? Esta ação não pode ser desfeita.

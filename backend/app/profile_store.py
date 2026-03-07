@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .profile_schema_v2 import ProjectProfileV2
+from .utils import normalize_text
 
 PROFILE_DIR = "_PROFILE"
 PROFILE_FILE = "profile.json"
@@ -77,7 +78,7 @@ def create_default_profile(
 ) -> ProjectProfileV2:
     template = _read_json(_template_path(template_slug))
     template.pop("template_meta", None)
-    template["project_id"] = project_id or project_root.name
+    template["project_id"] = normalize_text(project_id or project_root.name)
     template["project_label"] = project_label or project_root.name
     template["project_root"] = str(project_root)
     template["version"] = int(template.get("version", 1) or 1)

@@ -1,4 +1,4 @@
-import { File, FileSpreadsheet, FileText, FolderCog, LayoutDashboard, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Sun } from "lucide-react";
+import { Database, File, FileSpreadsheet, FileText, FolderCog, FolderOpen, LayoutDashboard, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Sun } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createChatSession,
@@ -10,6 +10,7 @@ import {
   fetchProjectAreas,
   fetchProjects,
   fetchReconcileStatus,
+  fetchSetupStatus,
   fetchStats,
   fetchTriage,
   getFileDownloadUrl,
@@ -19,7 +20,10 @@ import {
   searchDocuments,
   sendChatMessage,
   triageDecision,
-  updateChatSession
+  updateChatSession,
+  fetchChannelConfig,
+  fetchChannelStatus,
+  updateChannelConfig
 } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import type { ChatAttachment } from "./components/ChatPanel";
@@ -30,6 +34,7 @@ import { AssistantSettingsModal } from "./features/settings/AssistantSettingsMod
 import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
 import { TemplateSelectModal } from "./features/templates/TemplateSelectModal";
 import { TemplateEditorView } from "./features/templates/TemplateEditorView";
+import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import type {
   ChatContentPart,
   ChatMessage as ChatMessageType,
@@ -52,6 +57,9 @@ const TRIAGE_MODEL_STORAGE_KEY = "atlasfile-triage-model";
 const CHAT_SHOW_THINKING_KEY = "atlasfile-chat-show-thinking";
 const OPENAI_API_KEY_STORAGE = "atlasfile-openai-api-key";
 const ANTHROPIC_API_KEY_STORAGE = "atlasfile-anthropic-api-key";
+const AUTO_TITLE_LLM_KEY = "atlasfile-auto-title-llm";
+const ONBOARDING_DONE_KEY = "atlasfile-onboarding-done";
+const TG_TOKEN_STORAGE_KEY = "atlasfile-telegram-bot-token";
 type ThemeMode = "system" | "light" | "dark";
 type ViewKind = "operacional" | "assistente" | "templates";
 type InputLikeEvent = { target: { value: string } };
@@ -95,6 +103,7 @@ function App() {
   const [searchStats, setSearchStats] = useState<StatsResponse | null>(null);
   const [triageItems, setTriageItems] = useState<TriageItem[]>([]);
   const [reconcileStatus, setReconcileStatus] = useState<ReconcileStatus | null>(null);
+  const [dashboardStats, setDashboardStats] = useState<StatsResponse | null>(null);
   const [status, setStatus] = useState("Pronto");
   const [initializingProjectId, setInitializingProjectId] = useState<string | null>(null);
   const [reconcilingNow, setReconcilingNow] = useState(false);
@@ -156,6 +165,13 @@ function App() {
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [savingSession, setSavingSession] = useState(false);
+  const [autoTitleLLM, setAutoTitleLLM] = useState<boolean>(() => {
+    try { return localStorage.getItem(AUTO_TITLE_LLM_KEY) === "true"; } catch { return false; }
+  });
+  const [telegramConnected, setTelegramConnected] = useState(false);
+
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [appEnv, setAppEnv] = useState("production");
 
   const resolvedTheme = useMemo(() => resolveTheme(theme), [theme]);
 
@@ -218,6 +234,10 @@ function App() {
   }, [anthropicApiKey]);
 
   useEffect(() => {
+    try { localStorage.setItem(AUTO_TITLE_LLM_KEY, String(autoTitleLLM)); } catch { /* ignore */ }
+  }, [autoTitleLLM]);
+
+  useEffect(() => {
     if (models.length === 0) {
       fetchModels()
         .then((list) => {
@@ -251,6 +271,53 @@ function App() {
     };
   }, []);
 
+  // Auto-connect Telegram from localStorage on boot + poll status
+  useEffect(() => {
+    let mounted = true;
+    async function autoConnect() {
+      const savedToken = (() => { try { return localStorage.getItem(TG_TOKEN_STORAGE_KEY) || ""; } catch { return ""; } })();
+      if (!savedToken) return;
+      try {
+        const cfg = await fetchChannelConfig();
+        if (!cfg.telegram.bot_token && savedToken) {
+          await updateChannelConfig({ channels_enabled: true, telegram: { enabled: true, bot_token: savedToken } });
+        }
+      } catch { /* backend not ready yet */ }
+      try {
+        const st = await fetchChannelStatus();
+        if (mounted) setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
+      } catch { /* ignore */ }
+    }
+    autoConnect();
+    const poll = setInterval(async () => {
+      try {
+        const st = await fetchChannelStatus();
+        if (mounted) setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
+      } catch { /* ignore */ }
+    }, 15000);
+    return () => { mounted = false; clearInterval(poll); };
+  }, []);
+
+  const handleToggleTelegram = async () => {
+    const savedToken = (() => { try { return localStorage.getItem(TG_TOKEN_STORAGE_KEY) || ""; } catch { return ""; } })();
+    if (telegramConnected) {
+      try {
+        await updateChannelConfig({ channels_enabled: false, telegram: { enabled: false, bot_token: savedToken } });
+        setTelegramConnected(false);
+      } catch { /* ignore */ }
+    } else {
+      if (!savedToken) {
+        setSettingsOpen(true);
+        return;
+      }
+      try {
+        await updateChannelConfig({ channels_enabled: true, telegram: { enabled: true, bot_token: savedToken } });
+        const st = await fetchChannelStatus();
+        setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
+      } catch { /* ignore */ }
+    }
+  };
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
@@ -275,12 +342,29 @@ function App() {
   }
 
   useEffect(() => {
+    fetchSetupStatus()
+      .then((s) => {
+        setAppEnv(s.app_env);
+        const onboardingDone = localStorage.getItem(ONBOARDING_DONE_KEY) === "true";
+        if (s.onboarding_suggested && !onboardingDone) {
+          setShowOnboarding(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (showOnboarding) return;
     let cancelled = false;
     (async () => {
-      const [projectList, currentReconcile] = await Promise.all([fetchProjects(), fetchReconcileStatus()]);
+      const [projectList, currentReconcile] = await Promise.all([
+        fetchProjects(),
+        fetchReconcileStatus(),
+      ]);
       if (cancelled) return;
       setProjects(projectList);
       setReconcileStatus(currentReconcile);
+      fetchStats().then(setDashboardStats).catch(() => {});
 
       if (!currentReconcile?.running) return;
       setReconcilingNow(true);
@@ -298,10 +382,12 @@ function App() {
         if (cancelled) return;
         await loadTriage();
         if (cancelled) return;
+        fetchStats().then(setDashboardStats).catch(() => {});
         const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
         const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
+        const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
         setStatus(
-          `Reconciliacao concluida: ${latest.summary?.adjustments_applied ?? 0} ajuste(s), ${latest.summary?.indexed_docs ?? 0} doc(s) indexado(s)${skipMsg}${failMsg}`
+          `Reconciliacao concluida: ${latest.summary?.adjustments_applied ?? 0} ajuste(s), ${latest.summary?.indexed_docs ?? 0} doc(s) indexado(s)${skipMsg}${failMsg}${orphanMsg}`
         );
         setReconcilingNow(false);
       };
@@ -339,13 +425,13 @@ function App() {
         }
         if (!cancelled) await finishReconcileFromLoad(await fetchReconcileStatus());
       };
-    })().catch(() => setStatus("Falha ao carregar projetos"));
+    })().catch((err) => setStatus(`Falha ao carregar dados: ${err instanceof Error ? err.message : "erro desconhecido"}`));
     return () => {
       cancelled = true;
       reconcileEsRef.current?.close();
       reconcileEsRef.current = null;
     };
-  }, []);
+  }, [showOnboarding]);
 
   const selectedProjectLabel = useMemo(
     () =>
@@ -484,10 +570,12 @@ function App() {
 
     const finishReconcile = async (latest: ReconcileStatus) => {
       await loadTriage();
+      fetchStats().then(setDashboardStats).catch(() => {});
       const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
         const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
+        const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
         setStatus(
-          `Reconciliacao concluida (${scopeLabel}): ${latest.summary?.adjustments_applied ?? 0} ajuste(s), ${latest.summary?.indexed_docs ?? 0} doc(s) indexado(s)${skipMsg}${failMsg}`
+          `Reconciliacao concluida (${scopeLabel}): ${latest.summary?.adjustments_applied ?? 0} ajuste(s), ${latest.summary?.indexed_docs ?? 0} doc(s) indexado(s)${skipMsg}${failMsg}${orphanMsg}`
         );
       setReconcilingNow(false);
     };
@@ -732,38 +820,18 @@ function App() {
       handleChatNewSession();
       return;
     }
-    setSavingSession(true);
-    let title = "";
-    const fallbackTitle = (() => {
-      const firstUser = chatMessages.find((m) => m.role === "user");
-      const text = firstUser && typeof firstUser.content === "string"
-        ? firstUser.content
-        : firstUser && Array.isArray(firstUser.content)
-          ? firstUser.content.map((p) => (p.type === "text" ? p.text : "")).join(" ").trim()
-          : "";
-      return text.slice(0, 50) || `Conversa ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
-    })();
-    try {
-      const textStart = chatMessages.slice(0, 6).map((m) => {
-        const c = typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" ");
-        return { role: m.role, content: c };
-      });
-      const titleMessages = [
-        { role: "system" as const, content: "Retorne apenas um título em uma linha, sem explicação." },
-        ...textStart
-      ];
-      const [provider, model] = selectedModel.split("/");
-      const res = await sendChatMessage(titleMessages, {
-        provider,
-        model,
-        openaiApiKey: provider === "openai" ? (openaiApiKey || undefined) : undefined,
-        anthropicApiKey: provider === "anthropic" ? (anthropicApiKey || undefined) : undefined,
-        enableThinking: false
-      });
-      title = (res.content || "").trim().split("\n")[0].slice(0, 100) || fallbackTitle;
-    } catch {
-      title = fallbackTitle;
+    if (activeSessionId) {
+      handleChatNewSession();
+      return;
     }
+    setSavingSession(true);
+    const firstUser = chatMessages.find((m) => m.role === "user");
+    const firstText = firstUser && typeof firstUser.content === "string"
+      ? firstUser.content
+      : firstUser && Array.isArray(firstUser.content)
+        ? firstUser.content.map((p) => (p.type === "text" ? p.text : "")).join(" ").trim()
+        : "";
+    const title = firstText.slice(0, 80) || `Conversa ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
     let created;
     try {
       created = await createChatSession({
@@ -779,6 +847,35 @@ function App() {
     }
     setSessions((prev) => [created, ...prev]);
     handleChatNewSession();
+    if (autoTitleLLM && created) {
+      generateTitleInBackground(created.id, chatMessages);
+    }
+  }
+
+  function generateTitleInBackground(sessionId: string, msgs: ChatMessageType[]) {
+    const textStart = msgs.slice(0, 6).map((m) => {
+      const c = typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" ");
+      return { role: m.role, content: c };
+    });
+    const titleMessages = [
+      { role: "system" as const, content: "Retorne apenas um título curto em uma linha, sem explicação." },
+      ...textStart
+    ];
+    const [provider, model] = selectedModel.split("/");
+    sendChatMessage(titleMessages, {
+      provider,
+      model,
+      openaiApiKey: provider === "openai" ? (openaiApiKey || undefined) : undefined,
+      anthropicApiKey: provider === "anthropic" ? (anthropicApiKey || undefined) : undefined,
+      enableThinking: false
+    })
+      .then((res) => {
+        const llmTitle = (res.content || "").trim().split("\n")[0].slice(0, 100);
+        if (!llmTitle) return;
+        return updateChatSession(sessionId, { title: llmTitle });
+      })
+      .then(() => fetchChatSessions().then(setSessions))
+      .catch(() => {});
   }
 
   function openHistoryModal() {
@@ -861,6 +958,32 @@ function App() {
     } catch {
       setStatus("Falha ao registrar decisao");
     }
+  }
+
+  function handleOnboardingComplete(createdProjectId?: string) {
+    localStorage.setItem(ONBOARDING_DONE_KEY, "true");
+    setShowOnboarding(false);
+    refreshProjects().then(() => {
+      if (createdProjectId) setSelectedProject(createdProjectId);
+    });
+  }
+
+  function handleReplayOnboarding() {
+    localStorage.removeItem(ONBOARDING_DONE_KEY);
+    setShowOnboarding(true);
+  }
+
+  if (showOnboarding) {
+    return (
+      <OnboardingWizard
+        onComplete={handleOnboardingComplete}
+        onCancel={() => { localStorage.setItem(ONBOARDING_DONE_KEY, "true"); setShowOnboarding(false); }}
+        openaiApiKey={openaiApiKey}
+        anthropicApiKey={anthropicApiKey}
+        onChangeOpenAiKey={setOpenaiApiKey}
+        onChangeAnthropicKey={setAnthropicApiKey}
+      />
+    );
   }
 
   return (
@@ -965,6 +1088,12 @@ function App() {
         </div>
       </header>
 
+      {appEnv === "dev" && (
+        <button type="button" className="dev-onboarding-btn" onClick={handleReplayOnboarding} title="Replay Onboarding (dev only)">
+          <RefreshCw size={14} /> Onboarding
+        </button>
+      )}
+
       <main className="content">
       {view === "operacional" && (
       <>
@@ -1010,36 +1139,66 @@ function App() {
             </p>
           </div>
         ) : (
-          <div className="kpi-grid">
-            <div className="kpi">
-              <span>Ultima reconciliacao</span>
-              <strong>{formatTimestamp(reconcileStatus?.last_run_finished_at)}</strong>
-            </div>
-            <div className="kpi">
-              <span>Ajustes aplicados</span>
-              <strong>{reconcileStatus?.summary.adjustments_applied ?? 0}</strong>
-            </div>
-            <div className="kpi">
-              <span>Linhas reescritas</span>
-              <strong>{reconcileStatus?.summary.rows_written ?? 0}</strong>
-            </div>
-            <div className="kpi">
-              <span>Documentos reindexados</span>
-              <strong>{reconcileStatus?.summary.indexed_docs ?? 0}</strong>
-            </div>
-            {typeof reconcileStatus?.summary.skipped_docs === "number" && (
-              <div className="kpi">
-                <span>Skip (inalterados)</span>
-                <strong>{reconcileStatus.summary.skipped_docs}</strong>
+          <>
+          <div className="control-body">
+            <div className="control-metrics">
+              <div className="stat-big">
+                <FolderOpen size={20} />
+                <span className="value">{projects.filter(p => p.initialized).length}</span>
+                <span className="label">projetos inicializados</span>
+                {projects.length > projects.filter(p => p.initialized).length && (
+                  <span className="label">/ {projects.length} total</span>
+                )}
               </div>
+              <div className="stat-big">
+                <Database size={20} />
+                <span className="value">{dashboardStats?.total_documents ?? 0}</span>
+                <span className="label">documentos indexados</span>
+              </div>
+              {(dashboardStats?.by_extension?.length ?? 0) > 0 && (
+                <div className="ext-badges">
+                  {dashboardStats!.by_extension.map(b => (
+                    <span key={b.key} className="ext-badge">{b.key.toUpperCase()} {b.count}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="control-projects">
+              {(dashboardStats?.by_project_id?.length ?? 0) > 0 && (
+                <div className="mini-table">
+                  <div className="mini-row header">
+                    <span>Projeto</span>
+                    <span>Docs</span>
+                  </div>
+                  {dashboardStats!.by_project_id.map(b => (
+                    <div key={b.key} className="mini-row">
+                      <span>{projectLabelById.get(b.key) || b.key}</span>
+                      <span>{b.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="reconcile-footer">
+            <span>Ultima reconciliacao: <span className="meta-value">{formatTimestamp(reconcileStatus?.last_run_finished_at)}</span></span>
+            {(reconcileStatus?.summary.adjustments_applied ?? 0) > 0 && (
+              <span>Ajustes: <span className="meta-value">{reconcileStatus!.summary.adjustments_applied}</span></span>
             )}
-            {typeof reconcileStatus?.summary.failed_docs === "number" && reconcileStatus.summary.failed_docs > 0 && (
-              <div className="kpi">
-                <span>Falhas (indexacao)</span>
-                <strong>{reconcileStatus.summary.failed_docs}</strong>
-              </div>
+            {(reconcileStatus?.summary.indexed_docs ?? 0) > 0 && (
+              <span>Reindexados: <span className="meta-value">{reconcileStatus!.summary.indexed_docs}</span></span>
+            )}
+            {(reconcileStatus?.summary.skipped_docs ?? 0) > 0 && (
+              <span>Skip: <span className="meta-value">{reconcileStatus!.summary.skipped_docs}</span></span>
+            )}
+            {(reconcileStatus?.summary.failed_docs ?? 0) > 0 && (
+              <span>Falhas: <span className="meta-value">{reconcileStatus!.summary.failed_docs}</span></span>
+            )}
+            {(reconcileStatus?.summary.orphan_docs_deleted ?? 0) > 0 && (
+              <span>Orfaos: <span className="meta-value">{reconcileStatus!.summary.orphan_docs_deleted}</span></span>
             )}
           </div>
+          </>
         )}
       </section>
 
@@ -1256,6 +1415,8 @@ function App() {
           onEditSession={handleEditSession}
           onDeleteSession={handleDeleteSession}
           savingSession={savingSession}
+          telegramConnected={telegramConnected}
+          onToggleTelegram={handleToggleTelegram}
         />
       )}
 
@@ -1376,6 +1537,8 @@ function App() {
         onChangeModelTriage={setSelectedModelTriage}
         onChangeOpenAiKey={setOpenaiApiKey}
         onChangeAnthropicKey={setAnthropicApiKey}
+        autoTitleLLM={autoTitleLLM}
+        onChangeAutoTitleLLM={setAutoTitleLLM}
         onClose={() => setSettingsOpen(false)}
       />
 

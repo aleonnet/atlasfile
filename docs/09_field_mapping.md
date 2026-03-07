@@ -15,31 +15,29 @@ Campos automáticos, nunca alterados por LLM.
 | `original_filename_text` | text | `_enrich_search_fields` (indexer) | Full-text search |
 | `original_filename_normalized` | text | `normalize_text()` (indexer) | Busca normalizada (sem acentos) |
 | `original_filename_suggest` | search_as_you_type | `_enrich_search_fields` (indexer) | Autocomplete (modal Cmd+K) |
-| `canonical_filename` | keyword | `build_canonical_filename()` | Path final, exibição |
+| `canonical_filename` | keyword | `build_canonical_filename()` (configurável via `naming.canonical_pattern`) | Path final, exibição |
 | `canonical_filename_text` | text | indexer | Full-text search |
 | `canonical_filename_normalized` | text | indexer | Busca normalizada |
 | `path` | keyword | Destino final (auto ou triage) | Download link, reconcile |
 | `extension` | keyword | `Path(path).suffix.lower()` (indexer) | Filtro por extensão |
 | `doc_kind` | keyword | `_derive_doc_kind_from_extension()` (indexer) | Filtro por tipo de documento |
 
-## Grupo 2 -- Conteúdo extraído
+## Grupo 2 -- Conteúdo extraído (Pure Nested Architecture)
 
-Campos automáticos, nunca alterados por LLM.
+Campos automáticos, nunca alterados por LLM. Todo o conteúdo textual é armazenado exclusivamente em `content_chunks` (nested). Não existem campos flat de conteúdo (`content`, `content_normalized`, `content_chunks_text`, `content_chunks_normalized` foram removidos na v0.4.0).
 
 | Campo | Tipo OS | Produzido por | Consumido por |
 |-------|---------|---------------|---------------|
 | `title` | text | `inbox_file.stem` | Search ranking (boost 5x) |
 | `title_normalized` | text | `normalize_text()` (indexer) | Busca normalizada |
 | `title_suggest` | search_as_you_type | indexer | Autocomplete |
-| `content` | text | `extract_document_content()` via indexer | Full-text search, LLM chat chunks |
-| `content_normalized` | text | `normalize_text()` (indexer) | Busca normalizada |
-| `content_chunks` | nested {location, text, text_normalized} | Chunking em `document_extractor.py` via indexer | Search inner_hits (evidências por página) |
-| `content_chunks_text` | text | Chunks concatenados (indexer) | Full-text search (boost 2x) |
-| `content_chunks_normalized` | text | indexer | Busca normalizada |
+| `content_chunks` | nested {location, text, text_normalized} | Chunking em `document_extractor.py` via indexer (~1200 chars/chunk) | Busca full-text (nested queries), highlight (inner_hits), evidências por página/slide |
 | `chunk_locations` | keyword | IDs dos chunks (ex: `page:1`) | Exibição de localidade nos resultados |
 | `content_type` | keyword | MIME type da extração (indexer) | Ícone no frontend |
 | `extraction_status` | keyword | `ok`, `partial`, `error` (indexer) | Diagnóstico |
 | `extraction_metadata` | object (disabled) | Metadados da extração (indexer) | Não indexado (storage only) |
+
+**Nota:** O campo `content` na resposta de `GET /api/documents/{doc_id}` é computado on-the-fly a partir da concatenação dos chunks, não é armazenado no índice.
 
 ## Grupo 3 -- Classificação (regras + LLM pode alterar)
 
@@ -88,10 +86,10 @@ flowchart TD
     subgraph enrich [Enriquecimento - indexer.py]
         J --> K["_enrich_search_fields"]
         K --> L["extract_document_content (chunks)"]
-        K --> M["normalize_text (title, content, filenames)"]
+        K --> M["normalize_text (title, filenames, chunk text)"]
         K --> N["_derive_doc_kind_from_extension"]
         K --> O["match_topics (YAML) ou preserva LLM topics"]
-        K --> P[Documento completo enriquecido]
+        K --> P["Documento enriquecido (pure nested: content_chunks)"]
     end
 
     subgraph store [Armazenamento]

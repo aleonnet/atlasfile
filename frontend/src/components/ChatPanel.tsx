@@ -5,7 +5,7 @@
  * Ref.: openclaw-main/ui/src/ui/views/chat.ts + grouped-render.ts + markdown.ts
  */
 import React, { useRef, useEffect } from "react";
-import { Brain, Clock, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Brain, Clock, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import "./ChatPanel.css";
 
@@ -69,6 +69,9 @@ export interface ChatPanelProps {
   onDeleteSession?: (sessionId: string) => void;
   /** Overlay com spinner durante salvamento da sessão (nova sessão) */
   savingSession?: boolean;
+  /** Telegram channel connection state */
+  telegramConnected?: boolean;
+  onToggleTelegram?: () => void;
 }
 
 function generateAttachmentId(): string {
@@ -132,7 +135,9 @@ export function ChatPanel({
   onSelectSession,
   onEditSession,
   onDeleteSession,
-  savingSession = false
+  savingSession = false,
+  telegramConnected = false,
+  onToggleTelegram
 }: ChatPanelProps) {
   const reasoningSupported =
     selectedModel && (models.find((m) => `${m.provider}/${m.model}` === selectedModel)?.supports_reasoning_effort ?? false);
@@ -391,6 +396,30 @@ export function ChatPanel({
             </>
           )}
         </div>
+        {onToggleTelegram && (
+          <button
+            type="button"
+            className="chat-controls__icon-btn"
+            onClick={onToggleTelegram}
+            title={telegramConnected ? "Telegram conectado — clique para desconectar" : "Telegram desconectado — clique para conectar"}
+            aria-label={telegramConnected ? "Desconectar Telegram" : "Conectar Telegram"}
+            style={{ position: "relative" }}
+          >
+            <Send size={16} strokeWidth={2} aria-hidden />
+            <span
+              style={{
+                position: "absolute",
+                top: 2,
+                right: 2,
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: telegramConnected ? "var(--accent)" : "var(--muted, #aaa)",
+                border: "1.5px solid var(--bg)",
+              }}
+            />
+          </button>
+        )}
       </div>
 
       {error && <div className="callout danger chat-panel-error">{error}</div>}

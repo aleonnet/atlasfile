@@ -53,6 +53,10 @@ services:
       - CLASSIFICATION_LLM_ENABLED=${CLASSIFICATION_LLM_ENABLED:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Channels (messaging)
+      - CHANNELS_ENABLED=${CHANNELS_ENABLED:-false}
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
     volumes:
       - ${PROJECTS_HOST_ROOT}:/projects
     ports:

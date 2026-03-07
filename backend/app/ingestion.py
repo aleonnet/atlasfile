@@ -17,7 +17,15 @@ from .config import settings
 from .indexer import index_document, read_text_excerpt
 from .profile_runtime import areas_root_rel, triage_paths
 from .triage import save_pending_metadata
-from .utils import build_canonical_filename, normalize_text, sanitize_token, sha256_file, utc_now_iso
+from .utils import (
+    DEFAULT_CANONICAL_PATTERN,
+    build_canonical_filename,
+    fs_safe,
+    normalize_text,
+    sanitize_token,
+    sha256_file,
+    utc_now_iso,
+)
 
 _wb_cache: dict[str, re.Pattern[str]] = {}
 
@@ -195,8 +203,8 @@ def _append_index_md(project_root: Path, row: dict[str, Any]) -> None:
     if not index_path.exists():
         index_path.write_text(
             "# _INDEX\n\n"
-            "| doc_id | project_id | area | original_filename | canonical_filename | decision | confidence | path |\n"
-            "|---|---|---|---|---|---|---:|---|\n",
+            "| doc_id | project_id | area | original_filename | canonical_filename | decision | confidence | path | naming_pattern |\n"
+            "|---|---|---|---|---|---|---:|---|---|\n",
             encoding="utf-8",
         )
 
@@ -221,14 +229,14 @@ def _append_index_md(project_root: Path, row: dict[str, Any]) -> None:
             "",  # sha256 not present in markdown row
             cols[4],  # canonical_filename
         )
-        # Prevent repeated rows for the same record/path/decision.
         if row_key[:3] == existing_key[:3] and row_key[4] == existing_key[4]:
             return
 
+    np = row.get("naming_pattern", "")
     line = (
         f"| {row['doc_id']} | {row['project_id']} | {row.get('area_key', '')} | "
         f"{row['original_filename']} | {row['canonical_filename']} | {row['decision']} | "
-        f"{row['confidence_score']:.2f} | {row['path']} |\n"
+        f"{row['confidence_score']:.2f} | {row['path']} | {np} |\n"
     )
     with index_path.open("a", encoding="utf-8") as f:
         f.write(line)
@@ -244,34 +252,37 @@ def _find_latest_version(
     suffix: str,
 ) -> int:
     latest = 0
-    token = (
-        f"__{sanitize_token(project_id)}__{sanitize_token(area_key)}__"
-        f"{sanitize_token(title_token)}__v"
-    )
+    proj_tok = sanitize_token(project_id)
+    area_tok = sanitize_token(area_key)
+    title_sanitized = sanitize_token(title_token)
+    title_safe = fs_safe(title_token).lower()
+
+    # Old format token: __{proj}__{area}__{sanitized_title}__v
+    old_token = f"__{proj_tok}__{area_tok}__{title_sanitized}__v"
+    # New format token (default pattern, no area): __{proj}__{fs_safe_title}__v
+    new_token = f"__{proj_tok}__{title_safe}__v"
+
     version_re = re.compile(r"__v(\d+)" + re.escape(suffix.lower()) + r"$")
 
-    # inspect existing work files
+    def _scan_text(text: str) -> None:
+        nonlocal latest
+        low = text.lower()
+        if old_token not in low and new_token not in low:
+            return
+        m = version_re.search(low)
+        if m:
+            latest = max(latest, int(m.group(1)))
+
     work_root = project_root / areas_root_rel(profile)
     if work_root.exists():
         for f in work_root.rglob(f"*{suffix.lower()}"):
-            if not f.is_file():
-                continue
-            name = f.name.lower()
-            if token not in name:
-                continue
-            m = version_re.search(name)
-            if m:
-                latest = max(latest, int(m.group(1)))
+            if f.is_file():
+                _scan_text(f.name)
 
-    # inspect index history
     index_path = project_root / "_INDEX.md"
     if index_path.exists():
         for line in index_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-            if token not in line.lower():
-                continue
-            m = version_re.search(line.lower())
-            if m:
-                latest = max(latest, int(m.group(1)))
+            _scan_text(line)
     return latest
 
 
@@ -418,10 +429,19 @@ def process_inbox_file(
         suffix=(inbox_file.suffix or ".bin"),
     ) + 1
 
+    naming = profile.get("naming") or {}
+    canonical_pattern = naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN)
+    date_format = naming.get("date_format", "%Y%m%d")
+
     canonical_filename = build_canonical_filename(
-        project_id=project_id,
-        area_key=area_key or "unclassified",
-        short_title=inbox_file.stem,
+        pattern=canonical_pattern,
+        date_format=date_format,
+        fields={
+            "project": project_id,
+            "area": area_key or "unclassified",
+            "original_name": inbox_file.stem,
+            "document_type": classification.get("document_type", ""),
+        },
         original_suffix=inbox_file.suffix or ".bin",
         version=next_version,
     )
@@ -461,6 +481,7 @@ def process_inbox_file(
             "canonical_filename": canonical_filename,
             "sha256": sha,
             "ingested_at": ingested_at,
+            "naming_pattern": canonical_pattern,
         }
         if classification.get("_rule_area_key"):
             meta["rule_area_key"] = classification["_rule_area_key"]
@@ -499,6 +520,7 @@ def process_inbox_file(
             "canonical_filename": canonical_filename,
             "sha256": sha,
             "ingested_at": ingested_at,
+            "naming_pattern": canonical_pattern,
         }
         if classification.get("_rule_area_key"):
             meta["rule_area_key"] = classification["_rule_area_key"]
@@ -536,6 +558,7 @@ def process_inbox_file(
         "confidence_score": confidence,
         "sha256": sha,
         "tags": tags,
+        "naming_pattern": canonical_pattern,
     }
     if classification.get("document_type"):
         payload["document_type"] = classification["document_type"]

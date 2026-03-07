@@ -326,6 +326,18 @@
       }
     }
   },
+  "naming": {
+    "_available_fields": {
+      "date": "Data de ingestão (formato definido em date_format)",
+      "project": "ID do projeto (normalizado, lowercase, sem acentos)",
+      "area": "Área classificada (ex: financeiro, juridica)",
+      "original_name": "Nome original do arquivo sem extensão (preservado intacto)",
+      "document_type": "Tipo classificado (ex: contrato, relatorio, ata)"
+    },
+    "_mandatory_suffix": "__v{version}{ext} (adicionado automaticamente pelo sistema)",
+    "canonical_pattern": "{date}__{project}__{original_name}",
+    "date_format": "%Y%m%d"
+  },
   "indexing": {
     "topics_path": "config/topics_v1.yaml",
     "extraction_max_chars": 50000,
