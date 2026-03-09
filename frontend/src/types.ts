@@ -115,6 +115,8 @@ export interface ChatMessage {
   content: string | ChatContentPart[];
   /** Timestamp for display (e.g. Date.now()) */
   timestamp?: number;
+  /** Model that generated this response (e.g. "openai/gpt-4.1") */
+  model?: string;
 }
 
 export interface ModelOption {
@@ -129,9 +131,32 @@ export interface ModelOption {
   supports_reasoning_effort?: boolean;
 }
 
+/** Token usage and estimated cost for one chat turn. */
+export interface TurnUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_write_input_tokens?: number;
+}
+
 export interface ChatResponse {
   content: string;
   tool_calls_used: { name: string; result_preview?: string }[];
+  usage?: TurnUsage;
+}
+
+/** Aggregated token usage and cost for a chat session. */
+export interface UsageTotals {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_write_input_tokens?: number;
 }
 
 /** Mensagem armazenada (apenas texto; partes de imagem viram "[imagem]" ao persistir). */
@@ -139,6 +164,7 @@ export interface StoredChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp?: number;
+  model?: string;
 }
 
 /** Sessão de chat persistida no backend. */
@@ -149,6 +175,52 @@ export interface ChatSession {
   model: string;
   createdAt: number;
   updatedAt: number;
+  project_id?: string | null;
+  usage_totals?: UsageTotals | null;
+  usage_by_model?: Record<string, UsageTotals> | null;
+}
+
+/** Usage summary by model (tokens and costs by type). */
+export interface UsageByModelEntry {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  input_cost_usd: number;
+  output_cost_usd: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+}
+
+export interface UsageByDayEntry {
+  date: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+}
+
+export interface UsageSummaryResponse {
+  total_tokens: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_read_tokens: number;
+  total_cache_write_tokens: number;
+  estimated_cost_usd: number;
+  session_count: number;
+  by_model: UsageByModelEntry[];
+  by_day: UsageByDayEntry[];
+}
+
+export interface UsageSessionItem {
+  id: string;
+  title: string;
+  project_id?: string | null;
+  model: string;
+  updatedAt: number;
+  usage_totals?: UsageTotals | null;
+  usage_by_model?: Record<string, UsageTotals> | null;
 }
 
 export interface ProfileAreaFolder {

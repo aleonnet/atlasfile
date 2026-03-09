@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     telegram_enabled: bool = False
     telegram_bot_token: str = ""
 
+    # --- Usage / cost estimation (assistente) ---
+    # Path to JSON config with $/1M tokens per provider/model (input, output, cache_read, cache_write).
+    # Relative to process cwd (e.g. backend/) or absolute. Example: config/usage_costs.json
+    usage_costs_config_path: str = "/workspace/config/usage_costs.json"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

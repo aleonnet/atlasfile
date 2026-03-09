@@ -20,7 +20,10 @@ import type {
   SuggestResponse,
   TemplateData,
   TemplateMeta,
-  TriageItem
+  TriageItem,
+  UsageSessionItem,
+  UsageSummaryResponse,
+  UsageTotals
 } from "./types";
 
 const API_BASE =
@@ -352,6 +355,9 @@ export async function createChatSession(payload: {
   title: string;
   messages: StoredChatMessage[];
   model: string;
+  project_id?: string | null;
+  usage_totals?: UsageTotals | null;
+  usage_by_model?: Record<string, UsageTotals> | null;
 }): Promise<ChatSession> {
   const res = await fetch(`${API_URL}/api/chat/sessions`, {
     method: "POST",
@@ -362,10 +368,16 @@ export async function createChatSession(payload: {
   return res.json();
 }
 
-/** Update session (title and/or messages). */
+/** Update session (title, messages, project_id, usage_totals, usage_by_model). */
 export async function updateChatSession(
   id: string,
-  payload: { title?: string; messages?: StoredChatMessage[] }
+  payload: {
+    title?: string;
+    messages?: StoredChatMessage[];
+    project_id?: string | null;
+    usage_totals?: UsageTotals | null;
+    usage_by_model?: Record<string, UsageTotals> | null;
+  }
 ): Promise<ChatSession> {
   const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -373,6 +385,38 @@ export async function updateChatSession(
     body: JSON.stringify(payload)
   });
   if (!res.ok) throw new Error("Falha ao atualizar sessão");
+  return res.json();
+}
+
+/** Fetch usage summary for date range (and optional project). */
+export async function fetchUsageSummary(params: {
+  start_date: string;
+  end_date: string;
+  project_id?: string | null;
+}): Promise<UsageSummaryResponse> {
+  const url = new URL(`${API_URL}/api/usage/summary`);
+  url.searchParams.set("start_date", params.start_date);
+  url.searchParams.set("end_date", params.end_date);
+  if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Falha ao carregar resumo de uso");
+  return res.json();
+}
+
+/** Fetch usage sessions list for date range (and optional project). */
+export async function fetchUsageSessions(params: {
+  start_date: string;
+  end_date: string;
+  project_id?: string | null;
+  limit?: number;
+}): Promise<UsageSessionItem[]> {
+  const url = new URL(`${API_URL}/api/usage/sessions`);
+  url.searchParams.set("start_date", params.start_date);
+  url.searchParams.set("end_date", params.end_date);
+  if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
+  if (params.limit != null) url.searchParams.set("limit", String(params.limit));
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Falha ao carregar sessões de uso");
   return res.json();
 }
 

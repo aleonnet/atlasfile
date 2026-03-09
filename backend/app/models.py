@@ -87,9 +87,21 @@ class ChatRequest(BaseModel):
     enable_thinking: bool = False  # OpenAI: reasoning_effort; Anthropic: thinking.enabled
 
 
+class TurnUsage(BaseModel):
+    """Token usage and estimated cost for one turn (one chat response)."""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    cache_read_input_tokens: Optional[int] = None
+    cache_creation_input_tokens: Optional[int] = None
+    cache_write_input_tokens: Optional[int] = None
+
+
 class ChatResponse(BaseModel):
     content: str
     tool_calls_used: list[dict[str, Any]] = Field(default_factory=list)
+    usage: Optional[TurnUsage] = None
 
 
 class ClassifyRequest(BaseModel):
@@ -120,6 +132,17 @@ class ModelOption(BaseModel):
 # --- Chat sessions (persisted in OpenSearch, separate index) ---
 
 
+class UsageTotals(BaseModel):
+    """Aggregated token usage and cost for a chat session."""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    cache_read_input_tokens: Optional[int] = None
+    cache_creation_input_tokens: Optional[int] = None
+    cache_write_input_tokens: Optional[int] = None
+
+
 class StoredChatMessage(BaseModel):
     role: str  # user | assistant | system
     content: str  # text only; image parts become "[imagem]" when persisting
@@ -133,17 +156,71 @@ class ChatSession(BaseModel):
     model: str
     createdAt: int
     updatedAt: int
+    project_id: Optional[str] = None
+    usage_totals: Optional[UsageTotals] = None
+    usage_by_model: Optional[dict[str, UsageTotals]] = None
 
 
 class ChatSessionCreate(BaseModel):
     title: str
     messages: list[StoredChatMessage]
     model: str
+    project_id: Optional[str] = None
+    usage_totals: Optional[UsageTotals] = None
+    usage_by_model: Optional[dict[str, UsageTotals]] = None
 
 
 class ChatSessionUpdate(BaseModel):
     title: Optional[str] = None
     messages: Optional[list[StoredChatMessage]] = None  # full replacement when appending
+    project_id: Optional[str] = None
+    usage_totals: Optional[UsageTotals] = None
+    usage_by_model: Optional[dict[str, UsageTotals]] = None
+
+
+# --- Usage aggregation (GET /api/usage/summary, /api/usage/sessions) ---
+
+
+class UsageByModelEntry(BaseModel):
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    input_cost_usd: float = 0.0
+    output_cost_usd: float = 0.0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+
+
+class UsageByDayEntry(BaseModel):
+    date: str  # YYYY-MM-DD
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+
+
+class UsageSummaryResponse(BaseModel):
+    total_tokens: int = 0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cache_read_tokens: int = 0
+    total_cache_write_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    session_count: int = 0
+    by_model: list[UsageByModelEntry] = Field(default_factory=list)
+    by_day: list[UsageByDayEntry] = Field(default_factory=list)
+
+
+class UsageSessionItem(BaseModel):
+    id: str
+    title: str
+    project_id: Optional[str] = None
+    model: str
+    updatedAt: int
+    usage_totals: Optional[UsageTotals] = None
+    usage_by_model: Optional[dict[str, UsageTotals]] = None
 
 
 class StatsBucket(BaseModel):

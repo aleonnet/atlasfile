@@ -34,6 +34,7 @@ import { AssistantSettingsModal } from "./features/settings/AssistantSettingsMod
 import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
 import { TemplateSelectModal } from "./features/templates/TemplateSelectModal";
 import { TemplateEditorView } from "./features/templates/TemplateEditorView";
+import { UsageView } from "./features/usage/UsageView";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import type {
   ChatContentPart,
@@ -47,7 +48,8 @@ import type {
   SearchHit,
   StatsResponse,
   StoredChatMessage,
-  TriageItem
+  TriageItem,
+  UsageTotals
 } from "./types";
 
 const ALL_PROJECTS = "__all__";
@@ -169,6 +171,9 @@ function App() {
     try { return localStorage.getItem(AUTO_TITLE_LLM_KEY) === "true"; } catch { return false; }
   });
   const [telegramConnected, setTelegramConnected] = useState(false);
+  const [assistenteTab, setAssistenteTab] = useState<"chat" | "usage">("chat");
+  const [sessionUsageTotals, setSessionUsageTotals] = useState<UsageTotals | null>(null);
+  const [sessionUsageByModel, setSessionUsageByModel] = useState<Record<string, UsageTotals>>({});
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [appEnv, setAppEnv] = useState("production");
@@ -779,18 +784,77 @@ function App() {
         enableThinking: showThinking,
         signal: controller.signal
       });
-      setChatMessages((prev) => {
-        const assistantMsg: ChatMessageType = {
-          role: "assistant",
-          content: res.content,
-          timestamp: Date.now()
+      const assistantMsg: ChatMessageType = {
+        role: "assistant",
+        content: res.content,
+        timestamp: Date.now(),
+        model: selectedModel,
+      };
+      const finalMessages: ChatMessageType[] = [...chatMessages, userMsg, assistantMsg];
+      setChatMessages(finalMessages);
+
+      const turn = res.usage;
+      let mergedTotals = sessionUsageTotals;
+      let newByModel = sessionUsageByModel;
+      if (turn) {
+        const pt = sessionUsageTotals ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 };
+        mergedTotals = {
+          input_tokens: pt.input_tokens + (turn.input_tokens ?? 0),
+          output_tokens: pt.output_tokens + (turn.output_tokens ?? 0),
+          total_tokens: pt.total_tokens + (turn.total_tokens ?? 0),
+          estimated_cost_usd: pt.estimated_cost_usd + (turn.estimated_cost_usd ?? 0),
+          cache_read_input_tokens: (pt.cache_read_input_tokens ?? 0) + (turn.cache_read_input_tokens ?? 0) || undefined,
+          cache_creation_input_tokens: (pt.cache_creation_input_tokens ?? 0) + (turn.cache_creation_input_tokens ?? 0) || undefined,
+          cache_write_input_tokens: (pt.cache_write_input_tokens ?? 0) + (turn.cache_write_input_tokens ?? 0) || undefined,
         };
-        const next: ChatMessageType[] = [...prev, assistantMsg];
-        if (activeSessionId) {
-          updateChatSession(activeSessionId, { messages: messagesToStored(next) }).catch(() => {});
-        }
-        return next;
-      });
+        setSessionUsageTotals(mergedTotals);
+        const modelKey = selectedModel;
+        const pm = sessionUsageByModel[modelKey] ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 };
+        newByModel = {
+          ...sessionUsageByModel,
+          [modelKey]: {
+            input_tokens: pm.input_tokens + (turn.input_tokens ?? 0),
+            output_tokens: pm.output_tokens + (turn.output_tokens ?? 0),
+            total_tokens: pm.total_tokens + (turn.total_tokens ?? 0),
+            estimated_cost_usd: pm.estimated_cost_usd + (turn.estimated_cost_usd ?? 0),
+            cache_read_input_tokens: (pm.cache_read_input_tokens ?? 0) + (turn.cache_read_input_tokens ?? 0) || undefined,
+            cache_creation_input_tokens: (pm.cache_creation_input_tokens ?? 0) + (turn.cache_creation_input_tokens ?? 0) || undefined,
+            cache_write_input_tokens: (pm.cache_write_input_tokens ?? 0) + (turn.cache_write_input_tokens ?? 0) || undefined,
+          },
+        };
+        setSessionUsageByModel(newByModel);
+      }
+
+      const projectId = selectedProject === ALL_PROJECTS ? null : selectedProject;
+      const storedMsgs = messagesToStored(finalMessages);
+      if (activeSessionId) {
+        updateChatSession(activeSessionId, {
+          messages: storedMsgs,
+          ...(mergedTotals ? { usage_totals: mergedTotals, usage_by_model: newByModel } : {}),
+          project_id: projectId,
+        }).catch(() => {});
+      } else {
+        const firstText = typeof userMsg.content === "string"
+          ? userMsg.content
+          : userMsg.content.map((p) => (p.type === "text" ? p.text : "")).join(" ").trim();
+        const title = firstText.slice(0, 80) || `Conversa ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
+        createChatSession({
+          title,
+          messages: storedMsgs,
+          model: selectedModel,
+          project_id: projectId,
+          usage_totals: mergedTotals,
+          usage_by_model: Object.keys(newByModel).length > 0 ? newByModel : null,
+        })
+          .then((created) => {
+            setActiveSessionId(created.id);
+            setSessions((prev) => [created, ...prev]);
+            if (autoTitleLLM) {
+              generateTitleInBackground(created.id, finalMessages, created.usage_totals ?? null, created.usage_by_model ?? {});
+            }
+          })
+          .catch(() => setChatError("Falha ao salvar sessão automaticamente"));
+      }
       setLastToolCalls(res.tool_calls_used ?? []);
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
@@ -813,46 +877,20 @@ function App() {
     setChatError(null);
     setLastToolCalls([]);
     setActiveSessionId(null);
+    setSessionUsageTotals(null);
+    setSessionUsageByModel({});
   }
 
-  async function handleRequestNewSession() {
-    if (chatMessages.length === 0) {
-      handleChatNewSession();
-      return;
-    }
-    if (activeSessionId) {
-      handleChatNewSession();
-      return;
-    }
-    setSavingSession(true);
-    const firstUser = chatMessages.find((m) => m.role === "user");
-    const firstText = firstUser && typeof firstUser.content === "string"
-      ? firstUser.content
-      : firstUser && Array.isArray(firstUser.content)
-        ? firstUser.content.map((p) => (p.type === "text" ? p.text : "")).join(" ").trim()
-        : "";
-    const title = firstText.slice(0, 80) || `Conversa ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
-    let created;
-    try {
-      created = await createChatSession({
-        title,
-        messages: messagesToStored(chatMessages),
-        model: selectedModel
-      });
-    } catch {
-      setChatError("Falha ao salvar sessão");
-      return;
-    } finally {
-      setSavingSession(false);
-    }
-    setSessions((prev) => [created, ...prev]);
+  function handleRequestNewSession() {
     handleChatNewSession();
-    if (autoTitleLLM && created) {
-      generateTitleInBackground(created.id, chatMessages);
-    }
   }
 
-  function generateTitleInBackground(sessionId: string, msgs: ChatMessageType[]) {
+  function generateTitleInBackground(
+    sessionId: string,
+    msgs: ChatMessageType[],
+    existingTotals: UsageTotals | null,
+    existingByModel: Record<string, UsageTotals>,
+  ) {
     const textStart = msgs.slice(0, 6).map((m) => {
       const c = typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" ");
       return { role: m.role, content: c };
@@ -872,7 +910,26 @@ function App() {
       .then((res) => {
         const llmTitle = (res.content || "").trim().split("\n")[0].slice(0, 100);
         if (!llmTitle) return;
-        return updateChatSession(sessionId, { title: llmTitle });
+        const turn = res.usage;
+        if (!turn) return updateChatSession(sessionId, { title: llmTitle });
+        const pt = existingTotals ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 };
+        const mergedTotals: UsageTotals = {
+          input_tokens: pt.input_tokens + (turn.input_tokens ?? 0),
+          output_tokens: pt.output_tokens + (turn.output_tokens ?? 0),
+          total_tokens: pt.total_tokens + (turn.total_tokens ?? 0),
+          estimated_cost_usd: pt.estimated_cost_usd + (turn.estimated_cost_usd ?? 0),
+        };
+        const pm = existingByModel[selectedModel] ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 };
+        const mergedByModel: Record<string, UsageTotals> = {
+          ...existingByModel,
+          [selectedModel]: {
+            input_tokens: pm.input_tokens + (turn.input_tokens ?? 0),
+            output_tokens: pm.output_tokens + (turn.output_tokens ?? 0),
+            total_tokens: pm.total_tokens + (turn.total_tokens ?? 0),
+            estimated_cost_usd: pm.estimated_cost_usd + (turn.estimated_cost_usd ?? 0),
+          },
+        };
+        return updateChatSession(sessionId, { title: llmTitle, usage_totals: mergedTotals, usage_by_model: mergedByModel });
       })
       .then(() => fetchChatSessions().then(setSessions))
       .catch(() => {});
@@ -900,7 +957,7 @@ function App() {
           : m.content
               .map((p) => (p.type === "text" ? p.text : "[imagem]"))
               .join(" ");
-      return { role: m.role, content, timestamp: m.timestamp };
+      return { role: m.role, content, timestamp: m.timestamp, ...(m.model ? { model: m.model } : {}) };
     });
   }
 
@@ -910,11 +967,14 @@ function App() {
         const msgs: ChatMessageType[] = session.messages.map((m) => ({
           role: m.role as "user" | "assistant" | "system",
           content: m.content,
-          timestamp: m.timestamp
+          timestamp: m.timestamp,
+          ...(m.model ? { model: m.model } : {}),
         }));
         setChatMessages(msgs);
         if (session.model) setSelectedModel(session.model);
         setActiveSessionId(session.id);
+        setSessionUsageTotals(session.usage_totals ?? null);
+        setSessionUsageByModel(session.usage_by_model ?? {});
         setChatError(null);
         setHistoryModalOpen(false);
       })
@@ -933,6 +993,8 @@ function App() {
       if (activeSessionId === sessionId) {
         setChatMessages([]);
         setActiveSessionId(null);
+        setSessionUsageTotals(null);
+        setSessionUsageByModel({});
       }
       setHistoryModalOpen(false);
     });
@@ -1382,6 +1444,31 @@ function App() {
       )}
 
       {view === "assistente" && (
+        <section className="assistente-card">
+          <nav className="assistente-tabs" role="tablist">
+            <div className="assistente-tabs-pill">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={assistenteTab === "chat"}
+                className={`assistente-tab${assistenteTab === "chat" ? " assistente-tab--active" : ""}`}
+                onClick={() => setAssistenteTab("chat")}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={assistenteTab === "usage"}
+                className={`assistente-tab${assistenteTab === "usage" ? " assistente-tab--active" : ""}`}
+                onClick={() => setAssistenteTab("usage")}
+              >
+                Uso e custo
+              </button>
+            </div>
+          </nav>
+          <div className="assistente-content">
+          {assistenteTab === "chat" ? (
         <ChatPanel
           agentName="Assistente"
           agentAvatarUrl={null}
@@ -1389,7 +1476,8 @@ function App() {
             role: m.role,
             content: typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" "),
             timestamp: m.timestamp,
-            ...(m.role === "user" && Array.isArray(m.content) && { contentParts: m.content })
+            ...(m.role === "user" && Array.isArray(m.content) && { contentParts: m.content }),
+            ...(m.model ? { model: m.model } : {}),
           }))}
           lastToolCalls={lastToolCalls}
           sending={chatSending}
@@ -1418,6 +1506,11 @@ function App() {
           telegramConnected={telegramConnected}
           onToggleTelegram={handleToggleTelegram}
         />
+          ) : (
+            <UsageView />
+          )}
+          </div>
+        </section>
       )}
 
       {view === "templates" && (

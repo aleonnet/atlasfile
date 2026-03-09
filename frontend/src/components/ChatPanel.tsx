@@ -20,6 +20,8 @@ export interface ChatMessageWithMeta {
   timestamp?: number;
   /** For user messages with images; enables rendering thumbnails and modal. */
   contentParts?: ChatContentPartDisplay[];
+  /** Model that generated this response (e.g. "openai/gpt-4.1") */
+  model?: string;
 }
 
 export interface ChatAttachment {
@@ -439,6 +441,7 @@ export function ChatPanel({
             agentAvatarUrl={msg.role === "assistant" ? agentAvatarUrl : undefined}
             isLastAssistant={msg.role === "assistant" && idx === messages.length - 1}
             lastToolCalls={msg.role === "assistant" && idx === messages.length - 1 ? lastToolCalls : undefined}
+            model={msg.model}
           />
         ))}
         {sending && (
@@ -510,7 +513,8 @@ function ChatMessageBubble({
   agentName,
   agentAvatarUrl,
   isLastAssistant,
-  lastToolCalls
+  lastToolCalls,
+  model
 }: {
   role: "user" | "assistant";
   content: string;
@@ -520,6 +524,7 @@ function ChatMessageBubble({
   agentAvatarUrl?: string | null;
   isLastAssistant: boolean;
   lastToolCalls?: { name: string; result_preview?: string }[];
+  model?: string;
 }) {
   const [imageModalUrl, setImageModalUrl] = React.useState<string | null>(null);
   useEffect(() => {
@@ -533,7 +538,8 @@ function ChatMessageBubble({
   const timeStr = timestamp
     ? new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : "";
-  const who = role === "user" ? "Você" : agentName;
+  const modelShort = model ? model.replace(/^[^/]+\//, "") : "";
+  const who = role === "user" ? "Você" : (modelShort ? `${agentName} (${modelShort})` : agentName);
   const initial = role === "user" ? "U" : (agentName.charAt(0) || "A").toUpperCase();
   const isUser = role === "user";
   const hasImageParts = isUser && contentParts?.some((p) => p.type === "image_url");

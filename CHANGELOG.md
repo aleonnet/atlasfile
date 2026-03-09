@@ -4,6 +4,51 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.5.0] -- 2026-03-09
+
+### Uso e custo do Assistente
+
+- Nova aba "Uso e custo" no Assistente com visão consolidada de tokens e custo estimado por período, projeto e modelo
+- Tabela "Por modelo" com breakdown de input/output tokens e custo (4 casas) por modelo, linha de totais
+- Tabela "Sessões" com tokens e custo por sessão, paginação de 10 em 10
+- Gráficos "Uso diário de tokens" (barras empilhadas por tipo) e "Tokens por tipo" (barra horizontal proporcional)
+- Datas no formato brasileiro (dd/mm/aaaa) nos filtros de período
+- Coluna Modelo nas sessões exibe modelos sem prefixo de provider; sessões multi-modelo listam todos (ex: "gpt-4.1, gpt-5.1")
+
+### Rastreamento de uso por sessão
+
+- Cada resposta do LLM retorna `usage` (input/output/cache tokens + custo estimado) ao frontend
+- `usage_totals` e `usage_by_model` acumulados e persistidos por sessão no OpenSearch
+- Sessões multi-modelo rastreiam tokens e custo separadamente por modelo usado
+- Tokens de geração de título (background) acumulados na sessão correspondente
+- Backend `GET /api/usage/summary` agrega tokens por tipo (input, output, cache_read, cache_write) por dia e por modelo
+
+### Custo configurável por modelo
+
+- Arquivo `config/usage_costs.json` com preços $/1M tokens por provider/modelo (input, output, cache_read, cache_write)
+- Módulo `backend/app/usage_costs.py`: `get_cost_per_1m()` e `estimate_usage_cost()` — zero hardcoded
+- Preços incluem cache read/write para Anthropic (prompt caching)
+
+### Autosave de sessão
+
+- Sessão criada automaticamente após a 1ª resposta do LLM (sem necessidade de clicar "+")
+- Título derivado da primeira mensagem do usuário; título LLM gerado em background (se habilitado)
+- Botão "+" sempre inicia nova conversa (sessão atual já salva)
+
+### Identificação de modelo por mensagem
+
+- Cada mensagem do assistente armazena o modelo que a gerou (`model` field)
+- Footer do chat exibe "Assistente (gpt-4.1)" ao invés de apenas "Assistente"
+- Retrocompatível: mensagens antigas sem `model` exibem "Assistente"
+
+### UI/UX
+
+- Abas "Chat" / "Uso e custo" em estilo segmented control (pill)
+- Formatação de custo: totais com 2 casas decimais (truncado), componentes input/output com 4 casas
+- Estilos do UsageView alinhados com o design system do App (sem CSS customizado conflitante)
+
+---
+
 ## [0.4.0] -- 2026-03-06
 
 ### Canais de comunicação (Telegram)

@@ -91,6 +91,9 @@ def ensure_chat_sessions_index(client: OpenSearch) -> None:
         "model": {"type": "keyword"},
         "createdAt": {"type": "date"},
         "updatedAt": {"type": "date"},
+        "project_id": {"type": "keyword"},
+        "usage_totals": {"type": "object", "enabled": True},
+        "usage_by_model": {"type": "object", "enabled": False},
     }
     if client.indices.exists(index=index_name):
         client.indices.put_mapping(index=index_name, body={"properties": properties})

@@ -48,6 +48,12 @@ from .models import (
     StoredChatMessage,
     SuggestResponse,
     TriageDecisionRequest,
+    TurnUsage,
+    UsageByDayEntry,
+    UsageByModelEntry,
+    UsageSessionItem,
+    UsageSummaryResponse,
+    UsageTotals,
 )
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from .opensearch_client import ensure_chat_sessions_index, ensure_index, get_client
@@ -71,6 +77,7 @@ from .triage import (
 )
 from .llm_catalog import LLM_MODEL_CATALOG
 from .orchestrator import classify_with_llm, get_llm_config, run_chat_loop
+from .usage_costs import get_cost_per_1m
 from .utils import DEFAULT_CANONICAL_PATTERN, build_canonical_filename, normalize_text, utc_now_iso
 from .channels import ChannelManager, ChannelMessage
 from .channels.telegram import TelegramChannel
@@ -1165,7 +1172,9 @@ async def api_chat(
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     try:
         result = await run_chat_loop(messages, provider, model, api_key=api_key, enable_thinking=body.enable_thinking)
-        return ChatResponse(content=result["content"], tool_calls_used=result.get("tool_calls_used", []))
+        usage_raw = result.get("usage")
+        usage = TurnUsage(**usage_raw) if isinstance(usage_raw, dict) else None
+        return ChatResponse(content=result["content"], tool_calls_used=result.get("tool_calls_used", []), usage=usage)
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
@@ -1200,8 +1209,21 @@ def _parse_ts(v: Any) -> int:
     return 0
 
 
+def _parse_usage_by_model(raw: Any) -> dict[str, UsageTotals] | None:
+    """Deserialize usage_by_model from OpenSearch doc (dict of model_key -> UsageTotals dict)."""
+    if not isinstance(raw, dict) or not raw:
+        return None
+    out: dict[str, UsageTotals] = {}
+    for k, v in raw.items():
+        if isinstance(v, dict) and v:
+            out[k] = UsageTotals(**v)
+    return out or None
+
+
 def _session_doc_to_model(doc_id: str, src: dict[str, Any]) -> ChatSession:
     ms = [StoredChatMessage(role=m.get("role", "user"), content=m.get("content", ""), timestamp=m.get("timestamp")) for m in src.get("messages", [])]
+    ut = src.get("usage_totals")
+    usage_totals = UsageTotals(**ut) if isinstance(ut, dict) and ut else None
     return ChatSession(
         id=doc_id,
         title=src.get("title", ""),
@@ -1209,6 +1231,9 @@ def _session_doc_to_model(doc_id: str, src: dict[str, Any]) -> ChatSession:
         model=src.get("model", ""),
         createdAt=_parse_ts(src.get("createdAt")),
         updatedAt=_parse_ts(src.get("updatedAt")),
+        project_id=src.get("project_id") or None,
+        usage_totals=usage_totals,
+        usage_by_model=_parse_usage_by_model(src.get("usage_by_model")),
     )
 
 
@@ -1249,13 +1274,19 @@ def create_chat_session(body: ChatSessionCreate) -> ChatSession:
     """Create a new chat session (id generated in backend)."""
     now_ms = int(time.time() * 1000)
     doc_id = uuid.uuid4().hex
-    doc = {
+    doc: dict[str, Any] = {
         "title": body.title,
         "messages": [m.model_dump() for m in body.messages],
         "model": body.model,
         "createdAt": now_ms,
         "updatedAt": now_ms,
     }
+    if body.project_id is not None:
+        doc["project_id"] = body.project_id
+    if body.usage_totals is not None:
+        doc["usage_totals"] = body.usage_totals.model_dump()
+    if body.usage_by_model is not None:
+        doc["usage_by_model"] = {k: v.model_dump() for k, v in body.usage_by_model.items()}
     os_client.index(index=_CHAT_SESSIONS_INDEX, id=doc_id, body=doc, refresh=True)
     return _session_doc_to_model(doc_id, doc)
 
@@ -1268,6 +1299,12 @@ def update_chat_session(session_id: str, body: ChatSessionUpdate) -> ChatSession
         partial["title"] = body.title
     if body.messages is not None:
         partial["messages"] = [m.model_dump() for m in body.messages]
+    if body.project_id is not None:
+        partial["project_id"] = body.project_id
+    if body.usage_totals is not None:
+        partial["usage_totals"] = body.usage_totals.model_dump()
+    if body.usage_by_model is not None:
+        partial["usage_by_model"] = {k: v.model_dump() for k, v in body.usage_by_model.items()}
     try:
         os_client.update(
             index=_CHAT_SESSIONS_INDEX,
@@ -1289,6 +1326,215 @@ def delete_chat_session(session_id: str):
     except Exception:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
     return None
+
+
+def _split_provider_model(model_raw: str) -> tuple[str, str]:
+    """Split stored 'provider/model' into (provider, bare_model) for cost lookup.
+
+    Sessions store model as 'openai/gpt-4.1'; the cost config uses bare 'gpt-4.1'.
+    Falls back to prefix-based inference when there's no slash.
+    Ref.: OpenClaw resolveModelCostConfig (provider and model always separate).
+    """
+    s = (model_raw or "").strip()
+    if "/" in s:
+        provider, bare = s.split("/", 1)
+        return (provider.lower(), bare)
+    m = s.lower()
+    if m.startswith("gpt"):
+        return ("openai", s)
+    if m.startswith("claude"):
+        return ("anthropic", s)
+    return ("openai", s)
+
+
+@app.get("/api/usage/summary", response_model=UsageSummaryResponse)
+def get_usage_summary(
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
+) -> UsageSummaryResponse:
+    """Aggregate usage from chat sessions in the given date range (by updatedAt)."""
+    try:
+        start_ts = int(datetime.strptime(start_date.strip(), "%Y-%m-%d").timestamp() * 1000)
+        end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d")
+        end_ts = int((end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)).timestamp() * 1000)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Datas devem ser YYYY-MM-DD")
+    if start_ts > end_ts:
+        raise HTTPException(status_code=400, detail="start_date deve ser anterior a end_date")
+    body: dict[str, Any] = {
+        "size": 10_000,
+        "query": {"bool": {"must": [{"range": {"updatedAt": {"gte": start_ts, "lte": end_ts}}}]}},
+        "sort": [{"updatedAt": {"order": "asc"}}],
+    }
+    if project_id and project_id.strip():
+        body["query"]["bool"]["must"].append({"term": {"project_id": project_id.strip()}})
+    try:
+        result = os_client.search(index=_CHAT_SESSIONS_INDEX, body=body)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Erro ao agregar usage: {e!s}") from e
+    hits = (result.get("hits") or {}).get("hits") or []
+    total_tokens = 0
+    total_input = 0
+    total_output = 0
+    total_cache_read = 0
+    total_cache_write = 0
+    total_cost = 0.0
+    by_model_raw: dict[str, dict[str, Any]] = {}
+    by_day_raw: dict[str, dict[str, Any]] = {}
+    def _accum_model(model_key: str, inp: int, out: int, cost: float) -> None:
+        if model_key not in by_model_raw:
+            by_model_raw[model_key] = {"input_tokens": 0, "output_tokens": 0, "estimated_cost_usd": 0.0}
+        by_model_raw[model_key]["input_tokens"] += inp
+        by_model_raw[model_key]["output_tokens"] += out
+        by_model_raw[model_key]["estimated_cost_usd"] += cost
+
+    for hit in hits:
+        src = hit.get("_source") or {}
+        ut = src.get("usage_totals") or {}
+        if not isinstance(ut, dict):
+            continue
+        inp = int(ut.get("input_tokens") or 0)
+        outp = int(ut.get("output_tokens") or 0)
+        cr = int(ut.get("cache_read_input_tokens") or 0)
+        cw = int(ut.get("cache_creation_input_tokens") or ut.get("cache_write_input_tokens") or 0)
+        tot = int(ut.get("total_tokens") or 0)
+        cost = float(ut.get("estimated_cost_usd") or 0)
+        total_tokens += tot
+        total_input += inp
+        total_output += outp
+        total_cache_read += cr
+        total_cache_write += cw
+        total_cost += cost
+        ubm = src.get("usage_by_model")
+        if isinstance(ubm, dict) and ubm:
+            for model_key, model_ut in ubm.items():
+                if not isinstance(model_ut, dict):
+                    continue
+                _accum_model(
+                    model_key,
+                    int(model_ut.get("input_tokens") or 0),
+                    int(model_ut.get("output_tokens") or 0),
+                    float(model_ut.get("estimated_cost_usd") or 0),
+                )
+        else:
+            # Fallback legado: sessoes sem usage_by_model atribuem ao model do doc
+            model = (src.get("model") or "").strip() or "unknown"
+            _accum_model(
+                model,
+                int(ut.get("input_tokens") or 0),
+                int(ut.get("output_tokens") or 0),
+                cost,
+            )
+        updated_at = src.get("updatedAt")
+        if updated_at is not None:
+            try:
+                ts = int(updated_at) if isinstance(updated_at, (int, float)) else int(datetime.fromisoformat(str(updated_at).replace("Z", "+00:00")).timestamp() * 1000)
+                day = datetime.utcfromtimestamp(ts / 1000).strftime("%Y-%m-%d")
+            except (ValueError, TypeError, OSError):
+                day = ""
+            if day:
+                if day not in by_day_raw:
+                    by_day_raw[day] = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "total_tokens": 0, "estimated_cost_usd": 0.0}
+                by_day_raw[day]["input_tokens"] += inp
+                by_day_raw[day]["output_tokens"] += outp
+                by_day_raw[day]["cache_read_tokens"] += cr
+                by_day_raw[day]["cache_write_tokens"] += cw
+                by_day_raw[day]["total_tokens"] += tot
+                by_day_raw[day]["estimated_cost_usd"] += cost
+    by_model_list: list[UsageByModelEntry] = []
+    for model, agg in by_model_raw.items():
+        provider, bare_model = _split_provider_model(model)
+        cost_per = get_cost_per_1m(provider, bare_model)
+        input_cost = output_cost = 0.0
+        if cost_per:
+            input_cost = (agg["input_tokens"] / 1_000_000) * cost_per[0]
+            output_cost = (agg["output_tokens"] / 1_000_000) * cost_per[1]
+        by_model_list.append(
+            UsageByModelEntry(
+                model=model,
+                input_tokens=agg["input_tokens"],
+                output_tokens=agg["output_tokens"],
+                input_cost_usd=round(input_cost, 6),
+                output_cost_usd=round(output_cost, 6),
+                total_tokens=agg["input_tokens"] + agg["output_tokens"],
+                estimated_cost_usd=round(agg["estimated_cost_usd"], 6),
+            )
+        )
+    by_model_list.sort(key=lambda x: (-x.estimated_cost_usd, x.model))
+    by_day_list = [
+        UsageByDayEntry(
+            date=d,
+            input_tokens=v["input_tokens"],
+            output_tokens=v["output_tokens"],
+            cache_read_tokens=v["cache_read_tokens"],
+            cache_write_tokens=v["cache_write_tokens"],
+            total_tokens=v["total_tokens"],
+            estimated_cost_usd=round(v["estimated_cost_usd"], 6),
+        )
+        for d, v in sorted(by_day_raw.items())
+    ]
+    return UsageSummaryResponse(
+        total_tokens=total_tokens,
+        total_input_tokens=total_input,
+        total_output_tokens=total_output,
+        total_cache_read_tokens=total_cache_read,
+        total_cache_write_tokens=total_cache_write,
+        estimated_cost_usd=round(total_cost, 6),
+        session_count=len(hits),
+        by_model=by_model_list,
+        by_day=by_day_list,
+    )
+
+
+@app.get("/api/usage/sessions", response_model=list[UsageSessionItem])
+def get_usage_sessions(
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
+    limit: int = Query(100, ge=1, le=500),
+) -> list[UsageSessionItem]:
+    """List chat sessions with usage in the date range, ordered by updatedAt desc."""
+    try:
+        start_ts = int(datetime.strptime(start_date.strip(), "%Y-%m-%d").timestamp() * 1000)
+        end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d")
+        end_ts = int((end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)).timestamp() * 1000)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Datas devem ser YYYY-MM-DD")
+    if start_ts > end_ts:
+        raise HTTPException(status_code=400, detail="start_date deve ser anterior a end_date")
+    body = {
+        "size": limit,
+        "query": {"bool": {"must": [{"range": {"updatedAt": {"gte": start_ts, "lte": end_ts}}}]}},
+        "sort": [{"updatedAt": {"order": "desc"}}],
+    }
+    if project_id and project_id.strip():
+        body["query"]["bool"]["must"].append({"term": {"project_id": project_id.strip()}})
+    try:
+        result = os_client.search(index=_CHAT_SESSIONS_INDEX, body=body)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Erro ao listar sessões de usage: {e!s}") from e
+    hits = (result.get("hits") or {}).get("hits") or []
+    out: list[UsageSessionItem] = []
+    for hit in hits:
+        doc_id = hit.get("_id", "")
+        src = hit.get("_source") or {}
+        ut = src.get("usage_totals")
+        usage_totals = UsageTotals(**ut) if isinstance(ut, dict) and ut else None
+        updated_at = src.get("updatedAt")
+        ts_ms = _parse_ts(updated_at) if updated_at is not None else 0
+        out.append(
+            UsageSessionItem(
+                id=doc_id,
+                title=src.get("title", ""),
+                project_id=src.get("project_id") or None,
+                model=src.get("model", ""),
+                updatedAt=ts_ms,
+                usage_totals=usage_totals,
+                usage_by_model=_parse_usage_by_model(src.get("usage_by_model")),
+            )
+        )
+    return out
 
 
 @app.post("/api/classify", response_model=ClassifyResponse)

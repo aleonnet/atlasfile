@@ -13,10 +13,29 @@ from app.llm_catalog import get_anthropic_thinking_type, get_max_tool_result_cha
 from app.mcp_client import call_tool as mcp_call_tool
 from app.mcp_client import list_tools as mcp_list_tools
 from app.prompts import get_system_prompt_chat, get_system_prompt_classify
+from app.usage_costs import estimate_usage_cost
 
 MAX_TOOL_LOOPS = 10
 # Fallback quando o modelo não está no catálogo (get_max_tool_result_chars).
 MAX_TOOL_RESULT_CHARS_FALLBACK = 120_000
+
+
+def _accumulate_usage(
+    acc: dict[str, int | float],
+    raw: dict[str, int] | None,
+    provider: str,
+    model: str,
+) -> None:
+    """Merge raw usage (input_tokens, output_tokens, cache_*) into acc; then set estimated_cost_usd."""
+    if not raw:
+        return
+    acc["input_tokens"] = int(acc.get("input_tokens") or 0) + int(raw.get("input_tokens") or raw.get("prompt_tokens") or 0)
+    acc["output_tokens"] = int(acc.get("output_tokens") or 0) + int(raw.get("output_tokens") or raw.get("completion_tokens") or 0)
+    for key in ("cache_read_input_tokens", "cache_creation_input_tokens", "cache_write_input_tokens"):
+        if key in raw and raw[key]:
+            acc[key] = int(acc.get(key) or 0) + int(raw[key])
+    acc["total_tokens"] = int(acc.get("input_tokens") or 0) + int(acc.get("output_tokens") or 0)
+    acc["estimated_cost_usd"] = estimate_usage_cost(acc, provider, model)
 
 
 def _truncate_tool_result(result: str, max_chars: int = MAX_TOOL_RESULT_CHARS_FALLBACK) -> str:
@@ -143,15 +162,20 @@ async def _run_chat_openai(
     }
     if enable_thinking and supports_reasoning_effort("openai", model):
         create_kw["reasoning_effort"] = "medium"
+    usage_accum: dict[str, int | float] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_usd": 0.0}
     for _ in range(MAX_TOOL_LOOPS):
         create_kw["messages"] = loop_messages
         resp = await client.chat.completions.create(**create_kw)
+        u = getattr(resp, "usage", None)
+        if u is not None:
+            raw = {"prompt_tokens": getattr(u, "prompt_tokens", 0) or 0, "completion_tokens": getattr(u, "completion_tokens", 0) or 0}
+            _accumulate_usage(usage_accum, raw, "openai", model)
         choice = resp.choices[0] if resp.choices else None
         if not choice:
-            return {"content": "", "tool_calls_used": tool_calls_used}
+            return {"content": "", "tool_calls_used": tool_calls_used, "usage": _usage_return(usage_accum)}
         msg = choice.message
         if not getattr(msg, "tool_calls", None) or len(msg.tool_calls) == 0:
-            return {"content": (msg.content or ""), "tool_calls_used": tool_calls_used}
+            return {"content": (msg.content or ""), "tool_calls_used": tool_calls_used, "usage": _usage_return(usage_accum)}
 
         loop_messages.append({
             "role": "assistant",
@@ -176,7 +200,21 @@ async def _run_chat_openai(
                 "tool_call_id": tc.id,
                 "content": result,
             })
-    return {"content": "(max tool loops reached)", "tool_calls_used": tool_calls_used}
+    return {"content": "(max tool loops reached)", "tool_calls_used": tool_calls_used, "usage": _usage_return(usage_accum)}
+
+
+def _usage_return(acc: dict[str, int | float]) -> dict[str, int | float]:
+    """Build API usage dict: input_tokens, output_tokens, total_tokens, estimated_cost_usd, optional cache_*."""
+    out: dict[str, int | float] = {
+        "input_tokens": int(acc.get("input_tokens") or 0),
+        "output_tokens": int(acc.get("output_tokens") or 0),
+        "total_tokens": int(acc.get("total_tokens") or 0),
+        "estimated_cost_usd": float(acc.get("estimated_cost_usd") or 0),
+    }
+    for k in ("cache_read_input_tokens", "cache_creation_input_tokens", "cache_write_input_tokens"):
+        if acc.get(k):
+            out[k] = int(acc[k])
+    return out
 
 
 async def _run_chat_anthropic(
@@ -239,9 +277,20 @@ async def _run_chat_anthropic(
             create_kw["thinking"] = {"type": "adaptive"}
         else:
             create_kw["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+    usage_accum_anth: dict[str, int | float] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_usd": 0.0}
     for _ in range(MAX_TOOL_LOOPS):
         create_kw["messages"] = anthropic_messages
         resp = await client.messages.create(**create_kw)
+        u = getattr(resp, "usage", None)
+        if u is not None:
+            raw: dict[str, int] = {
+                "input_tokens": getattr(u, "input_tokens", 0) or 0,
+                "output_tokens": getattr(u, "output_tokens", 0) or 0,
+            }
+            for key in ("cache_creation_input_tokens", "cache_read_input_tokens"):
+                if hasattr(u, key) and getattr(u, key):
+                    raw[key] = getattr(u, key)
+            _accumulate_usage(usage_accum_anth, raw, "anthropic", model)
         content_blocks = getattr(resp, "content", []) or []
         tool_uses = [b for b in content_blocks if getattr(b, "type", None) == "tool_use"]
         if not tool_uses:
@@ -251,7 +300,7 @@ async def _run_chat_anthropic(
                     parts.append(getattr(b, "thinking", "") or "")
                 elif getattr(b, "text", None) is not None:
                     parts.append(b.text)
-            return {"content": "\n\n".join(p for p in parts if p), "tool_calls_used": tool_calls_used}
+            return {"content": "\n\n".join(p for p in parts if p), "tool_calls_used": tool_calls_used, "usage": _usage_return(usage_accum_anth)}
 
         anthropic_messages.append({"role": "assistant", "content": content_blocks})
         tool_results = []
@@ -269,7 +318,7 @@ async def _run_chat_anthropic(
             tool_calls_used.append({"name": name, "result_preview": preview})
             tool_results.append({"type": "tool_result", "tool_use_id": tid, "content": result})
         anthropic_messages.append({"role": "user", "content": tool_results})
-    return {"content": "(max tool loops reached)", "tool_calls_used": tool_calls_used}
+    return {"content": "(max tool loops reached)", "tool_calls_used": tool_calls_used, "usage": _usage_return(usage_accum_anth)}
 
 
 def _build_project_context(profile: dict[str, Any] | None) -> str:

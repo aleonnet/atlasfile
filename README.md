@@ -10,7 +10,7 @@ Sistema local de organização documental por projeto, com classificação híbr
 - **Dedup precoce** por SHA256 antes do fluxo completo — sem cópias `_dup_*`
 - **Indexação** de conteúdo e metadados em OpenSearch (BM25, 35+ campos, chunking com localização)
 - **Extração** de texto: PDF, DOCX, XLSX, PPTX, HTML, MSG, ZIP, RAR
-- **Assistente LLM** com chat multi-modelo (OpenAI, Anthropic), MCP tools e sessões persistentes
+- **Assistente LLM** com chat multi-modelo (OpenAI, Anthropic), MCP tools, sessões persistentes e rastreamento de uso/custo
 - **Templates de projeto** com CRUD (builtin + user), editor visual e inicialização via UI
 - **Canais de comunicação** plugáveis (Telegram via aiogram, Discord/Slack em breve) — consultas ao assistente de qualquer app de mensagem
 - **Rastreabilidade** completa: nome original → nome canônico → SHA256 → `_INDEX.md` → OpenSearch
@@ -41,10 +41,11 @@ AtlasFile/
 ├── frontend/                # SPA React + TypeScript
 │   └── src/
 │       ├── components/      # ChatPanel
-│       ├── features/        # ingest, profile-layout, search, settings, templates, triage
+│       ├── features/        # ingest, profile-layout, search, settings, templates, triage, usage
 │       └── hooks/           # useEscapeKey
 ├── config/
-│   └── templates/           # Templates de projeto (default.json, user templates)
+│   ├── templates/           # Templates de projeto (default.json, user templates)
+│   └── usage_costs.json     # Preços $/1M tokens por provider/modelo
 ├── docs/                    # Documentação de referência (benchmarking, conventions, KPIs)
 ├── scripts/                 # Bootstrap, smoke test, CI, reset index
 ├── docker-compose.yml
