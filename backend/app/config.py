@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     channels_enabled: bool = False
     telegram_enabled: bool = False
     telegram_bot_token: str = ""
+    channel_session_timeout_minutes: int = 30
+
+    # --- Classification usage ---
+    opensearch_classification_usage_index: str = "atlasfile_classification_usage"
 
     # --- Usage / cost estimation (assistente) ---
     # Path to JSON config with $/1M tokens per provider/model (input, output, cache_read, cache_write).

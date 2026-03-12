@@ -4,6 +4,7 @@ import type {
   ChatMessage,
   ChatResponse,
   ChatSession,
+  ClassificationUsageSummary,
   IngestHistoryResponse,
   ModelOption,
   LayoutPlanResponse,
@@ -358,6 +359,8 @@ export async function createChatSession(payload: {
   project_id?: string | null;
   usage_totals?: UsageTotals | null;
   usage_by_model?: Record<string, UsageTotals> | null;
+  channel?: string;
+  channel_chat_id?: string | null;
 }): Promise<ChatSession> {
   const res = await fetch(`${API_URL}/api/chat/sessions`, {
     method: "POST",
@@ -388,35 +391,54 @@ export async function updateChatSession(
   return res.json();
 }
 
-/** Fetch usage summary for date range (and optional project). */
+/** Fetch usage summary for date range (and optional project/channel). */
 export async function fetchUsageSummary(params: {
   start_date: string;
   end_date: string;
   project_id?: string | null;
+  channel?: string | null;
 }): Promise<UsageSummaryResponse> {
   const url = new URL(`${API_URL}/api/usage/summary`);
   url.searchParams.set("start_date", params.start_date);
   url.searchParams.set("end_date", params.end_date);
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
+  if (params.channel?.trim()) url.searchParams.set("channel", params.channel.trim());
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar resumo de uso");
   return res.json();
 }
 
-/** Fetch usage sessions list for date range (and optional project). */
+/** Fetch usage sessions list for date range (and optional project/channel). */
 export async function fetchUsageSessions(params: {
   start_date: string;
   end_date: string;
   project_id?: string | null;
+  channel?: string | null;
   limit?: number;
 }): Promise<UsageSessionItem[]> {
   const url = new URL(`${API_URL}/api/usage/sessions`);
   url.searchParams.set("start_date", params.start_date);
   url.searchParams.set("end_date", params.end_date);
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
+  if (params.channel?.trim()) url.searchParams.set("channel", params.channel.trim());
   if (params.limit != null) url.searchParams.set("limit", String(params.limit));
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar sessões de uso");
+  return res.json();
+}
+
+/** Fetch classification LLM usage summary for date range. */
+export async function fetchClassificationUsage(params: {
+  start_date: string;
+  end_date: string;
+  project_id?: string | null;
+}): Promise<ClassificationUsageSummary> {
+  const url = new URL(`${API_URL}/api/usage/classification`);
+  url.searchParams.set("start_date", params.start_date);
+  url.searchParams.set("end_date", params.end_date);
+  if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Falha ao carregar uso de classificação");
   return res.json();
 }
 

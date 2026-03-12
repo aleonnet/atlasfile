@@ -1821,10 +1821,18 @@ a {
   text-align: right;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .usage-table td.left {
   text-align: left;
+}
+
+.usage-table td.left.truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
 }
 
 .usage-table-total td {

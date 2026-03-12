@@ -98,10 +98,18 @@ class TurnUsage(BaseModel):
     cache_write_input_tokens: Optional[int] = None
 
 
+class ContextPressure(BaseModel):
+    """Estimated context window pressure for the current session."""
+    context_tokens_estimate: int = 0
+    context_tokens_limit: int = 0
+    context_pressure_ratio: float = 0.0  # 0.0 to 1.0
+
+
 class ChatResponse(BaseModel):
     content: str
     tool_calls_used: list[dict[str, Any]] = Field(default_factory=list)
     usage: Optional[TurnUsage] = None
+    context_pressure: Optional[ContextPressure] = None
 
 
 class ClassifyRequest(BaseModel):
@@ -116,6 +124,23 @@ class ClassifyResponse(BaseModel):
     document_type: str | None = None
     tags: list[str] = Field(default_factory=list)
     confidence: float = 0.0
+    usage: Optional[TurnUsage] = None
+
+
+class ClassificationUsageByModel(BaseModel):
+    model: str
+    call_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+
+
+class ClassificationUsageSummary(BaseModel):
+    total_calls: int = 0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    by_model: list[ClassificationUsageByModel] = Field(default_factory=list)
 
 
 class ModelOption(BaseModel):
@@ -147,6 +172,8 @@ class StoredChatMessage(BaseModel):
     role: str  # user | assistant | system
     content: str  # text only; image parts become "[imagem]" when persisting
     timestamp: Optional[int] = None
+    model: Optional[str] = None
+    channel: Optional[str] = None
 
 
 class ChatSession(BaseModel):
@@ -159,6 +186,8 @@ class ChatSession(BaseModel):
     project_id: Optional[str] = None
     usage_totals: Optional[UsageTotals] = None
     usage_by_model: Optional[dict[str, UsageTotals]] = None
+    channel: Optional[str] = None
+    channel_chat_id: Optional[str] = None
 
 
 class ChatSessionCreate(BaseModel):
@@ -168,6 +197,8 @@ class ChatSessionCreate(BaseModel):
     project_id: Optional[str] = None
     usage_totals: Optional[UsageTotals] = None
     usage_by_model: Optional[dict[str, UsageTotals]] = None
+    channel: str = "web"
+    channel_chat_id: Optional[str] = None
 
 
 class ChatSessionUpdate(BaseModel):
@@ -221,6 +252,7 @@ class UsageSessionItem(BaseModel):
     updatedAt: int
     usage_totals: Optional[UsageTotals] = None
     usage_by_model: Optional[dict[str, UsageTotals]] = None
+    channel: Optional[str] = None
 
 
 class StatsBucket(BaseModel):

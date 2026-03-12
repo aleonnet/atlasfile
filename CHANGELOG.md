@@ -4,6 +4,61 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.6.0] -- 2026-03-12
+
+### Canais transparentes
+
+- Telegram (e futuros canais) opera como pipe transparente: sessões, histórico e usage/custo compartilhados com o chat web
+- Session manager para canais: busca sessão ativa por `(channel, chat_id)` no OpenSearch, timeout configurável (`channel_session_timeout_minutes`, default 30min)
+- Comando `/novo` no Telegram para forçar nova sessão
+- Concorrência por `asyncio.Lock` per `chat_id` (single-instance)
+- Campo `channel` e `channel_chat_id` em `ChatSession`; campo `channel` per-message em `StoredChatMessage`
+- Migração automática no startup: sessões existentes sem `channel` recebem `channel='web'` via `update_by_query`
+- Campo `channel` opcional nos modelos (sem fallback mascarado; UI exibe "—" quando ausente)
+
+### Rastreamento de uso LLM na classificação
+
+- Novo índice OpenSearch `classification_usage` com mapping dedicado (doc_id, filename, project_id, provider, model, tokens, custo)
+- `_classify_openai` e `_classify_anthropic` capturam `resp.usage` (input/output/cache tokens + custo estimado)
+- `_persist_classification_usage` persiste uso no OpenSearch após cada classificação na ingestão
+- Novo endpoint `GET /api/usage/classification` com agregação por período, projeto e modelo
+- Card "Classificações" e seção "Classificação (uso LLM na ingestão)" no UsageView
+- Custo total na aba "Uso e custo" agrega sessões do assistente + classificação
+
+### Gestão de janela de contexto
+
+- `_trim_history_to_context`: truncamento FIFO automático a 60% da janela do modelo (reserva 20% para tools, 20% para resposta)
+- `_estimate_context_pressure`: estimativa de pressão de contexto retornada em cada resposta do `POST /api/chat`
+- `get_context_tokens` no `llm_catalog.py`: lookup da janela de contexto por provider/modelo a partir do `LLM_MODEL_CATALOG`
+- Modelo `ContextPressure` (context_tokens_estimate, context_tokens_limit, context_pressure_ratio)
+- Componente `ContextRing` no footer do ChatPanel: indicador circular de pressão de contexto
+  - 0-50%: neutro (cinza), 50-75%: atenção (amarelo), 75-100%: alerta (vermelho)
+  - Tooltip a 90%: "Contexto quase cheio. Considere iniciar nova sessão."
+
+### UsageView
+
+- Filtro "Canal" (Todos / Web / Telegram) nos endpoints e na UI
+- Coluna "Canal" na tabela de sessões
+- Filtro de projeto unificado com o seletor global do header (removido filtro duplicado local)
+
+### Bug fixes
+
+- Responsividade da tabela Sessões na aba "Uso e custo": `nowrap` em Data/Modelo, `text-overflow: ellipsis` no Título
+- Remoção de fallback que mascarava sessões sem canal como "web" — exibe "—" quando `channel` é nulo
+
+### Testes
+
+- 4 novos arquivos de teste: `test_api_channel_features.py`, `test_context_management.py`, `test_llm_catalog_context.py`, `test_persist_classification_usage.py`
+- Cobertura de: filtros por canal, sessões com channel, classificação usage API, truncamento de histórico, estimativa de pressão, lookup de context tokens, persistência de classification usage
+- **Total: 324 backend + 69 frontend = 393 testes**
+
+### Docs
+
+- `docs/planos_concluidos/`: 4 planos movidos (canais_transparentes, fix_usage_cost_tracking, search_ui_mintlify_redesign, docx_pagina-paragrafo)
+- `docs/07_rollout_kpis.md`: fases 2 e 3 marcadas como concluídas; nova fase 4 (Canais e observabilidade) adicionada
+
+---
+
 ## [0.5.0] -- 2026-03-09
 
 ### Uso e custo do Assistente

@@ -60,7 +60,9 @@ def test_list_chat_sessions_with_query(client: TestClient) -> None:
     mock_os.search.assert_called_once()
     call_body = mock_os.search.call_args[1]["body"]
     assert "query" in call_body
-    assert call_body["query"]["simple_query_string"]["query"] == "contrato"
+    must_clauses = call_body["query"]["bool"]["must"]
+    sq = next(c for c in must_clauses if "simple_query_string" in c)
+    assert sq["simple_query_string"]["query"] == "contrato"
 
 
 def test_get_chat_session_404(client: TestClient) -> None:

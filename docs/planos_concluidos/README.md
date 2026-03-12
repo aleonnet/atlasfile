@@ -4,6 +4,23 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.6.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [canais_transparentes_e_classificacao](canais_transparentes_e_classificacao_9fc37008.plan.md) | Canais como pipe transparente (sessão/histórico/usage unificado); rastreamento de uso LLM na classificação; gestão de janela de contexto (truncamento FIFO + ContextRing); filtro por canal na UsageView |
+
+---
+
+## 0.5.0 (2026-03-09)
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [fix_usage_cost_tracking](fix_usage_cost_tracking_102e73ab.plan.md) | Correção de 5 bugs no rastreamento de uso/custo: `usage_by_model` per-session; acumulação em sessões novas; title tokens contabilizados |
+| 2 | [search_ui_mintlify_redesign](search_ui_mintlify_redesign_36583d18.plan.md) | Redesign da barra e modal de busca no estilo Mintlify: pill-shape, focus ring accent, lista flat com hover highlight, proporções e sombras refinadas |
+
+---
+
 ## 0.4.0 (2026-03-06)
 
 | # | Plano | Escopo |
@@ -17,6 +34,7 @@ Registro dos planos de implementação executados, organizados por versão.
 | 7 | [controle_operacional_+_responsividade](controle_operacional_+_responsividade_7ee57b2a.plan.md) | Controle operacional redesenhado; dashboard stats; responsividade 1024-1280px; mini-table de projetos |
 | 8 | [onboarding_ui_+_install](onboarding_ui_+_install_94d25d7b.plan.md) | `OnboardingWizard`; endpoint `GET /api/setup/status`; detecção automática de primeira execução |
 | 9 | [atlasfile_channel_integration](atlasfile_channel_integration_79e456ca.plan.md) | Camada nativa de channels (protocol Channel + ChannelManager); TelegramChannel via aiogram 3.x; endpoints `/api/channels/*`; UI no modal do Assistente |
+| 10 | [docx_pagina-paragrafo](docx_pagina-paragrafo_a4f5b688.plan.md) | Localização amigável para DOCX no formato Página/Parágrafo; estratégia híbrida (marcadores reais + fallback estimado); labels `docx_page` e `docx_page_est` |
 
 ---
 

@@ -10,9 +10,10 @@ Sistema local de organização documental por projeto, com classificação híbr
 - **Dedup precoce** por SHA256 antes do fluxo completo — sem cópias `_dup_*`
 - **Indexação** de conteúdo e metadados em OpenSearch (BM25, 35+ campos, chunking com localização)
 - **Extração** de texto: PDF, DOCX, XLSX, PPTX, HTML, MSG, ZIP, RAR
-- **Assistente LLM** com chat multi-modelo (OpenAI, Anthropic), MCP tools, sessões persistentes e rastreamento de uso/custo
+- **Assistente LLM** com chat multi-modelo (OpenAI, Anthropic), MCP tools, sessões persistentes, rastreamento de uso/custo e gestão automática de janela de contexto
 - **Templates de projeto** com CRUD (builtin + user), editor visual e inicialização via UI
-- **Canais de comunicação** plugáveis (Telegram via aiogram, Discord/Slack em breve) — consultas ao assistente de qualquer app de mensagem
+- **Canais de comunicação** plugáveis (Telegram via aiogram, Discord/Slack em breve) — pipe transparente que compartilha sessões, histórico e uso/custo com o chat web
+- **Rastreamento de classificação** — uso de LLM na ingestão de documentos rastreado separadamente com custo estimado por modelo
 - **Rastreabilidade** completa: nome original → nome canônico → SHA256 → `_INDEX.md` → OpenSearch
 
 ## Stack
@@ -186,7 +187,7 @@ make test-backend      # Apenas backend
 make test-frontend     # Apenas frontend
 ```
 
-249 testes (200 backend + 49 frontend) cobrindo: classificador, LLM visibility, templates, stats, dedup, layout, extração, reconciliação, MCP, API.
+393 testes (324 backend + 69 frontend) cobrindo: classificador, LLM visibility, templates, stats, dedup, layout, extração, reconciliação, MCP, API, channels, usage/custo, context management, classification usage.
 
 ## Documentação
 

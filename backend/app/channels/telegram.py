@@ -187,7 +187,7 @@ class TelegramChannel:
             logger.error("Telegram polling stopped with error: %s", exc)
 
     def _register_handlers(self) -> None:
-        from aiogram.filters import CommandStart
+        from aiogram.filters import Command, CommandStart
         from aiogram.types import Message as AiogramMessage
 
         @self._dp.message(CommandStart())
@@ -195,8 +195,15 @@ class TelegramChannel:
             name = message.from_user.full_name if message.from_user else "there"
             await message.answer(
                 f"Olá, {name}! Sou o assistente AtlasFile. "
-                "Envie uma pergunta sobre seus documentos."
+                "Envie uma pergunta sobre seus documentos.\n"
+                "Use /novo para iniciar uma nova sessão."
             )
+
+        @self._dp.message(Command("novo"))
+        async def _cmd_novo(message: AiogramMessage) -> None:
+            from app.main import _forced_new_sessions
+            _forced_new_sessions.add(str(message.chat.id))
+            await message.answer("Nova sessão iniciada. Envie sua próxima pergunta.")
 
         @self._dp.message()
         async def _on_text(message: AiogramMessage) -> None:

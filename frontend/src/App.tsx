@@ -162,6 +162,7 @@ function App() {
     }
   });
   const [lastToolCalls, setLastToolCalls] = useState<{ name: string; result_preview?: string }[]>([]);
+  const [contextPressureRatio, setContextPressureRatio] = useState(0);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -845,6 +846,7 @@ function App() {
           project_id: projectId,
           usage_totals: mergedTotals,
           usage_by_model: Object.keys(newByModel).length > 0 ? newByModel : null,
+          channel: "web",
         })
           .then((created) => {
             setActiveSessionId(created.id);
@@ -854,6 +856,9 @@ function App() {
             }
           })
           .catch(() => setChatError("Falha ao salvar sessão automaticamente"));
+      }
+      if (res.context_pressure) {
+        setContextPressureRatio(res.context_pressure.context_pressure_ratio);
       }
       setLastToolCalls(res.tool_calls_used ?? []);
     } catch (e) {
@@ -875,6 +880,7 @@ function App() {
   function handleChatNewSession() {
     setChatMessages([]);
     setChatError(null);
+    setContextPressureRatio(0);
     setLastToolCalls([]);
     setActiveSessionId(null);
     setSessionUsageTotals(null);
@@ -1505,9 +1511,10 @@ function App() {
           savingSession={savingSession}
           telegramConnected={telegramConnected}
           onToggleTelegram={handleToggleTelegram}
+          contextPressureRatio={contextPressureRatio}
         />
           ) : (
-            <UsageView />
+            <UsageView projectId={selectedProject === ALL_PROJECTS ? null : selectedProject} />
           )}
           </div>
         </section>

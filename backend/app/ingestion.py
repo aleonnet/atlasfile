@@ -27,7 +27,43 @@ from .utils import (
     utc_now_iso,
 )
 
+import logging as _logging
+import time as _time
+
+_ingestion_logger = _logging.getLogger(__name__)
+
 _wb_cache: dict[str, re.Pattern[str]] = {}
+
+
+def _persist_classification_usage(
+    doc_id: str,
+    filename: str,
+    project_id: str,
+    provider: str,
+    model: str,
+    usage: dict[str, Any],
+) -> None:
+    """Persist a classification LLM usage record to OpenSearch."""
+    try:
+        from .opensearch_client import get_client
+        client = get_client()
+        idx = settings.opensearch_classification_usage_index
+        doc = {
+            "doc_id": doc_id,
+            "filename": filename,
+            "project_id": project_id,
+            "provider": provider,
+            "model": model,
+            "timestamp": int(_time.time() * 1000),
+            "input_tokens": int(usage.get("input_tokens") or 0),
+            "output_tokens": int(usage.get("output_tokens") or 0),
+            "cache_read_input_tokens": int(usage.get("cache_read_input_tokens") or 0),
+            "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens") or 0),
+            "estimated_cost_usd": float(usage.get("estimated_cost_usd") or 0),
+        }
+        client.index(index=idx, body=doc)
+    except Exception:
+        _ingestion_logger.exception("Failed to persist classification usage")
 
 
 def _match_normalize(text: str) -> str:
@@ -396,6 +432,16 @@ def process_inbox_file(
             )
         except Exception:
             llm_result = None
+
+    if llm_result and llm_result.get("usage"):
+        _persist_classification_usage(
+            doc_id=doc_id,
+            filename=inbox_file.name,
+            project_id=project_id,
+            provider=llm_result.get("provider", ""),
+            model=llm_result.get("model", ""),
+            usage=llm_result["usage"],
+        )
 
     classification, force_triage_pending = _apply_llm_policy(
         profile=profile,

@@ -79,6 +79,17 @@ def supports_reasoning_effort(provider: str, model: str) -> bool:
             return opt.supports_reasoning_effort
     return False
 
+_FALLBACK_CONTEXT_TOKENS = 128_000
+
+
+def get_context_tokens(provider: str, model: str) -> int:
+    """Return the context window size (tokens) for a given model, or fallback."""
+    for opt in LLM_MODEL_CATALOG:
+        if opt.provider == provider and opt.model == model and opt.context_tokens is not None:
+            return opt.context_tokens
+    return _FALLBACK_CONTEXT_TOKENS
+
+
 # Fração do contexto reservada para um único resultado de tool (~20%) e teto em caracteres.
 # ~4 chars/token; cap evita payloads gigantes mesmo em modelos 1M contexto.
 _TOOL_RESULT_FRACTION = 0.2

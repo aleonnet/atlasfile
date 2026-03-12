@@ -1,9 +1,9 @@
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchProjects, fetchUsageSessions, fetchUsageSummary } from "../../api";
-import type { Project, UsageByDayEntry, UsageByModelEntry, UsageSessionItem, UsageSummaryResponse } from "../../types";
-
-const ALL_PROJECTS = "__all__";
+import { fetchClassificationUsage, fetchUsageSessions, fetchUsageSummary } from "../../api";
+import type { ClassificationUsageSummary, UsageByDayEntry, UsageByModelEntry, UsageSessionItem, UsageSummaryResponse } from "../../types";
+const ALL_CHANNELS = "__all__";
+const CHANNEL_LABELS: Record<string, string> = { web: "Web", telegram: "TG" };
 const PAGE_SIZE = 10;
 
 function formatTokens(n: number): string {
@@ -156,17 +156,17 @@ function TokensByTypeBar({ summary }: { summary: UsageSummaryResponse }) {
   );
 }
 
-export function UsageView() {
-  const [projects, setProjects] = useState<Project[]>([]);
+export function UsageView({ projectId }: { projectId?: string | null }) {
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
     return toYyyyMmDd(d);
   });
   const [endDate, setEndDate] = useState(() => toYyyyMmDd(new Date()));
-  const [projectId, setProjectId] = useState<string>(ALL_PROJECTS);
+  const [channel, setChannel] = useState<string>(ALL_CHANNELS);
   const [summary, setSummary] = useState<UsageSummaryResponse | null>(null);
   const [sessions, setSessions] = useState<UsageSessionItem[]>([]);
+  const [classifUsage, setClassifUsage] = useState<ClassificationUsageSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionsPage, setSessionsPage] = useState(0);
@@ -174,31 +174,26 @@ export function UsageView() {
   const load = useCallback(() => {
     setError(null);
     setLoading(true);
+    const baseParams = {
+      start_date: startDate,
+      end_date: endDate,
+      project_id: projectId || null,
+    };
+    const channelParam = channel === ALL_CHANNELS ? null : channel;
     Promise.all([
-      fetchUsageSummary({
-        start_date: startDate,
-        end_date: endDate,
-        project_id: projectId === ALL_PROJECTS ? null : projectId,
-      }),
-      fetchUsageSessions({
-        start_date: startDate,
-        end_date: endDate,
-        project_id: projectId === ALL_PROJECTS ? null : projectId,
-        limit: 100,
-      }),
+      fetchUsageSummary({ ...baseParams, channel: channelParam }),
+      fetchUsageSessions({ ...baseParams, channel: channelParam, limit: 100 }),
+      fetchClassificationUsage(baseParams),
     ])
-      .then(([s, list]) => {
+      .then(([s, list, classif]) => {
         setSummary(s);
         setSessions(list);
+        setClassifUsage(classif);
         setSessionsPage(0);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar"))
       .finally(() => setLoading(false));
-  }, [startDate, endDate, projectId]);
-
-  useEffect(() => {
-    fetchProjects().then(setProjects).catch(() => {});
-  }, []);
+  }, [startDate, endDate, projectId, channel]);
 
   useEffect(() => {
     load();
@@ -211,12 +206,11 @@ export function UsageView() {
         <input type="date" lang="pt-BR" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         <span className="chat-controls__separator">até</span>
         <input type="date" lang="pt-BR" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        <label>Projeto:</label>
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-          <option value={ALL_PROJECTS}>Todos</option>
-          {projects.map((p) => (
-            <option key={p.project_id} value={p.project_id}>{p.project_label || p.project_id}</option>
-          ))}
+        <label>Canal:</label>
+        <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+          <option value={ALL_CHANNELS}>Todos</option>
+          <option value="web">Web</option>
+          <option value="telegram">Telegram</option>
         </select>
         <button type="button" className="btn" onClick={load} disabled={loading}>
           <RefreshCw size={16} style={loading ? { opacity: 0.6 } : undefined} />
@@ -235,12 +229,18 @@ export function UsageView() {
             </div>
             <div className="usage-stat-card">
               <span className="usage-stat-label">Custo est.</span>
-              <span className="usage-stat-value">{formatUsd(summary.estimated_cost_usd)}</span>
+              <span className="usage-stat-value">{formatUsd(summary.estimated_cost_usd + (classifUsage?.estimated_cost_usd ?? 0))}</span>
             </div>
             <div className="usage-stat-card">
               <span className="usage-stat-label">Sessões</span>
               <span className="usage-stat-value">{summary.session_count}</span>
             </div>
+            {classifUsage && classifUsage.total_calls > 0 && (
+              <div className="usage-stat-card">
+                <span className="usage-stat-label">Classificações</span>
+                <span className="usage-stat-value">{classifUsage.total_calls}</span>
+              </div>
+            )}
           </div>
 
           <div className="usage-charts-row">
@@ -248,7 +248,7 @@ export function UsageView() {
             <TokensByTypeBar summary={summary} />
           </div>
 
-          <h3 className="usage-section-title">Por modelo</h3>
+          <h3 className="usage-section-title">Por modelo (Assistente)</h3>
           <div className="usage-table-wrap">
             <table className="usage-table">
               <thead>
@@ -295,6 +295,47 @@ export function UsageView() {
             </table>
           </div>
 
+          {classifUsage && classifUsage.total_calls > 0 && (
+            <>
+              <h3 className="usage-section-title">Classificação (uso LLM na ingestão)</h3>
+              <div className="usage-table-wrap">
+                <table className="usage-table">
+                  <thead>
+                    <tr>
+                      <th className="left">Modelo</th>
+                      <th>Chamadas</th>
+                      <th>Input (tokens)</th>
+                      <th>Output (tokens)</th>
+                      <th>Custo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {classifUsage.by_model.map((row) => (
+                      <tr key={row.model}>
+                        <td className="left">{row.model}</td>
+                        <td>{row.call_count}</td>
+                        <td>{formatTokens(row.input_tokens)}</td>
+                        <td>{formatTokens(row.output_tokens)}</td>
+                        <td>{formatUsd(row.estimated_cost_usd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {classifUsage.by_model.length > 0 && (
+                    <tfoot>
+                      <tr className="usage-table-total">
+                        <td className="left">Total</td>
+                        <td>{classifUsage.total_calls}</td>
+                        <td>{formatTokens(classifUsage.total_input_tokens)}</td>
+                        <td>{formatTokens(classifUsage.total_output_tokens)}</td>
+                        <td>{formatUsd(classifUsage.estimated_cost_usd)}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </>
+          )}
+
           <h3 className="usage-section-title">Sessões</h3>
           <div className="usage-table-wrap">
             <table className="usage-table">
@@ -303,6 +344,7 @@ export function UsageView() {
                   <th className="left">Título</th>
                   <th className="left">Data</th>
                   <th className="left">Projeto</th>
+                  <th className="left">Canal</th>
                   <th className="left">Modelo</th>
                   <th>Tokens</th>
                   <th>Custo</th>
@@ -310,7 +352,7 @@ export function UsageView() {
               </thead>
               <tbody>
                 {sessions.length === 0 ? (
-                  <tr><td colSpan={6} className="empty">Nenhuma sessão no período.</td></tr>
+                  <tr><td colSpan={7} className="empty">Nenhuma sessão no período.</td></tr>
                 ) : (
                   sessions.slice(sessionsPage * PAGE_SIZE, (sessionsPage + 1) * PAGE_SIZE).map((s: UsageSessionItem) => {
                     const tot = s.usage_totals;
@@ -324,11 +366,13 @@ export function UsageView() {
                     const modelLabel = modelKeys.length > 1
                       ? modelKeys.map(stripProvider).join(", ")
                       : stripProvider(s.model);
+                    const channelLabel = s.channel ? (CHANNEL_LABELS[s.channel] ?? s.channel) : "—";
                     return (
                       <tr key={s.id}>
-                        <td className="left">{s.title || "Sem título"}</td>
+                        <td className="left truncate" title={s.title || "Sem título"}>{s.title || "Sem título"}</td>
                         <td className="left">{dateStr}</td>
                         <td className="left">{s.project_id ?? "—"}</td>
+                        <td className="left">{channelLabel}</td>
                         <td className="left">{modelLabel}</td>
                         <td>{formatTokens(tokens)}</td>
                         <td>{formatUsd(cost)}</td>

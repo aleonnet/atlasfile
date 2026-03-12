@@ -74,6 +74,8 @@ export interface ChatPanelProps {
   /** Telegram channel connection state */
   telegramConnected?: boolean;
   onToggleTelegram?: () => void;
+  /** Context pressure ratio (0.0 to 1.0) from the last LLM response */
+  contextPressureRatio?: number;
 }
 
 function generateAttachmentId(): string {
@@ -139,7 +141,8 @@ export function ChatPanel({
   onDeleteSession,
   savingSession = false,
   telegramConnected = false,
-  onToggleTelegram
+  onToggleTelegram,
+  contextPressureRatio = 0,
 }: ChatPanelProps) {
   const reasoningSupported =
     selectedModel && (models.find((m) => `${m.provider}/${m.model}` === selectedModel)?.supports_reasoning_effort ?? false);
@@ -482,6 +485,7 @@ export function ChatPanel({
             />
           </label>
           <div className="chat-compose__actions">
+            <ContextRing ratio={contextPressureRatio} onNewSession={onNewSession} />
             <button
               type="button"
               className="btn"
@@ -641,6 +645,52 @@ function ChatMessageBubble({
         </div>
       </div>
     </div>
+  );
+}
+
+function ContextRing({ ratio, onNewSession }: { ratio: number; onNewSession: () => void }) {
+  const r = Math.max(0, Math.min(ratio, 1));
+  const pct = Math.round(r * 100);
+  const radius = 10;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - r);
+  let strokeColor = "var(--muted, #aaa)";
+  if (r >= 0.75) strokeColor = "var(--danger, #e74c3c)";
+  else if (r >= 0.5) strokeColor = "var(--warning, #f39c12)";
+
+  const tooltip = r >= 0.9
+    ? `Contexto: ${pct}% utilizado. Considere iniciar uma nova sessão.`
+    : `Contexto: ${pct}% utilizado`;
+
+  return (
+    <button
+      type="button"
+      className="context-ring-btn"
+      title={tooltip}
+      aria-label={tooltip}
+      onClick={r >= 0.9 ? onNewSession : undefined}
+      style={{ cursor: r >= 0.9 ? "pointer" : "default" }}
+    >
+      <svg width="26" height="26" viewBox="0 0 26 26" className="context-ring-svg">
+        <circle
+          cx="13" cy="13" r={radius}
+          fill="none"
+          stroke="var(--border, #ddd)"
+          strokeWidth="2.5"
+        />
+        <circle
+          cx="13" cy="13" r={radius}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth="2.5"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+          transform="rotate(-90 13 13)"
+          style={{ transition: "stroke-dashoffset 0.4s ease, stroke 0.3s ease" }}
+        />
+      </svg>
+    </button>
   );
 }
 

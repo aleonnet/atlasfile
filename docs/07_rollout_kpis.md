@@ -16,7 +16,7 @@
 - MCP server com tools de busca, tags e metadados.
 - Assistente LLM com chat multi-modelo e sessões persistentes.
 
-### Fase 2 — Hardening (em andamento)
+### Fase 2 — Hardening (concluída)
 
 - Profile V2 (JSON) com schema validado (Pydantic).
 - Templates CRUD (builtin + user) com editor visual.
@@ -29,7 +29,7 @@
 - Endpoint de estatísticas agregadas (`GET /api/stats`).
 - Filtros de busca por `doc_kind` e `area_key`.
 
-### Fase 3 — Evolução IA (em andamento)
+### Fase 3 — Evolução IA (concluída)
 
 - LLM no fluxo de classificação (3 modos: tag_only, review, full_override).
 - Contexto de projeto injetado no prompt (áreas, aliases, topics).
@@ -38,12 +38,24 @@
 - Guardrails configuráveis (confiança mínima para override, exigir explicação).
 - Topics semânticos via dicionário (`config/topics_v1.yaml`).
 
-### Fase 4 — Próximos passos (planejado)
+### Fase 4 — Canais e observabilidade (concluída)
+
+- Camada nativa de channels (Telegram via aiogram 3.x; extensível para Discord, Slack).
+- Canais como pipe transparente: sessões, histórico e usage unificados com o chat web.
+- Rastreamento de uso e custo por sessão (tokens input/output/cache + custo estimado por modelo).
+- Custo configurável por modelo via `config/usage_costs.json`.
+- Rastreamento separado de uso LLM na classificação de documentos (`classification_usage`).
+- Gestão de janela de contexto: truncamento FIFO automático + indicador visual (ContextRing).
+- Autosave de sessão com título automático.
+- DOCX com localização amigável (Página/Parágrafo) via estratégia híbrida.
+- Redesign da busca no estilo Mintlify.
+
+### Fase 5 — Próximos passos (planejado)
 
 - Reranking semântico (embeddings).
 - Aprendizado supervisionado com histórico de triagem.
 - Política de retenção e arquivamento (ver `06_retention_policy.md`).
-- Observabilidade e métricas operacionais.
+- Observabilidade e métricas operacionais avançadas (dashboards, alertas).
 
 ## KPIs
 

@@ -9,7 +9,7 @@ import json
 from typing import Any
 
 from app.config import settings
-from app.llm_catalog import get_anthropic_thinking_type, get_max_tool_result_chars, supports_reasoning_effort
+from app.llm_catalog import get_anthropic_thinking_type, get_context_tokens, get_max_tool_result_chars, supports_reasoning_effort
 from app.mcp_client import call_tool as mcp_call_tool
 from app.mcp_client import list_tools as mcp_list_tools
 from app.prompts import get_system_prompt_chat, get_system_prompt_classify
@@ -18,6 +18,9 @@ from app.usage_costs import estimate_usage_cost
 MAX_TOOL_LOOPS = 10
 # Fallback quando o modelo não está no catálogo (get_max_tool_result_chars).
 MAX_TOOL_RESULT_CHARS_FALLBACK = 120_000
+_CHARS_PER_TOKEN = 4
+# Reserva 60% do contexto para histórico; 20% para tool results, 20% para resposta.
+_HISTORY_CONTEXT_FRACTION = 0.6
 
 
 def _accumulate_usage(
@@ -48,6 +51,44 @@ def _truncate_tool_result(result: str, max_chars: int = MAX_TOOL_RESULT_CHARS_FA
         + f"{max_chars} caracteres). Total recebido: {len(result)} caracteres. "
         + "O documento pode ser muito longo; use search_documents com termos específicos para trechos.]"
     )
+
+
+def _trim_history_to_context(
+    messages: list[dict[str, Any]], provider: str, model: str,
+) -> list[dict[str, Any]]:
+    """Discard oldest messages (FIFO) so the history fits within 60% of the model context window.
+    Always keeps the system prompt (first message if role=system) and the most recent user message."""
+    context_limit = get_context_tokens(provider, model)
+    max_history_tokens = int(context_limit * _HISTORY_CONTEXT_FRACTION)
+
+    def _estimate_tokens(msgs: list[dict[str, Any]]) -> int:
+        return sum(len(str(m.get("content", ""))) // _CHARS_PER_TOKEN for m in msgs)
+
+    if _estimate_tokens(messages) <= max_history_tokens:
+        return messages
+
+    system = [messages[0]] if messages and messages[0].get("role") == "system" else []
+    rest = messages[1:] if system else list(messages)
+
+    while _estimate_tokens(system + rest) > max_history_tokens and len(rest) > 1:
+        rest.pop(0)
+
+    return system + rest
+
+
+def _estimate_context_pressure(
+    messages: list[dict[str, Any]], provider: str, model: str,
+) -> dict[str, Any]:
+    """Estimate context pressure as ratio of message tokens vs model context window."""
+    chars_total = sum(len(str(m.get("content", ""))) for m in messages)
+    tokens_estimate = chars_total // _CHARS_PER_TOKEN
+    context_limit = get_context_tokens(provider, model)
+    ratio = tokens_estimate / context_limit if context_limit else 0
+    return {
+        "context_tokens_estimate": tokens_estimate,
+        "context_tokens_limit": context_limit,
+        "context_pressure_ratio": round(min(ratio, 1.0), 4),
+    }
 
 
 def get_llm_config(use: str) -> tuple[str, str]:
@@ -127,17 +168,22 @@ async def run_chat_loop(
     enable_thinking: OpenAI -> reasoning_effort; Anthropic -> thinking.enabled.
     Returns { "content": str, "tool_calls_used": list of {name, result_preview} }.
     """
+    trimmed = _trim_history_to_context(messages, provider, model)
     tools_mcp = await mcp_list_tools()
     tool_calls_used: list[dict[str, Any]] = []
 
     max_tool_result_chars = get_max_tool_result_chars(provider, model)
     if provider == "openai":
         tools_api = mcp_tools_to_openai(tools_mcp)
-        return await _run_chat_openai(messages, model, tools_api, api_key, tool_calls_used, enable_thinking, max_tool_result_chars)
-    if provider == "anthropic":
+        result = await _run_chat_openai(trimmed, model, tools_api, api_key, tool_calls_used, enable_thinking, max_tool_result_chars)
+    elif provider == "anthropic":
         tools_api = mcp_tools_to_anthropic(tools_mcp)
-        return await _run_chat_anthropic(messages, model, tools_api, api_key, tool_calls_used, enable_thinking, max_tool_result_chars)
-    raise ValueError(f"Unknown provider: {provider}")
+        result = await _run_chat_anthropic(trimmed, model, tools_api, api_key, tool_calls_used, enable_thinking, max_tool_result_chars)
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
+
+    result["context_pressure"] = _estimate_context_pressure(trimmed, provider, model)
+    return result
 
 
 async def _run_chat_openai(
@@ -381,15 +427,19 @@ async def classify_with_llm(
 
     if provider == "openai":
         tools_api = mcp_tools_to_openai(submit_only)
-        content = await _classify_openai(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
+        content, usage_raw = await _classify_openai(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
     elif provider == "anthropic":
         tools_api = mcp_tools_to_anthropic(submit_only)
-        content = await _classify_anthropic(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
+        content, usage_raw = await _classify_anthropic(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
     else:
         return {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
 
+    if usage_raw:
+        usage_raw["estimated_cost_usd"] = estimate_usage_cost(usage_raw, provider, model)
+
+    base: dict[str, Any]
     if isinstance(content, dict):
-        return {
+        base = {
             "document_type": content.get("document_type"),
             "tags": content.get("tags") or [],
             "confidence": float(content.get("confidence", 0.0)),
@@ -397,7 +447,12 @@ async def classify_with_llm(
             "topics": content.get("topics") or [],
             "explanation": content.get("explanation"),
         }
-    return {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
+    else:
+        base = {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
+    base["usage"] = usage_raw
+    base["provider"] = provider
+    base["model"] = model
+    return base
 
 
 async def _classify_openai(
@@ -408,7 +463,7 @@ async def _classify_openai(
     tools_api: list[dict],
     api_key: str | None,
     project_context: str = "",
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, int]]:
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=api_key or None)
@@ -423,17 +478,24 @@ async def _classify_openai(
         tools=tools_api,
         tool_choice={"type": "function", "function": {"name": "submit_classification"}},
     )
+    usage_raw: dict[str, int] = {}
+    u = getattr(resp, "usage", None)
+    if u is not None:
+        usage_raw = {
+            "input_tokens": getattr(u, "prompt_tokens", 0) or 0,
+            "output_tokens": getattr(u, "completion_tokens", 0) or 0,
+        }
     choice = resp.choices[0] if resp.choices else None
     if not choice or not getattr(choice.message, "tool_calls", None):
-        return {}
+        return {}, usage_raw
     for tc in choice.message.tool_calls:
         if tc.function.name == "submit_classification":
             try:
                 args = json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else {}
             except json.JSONDecodeError:
                 args = {}
-            return args
-    return {}
+            return args, usage_raw
+    return {}, usage_raw
 
 
 async def _classify_anthropic(
@@ -444,7 +506,7 @@ async def _classify_anthropic(
     tools_api: list[dict],
     api_key: str | None,
     project_context: str = "",
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, int]]:
     from anthropic import AsyncAnthropic
 
     client = AsyncAnthropic(api_key=api_key or None)
@@ -456,11 +518,21 @@ async def _classify_anthropic(
         system=get_system_prompt_classify(),
         messages=[{"role": "user", "content": user_content}],
         tools=tools_api,
-        tool_choice={"type": "tool", "name": "submit_classification"},  # force this tool
+        tool_choice={"type": "tool", "name": "submit_classification"},
     )
+    usage_raw: dict[str, int] = {}
+    u = getattr(resp, "usage", None)
+    if u is not None:
+        usage_raw = {
+            "input_tokens": getattr(u, "input_tokens", 0) or 0,
+            "output_tokens": getattr(u, "output_tokens", 0) or 0,
+        }
+        for key in ("cache_creation_input_tokens", "cache_read_input_tokens"):
+            if hasattr(u, key) and getattr(u, key):
+                usage_raw[key] = getattr(u, key)
     content = getattr(resp, "content", []) or []
     for b in content:
         if getattr(b, "type", None) == "tool_use" and getattr(b, "name", None) == "submit_classification":
             inp = getattr(b, "input", None) or {}
-            return inp if isinstance(inp, dict) else {}
-    return {}
+            return (inp if isinstance(inp, dict) else {}), usage_raw
+    return {}, usage_raw

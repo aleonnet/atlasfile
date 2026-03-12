@@ -33,8 +33,11 @@ from .models import (
     ChatSession,
     ChatSessionCreate,
     ChatSessionUpdate,
+    ClassificationUsageByModel,
+    ClassificationUsageSummary,
     ClassifyRequest,
     ClassifyResponse,
+    ContextPressure,
     DocumentMetadataUpdate,
     DocumentTagsUpdate,
     ListDocumentItem,
@@ -56,7 +59,7 @@ from .models import (
     UsageTotals,
 )
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
-from .opensearch_client import ensure_chat_sessions_index, ensure_index, get_client
+from .opensearch_client import ensure_chat_sessions_index, ensure_classification_usage_index, ensure_index, get_client
 from .project_profile import list_project_roots, load_project_profile
 from .profile_runtime import inbox_rel
 from .profile_store import ensure_profile, load_profile, save_profile
@@ -92,13 +95,129 @@ _reconcile_stop = threading.Event()
 
 channel_manager: ChannelManager | None = None
 
+# Per-chat_id lock to serialize message processing (prevents race conditions)
+_channel_locks: dict[str, asyncio.Lock] = {}
+# Chat IDs that requested a forced new session via /novo
+_forced_new_sessions: set[str] = set()
+
+
+def _get_channel_lock(key: str) -> asyncio.Lock:
+    if key not in _channel_locks:
+        _channel_locks[key] = asyncio.Lock()
+    return _channel_locks[key]
+
+
+def _find_active_channel_session(channel_id: str, chat_id: str) -> dict[str, Any] | None:
+    """Find the most recent session for a channel+chat_id pair."""
+    _idx = settings.opensearch_chat_sessions_index
+    body: dict[str, Any] = {
+        "query": {"bool": {"must": [
+            {"term": {"channel": channel_id}},
+            {"term": {"channel_chat_id": chat_id}},
+        ]}},
+        "sort": [{"updatedAt": {"order": "desc"}}],
+        "size": 1,
+    }
+    try:
+        resp = os_client.search(index=_idx, body=body)
+        hits = resp.get("hits", {}).get("hits", [])
+        if hits:
+            doc = hits[0]["_source"]
+            doc["id"] = hits[0]["_id"]
+            return doc
+    except Exception:
+        _logger.exception("Error finding channel session")
+    return None
+
+
+def _session_timed_out(session: dict[str, Any], timeout_minutes: int) -> bool:
+    updated = _parse_ts(session.get("updatedAt"))
+    if not updated:
+        return True
+    age_ms = int(time.time() * 1000) - updated
+    return age_ms > timeout_minutes * 60 * 1000
+
+
+def _build_history_from_session(session: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract message history from a stored session."""
+    msgs = session.get("messages") or []
+    return [{"role": m.get("role", "user"), "content": m.get("content", "")} for m in msgs if m.get("content")]
+
+
+def _merge_usage(existing: dict[str, Any] | None, new_usage: dict[str, Any], provider_model_key: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Merge new turn usage into existing usage_totals and usage_by_model."""
+    totals = dict(existing) if existing else {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_usd": 0.0}
+    for k in ("input_tokens", "output_tokens", "total_tokens"):
+        totals[k] = int(totals.get(k) or 0) + int(new_usage.get(k) or 0)
+    totals["estimated_cost_usd"] = float(totals.get("estimated_cost_usd") or 0) + float(new_usage.get("estimated_cost_usd") or 0)
+    for k in ("cache_read_input_tokens", "cache_creation_input_tokens", "cache_write_input_tokens"):
+        if new_usage.get(k):
+            totals[k] = int(totals.get(k) or 0) + int(new_usage[k])
+    return totals
+
 
 async def _handle_channel_message(msg: ChannelMessage) -> str:
-    """Dispatch inbound channel message to the orchestrator (same as web chat, all-projects mode)."""
-    provider, model = get_llm_config("chat")
-    messages = [{"role": "user", "content": msg.text}]
-    result = await run_chat_loop(messages, provider, model)
-    return result.get("content", "") if isinstance(result, dict) else str(result)
+    """Dispatch inbound channel message: manages session lifecycle (multi-turn, usage, history)."""
+    lock_key = f"{msg.channel_id}:{msg.chat_id}"
+    lock = _get_channel_lock(lock_key)
+
+    async with lock:
+        provider, model = get_llm_config("chat")
+        provider_model_key = f"{provider}/{model}"
+        now_ms = int(time.time() * 1000)
+        timeout = settings.channel_session_timeout_minutes
+
+        forced = msg.chat_id in _forced_new_sessions
+        if forced:
+            _forced_new_sessions.discard(msg.chat_id)
+
+        session = None if forced else _find_active_channel_session(msg.channel_id, msg.chat_id)
+        if session and _session_timed_out(session, timeout):
+            session = None
+
+        history = _build_history_from_session(session) if session else []
+        history.append({"role": "user", "content": msg.text})
+
+        result = await run_chat_loop(history, provider, model)
+        content = result.get("content", "") if isinstance(result, dict) else str(result)
+        usage = result.get("usage", {}) if isinstance(result, dict) else {}
+
+        user_stored = {"role": "user", "content": msg.text, "timestamp": now_ms, "channel": msg.channel_id}
+        assistant_stored = {"role": "assistant", "content": content, "timestamp": now_ms, "model": provider_model_key, "channel": msg.channel_id}
+
+        _idx = settings.opensearch_chat_sessions_index
+        if session:
+            existing_msgs = session.get("messages") or []
+            existing_msgs.extend([user_stored, assistant_stored])
+            existing_totals = session.get("usage_totals")
+            new_totals = _merge_usage(existing_totals, usage, provider_model_key)
+            existing_by_model = session.get("usage_by_model") or {}
+            model_totals = _merge_usage(existing_by_model.get(provider_model_key), usage, provider_model_key)
+            existing_by_model[provider_model_key] = model_totals
+            os_client.update(index=_idx, id=session["id"], body={"doc": {
+                "messages": existing_msgs,
+                "usage_totals": new_totals,
+                "usage_by_model": existing_by_model,
+                "updatedAt": now_ms,
+            }})
+        else:
+            title = msg.text[:80] if msg.text else "Telegram"
+            by_model = {provider_model_key: usage}
+            doc = {
+                "title": title,
+                "messages": [user_stored, assistant_stored],
+                "model": provider_model_key,
+                "createdAt": now_ms,
+                "updatedAt": now_ms,
+                "channel": msg.channel_id,
+                "channel_chat_id": msg.chat_id,
+                "usage_totals": usage,
+                "usage_by_model": by_model,
+            }
+            session_id = str(uuid.uuid4())
+            os_client.index(index=_idx, id=session_id, body=doc)
+
+        return content
 
 
 def _build_channel_config() -> dict[str, Any]:
@@ -134,6 +253,22 @@ _reconcile_status: dict[str, Any] = {
 }
 
 
+def _backfill_channel_web(client) -> None:
+    """One-time migration: set channel='web' on chat sessions that lack the field."""
+    idx = settings.opensearch_chat_sessions_index
+    try:
+        client.update_by_query(
+            index=idx,
+            body={
+                "query": {"bool": {"must_not": {"exists": {"field": "channel"}}}},
+                "script": {"source": "ctx._source.channel = 'web'", "lang": "painless"},
+            },
+            refresh=True,
+        )
+    except Exception:
+        _logger.debug("backfill_channel_web: skipped (index may not exist yet)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: ensure OpenSearch index, optional auto-reconcile, and channels. Shutdown: stop channels and reconcile."""
@@ -144,6 +279,8 @@ async def lifespan(app: FastAPI):
         try:
             ensure_index(os_client)
             ensure_chat_sessions_index(os_client)
+            ensure_classification_usage_index(os_client)
+            _backfill_channel_web(os_client)
             backfill_search_fields(os_client)
             _start_auto_reconcile_if_enabled()
             break
@@ -1174,7 +1311,9 @@ async def api_chat(
         result = await run_chat_loop(messages, provider, model, api_key=api_key, enable_thinking=body.enable_thinking)
         usage_raw = result.get("usage")
         usage = TurnUsage(**usage_raw) if isinstance(usage_raw, dict) else None
-        return ChatResponse(content=result["content"], tool_calls_used=result.get("tool_calls_used", []), usage=usage)
+        cp_raw = result.get("context_pressure")
+        cp = ContextPressure(**cp_raw) if isinstance(cp_raw, dict) else None
+        return ChatResponse(content=result["content"], tool_calls_used=result.get("tool_calls_used", []), usage=usage, context_pressure=cp)
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
@@ -1221,7 +1360,16 @@ def _parse_usage_by_model(raw: Any) -> dict[str, UsageTotals] | None:
 
 
 def _session_doc_to_model(doc_id: str, src: dict[str, Any]) -> ChatSession:
-    ms = [StoredChatMessage(role=m.get("role", "user"), content=m.get("content", ""), timestamp=m.get("timestamp")) for m in src.get("messages", [])]
+    ms = [
+        StoredChatMessage(
+            role=m.get("role", "user"),
+            content=m.get("content", ""),
+            timestamp=m.get("timestamp"),
+            model=m.get("model"),
+            channel=m.get("channel"),
+        )
+        for m in src.get("messages", [])
+    ]
     ut = src.get("usage_totals")
     usage_totals = UsageTotals(**ut) if isinstance(ut, dict) and ut else None
     return ChatSession(
@@ -1234,15 +1382,25 @@ def _session_doc_to_model(doc_id: str, src: dict[str, Any]) -> ChatSession:
         project_id=src.get("project_id") or None,
         usage_totals=usage_totals,
         usage_by_model=_parse_usage_by_model(src.get("usage_by_model")),
+        channel=src.get("channel") or None,
+        channel_chat_id=src.get("channel_chat_id"),
     )
 
 
 @app.get("/api/chat/sessions", response_model=list[ChatSession])
-def list_chat_sessions(q: str | None = Query(None, alias="q")) -> list[ChatSession]:
+def list_chat_sessions(
+    q: str | None = Query(None, alias="q"),
+    channel: str | None = Query(None, description="Filter by channel (web, telegram, ...)"),
+) -> list[ChatSession]:
     """List chat sessions ordered by updatedAt desc; optional full-text filter on title."""
     body: dict[str, Any] = {"size": 500, "sort": [{"updatedAt": {"order": "desc"}}]}
+    filters: list[dict[str, Any]] = []
     if q and q.strip():
-        body["query"] = {"simple_query_string": {"query": q.strip(), "fields": ["title"], "default_operator": "and"}}
+        filters.append({"simple_query_string": {"query": q.strip(), "fields": ["title"], "default_operator": "and"}})
+    if channel and channel.strip():
+        filters.append({"term": {"channel": channel.strip()}})
+    if filters:
+        body["query"] = {"bool": {"must": filters}}
     else:
         body["query"] = {"match_all": {}}
     try:
@@ -1280,9 +1438,12 @@ def create_chat_session(body: ChatSessionCreate) -> ChatSession:
         "model": body.model,
         "createdAt": now_ms,
         "updatedAt": now_ms,
+        "channel": body.channel,
     }
     if body.project_id is not None:
         doc["project_id"] = body.project_id
+    if body.channel_chat_id is not None:
+        doc["channel_chat_id"] = body.channel_chat_id
     if body.usage_totals is not None:
         doc["usage_totals"] = body.usage_totals.model_dump()
     if body.usage_by_model is not None:
@@ -1352,6 +1513,7 @@ def get_usage_summary(
     start_date: str = Query(..., description="Start date YYYY-MM-DD"),
     end_date: str = Query(..., description="End date YYYY-MM-DD"),
     project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
+    channel: str | None = Query(None, description="Filter by channel (web, telegram, ...)"),
 ) -> UsageSummaryResponse:
     """Aggregate usage from chat sessions in the given date range (by updatedAt)."""
     try:
@@ -1369,6 +1531,8 @@ def get_usage_summary(
     }
     if project_id and project_id.strip():
         body["query"]["bool"]["must"].append({"term": {"project_id": project_id.strip()}})
+    if channel and channel.strip():
+        body["query"]["bool"]["must"].append({"term": {"channel": channel.strip()}})
     try:
         result = os_client.search(index=_CHAT_SESSIONS_INDEX, body=body)
     except Exception as e:
@@ -1492,6 +1656,7 @@ def get_usage_sessions(
     start_date: str = Query(..., description="Start date YYYY-MM-DD"),
     end_date: str = Query(..., description="End date YYYY-MM-DD"),
     project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
+    channel: str | None = Query(None, description="Filter by channel (web, telegram, ...)"),
     limit: int = Query(100, ge=1, le=500),
 ) -> list[UsageSessionItem]:
     """List chat sessions with usage in the date range, ordered by updatedAt desc."""
@@ -1503,13 +1668,15 @@ def get_usage_sessions(
         raise HTTPException(status_code=400, detail="Datas devem ser YYYY-MM-DD")
     if start_ts > end_ts:
         raise HTTPException(status_code=400, detail="start_date deve ser anterior a end_date")
-    body = {
+    body: dict[str, Any] = {
         "size": limit,
         "query": {"bool": {"must": [{"range": {"updatedAt": {"gte": start_ts, "lte": end_ts}}}]}},
         "sort": [{"updatedAt": {"order": "desc"}}],
     }
     if project_id and project_id.strip():
         body["query"]["bool"]["must"].append({"term": {"project_id": project_id.strip()}})
+    if channel and channel.strip():
+        body["query"]["bool"]["must"].append({"term": {"channel": channel.strip()}})
     try:
         result = os_client.search(index=_CHAT_SESSIONS_INDEX, body=body)
     except Exception as e:
@@ -1532,6 +1699,7 @@ def get_usage_sessions(
                 updatedAt=ts_ms,
                 usage_totals=usage_totals,
                 usage_by_model=_parse_usage_by_model(src.get("usage_by_model")),
+                channel=src.get("channel") or None,
             )
         )
     return out
@@ -1557,7 +1725,75 @@ async def api_classify(
         provider_override=provider_override,
         model_override=model_override,
     )
-    return ClassifyResponse(**result)
+    usage_raw = result.pop("usage", None)
+    result.pop("provider", None)
+    result.pop("model", None)
+    usage = TurnUsage(**usage_raw) if isinstance(usage_raw, dict) and usage_raw else None
+    return ClassifyResponse(**result, usage=usage)
+
+
+_CLASSIFICATION_USAGE_INDEX = settings.opensearch_classification_usage_index
+
+
+@app.get("/api/usage/classification", response_model=ClassificationUsageSummary)
+def get_classification_usage(
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
+) -> ClassificationUsageSummary:
+    """Aggregate classification LLM usage in the given date range."""
+    try:
+        start_ts = int(datetime.strptime(start_date.strip(), "%Y-%m-%d").timestamp() * 1000)
+        end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d")
+        end_ts = int((end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)).timestamp() * 1000)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Datas devem ser YYYY-MM-DD")
+
+    filters: list[dict[str, Any]] = [{"range": {"timestamp": {"gte": start_ts, "lte": end_ts}}}]
+    if project_id and project_id.strip():
+        filters.append({"term": {"project_id": project_id.strip()}})
+
+    body: dict[str, Any] = {
+        "size": 0,
+        "query": {"bool": {"must": filters}},
+        "aggs": {
+            "total_calls": {"value_count": {"field": "timestamp"}},
+            "total_input": {"sum": {"field": "input_tokens"}},
+            "total_output": {"sum": {"field": "output_tokens"}},
+            "total_cost": {"sum": {"field": "estimated_cost_usd"}},
+            "by_model": {
+                "terms": {"field": "model", "size": 50},
+                "aggs": {
+                    "input_tokens": {"sum": {"field": "input_tokens"}},
+                    "output_tokens": {"sum": {"field": "output_tokens"}},
+                    "cost": {"sum": {"field": "estimated_cost_usd"}},
+                },
+            },
+        },
+    }
+    try:
+        result = os_client.search(index=_CLASSIFICATION_USAGE_INDEX, body=body)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Erro ao agregar usage de classificação: {e!s}") from e
+
+    aggs = result.get("aggregations") or {}
+    by_model_list: list[ClassificationUsageByModel] = []
+    for bucket in (aggs.get("by_model", {}).get("buckets") or []):
+        by_model_list.append(ClassificationUsageByModel(
+            model=bucket["key"],
+            call_count=bucket["doc_count"],
+            input_tokens=int(bucket.get("input_tokens", {}).get("value") or 0),
+            output_tokens=int(bucket.get("output_tokens", {}).get("value") or 0),
+            estimated_cost_usd=round(float(bucket.get("cost", {}).get("value") or 0), 6),
+        ))
+
+    return ClassificationUsageSummary(
+        total_calls=int(aggs.get("total_calls", {}).get("value") or 0),
+        total_input_tokens=int(aggs.get("total_input", {}).get("value") or 0),
+        total_output_tokens=int(aggs.get("total_output", {}).get("value") or 0),
+        estimated_cost_usd=round(float(aggs.get("total_cost", {}).get("value") or 0), 6),
+        by_model=by_model_list,
+    )
 
 
 @app.get("/api/triage/{project_id}")

@@ -142,10 +142,17 @@ export interface TurnUsage {
   cache_write_input_tokens?: number;
 }
 
+export interface ContextPressure {
+  context_tokens_estimate: number;
+  context_tokens_limit: number;
+  context_pressure_ratio: number;
+}
+
 export interface ChatResponse {
   content: string;
   tool_calls_used: { name: string; result_preview?: string }[];
   usage?: TurnUsage;
+  context_pressure?: ContextPressure;
 }
 
 /** Aggregated token usage and cost for a chat session. */
@@ -165,6 +172,7 @@ export interface StoredChatMessage {
   content: string;
   timestamp?: number;
   model?: string;
+  channel?: string;
 }
 
 /** Sessão de chat persistida no backend. */
@@ -178,6 +186,8 @@ export interface ChatSession {
   project_id?: string | null;
   usage_totals?: UsageTotals | null;
   usage_by_model?: Record<string, UsageTotals> | null;
+  channel?: string;
+  channel_chat_id?: string | null;
 }
 
 /** Usage summary by model (tokens and costs by type). */
@@ -221,6 +231,23 @@ export interface UsageSessionItem {
   updatedAt: number;
   usage_totals?: UsageTotals | null;
   usage_by_model?: Record<string, UsageTotals> | null;
+  channel?: string;
+}
+
+export interface ClassificationUsageByModel {
+  model: string;
+  call_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+}
+
+export interface ClassificationUsageSummary {
+  total_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  estimated_cost_usd: number;
+  by_model: ClassificationUsageByModel[];
 }
 
 export interface ProfileAreaFolder {
