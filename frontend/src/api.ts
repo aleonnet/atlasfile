@@ -284,6 +284,11 @@ export function getReconcileStatusStreamUrl(): string {
   return `${API_URL}/api/reconcile/status/stream`;
 }
 
+/** URL do stream SSE de eventos de uma sessão de chat (atualização em tempo real). */
+export function getSessionEventsUrl(sessionId: string): string {
+  return `${API_URL}/api/chat/sessions/${encodeURIComponent(sessionId)}/events`;
+}
+
 /** Health check: backend GET /health returns 200 when OK. */
 export async function fetchHealth(): Promise<{ ok: boolean }> {
   const res = await fetch(`${API_URL}/health`);
@@ -371,15 +376,17 @@ export async function createChatSession(payload: {
   return res.json();
 }
 
-/** Update session (title, messages, project_id, usage_totals, usage_by_model). */
+/** Update session (title, messages/append_messages, project_id, usage_totals, usage_by_model). */
 export async function updateChatSession(
   id: string,
   payload: {
     title?: string;
     messages?: StoredChatMessage[];
+    append_messages?: StoredChatMessage[];
     project_id?: string | null;
     usage_totals?: UsageTotals | null;
     usage_by_model?: Record<string, UsageTotals> | null;
+    source_channel?: string;
   }
 ): Promise<ChatSession> {
   const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, {

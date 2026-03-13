@@ -203,10 +203,12 @@ class ChatSessionCreate(BaseModel):
 
 class ChatSessionUpdate(BaseModel):
     title: Optional[str] = None
-    messages: Optional[list[StoredChatMessage]] = None  # full replacement when appending
+    messages: Optional[list[StoredChatMessage]] = None  # full replace (legado)
+    append_messages: Optional[list[StoredChatMessage]] = None  # atomic append
     project_id: Optional[str] = None
     usage_totals: Optional[UsageTotals] = None
     usage_by_model: Optional[dict[str, UsageTotals]] = None
+    source_channel: Optional[str] = None  # skip mirror when source matches session channel
 
 
 # --- Usage aggregation (GET /api/usage/summary, /api/usage/sessions) ---
@@ -297,6 +299,7 @@ class ListDocumentsResponse(BaseModel):
 class ChannelConfigTelegram(BaseModel):
     enabled: bool = False
     bot_token: str = ""
+    mirror_responses: bool = False
 
 
 class ChannelConfigUpdate(BaseModel):

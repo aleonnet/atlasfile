@@ -12,7 +12,7 @@ Sistema local de organização documental por projeto, com classificação híbr
 - **Extração** de texto: PDF, DOCX, XLSX, PPTX, HTML, MSG, ZIP, RAR
 - **Assistente LLM** com chat multi-modelo (OpenAI, Anthropic), MCP tools, sessões persistentes, rastreamento de uso/custo e gestão automática de janela de contexto
 - **Templates de projeto** com CRUD (builtin + user), editor visual e inicialização via UI
-- **Canais de comunicação** plugáveis (Telegram via aiogram, Discord/Slack em breve) — pipe transparente que compartilha sessões, histórico e uso/custo com o chat web
+- **Canais de comunicação** plugáveis (Telegram via aiogram, Discord/Slack em breve) — pipe transparente que compartilha sessões, histórico e uso/custo com o chat web; espelhamento configurável de respostas (Markdown→HTML); SSE real-time para sincronização automática entre canais
 - **Rastreamento de classificação** — uso de LLM na ingestão de documentos rastreado separadamente com custo estimado por modelo
 - **Rastreabilidade** completa: nome original → nome canônico → SHA256 → `_INDEX.md` → OpenSearch
 
@@ -187,7 +187,7 @@ make test-backend      # Apenas backend
 make test-frontend     # Apenas frontend
 ```
 
-393 testes (324 backend + 69 frontend) cobrindo: classificador, LLM visibility, templates, stats, dedup, layout, extração, reconciliação, MCP, API, channels, usage/custo, context management, classification usage.
+408 testes (339 backend + 69 frontend) cobrindo: classificador, LLM visibility, templates, stats, dedup, layout, extração, reconciliação, MCP, API, channels, usage/custo, context management, classification usage, cross-channel sync, mirror, SSE events.
 
 ## Documentação
 

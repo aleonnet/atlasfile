@@ -100,6 +100,23 @@ _channel_locks: dict[str, asyncio.Lock] = {}
 # Chat IDs that requested a forced new session via /novo
 _forced_new_sessions: set[str] = set()
 
+# SSE event bus: notifies web clients when a session is modified externally
+_session_events: dict[str, asyncio.Event] = {}
+
+
+def _notify_session_update(session_id: str) -> None:
+    """Signal that a session was modified (triggers SSE push to connected clients)."""
+    ev = _session_events.get(session_id)
+    if ev:
+        ev.set()
+
+
+def _get_session_event(session_id: str) -> asyncio.Event:
+    """Get or create the asyncio.Event for a given session."""
+    if session_id not in _session_events:
+        _session_events[session_id] = asyncio.Event()
+    return _session_events[session_id]
+
 
 def _get_channel_lock(key: str) -> asyncio.Lock:
     if key not in _channel_locks:
@@ -200,6 +217,7 @@ async def _handle_channel_message(msg: ChannelMessage) -> str:
                 "usage_by_model": existing_by_model,
                 "updatedAt": now_ms,
             }})
+            _notify_session_update(session["id"])
         else:
             title = msg.text[:80] if msg.text else "Telegram"
             by_model = {provider_model_key: usage}
@@ -216,6 +234,7 @@ async def _handle_channel_message(msg: ChannelMessage) -> str:
             }
             session_id = str(uuid.uuid4())
             os_client.index(index=_idx, id=session_id, body=doc)
+            _notify_session_update(session_id)
 
         return content
 
@@ -975,6 +994,37 @@ async def stream_reconcile_status() -> StreamingResponse:
     )
 
 
+async def _stream_session_events(session_id: str) -> Any:
+    """SSE generator: pushes session data whenever it's modified by another channel."""
+    ev = _get_session_event(session_id)
+    try:
+        while True:
+            try:
+                await asyncio.wait_for(ev.wait(), timeout=25.0)
+                ev.clear()
+                try:
+                    hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
+                    session = _session_doc_to_model(session_id, hit["_source"])
+                    yield f"event: session_update\ndata: {session.model_dump_json()}\n\n"
+                except Exception:
+                    yield f"event: error\ndata: {{\"detail\":\"session not found\"}}\n\n"
+                    break
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+    finally:
+        _session_events.pop(session_id, None)
+
+
+@app.get("/api/chat/sessions/{session_id}/events")
+async def stream_session_events(session_id: str) -> StreamingResponse:
+    """SSE: stream real-time updates for a specific chat session."""
+    return StreamingResponse(
+        _stream_session_events(session_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 def _run_reconcile_background(
     project_roots: list[Path], reindex_search: bool, reindex_mode: str, cleanup_orphans: bool = True,
 ) -> None:
@@ -1452,20 +1502,77 @@ def create_chat_session(body: ChatSessionCreate) -> ChatSession:
     return _session_doc_to_model(doc_id, doc)
 
 
+async def _maybe_mirror_to_channel(
+    session_src: dict[str, Any],
+    appended: list,
+    source_channel: str | None,
+) -> None:
+    """If mirror is enabled, send appended user + assistant messages to the session's origin channel."""
+    ch = session_src.get("channel")
+    chat_id = session_src.get("channel_chat_id")
+    if not ch or not chat_id or ch == "web":
+        return
+    if source_channel and source_channel == ch:
+        return
+    mirror_setting = getattr(settings, f"{ch}_mirror_responses", False)
+    if not mirror_setting:
+        return
+    if not channel_manager:
+        return
+    channel_obj = channel_manager.get_channel(ch)
+    if not channel_obj or not channel_obj.is_running():
+        return
+
+    messages_to_send: list[str] = []
+    for msg in appended:
+        m = msg.model_dump() if hasattr(msg, "model_dump") else msg
+        content = m.get("content")
+        if not content:
+            continue
+        role = m.get("role", "")
+        if role == "user":
+            messages_to_send.append(f"🌐 via web:\n{content}")
+        elif role == "assistant":
+            messages_to_send.append(content)
+
+    if not messages_to_send:
+        return
+    try:
+        for text in messages_to_send:
+            await channel_obj.send_message(chat_id, text)
+    except Exception:
+        _logger.warning("Mirror to %s/%s failed", ch, chat_id, exc_info=True)
+
+
 @app.patch("/api/chat/sessions/{session_id}", response_model=ChatSession)
-def update_chat_session(session_id: str, body: ChatSessionUpdate) -> ChatSession:
-    """Update session title and/or messages via partial _update (avoids full GET+INDEX)."""
+async def update_chat_session(session_id: str, body: ChatSessionUpdate) -> ChatSession:
+    """Update session. Supports append_messages (atomic) or messages (full replace)."""
+    if body.messages is not None and body.append_messages is not None:
+        raise HTTPException(status_code=400, detail="Envie 'messages' ou 'append_messages', não ambos")
+
     partial: dict[str, Any] = {"updatedAt": int(time.time() * 1000)}
     if body.title is not None:
         partial["title"] = body.title
-    if body.messages is not None:
-        partial["messages"] = [m.model_dump() for m in body.messages]
     if body.project_id is not None:
         partial["project_id"] = body.project_id
     if body.usage_totals is not None:
         partial["usage_totals"] = body.usage_totals.model_dump()
     if body.usage_by_model is not None:
         partial["usage_by_model"] = {k: v.model_dump() for k, v in body.usage_by_model.items()}
+
+    if body.messages is not None:
+        partial["messages"] = [m.model_dump() for m in body.messages]
+
+    # Atomic append: read current messages, concatenate, save
+    if body.append_messages is not None:
+        try:
+            hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        existing = hit["_source"].get("messages") or []
+        existing.extend(m.model_dump() for m in body.append_messages)
+        partial["messages"] = existing
+
     try:
         os_client.update(
             index=_CHAT_SESSIONS_INDEX,
@@ -1475,8 +1582,18 @@ def update_chat_session(session_id: str, body: ChatSessionUpdate) -> ChatSession
         )
     except Exception:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
+
     hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
-    return _session_doc_to_model(session_id, hit["_source"])
+    session_src = hit["_source"]
+    result = _session_doc_to_model(session_id, session_src)
+
+    _notify_session_update(session_id)
+
+    # Mirror: send assistant response to origin channel if enabled
+    if body.append_messages:
+        await _maybe_mirror_to_channel(session_src, body.append_messages, body.source_channel)
+
+    return result
 
 
 @app.delete("/api/chat/sessions/{session_id}", status_code=204)

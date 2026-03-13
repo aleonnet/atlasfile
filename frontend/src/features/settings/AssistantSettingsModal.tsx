@@ -24,7 +24,7 @@ type Props = {
 
 const DEFAULT_TG_CONFIG: ChannelConfig = {
   channels_enabled: false,
-  telegram: { enabled: false, bot_token: "" },
+  telegram: { enabled: false, bot_token: "", mirror_responses: false },
 };
 
 const TG_TOKEN_STORAGE_KEY = "atlasfile-telegram-bot-token";
@@ -282,6 +282,17 @@ export function AssistantSettingsModal({
                   @BotFather
                 </a>
                 , copie o token e cole acima.
+              </span>
+              <label className="checkbox-inline" style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={channelCfg.telegram.mirror_responses}
+                  onChange={(e) => updateTelegram({ mirror_responses: e.target.checked })}
+                />
+                Espelhar respostas para o Telegram
+              </label>
+              <span className="sub" style={{ fontSize: "0.78rem", marginTop: 2 }}>
+                Quando ativado, respostas enviadas pelo chat web em sessões originadas no Telegram também são encaminhadas ao Telegram.
               </span>
               {tgStatus?.error && (
                 <p style={{ color: "var(--danger, red)", fontSize: "0.85rem", marginTop: 6 }}>

@@ -468,6 +468,7 @@ export interface LayoutPlanResponse {
 export interface ChannelConfigTelegram {
   enabled: boolean;
   bot_token: string;
+  mirror_responses: boolean;
 }
 
 export interface ChannelConfig {

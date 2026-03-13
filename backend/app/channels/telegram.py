@@ -158,7 +158,8 @@ class TelegramChannel:
     async def send_message(self, chat_id: str, text: str) -> None:
         if not self._bot:
             raise RuntimeError("Telegram bot is not running")
-        for chunk in self._chunk_text(text):
+        html_text = _md_to_tg_html(text)
+        for chunk in self._chunk_text(html_text):
             await self._bot.send_message(chat_id=int(chat_id), text=chunk)
 
     def is_running(self) -> bool:

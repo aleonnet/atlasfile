@@ -36,6 +36,7 @@ async def get_channel_config() -> ChannelConfigUpdate:
         telegram=ChannelConfigTelegram(
             enabled=settings.telegram_enabled,
             bot_token=settings.telegram_bot_token,
+            mirror_responses=settings.telegram_mirror_responses,
         ),
     )
 
@@ -48,6 +49,7 @@ async def update_channel_config(body: ChannelConfigUpdate) -> ChannelConfigUpdat
     settings.channels_enabled = body.channels_enabled
     settings.telegram_enabled = body.telegram.enabled
     settings.telegram_bot_token = body.telegram.bot_token
+    settings.telegram_mirror_responses = body.telegram.mirror_responses
 
     cm = _get_channel_manager()
 

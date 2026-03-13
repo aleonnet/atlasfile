@@ -160,6 +160,53 @@ def test_update_chat_session_200(client: TestClient) -> None:
     assert "updatedAt" in update_body
 
 
+def test_append_messages_atomic(client: TestClient) -> None:
+    """PATCH with append_messages adds to existing messages without losing them."""
+    with patch("app.main.os_client") as mock_os:
+        mock_os.get.return_value = {
+            "_source": {
+                "title": "Session",
+                "messages": [
+                    {"role": "user", "content": "msg1", "timestamp": 1000},
+                    {"role": "assistant", "content": "reply1", "timestamp": 1001},
+                ],
+                "model": "openai/gpt-4o-mini",
+                "createdAt": 1000,
+                "updatedAt": 1001,
+            }
+        }
+        mock_os.update.return_value = {"result": "updated"}
+        r = client.patch(
+            "/api/chat/sessions/sess-1",
+            json={
+                "append_messages": [
+                    {"role": "user", "content": "msg2", "timestamp": 2000},
+                    {"role": "assistant", "content": "reply2", "timestamp": 2001},
+                ]
+            },
+        )
+    assert r.status_code == 200
+    update_body = mock_os.update.call_args[1]["body"]["doc"]
+    assert len(update_body["messages"]) == 4
+    assert update_body["messages"][0]["content"] == "msg1"
+    assert update_body["messages"][2]["content"] == "msg2"
+    assert update_body["messages"][3]["content"] == "reply2"
+
+
+def test_append_and_messages_conflict(client: TestClient) -> None:
+    """PATCH with both messages and append_messages returns 400."""
+    with patch("app.main.os_client"):
+        r = client.patch(
+            "/api/chat/sessions/sess-1",
+            json={
+                "messages": [{"role": "user", "content": "a", "timestamp": 1}],
+                "append_messages": [{"role": "user", "content": "b", "timestamp": 2}],
+            },
+        )
+    assert r.status_code == 400
+    assert "ambos" in r.json()["detail"].lower() or "messages" in r.json()["detail"].lower()
+
+
 def test_delete_chat_session_404(client: TestClient) -> None:
     with patch("app.main.os_client") as mock_os:
         mock_os.delete.side_effect = Exception("not found")

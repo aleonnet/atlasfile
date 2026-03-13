@@ -9,6 +9,7 @@ Registro dos planos de implementação executados, organizados por versão.
 | # | Plano | Escopo |
 |---|-------|--------|
 | 1 | [canais_transparentes_e_classificacao](canais_transparentes_e_classificacao_9fc37008.plan.md) | Canais como pipe transparente (sessão/histórico/usage unificado); rastreamento de uso LLM na classificação; gestão de janela de contexto (truncamento FIFO + ContextRing); filtro por canal na UsageView |
+| 2 | [fix_cross-channel_session_sync](fix_cross-channel_session_sync_dfc3371f.plan.md) | Correção de sessões cross-channel (append atômico, refresh antes de enviar); espelhamento configurável de respostas para canal de origem (Markdown→HTML); SSE real-time para atualização automática do chat web |
 
 ---
 

@@ -41,6 +41,23 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 - Coluna "Canal" na tabela de sessões
 - Filtro de projeto unificado com o seletor global do header (removido filtro duplicado local)
 
+### Sincronização cross-channel e espelhamento
+
+- Append atômico de mensagens via `append_messages` no PATCH — elimina overwrite destrutivo quando web e Telegram operam na mesma sessão
+- Refresh automático antes de enviar: frontend busca mensagens frescas do backend (`getChatSession`) antes de montar contexto para o LLM
+- Espelhamento configurável: respostas enviadas via web em sessões originadas no Telegram são encaminhadas ao Telegram (mensagem do usuário com prefixo 🌐, resposta do assistente com conversão Markdown→HTML)
+- Toggle "Espelhar respostas para o Telegram" na configuração de canais (default: off)
+- `send_message` do Telegram aplica `_md_to_tg_html()` para conversão automática de Markdown para HTML do Telegram
+- Proteção anti-loop: `source_channel` no PATCH impede espelhamento quando a origem é o próprio canal
+
+### Atualização em tempo real (SSE)
+
+- Event bus in-memory via `asyncio.Event` por sessão — notifica clientes SSE quando a sessão é modificada por outro canal
+- Endpoint SSE `GET /api/chat/sessions/{id}/events` com keepalive a cada 25s
+- `_notify_session_update` disparado no PATCH (web) e no `_handle_channel_message` (Telegram)
+- Frontend abre `EventSource` quando uma sessão está ativa; atualiza mensagens, usage e by-model em tempo real
+- Cleanup automático do Event ao desconectar
+
 ### Bug fixes
 
 - Responsividade da tabela Sessões na aba "Uso e custo": `nowrap` em Data/Modelo, `text-overflow: ellipsis` no Título
@@ -49,12 +66,13 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 ### Testes
 
 - 4 novos arquivos de teste: `test_api_channel_features.py`, `test_context_management.py`, `test_llm_catalog_context.py`, `test_persist_classification_usage.py`
-- Cobertura de: filtros por canal, sessões com channel, classificação usage API, truncamento de histórico, estimativa de pressão, lookup de context tokens, persistência de classification usage
-- **Total: 324 backend + 69 frontend = 393 testes**
+- 3 novos arquivos: `test_mirror_channel.py` (6 testes — mirror fires/skip/disabled/user-only/no-content), `test_session_events.py` (4 testes — event bus), `test_api_session_sse.py` (3 testes — SSE generator)
+- 2 novos testes em `test_api_chat_sessions.py`: append atômico e conflito messages+append_messages (400)
+- **Total: 339 backend + 69 frontend = 408 testes**
 
 ### Docs
 
-- `docs/planos_concluidos/`: 4 planos movidos (canais_transparentes, fix_usage_cost_tracking, search_ui_mintlify_redesign, docx_pagina-paragrafo)
+- `docs/planos_concluidos/`: 5 planos movidos (canais_transparentes, fix_cross-channel_session_sync, fix_usage_cost_tracking, search_ui_mintlify_redesign, docx_pagina-paragrafo)
 - `docs/07_rollout_kpis.md`: fases 2 e 3 marcadas como concluídas; nova fase 4 (Canais e observabilidade) adicionada
 
 ---

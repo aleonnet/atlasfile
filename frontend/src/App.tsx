@@ -23,7 +23,8 @@ import {
   updateChatSession,
   fetchChannelConfig,
   fetchChannelStatus,
-  updateChannelConfig
+  updateChannelConfig,
+  getSessionEventsUrl
 } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import type { ChatAttachment } from "./components/ChatPanel";
@@ -747,6 +748,33 @@ function App() {
       });
   }
 
+  // SSE: real-time session updates from other channels (e.g. Telegram)
+  useEffect(() => {
+    if (!activeSessionId || chatSending) return;
+    const url = getSessionEventsUrl(activeSessionId);
+    const es = new EventSource(url);
+    es.addEventListener("session_update", (e: MessageEvent) => {
+      try {
+        const session = JSON.parse(e.data) as ChatSession;
+        if (session.messages && session.messages.length > 0) {
+          const freshMsgs: ChatMessageType[] = session.messages.map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            timestamp: m.timestamp,
+            model: m.model,
+          }));
+          setChatMessages(freshMsgs);
+          if (session.usage_totals) setSessionUsageTotals(session.usage_totals);
+          if (session.usage_by_model) setSessionUsageByModel(session.usage_by_model);
+        }
+      } catch { /* ignore malformed event */ }
+    });
+    es.onerror = () => {
+      es.close();
+    };
+    return () => es.close();
+  }, [activeSessionId, chatSending]);
+
   async function handleChatSend(text: string, attachments?: ChatAttachment[]) {
     const trimmed = text.trim();
     const hasAttachments = attachments && attachments.length > 0;
@@ -766,6 +794,25 @@ function App() {
     setChatAbortRef(controller);
     setChatSending(true);
     try {
+      // Refresh session from backend to pick up messages added by other channels
+      let baseMsgs = chatMessages;
+      if (activeSessionId) {
+        try {
+          const fresh = await getChatSession(activeSessionId);
+          if (fresh.messages && fresh.messages.length > 0) {
+            const freshChat: ChatMessageType[] = fresh.messages.map((m) => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+              timestamp: m.timestamp,
+              model: m.model,
+            }));
+            baseMsgs = freshChat;
+            setChatMessages(freshChat);
+          }
+        } catch {
+          // fallback to local state
+        }
+      }
       const newUserContent: string | ChatContentPart[] = hasAttachments
         ? [
             { type: "text", text: trimmed || "(imagem anexada)" },
@@ -773,7 +820,7 @@ function App() {
           ]
         : trimmed;
       const messagesForApi: ChatMessageType[] = [
-        ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+        ...baseMsgs.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: newUserContent }
       ];
       const [provider, model] = selectedModel.split("/");
@@ -791,7 +838,7 @@ function App() {
         timestamp: Date.now(),
         model: selectedModel,
       };
-      const finalMessages: ChatMessageType[] = [...chatMessages, userMsg, assistantMsg];
+      const finalMessages: ChatMessageType[] = [...baseMsgs, userMsg, assistantMsg];
       setChatMessages(finalMessages);
 
       const turn = res.usage;
@@ -827,18 +874,20 @@ function App() {
       }
 
       const projectId = selectedProject === ALL_PROJECTS ? null : selectedProject;
-      const storedMsgs = messagesToStored(finalMessages);
       if (activeSessionId) {
+        const newMsgs = messagesToStored([userMsg, assistantMsg]);
         updateChatSession(activeSessionId, {
-          messages: storedMsgs,
+          append_messages: newMsgs,
           ...(mergedTotals ? { usage_totals: mergedTotals, usage_by_model: newByModel } : {}),
           project_id: projectId,
+          source_channel: "web",
         }).catch(() => {});
       } else {
         const firstText = typeof userMsg.content === "string"
           ? userMsg.content
           : userMsg.content.map((p) => (p.type === "text" ? p.text : "")).join(" ").trim();
         const title = firstText.slice(0, 80) || `Conversa ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
+        const storedMsgs = messagesToStored(finalMessages);
         createChatSession({
           title,
           messages: storedMsgs,

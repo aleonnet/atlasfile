@@ -42,6 +42,9 @@
 
 - Camada nativa de channels (Telegram via aiogram 3.x; extensível para Discord, Slack).
 - Canais como pipe transparente: sessões, histórico e usage unificados com o chat web.
+- Sincronização cross-channel: append atômico de mensagens, refresh antes de enviar, eliminação de overwrite destrutivo.
+- Espelhamento configurável: respostas via web encaminhadas ao canal de origem (Markdown→HTML); toggle per-channel na UI.
+- SSE real-time: atualização automática do chat web quando sessão é modificada por outro canal.
 - Rastreamento de uso e custo por sessão (tokens input/output/cache + custo estimado por modelo).
 - Custo configurável por modelo via `config/usage_costs.json`.
 - Rastreamento separado de uso LLM na classificação de documentos (`classification_usage`).

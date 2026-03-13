@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     telegram_enabled: bool = False
     telegram_bot_token: str = ""
     channel_session_timeout_minutes: int = 30
+    telegram_mirror_responses: bool = False
 
     # --- Classification usage ---
     opensearch_classification_usage_index: str = "atlasfile_classification_usage"
