@@ -6,4 +6,5 @@ node_modules/
 dist/
 .env
 opensearch_data/
-.code-workspace
+*.code-workspace
+.cursor/
