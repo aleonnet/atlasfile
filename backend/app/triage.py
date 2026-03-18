@@ -64,7 +64,24 @@ def list_pending(project_root: Path) -> list[TriageItem]:
     rejected_dir.mkdir(parents=True, exist_ok=True)
 
     for json_file in sorted(triage_pending_dir(project_root).glob("*.json"), key=lambda p: p.name):
-        data = json.loads(json_file.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        required_fields = {
+            "doc_id",
+            "filename",
+            "project_id",
+            "confidence_score",
+            "reason",
+            "source_path",
+            "metadata_path",
+        }
+        if not required_fields.issubset(data):
+            # Real JSON documents can legitimately exist in pending.
+            continue
         source_path = Path(data.get("source_path", ""))
         if not source_path.exists():
             data["decision"] = "orphaned_missing_source"

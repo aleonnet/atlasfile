@@ -96,6 +96,13 @@ def _inline_md_to_html(text: str) -> str:
     return text
 
 
+def _command_arg(text: str | None) -> str:
+    if not text:
+        return ""
+    parts = text.strip().split(maxsplit=1)
+    return parts[1].strip() if len(parts) > 1 else ""
+
+
 class TelegramChannel:
     """Telegram Bot API channel via aiogram long-polling."""
 
@@ -197,7 +204,8 @@ class TelegramChannel:
             await message.answer(
                 f"Olá, {name}! Sou o assistente AtlasFile. "
                 "Envie uma pergunta sobre seus documentos.\n"
-                "Use /novo para iniciar uma nova sessão."
+                "Use /novo para iniciar uma nova sessão.\n"
+                "Use /projeto <project_id> para fixar o escopo do projeto."
             )
 
         @self._dp.message(Command("novo"))
@@ -205,6 +213,49 @@ class TelegramChannel:
             from app.main import _forced_new_sessions
             _forced_new_sessions.add(str(message.chat.id))
             await message.answer("Nova sessão iniciada. Envie sua próxima pergunta.")
+
+        @self._dp.message(Command("projeto"))
+        async def _cmd_projeto(message: AiogramMessage) -> None:
+            from app.main import (
+                _clear_channel_project_scope,
+                _forced_new_sessions,
+                _get_channel_project_scope,
+                _resolve_project_root,
+                _set_channel_project_scope,
+            )
+            from app.project_profile import load_project_profile
+
+            chat_id = str(message.chat.id)
+            arg = _command_arg(message.text)
+            if not arg:
+                current = _get_channel_project_scope(self.id, chat_id)
+                if current:
+                    await message.answer(f"Projeto ativo: <code>{html_mod.escape(current)}</code>")
+                else:
+                    await message.answer("Nenhum projeto ativo. Use <code>/projeto &lt;project_id&gt;</code>.")
+                return
+
+            if arg.lower() in {"limpar", "nenhum", "none", "global", "todos", "all"}:
+                _clear_channel_project_scope(self.id, chat_id)
+                _forced_new_sessions.add(chat_id)
+                await message.answer("Escopo de projeto limpo. A próxima pergunta volta ao modo global.")
+                return
+
+            try:
+                project_root = _resolve_project_root(arg)
+                profile = load_project_profile(project_root)
+                project_id = str(profile.get("project_id") or project_root.name)
+            except Exception:
+                await message.answer(f"Projeto não encontrado: <code>{html_mod.escape(arg)}</code>")
+                return
+
+            _set_channel_project_scope(self.id, chat_id, project_id)
+            _forced_new_sessions.add(chat_id)
+            await message.answer(
+                "Projeto ativo definido para "
+                f"<code>{html_mod.escape(project_id)}</code>. "
+                "Envie a próxima pergunta."
+            )
 
         @self._dp.message()
         async def _on_text(message: AiogramMessage) -> None:

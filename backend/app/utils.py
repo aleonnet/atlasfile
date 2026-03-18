@@ -33,6 +33,34 @@ def normalize_text(value: str) -> str:
     return ascii_like.lower()
 
 
+_OCR_SPACED_WORD_RE = re.compile(r"(?<![a-z0-9])(?:[a-z0-9]\s+){2,}[a-z0-9](?![a-z0-9])")
+
+
+def fold_ocr_spacing(value: str) -> str:
+    """Normalize OCR text and fold words split into single-letter tokens.
+
+    Example: ``"c o n t r a t o" -> "contrato"``.
+    """
+    normalized = normalize_text(value).strip()
+    if not normalized:
+        return ""
+
+    # Preserve explicit wider gaps before collapsing whitespace so adjacent
+    # OCR-noisy words do not collapse into a single token.
+    protected = re.sub(r"\s{2,}", " <ocr_gap> ", normalized)
+    folded = re.sub(r"\s+", " ", protected).strip()
+    if not folded:
+        return ""
+
+    for _ in range(4):
+        updated = _OCR_SPACED_WORD_RE.sub(lambda m: m.group(0).replace(" ", ""), folded)
+        updated = re.sub(r"\s+", " ", updated).strip()
+        if updated == folded:
+            break
+        folded = updated
+    return re.sub(r"\s+", " ", folded.replace("<ocr_gap>", " ")).strip()
+
+
 _FS_INVALID_RE = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
 _CANONICAL_TAIL_RE = re.compile(r"__v(\d{2})(\.\w+)$")
 DEFAULT_CANONICAL_PATTERN = "{date}__{project}__{original_name}"

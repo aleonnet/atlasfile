@@ -4,79 +4,100 @@
 
 Padronizar nomes para:
 
-- facilitar busca,
-- reduzir colisao,
-- melhorar interoperabilidade.
+- facilitar busca
+- reduzir colisao
+- preservar rastreabilidade
 
-## Padrao canonico (arquivo)
+## Padrao canonico do arquivo
 
-O formato canonico e **configuravel** via `naming.canonical_pattern` no template/profile do projeto.
+O nome canonico e configuravel via `naming.canonical_pattern` no template/profile do projeto.
 
-### Campos disponiveis
+### Campos disponiveis no formatter
 
 | Campo | Descricao |
 |-------|-----------|
-| `{date}` | Data de ingestao (formato em `naming.date_format`, default `%Y%m%d`) |
-| `{project}` | ID do projeto (normalizado: lowercase, sem acentos) |
-| `{area}` | Area classificada (ex: financeiro, juridica) |
-| `{original_name}` | Nome original do arquivo sem extensao (**preservado intacto**) |
-| `{document_type}` | Tipo classificado (ex: contrato, relatorio, ata) |
+| `{date}` | Data de ingestao no formato `naming.date_format` |
+| `{project}` | ID do projeto normalizado |
+| `{area}` | Valor do `business_domain` normalizado |
+| `{original_name}` | Nome original do arquivo sem extensao, preservado ao maximo |
+| `{document_type}` | Tipo documental normalizado |
+
+Observacao importante:
+
+- o placeholder continua se chamando `{area}` no runtime
+- na 0.7.0 ele recebe o `business_domain`
 
 ### Sufixo obrigatorio
 
-`__v{version}{ext}` e sempre adicionado automaticamente pelo sistema.
+O sistema sempre adiciona:
 
-### Pattern default
-
-```
-{date}__{project}__{original_name}__v{version}{ext}
+```text
+__v{version}{ext}
 ```
 
-Exemplo: `20260301__kaido__Contrato_Migracao_Clientes__v01.xlsx`
+### Pattern default da 0.7.0
 
-### Outros exemplos de patterns
+```text
+{date}__{project}__{original_name}
+```
+
+Exemplo:
+
+```text
+20260316__smoke_cycle__CT 4600052462_Contrato_Servicos_TI__v01.pdf
+```
+
+### Outros patterns validos
 
 | Pattern | Resultado |
 |---------|-----------|
-| `{date}__{project}__{area}__{original_name}` | `20260301__kaido__financeiro__DRE_2026__v01.xlsx` (formato legado) |
-| `{original_name}` | `DRE_2026__v01.xlsx` (minimalista) |
-| `{project}__{document_type}__{original_name}` | `kaido__contrato__Contrato_SPA__v01.pdf` |
-
-### Formato legado (pre-0.4.0)
-
-`YYYYMMDD__<project_id>__<area_key>__<sanitized_title>__vNN.<ext>`
-
-Arquivos neste formato sao migrados automaticamente durante a reconciliacao.
+| `{date}__{project}__{area}__{original_name}` | `20260316__smoke_cycle__juridico__Contrato_SPA__v01.pdf` |
+| `{project}__{document_type}__{original_name}` | `smoke_cycle__contrato__Contrato_SPA__v01.pdf` |
+| `{date}__{project}__{area}__{document_type}__{original_name}` | `20260316__smoke_cycle__financeiro__planilha__UPI Receita Tri__v01.xlsx` |
 
 ## Regras
 
-- Separar blocos com `__`;
-- `{original_name}` preserva case, acentos e underscores do arquivo original;
-- Apenas caracteres invalidos de filesystem sao removidos (`/ \ : * ? < > |`);
-- `{project}`, `{area}` e `{document_type}` usam `sanitize_token` (lowercase, sem acentos);
-- Versao com `vNN` (`v01`, `v02`...);
-- `{original_name}` e obrigatorio no pattern.
+- separar blocos com `__`
+- `{original_name}` e obrigatorio
+- `{project}`, `{area}` e `{document_type}` passam por `sanitize_token`
+- `{original_name}` passa por `fs_safe`, preservando ao maximo o nome humano
+- apenas caracteres invalidos de filesystem sao removidos
+- a versao sempre segue `vNN`
 
-## Escopo de indexacao (PARA roots)
+## Layout fisico relacionado ao nome
 
-Todas as roots PARA definidas em `layout.roots` sao escaneadas na reconciliacao:
+O nome do arquivo e independente da pasta, mas o destino operacional padrao na 0.7.0 e:
 
-| Root | area_key | Descricao |
-|------|----------|-----------|
-| `01_PROJECTS` | `projects` | Projetos ativos com deadline |
-| `02_AREAS` | Inferido da subpasta (ex: `04_financeiro` → `financeiro`) | Responsabilidades continuos |
-| `03_RESOURCES` | `resources` | Material de referencia |
-| `04_ARCHIVE` | `archive` | Itens inativos |
+```text
+02_AREAS/<business_domain>/<document_type>/
+```
 
-Documentos em qualquer root sao incluidos no `_INDEX.md` e indexados no OpenSearch. A ingestao automatica (INBOX) continua roteando exclusivamente para `02_AREAS/`; as demais roots recebem arquivos colocados manualmente.
+Exemplo:
 
-## Rastreabilidade
+```text
+02_AREAS/juridico/contrato/20260316__smoke_cycle__CT 4600052462_Contrato_Servicos_TI__v01.pdf
+```
 
-Mesmo com nome canonico, manter:
+## Escopo de indexacao das roots PARA
+
+Todas as roots definidas em `layout.roots` entram no reconcile:
+
+| Root | Descricao |
+|------|-----------|
+| `01_PROJECTS` | Projetos ativos e material de execucao |
+| `02_AREAS` | Acervo operacional classificado por `business_domain/document_type` |
+| `03_RESOURCES` | Material de referencia |
+| `04_ARCHIVE` | Itens inativos |
+
+A ingestao automatica continua roteando para `02_AREAS/`. As demais roots tambem sao indexadas quando contem documentos.
+
+## Rastreabilidade minima
+
+Mesmo com nome canonico, o sistema deve preservar:
 
 - `original_filename`
 - `canonical_filename`
 - `doc_id`
 - `sha256`
 
-no `_INDEX.md` e no indice de busca.
+no `_INDEX.md` e no indice de busca, conforme o campo estiver disponivel em cada camada.

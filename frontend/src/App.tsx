@@ -6,8 +6,8 @@ import {
   fetchChatSessions,
   fetchHealth,
   fetchModels,
+  fetchProjectProfile,
   getChatSession,
-  fetchProjectAreas,
   fetchProjects,
   fetchReconcileStatus,
   fetchSetupStatus,
@@ -44,6 +44,7 @@ import type {
   ModelOption,
   Project,
   ProjectArea,
+  ProjectDocumentType,
   ReconcileStatus,
   SearchFilters,
   SearchHit,
@@ -111,8 +112,10 @@ function App() {
   const [initializingProjectId, setInitializingProjectId] = useState<string | null>(null);
   const [reconcilingNow, setReconcilingNow] = useState(false);
   const [correctModalItem, setCorrectModalItem] = useState<TriageItem | null>(null);
-  const [correctAreaOptions, setCorrectAreaOptions] = useState<ProjectArea[]>([]);
-  const [correctAreaValue, setCorrectAreaValue] = useState("");
+  const [correctBusinessDomainOptions, setCorrectBusinessDomainOptions] = useState<ProjectArea[]>([]);
+  const [correctBusinessDomainValue, setCorrectBusinessDomainValue] = useState("");
+  const [correctDocumentTypeOptions, setCorrectDocumentTypeOptions] = useState<ProjectDocumentType[]>([]);
+  const [correctDocumentTypeValue, setCorrectDocumentTypeValue] = useState("");
   const [correctSubmitting, setCorrectSubmitting] = useState(false);
   const reconcileEsRef = useRef<EventSource | null>(null);
 
@@ -287,7 +290,10 @@ function App() {
       try {
         const cfg = await fetchChannelConfig();
         if (!cfg.telegram.bot_token && savedToken) {
-          await updateChannelConfig({ channels_enabled: true, telegram: { enabled: true, bot_token: savedToken } });
+          await updateChannelConfig({
+            channels_enabled: true,
+            telegram: { enabled: true, bot_token: savedToken, mirror_responses: cfg.telegram.mirror_responses }
+          });
         }
       } catch { /* backend not ready yet */ }
       try {
@@ -309,7 +315,11 @@ function App() {
     const savedToken = (() => { try { return localStorage.getItem(TG_TOKEN_STORAGE_KEY) || ""; } catch { return ""; } })();
     if (telegramConnected) {
       try {
-        await updateChannelConfig({ channels_enabled: false, telegram: { enabled: false, bot_token: savedToken } });
+        const cfg = await fetchChannelConfig();
+        await updateChannelConfig({
+          channels_enabled: false,
+          telegram: { enabled: false, bot_token: savedToken, mirror_responses: cfg.telegram.mirror_responses }
+        });
         setTelegramConnected(false);
       } catch { /* ignore */ }
     } else {
@@ -318,7 +328,11 @@ function App() {
         return;
       }
       try {
-        await updateChannelConfig({ channels_enabled: true, telegram: { enabled: true, bot_token: savedToken } });
+        const cfg = await fetchChannelConfig();
+        await updateChannelConfig({
+          channels_enabled: true,
+          telegram: { enabled: true, bot_token: savedToken, mirror_responses: cfg.telegram.mirror_responses }
+        });
         const st = await fetchChannelStatus();
         setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
       } catch { /* ignore */ }
@@ -658,7 +672,8 @@ function App() {
     const activeFilters: SearchFilters = {};
     if (filters.doc_kind) activeFilters.doc_kind = filters.doc_kind;
     if (filters.document_type) activeFilters.document_type = filters.document_type;
-    if (filters.area_key) activeFilters.area_key = filters.area_key;
+    if (filters.business_domain) activeFilters.business_domain = filters.business_domain;
+    else if (filters.area_key) activeFilters.business_domain = filters.area_key;
     setFullLoading(true);
     try {
       const projectScope = selectedProject === ALL_PROJECTS ? undefined : selectedProject;
@@ -712,38 +727,59 @@ function App() {
   }, [selectedProject, projects]);
 
   async function openCorrectModal(item: TriageItem) {
-    setStatus(`Carregando areas de ${projectLabelById.get(item.project_id) || item.project_id}...`);
+    setStatus(`Carregando catálogo de classificação de ${projectLabelById.get(item.project_id) || item.project_id}...`);
     try {
-      const areas = await fetchProjectAreas(item.project_id);
+      const resp = await fetchProjectProfile(item.project_id);
+      const classification = resp.profile.classification || {};
+      const domainRows: Array<{ key: string; label?: string | null }> = classification.business_domains || [];
+      const areas = domainRows.map((area) => ({
+        key: area.key,
+        label: area.label || area.key
+      }));
       if (!areas.length) {
-        setStatus("Projeto sem areas configuradas para correcao");
+        setStatus("Projeto sem domínios configurados para correção");
         return;
       }
-      setCorrectAreaOptions(areas);
-      const preferred = item.suggested_area && areas.some((area) => area.key === item.suggested_area) ? item.suggested_area : "";
-      setCorrectAreaValue(preferred || areas[0].key);
+      const suggestedDomain = item.suggested_business_domain || item.suggested_area || "";
+      const suggestedDomainExists = !!suggestedDomain && areas.some((area) => area.key === suggestedDomain);
+      const documentTypes = (classification.document_types || []).map((item) => ({
+        key: item.key,
+        label: item.label || item.key,
+        folder: item.folder
+      }));
+      if (!documentTypes.length) {
+        setStatus("Projeto sem tipos documentais configurados para correção");
+        return;
+      }
+      const suggestedDocumentType = item.suggested_document_type || "";
+      const suggestedDocumentTypeExists = !!suggestedDocumentType && documentTypes.some((entry) => entry.key === suggestedDocumentType);
+      setCorrectBusinessDomainOptions(areas);
+      setCorrectDocumentTypeOptions(documentTypes);
+      setCorrectBusinessDomainValue(suggestedDomainExists ? suggestedDomain : areas[0].key);
+      setCorrectDocumentTypeValue(suggestedDocumentTypeExists ? suggestedDocumentType : documentTypes[0].key);
       setCorrectModalItem(item);
-      setStatus("Selecione a area de destino para aprovar com correcao");
+      setStatus("Selecione domínio e tipo documental para aprovar com correção");
     } catch {
-      setStatus("Falha ao carregar areas para correcao");
+      setStatus("Falha ao carregar catálogo para correção");
     }
   }
 
   function submitCorrectDecision() {
-    if (!correctModalItem || !correctAreaValue) return;
+    if (!correctModalItem || !correctBusinessDomainValue || !correctDocumentTypeValue) return;
     const item = correctModalItem;
-    const areaValue = correctAreaValue;
+    const businessDomainValue = correctBusinessDomainValue;
+    const documentTypeValue = correctDocumentTypeValue;
     setCorrectModalItem(null);
     setCorrectSubmitting(false);
     setTriageItems((prev) => prev.filter((i) => i.doc_id !== item.doc_id));
     setStatus("Registrando correcao em segundo plano...");
-    triageDecision(item.project_id, item.doc_id, "correct", areaValue)
+    triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
       .then(() => loadTriage())
       .then(() => {
-        setStatus(`Documento aprovado por correcao e movido para ${areaValue}`);
+        setStatus(`Documento aprovado por correção e movido para ${businessDomainValue}/${documentTypeValue}`);
       })
       .catch(() => {
-        setStatus("Falha ao registrar correcao");
+        setStatus("Falha ao registrar correção");
         void loadTriage();
       });
   }
@@ -823,8 +859,10 @@ function App() {
         ...baseMsgs.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: newUserContent }
       ];
+      const projectScope = selectedProject === ALL_PROJECTS ? undefined : selectedProject;
       const [provider, model] = selectedModel.split("/");
       const res = await sendChatMessage(messagesForApi, {
+        projectId: projectScope,
         provider,
         model,
         openaiApiKey: provider === "openai" ? (openaiApiKey || undefined) : undefined,
@@ -873,7 +911,7 @@ function App() {
         setSessionUsageByModel(newByModel);
       }
 
-      const projectId = selectedProject === ALL_PROJECTS ? null : selectedProject;
+      const projectId = projectScope ?? null;
       if (activeSessionId) {
         const newMsgs = messagesToStored([userMsg, assistantMsg]);
         updateChatSession(activeSessionId, {
@@ -1416,18 +1454,18 @@ function App() {
                     </select>
                   </label>
                   <label className="full-search-filter-label">
-                    <span className="sub">Área</span>
+                    <span className="sub">Domínio</span>
                     <select
-                      value={searchFilters.area_key || ""}
+                      value={searchFilters.business_domain || searchFilters.area_key || ""}
                       onChange={(e) => {
                         const v = e.target.value || undefined;
-                        const next = { ...searchFilters, area_key: v };
+                        const next = { ...searchFilters, business_domain: v, area_key: undefined };
                         setSearchFilters(next);
                         void runFullSearch(1, undefined, next);
                       }}
                     >
                       <option value="">Todas</option>
-                      {searchStats.by_area_key.map((b) => (
+                      {(searchStats.by_business_domain.length ? searchStats.by_business_domain : searchStats.by_area_key).map((b) => (
                         <option key={b.key} value={b.key}>{b.key} ({b.count})</option>
                       ))}
                     </select>
@@ -1694,10 +1732,17 @@ function App() {
       <CorrectDecisionModal
         item={correctModalItem}
         submitting={correctSubmitting}
-        areaValue={correctAreaValue}
-        areaOptions={correctAreaOptions}
-        onChangeArea={setCorrectAreaValue}
-        onCancel={() => setCorrectModalItem(null)}
+        businessDomainValue={correctBusinessDomainValue}
+        businessDomainOptions={correctBusinessDomainOptions}
+        documentTypeValue={correctDocumentTypeValue}
+        documentTypeOptions={correctDocumentTypeOptions}
+        onChangeBusinessDomain={setCorrectBusinessDomainValue}
+        onChangeDocumentType={setCorrectDocumentTypeValue}
+        onCancel={() => {
+          setCorrectModalItem(null);
+          setCorrectBusinessDomainValue("");
+          setCorrectDocumentTypeValue("");
+        }}
         onSubmit={submitCorrectDecision}
       />
     </div>

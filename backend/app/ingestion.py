@@ -11,8 +11,9 @@ from typing import Any
 
 from opensearchpy import OpenSearch
 
-from .area_resolver import resolve_area_path
+from .area_resolver import resolve_classification_path
 from .bootstrap import ensure_project_structure
+from .classification_bootstrap import classify_bootstrap
 from .config import settings
 from .indexer import index_document, read_text_excerpt
 from .profile_runtime import areas_root_rel, triage_paths
@@ -409,7 +410,7 @@ def process_inbox_file(
     # ── Classification pipeline (only for non-duplicates) ──
     doc_id = str(uuid.uuid4())
     text_excerpt = read_text_excerpt(inbox_file)
-    classification = classify(profile=profile, source_path=inbox_file, text_excerpt=text_excerpt)
+    classification = classify_bootstrap(profile=profile, source_path=inbox_file, text_excerpt=text_excerpt)
 
     llm_result: dict[str, Any] | None = None
     policy = _llm_policy(profile)
@@ -452,17 +453,21 @@ def process_inbox_file(
     auto_route_min = float(profile.get("confidence_thresholds", {}).get("auto_route_min", 0.85))
     triage_min = float(profile.get("confidence_thresholds", {}).get("triage_min", 0.5))
     confidence = float(classification["confidence"])
-    area_key = classification.get("area_key")
+    business_domain = classification.get("business_domain") or classification.get("area_key")
+    if not business_domain:
+        raise ValueError("bootstrap classification did not return business_domain")
+    area_key = business_domain
+    document_type = str(classification.get("document_type") or "").strip()
+    if not document_type:
+        raise ValueError("bootstrap classification did not return document_type")
 
-    if area_key:
-        area_path = resolve_area_path(
-            project_root=project_root,
-            profile=profile,
-            area_key=area_key,
-            create_if_missing=True,
-        ) or areas_root_rel(profile)
-    else:
-        area_path = areas_root_rel(profile)
+    area_path = resolve_classification_path(
+        project_root=project_root,
+        profile=profile,
+        business_domain=str(business_domain),
+        document_type=document_type,
+        create_if_missing=True,
+    )
 
     ingested_at = utc_now_iso()
 
@@ -486,7 +491,7 @@ def process_inbox_file(
             "project": project_id,
             "area": area_key or "unclassified",
             "original_name": inbox_file.stem,
-            "document_type": classification.get("document_type", ""),
+            "document_type": document_type,
         },
         original_suffix=inbox_file.suffix or ".bin",
         version=next_version,
@@ -517,7 +522,9 @@ def process_inbox_file(
             "filename": dest_file.name,
             "project_id": project_id,
             "suggested_area": area_key,
+            "suggested_business_domain": area_key,
             "suggested_path": area_path,
+            "suggested_document_type": document_type,
             "confidence_score": confidence,
             "reason": classification.get("reason", "triage_pending"),
             "top_candidates": classification["top_candidates"],
@@ -525,6 +532,9 @@ def process_inbox_file(
             "metadata_path": "",
             "original_filename": inbox_file.name,
             "canonical_filename": canonical_filename,
+            "document_type": document_type,
+            "topics": classification.get("topics", []),
+            "entities": classification.get("entities", []),
             "sha256": sha,
             "ingested_at": ingested_at,
             "naming_pattern": canonical_pattern,
@@ -556,7 +566,9 @@ def process_inbox_file(
             "filename": dest_file.name,
             "project_id": project_id,
             "suggested_area": None,
+            "suggested_business_domain": None,
             "suggested_path": None,
+            "suggested_document_type": document_type,
             "confidence_score": confidence,
             "reason": "below_triage_min",
             "top_candidates": classification.get("top_candidates", []),
@@ -564,6 +576,9 @@ def process_inbox_file(
             "metadata_path": "",
             "original_filename": inbox_file.name,
             "canonical_filename": canonical_filename,
+            "document_type": document_type,
+            "topics": classification.get("topics", []),
+            "entities": classification.get("entities", []),
             "sha256": sha,
             "ingested_at": ingested_at,
             "naming_pattern": canonical_pattern,
@@ -579,7 +594,7 @@ def process_inbox_file(
         meta["metadata_path"] = str(meta_path)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    tags = [area_key or "unclassified"]
+    tags = [area_key or "unclassified", document_type]
     if classification.get("suggested_tags"):
         tags = list(set(tags + classification["suggested_tags"]))
     if confidence < auto_route_min or (llm_result and (llm_result.get("confidence") or 0) < auto_route_min):
@@ -589,6 +604,7 @@ def process_inbox_file(
         "doc_id": doc_id,
         "project_id": project_id,
         "area_key": area_key or "unclassified",
+        "business_domain": area_key or "unclassified",
         "title": inbox_file.stem,
         "content": text_excerpt,
         "original_filename": inbox_file.name,
@@ -602,15 +618,20 @@ def process_inbox_file(
         "processed_at": utc_now_iso(),
         "decision": decision,
         "confidence_score": confidence,
+        "business_domain_confidence": float(classification.get("business_domain_confidence") or confidence),
+        "document_type_confidence": float(classification.get("document_type_confidence") or 0.0),
         "sha256": sha,
         "tags": tags,
         "naming_pattern": canonical_pattern,
+        "entities": classification.get("entities", []),
     }
-    if classification.get("document_type"):
-        payload["document_type"] = classification["document_type"]
+    payload["document_type"] = document_type
     if classification.get("suggested_topics"):
         payload["topics"] = list(classification.get("suggested_topics") or [])
         payload["topics_source"] = "llm_policy"
+    elif classification.get("topics"):
+        payload["topics"] = list(classification.get("topics") or [])
+        payload["topics_source"] = classification.get("topics_source", "synonym_match")
     if confidence < auto_route_min or (llm_result and (llm_result.get("confidence") or 0) < auto_route_min):
         payload["review_status"] = "needs_review"
 

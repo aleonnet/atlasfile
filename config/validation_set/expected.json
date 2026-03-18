@@ -1,0 +1,1246 @@
+[
+  {
+    "file": "20220824_Kickoff_Neptune_V2.3.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "operacoes",
+    "topics": [
+      "cronograma",
+      "governanca",
+      "escopo"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Neptune"
+      },
+      {
+        "type": "empresa",
+        "value": "Lemvig"
+      }
+    ],
+    "notes": "Apresentação de kickoff do projeto Neptune com agenda de implantação, governança, cronograma e principais frentes de trabalho."
+  },
+  {
+    "file": "CT 4600052462_Contrato_Servicos_TI.pdf",
+    "document_type": "contrato",
+    "business_domain": "ti",
+    "topics": [
+      "contratos",
+      "sap",
+      "sistemas_integracoes"
+    ],
+    "entities": [
+      {
+        "type": "contrato",
+        "value": "4600052462"
+      },
+      {
+        "type": "empresa",
+        "value": "G2 Consultoria Ltda."
+      },
+      {
+        "type": "sistema",
+        "value": "SAP Business One"
+      }
+    ],
+    "notes": "Contrato de prestação de serviços de TI relacionado à implementação de SAP Business One entre empresas do grupo Oi e a G2."
+  },
+  {
+    "file": "CW2249236_-_4600052462_-_1º_Aditivo_Projeto_S.pdf",
+    "document_type": "aditivo",
+    "business_domain": "ti",
+    "topics": [
+      "contratos",
+      "privacidade_lgpd",
+      "docusign"
+    ],
+    "entities": [
+      {
+        "type": "contrato",
+        "value": "4600052414"
+      },
+      {
+        "type": "empresa",
+        "value": "G2 Consultoria Ltda."
+      },
+      {
+        "type": "norma",
+        "value": "LGPD"
+      }
+    ],
+    "notes": "Primeiro termo aditivo de contrato de serviços/licenciamento com contexto de software, valores atualizados, LGPD e assinatura via DocuSign."
+  },
+  {
+    "file": "DocuSign_Project_Neptune___SPA__Anexos_v_A.pdf",
+    "document_type": "contrato",
+    "business_domain": "societario",
+    "topics": [
+      "spa",
+      "docusign",
+      "societario"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "NK 108 Empreendimentos e Participações S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "Lemvig RJ Infraestrutura e Redes de Telecomunicações S.A."
+      }
+    ],
+    "notes": "SPA assinado via DocuSign para compra e venda de ações da Lemvig, com cláusulas de operação, preço de compra e pagamento."
+  },
+  {
+    "file": "Fato Relevante-Proposta Vinculante Sites de Infraestrutura de Telecomunicações Fixa.pdf",
+    "document_type": "fato_relevante",
+    "business_domain": "societario",
+    "topics": [
+      "societario",
+      "contratos",
+      "rede_infra"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "NK 108 Empreendimentos e Participações S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "Highline do Brasil II Infraestrutura de Telecomunicações S.A."
+      }
+    ],
+    "notes": "Fato relevante sobre proposta vinculante para aquisição de 8.000 sites de infraestrutura da operação fixa via SPE, com forte componente societário."
+  },
+  {
+    "file": "FATO RELEVANTE_Oferta Vinculante Torres_Venus.pdf",
+    "document_type": "fato_relevante",
+    "business_domain": "societario",
+    "topics": [
+      "falencia_rj",
+      "societario",
+      "rede_infra"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Venus"
+      },
+      {
+        "type": "empresa",
+        "value": "Highline do Brasil II Infraestrutura de Telecomunicações S.A."
+      },
+      {
+        "type": "norma",
+        "value": "Lei 11.101/2005"
+      }
+    ],
+    "notes": "Fato relevante sobre oferta vinculante para aquisição da UPI Torres, com peso relevante de recuperação judicial, passivos e condicionantes legais."
+  },
+  {
+    "file": "Neptune_Milestones e Estimativa de Esforço_22.08.09 1359[76]  -  Read-Only.pdf",
+    "document_type": "apresentacao",
+    "business_domain": "operacoes",
+    "topics": [
+      "cronograma",
+      "status_report",
+      "riscos"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Neptune"
+      },
+      {
+        "type": "empresa",
+        "value": "Lemvig"
+      }
+    ],
+    "notes": "Material de planejamento preliminar da execução do projeto Neptune com milestones, frentes de trabalho, status report, issues e riscos."
+  },
+  {
+    "file": "Processo de Pgtos Lemvig_v05_24.03.2023.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "financeiro",
+    "topics": [
+      "fluxo_caixa",
+      "faturamento",
+      "contratos"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Venus II"
+      },
+      {
+        "type": "empresa",
+        "value": "Lemvig"
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Apresentação do processo de pagamentos da Lemvig com foco em receita, faturamento, conta vinculada, conciliações e pass through financeiro."
+  },
+  {
+    "file": "Project Neptune _ 1o Aditamento SPA e Anexos_v. Assinada.pdf",
+    "document_type": "aditivo",
+    "business_domain": "societario",
+    "topics": [
+      "spa",
+      "societario",
+      "contratos"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "NK 108 Empreendimentos e Participações S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "Lemvig RJ Infraestrutura e Redes de Telecomunicações S.A."
+      }
+    ],
+    "notes": "Primeiro aditamento ao SPA da operação Neptune, com condicionantes de fechamento e anuência prévia da ANATEL."
+  },
+  {
+    "file": "Project Neptune _ MLA Inicial e Anexos_v. Assinada.pdf",
+    "document_type": "contrato",
+    "business_domain": "operacoes",
+    "topics": [
+      "contratos",
+      "ativos_imobilizado",
+      "faturamento"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Lemvig RJ Infraestrutura e Redes de Telecomunicações S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "NK 108 Empreendimentos e Participações S.A."
+      }
+    ],
+    "notes": "Contrato de compartilhamento de sites com anexos de itens de infraestrutura, remuneração e procedimentos operacionais, centrado nos ativos da operação."
+  },
+  {
+    "file": "Project Neptune _ TSA_v. Assinada.pdf",
+    "document_type": "contrato",
+    "business_domain": "operacoes",
+    "topics": [
+      "tsa",
+      "contratos",
+      "migracao"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Neptune"
+      },
+      {
+        "type": "empresa",
+        "value": "Lemvig RJ Infraestrutura e Redes de Telecomunicações S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Contrato de compartilhamento de serviços administrativos com função típica de TSA no contexto da transição operacional pós-operação."
+  },
+  {
+    "file": "RES Projeto Saturno  Carga de Ativos.msg",
+    "document_type": "email",
+    "business_domain": "ativos",
+    "topics": [
+      "ativos_imobilizado",
+      "sap",
+      "dados_bases"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Saturno"
+      },
+      {
+        "type": "sistema",
+        "value": "SAP B1"
+      },
+      {
+        "type": "pessoa",
+        "value": "Alessandra Leandro De Oliveira"
+      }
+    ],
+    "notes": "E-mail sobre carga de ativos com templates preenchidos, centros de custo e base de saldos iniciais para carga no SAP B1."
+  },
+  {
+    "file": "1  VIA FATURA - VALIDA€ÇO INFRA NEXTEL REG III (MOVEL) - OUT 22.msg",
+    "document_type": "email",
+    "business_domain": "financeiro",
+    "topics": [
+      "email_correspondencia",
+      "faturamento",
+      "rede_infra"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Nextel"
+      }
+    ],
+    "notes": "E-mail de envio e validação de faturamento de infraestrutura para a Nextel no contexto de repasse mensal."
+  },
+  {
+    "file": "2024.06.07 - Proposta Twist vcomOi_V2.pdf",
+    "document_type": "apresentacao",
+    "business_domain": "operacoes",
+    "topics": [
+      "carve_out",
+      "escopo",
+      "implantacao"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Twist"
+      },
+      {
+        "type": "empresa",
+        "value": "Accenture"
+      },
+      {
+        "type": "empresa",
+        "value": "ClientCo"
+      }
+    ],
+    "notes": "Proposta comercial em formato de deck para estratégia, segregação e operacionalização da UPI ClientCo no projeto Twist."
+  },
+  {
+    "file": "2025 08 15 STATUS EXECUTIVO_RH.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "pessoas",
+    "topics": [
+      "estrutura_organizacional",
+      "folha_pagamento",
+      "status_report"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Serede"
+      }
+    ],
+    "notes": "Status executivo da frente de RH da incorporação da Serede, com impactos organizacionais, folha e ações em andamento."
+  },
+  {
+    "file": "2025 08 29 STATUS EXECUTIVO_FINANCAS.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "financeiro",
+    "topics": [
+      "contabilidade",
+      "fiscal_tributos",
+      "status_report"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Serede"
+      }
+    ],
+    "notes": "Status executivo da frente de finanças da incorporação da Serede, cobrindo contabilidade, tributos e impactos financeiros."
+  },
+  {
+    "file": "4600051808 - Contrato Original.pdf",
+    "document_type": "contrato",
+    "business_domain": "operacoes",
+    "topics": [
+      "contratos",
+      "fornecedores",
+      "clientes"
+    ],
+    "entities": [
+      {
+        "type": "contrato",
+        "value": "4600051808"
+      },
+      {
+        "type": "empresa",
+        "value": "Accenture do Brasil Ltda."
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Contrato original de prestação de serviços de contact center, com escopo operacional de atendimento e execução de serviços."
+  },
+  {
+    "file": "Anexo 5.2.1(i) - Acervo ClientCo  (Comentários PMA - 8.4.2024)(50957042.8) LR 5 + Vtal LR2.docx",
+    "document_type": "contrato",
+    "business_domain": "ativos",
+    "topics": [
+      "ativos_imobilizado",
+      "carve_out",
+      "spe"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "ClientCo"
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Anexo contratual do carve-out ClientCo descrevendo o acervo de ativos que compõe a UPI e sua organização via SPE."
+  },
+  {
+    "file": "Anexo 5.2.1(i) - Acervo ClientCo .pdf",
+    "document_type": "contrato",
+    "business_domain": "ativos",
+    "topics": [
+      "ativos_imobilizado",
+      "carve_out",
+      "spe"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "ClientCo"
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Versão em PDF do anexo do carve-out ClientCo com o perímetro de ativos transferidos para a UPI."
+  },
+  {
+    "file": "CTBC - Valida‡ֶo Faturamento de Infra R1 ALGAR - OUTUBRO2022.msg",
+    "document_type": "email",
+    "business_domain": "financeiro",
+    "topics": [
+      "email_correspondencia",
+      "faturamento",
+      "rede_infra"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Algar Telecom"
+      }
+    ],
+    "notes": "E-mail de validação de faturamento de infraestrutura referente à Algar/CTBC."
+  },
+  {
+    "file": "Colaboradores por CNPJ.xlsx",
+    "document_type": "planilha",
+    "business_domain": "pessoas",
+    "topics": [
+      "cnpj_filiais",
+      "folha_pagamento",
+      "dados_bases"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Tahto"
+      }
+    ],
+    "notes": "Planilha base com colaboradores distribuídos por CNPJ, usada para análise de folha e lotação por entidade."
+  },
+  {
+    "file": "Contrato 4600058161.docx.pdf",
+    "document_type": "contrato",
+    "business_domain": "juridico",
+    "topics": [
+      "contratos",
+      "fornecedores",
+      "sap"
+    ],
+    "entities": [
+      {
+        "type": "contrato",
+        "value": "4600058161"
+      },
+      {
+        "type": "empresa",
+        "value": "Accenture do Brasil Ltda."
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Contrato de prestação de serviços de consultoria firmado entre Oi e Accenture, tratado como instrumento jurídico contratual."
+  },
+  {
+    "file": "Contrato de Licença de Uso de Marca Oi_v.22.02.2024 (Padis) 1330.docx",
+    "document_type": "contrato",
+    "business_domain": "juridico",
+    "topics": [
+      "contratos",
+      "licencas",
+      "societario"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "Padis"
+      }
+    ],
+    "notes": "Instrumento de licença de uso de marca da Oi, com natureza contratual e forte componente jurídico de propriedade intelectual."
+  },
+  {
+    "file": "Contratos Vigentes Oi Services CCOX_04022026.xlsx",
+    "document_type": "planilha",
+    "business_domain": "suprimentos",
+    "topics": [
+      "fornecedores",
+      "compras_procurement",
+      "dados_bases"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi Services"
+      }
+    ],
+    "notes": "Inventário em planilha de contratos vigentes da Oi Services, com fornecedores, pedidos e dados típicos de gestão de suprimentos."
+  },
+  {
+    "file": "Contratos Vigentes Tahto_04022026.xlsx",
+    "document_type": "planilha",
+    "business_domain": "suprimentos",
+    "topics": [
+      "fornecedores",
+      "compras_procurement",
+      "dados_bases"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Tahto"
+      }
+    ],
+    "notes": "Planilha de contratos vigentes da Tahto com informações de fornecedores, pedidos e governança de compras."
+  },
+  {
+    "file": "Cronograma AGOE 2025 (v.28.01.2025).docx",
+    "document_type": "relatorio",
+    "business_domain": "societario",
+    "topics": [
+      "cronograma",
+      "board",
+      "governanca"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Cronograma societário da AGOE 2025 com dependências entre áreas, documentação requerida e marcos de governança."
+  },
+  {
+    "file": "Decisao-falencia-oi.pdf",
+    "document_type": "relatorio",
+    "business_domain": "juridico",
+    "topics": [
+      "falencia_rj",
+      "contencioso",
+      "decisao_sentenca"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Decisão judicial vinculada ao processo de recuperação judicial/falência da Oi, com natureza jurídica e processual."
+  },
+  {
+    "file": "Estabelecimentos BTCC_CNPJs Ativos_em 220126.xlsx",
+    "document_type": "planilha",
+    "business_domain": "societario",
+    "topics": [
+      "cnpj_filiais",
+      "dados_bases",
+      "societario"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "BTCC"
+      }
+    ],
+    "notes": "Planilha cadastral de estabelecimentos e CNPJs ativos da BTCC, com inscrições e dados societários de filiais."
+  },
+  {
+    "file": "Filiais TAHTO criadas no SAP.xlsx",
+    "document_type": "planilha",
+    "business_domain": "societario",
+    "topics": [
+      "cnpj_filiais",
+      "sap",
+      "dados_bases"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Tahto"
+      },
+      {
+        "type": "sistema",
+        "value": "SAP"
+      }
+    ],
+    "notes": "Planilha de filiais da Tahto criadas no SAP com CNPJ, IDs fiscais e demais dados cadastrais de estabelecimento."
+  },
+  {
+    "file": "Fornecedores V1_UPI.xlsx",
+    "document_type": "planilha",
+    "business_domain": "suprimentos",
+    "topics": [
+      "fornecedores",
+      "compras_procurement",
+      "dados_bases"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "UPI Oi Soluções"
+      },
+      {
+        "type": "sistema",
+        "value": "SAP"
+      }
+    ],
+    "notes": "Base de fornecedores da UPI Oi Soluções com status, contratos e escopo resumido para análise de procurement."
+  },
+  {
+    "file": "Mapeamento_Sistemas_140324 V4.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "ti",
+    "topics": [
+      "sistemas_integracoes",
+      "sap",
+      "migracao"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Serede"
+      }
+    ],
+    "notes": "Apresentação de mapeamento de sistemas e criticidade, com foco em integrações, SAP e estratégia de migração."
+  },
+  {
+    "file": "Mileto - Memorando de Entendimentos Oi TV (Execution Version).docx",
+    "document_type": "contrato",
+    "business_domain": "societario",
+    "topics": [
+      "contratos",
+      "societario",
+      "carve_out"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Mileto"
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Memorando de entendimentos da operação Oi TV/Mileto, usado como instrumento de transação societária."
+  },
+  {
+    "file": "Minuta Padrão aditivo para cessão PARCIAL contratos diversos Oi TV.docx",
+    "document_type": "aditivo",
+    "business_domain": "juridico",
+    "topics": [
+      "minuta_template",
+      "contratos",
+      "falencia_rj"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi TV"
+      }
+    ],
+    "notes": "Minuta padrão de termo aditivo para cessão parcial de contratos, com natureza jurídica claramente contratual."
+  },
+  {
+    "file": "Oi S.A. - Lista de Due Diligence V.tal.xlsx",
+    "document_type": "planilha",
+    "business_domain": "juridico",
+    "topics": [
+      "due_diligence",
+      "contratos",
+      "societario"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "V.tal"
+      }
+    ],
+    "notes": "Lista de due diligence da V.tal com pedidos e checkpoints jurídicos/societários em formato de planilha."
+  },
+  {
+    "file": "Organograma_JAN2026_visão 2.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "pessoas",
+    "topics": [
+      "estrutura_organizacional",
+      "governanca",
+      "apresentacao"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Tahto"
+      }
+    ],
+    "notes": "Deck de organograma e estrutura organizacional da Tahto com reporte executivo e desenho de áreas."
+  },
+  {
+    "file": "PROJETO TÉCNICO CLIENT_CO_20240805_vFinal.docx",
+    "document_type": "especificacao",
+    "business_domain": "regulatorio",
+    "topics": [
+      "licencas",
+      "anatel",
+      "rede_infra"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "ClientCo"
+      },
+      {
+        "type": "norma",
+        "value": "SCM"
+      }
+    ],
+    "notes": "Projeto técnico básico de SCM com descrição de outorga/serviço multimídia, classificado como especificação regulatória."
+  },
+  {
+    "file": "Pesquisa - Doação de Equipamentos Acessórios - novo.xlsx",
+    "document_type": "planilha",
+    "business_domain": "fiscal",
+    "topics": [
+      "ativos_imobilizado",
+      "fiscal_tributos",
+      "icms"
+    ],
+    "entities": [],
+    "notes": "Planilha de pesquisa tributária sobre doação de equipamentos acessórios, com foco em ICMS e procedimentos fiscais."
+  },
+  {
+    "file": "Plano convênio bancário v3_2024.12.27.pdf",
+    "document_type": "plano",
+    "business_domain": "financeiro",
+    "topics": [
+      "plano_projeto",
+      "fluxo_caixa",
+      "faturamento"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi TV"
+      }
+    ],
+    "notes": "Plano de processo de convênio bancário com premissas de faturamento, meios de pagamento e fluxo financeiro."
+  },
+  {
+    "file": "Projeto BN2 - objetos sociais e CNAEs (SEREDE e Oi).docx",
+    "document_type": "relatorio",
+    "business_domain": "societario",
+    "topics": [
+      "societario",
+      "cnpj_filiais",
+      "carve_out"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "SEREDE"
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Documento analítico sobre objetos sociais e CNAEs de SEREDE e Oi no contexto da incorporação/segregação societária."
+  },
+  {
+    "file": "Projeto BN2 Kick-off 15.01.2025 0945.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "operacoes",
+    "topics": [
+      "cronograma",
+      "governanca",
+      "implantacao"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "BN2"
+      },
+      {
+        "type": "empresa",
+        "value": "SEREDE"
+      }
+    ],
+    "notes": "Apresentação de kick-off do projeto BN2 com estrutura da transação, frentes de trabalho, cronograma e implantação."
+  },
+  {
+    "file": "Projeto TV - Edital do Procedimento Competitivo (30 12 2024).docx",
+    "document_type": "edital",
+    "business_domain": "juridico",
+    "topics": [
+      "minuta",
+      "falencia_rj",
+      "societario"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Minuta de edital do procedimento competitivo para alienação de UPI, com natureza jurídica e contexto societário de RJ."
+  },
+  {
+    "file": "Projeto_Kaidô_UPITahto_20260202_v04 04.02 12h45.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "operacoes",
+    "topics": [
+      "carve_out",
+      "implantacao",
+      "cronograma"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Kaidô"
+      },
+      {
+        "type": "empresa",
+        "value": "Tahto"
+      }
+    ],
+    "notes": "Deck de implantação da UPI Tahto no projeto Kaidô, com visão de contexto, execução e cronograma operacional."
+  },
+  {
+    "file": "Relatório de Ativos 31.12.2024 - AR01.xls",
+    "document_type": "relatorio",
+    "business_domain": "ativos",
+    "topics": [
+      "ativos_imobilizado",
+      "inventario",
+      "depreciacao"
+    ],
+    "entities": [],
+    "notes": "Relatório de ativos/imobilizado com visão patrimonial e depreciação em base legada."
+  },
+  {
+    "file": "SPA ClientCo - Cl. declarações e garantias[54].docx",
+    "document_type": "contrato",
+    "business_domain": "societario",
+    "topics": [
+      "spa",
+      "societario",
+      "contratos"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "ClientCo"
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Anexo do SPA ClientCo com declarações e garantias das sociedades do grupo, típico de documentação societária de transação."
+  },
+  {
+    "file": "UPI Receita Tri.xlsx",
+    "document_type": "planilha",
+    "business_domain": "financeiro",
+    "topics": [
+      "faturamento",
+      "dados_bases",
+      "clientes"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "UPI Oi Soluções"
+      }
+    ],
+    "notes": "Planilha de receita da UPI por cluster e CNPJs, usada para análise financeira de faturamento."
+  },
+  {
+    "file": "VALIDA€ÇO DA PLANILHA DE INFRA (Compartilhado) PARA CLARO - OUT 22.msg",
+    "document_type": "email",
+    "business_domain": "financeiro",
+    "topics": [
+      "email_correspondencia",
+      "faturamento",
+      "rede_infra"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Claro"
+      }
+    ],
+    "notes": "E-mail de validação de planilha de infraestrutura para faturamento/repasse à Claro."
+  },
+  {
+    "file": "Venda de ativo imobilizado.xlsx",
+    "document_type": "planilha",
+    "business_domain": "ativos",
+    "topics": [
+      "ativos_imobilizado",
+      "fiscal_tributos",
+      "icms"
+    ],
+    "entities": [],
+    "notes": "Planilha sobre venda de ativo imobilizado com análise tributária acessória e impactos de ICMS."
+  },
+  {
+    "file": "[Projeto Twist] TSA (Assinado).pdf",
+    "document_type": "contrato",
+    "business_domain": "operacoes",
+    "topics": [
+      "tsa",
+      "contratos",
+      "migracao"
+    ],
+    "entities": [
+      {
+        "type": "projeto",
+        "value": "Twist"
+      },
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      },
+      {
+        "type": "empresa",
+        "value": "ClientCo Serviços de Rede Nordeste S.A."
+      }
+    ],
+    "notes": "TSA assinado do projeto Twist, cobrindo serviços de transição e suporte operacional pós-fechamento."
+  },
+  {
+    "file": "oi-plano-de-recuperacao-judicial-19-04-2024-limpa.pdf",
+    "document_type": "plano",
+    "business_domain": "juridico",
+    "topics": [
+      "falencia_rj",
+      "contencioso",
+      "societario"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Oi S.A."
+      }
+    ],
+    "notes": "Plano de recuperação judicial consolidado da Oi, com natureza jurídica-processual e efeitos societários da reorganização."
+  },
+  {
+    "file": "v03 BASE CMDB D0 TAHTO - ELEA.xls",
+    "document_type": "planilha",
+    "business_domain": "ativos",
+    "topics": [
+      "cmdb",
+      "dados_bases",
+      "ativos_imobilizado"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Tahto"
+      }
+    ],
+    "notes": "Base legada de CMDB da Tahto com itens de configuração e dados patrimoniais de ativos."
+  },
+  {
+    "file": "RQUAL_Resol_717_2019_atualizacaoDez24.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "regulatorio",
+    "topics": [
+      "obrigacoes_regulatorias",
+      "anatel",
+      "kpis"
+    ],
+    "entities": [
+      {
+        "type": "norma",
+        "value": "Resolução 717/2019"
+      }
+    ],
+    "notes": "Apresentação regulatória sobre a Resolução 717/2019 (RQUAL), com timeline, obrigações e próximos passos de acompanhamento pela diretoria de regulamentação."
+  },
+  {
+    "file": "STEL___Client_Co_servicos 04122024.pdf",
+    "document_type": "relatorio",
+    "business_domain": "regulatorio",
+    "topics": [
+      "anatel",
+      "licencas",
+      "obrigacoes_regulatorias"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Client Co Serviços de Rede Nordeste S.A."
+      }
+    ],
+    "notes": "Comprovante/consulta do STEL com serviços explorados, situação cadastral e dados regulatórios da entidade perante a Anatel."
+  },
+  {
+    "file": "prefixos_ocupação numeração STFC_extração TI.xlsx",
+    "document_type": "planilha",
+    "business_domain": "regulatorio",
+    "topics": [
+      "anatel",
+      "obrigacoes_regulatorias",
+      "dados_bases"
+    ],
+    "entities": [],
+    "notes": "Planilha de ocupação de prefixos e numeração STFC por UF/localidade, usada para controle regulatório de recursos de numeração."
+  },
+  {
+    "file": "Solução Co-Billing CSP de Terceiros_250207.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "regulatorio",
+    "topics": [
+      "obrigacoes_regulatorias",
+      "faturamento",
+      "clientes"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "ClientCo"
+      }
+    ],
+    "notes": "Deck sobre solução de co-billing com CSP de terceiros, dependências com operadoras e tratativas regulatórias/operacionais para viabilização."
+  },
+  {
+    "file": "ProjetoBN_Unificação_ReformaTributaria_20251202 1116.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "fiscal",
+    "topics": [
+      "fiscal_tributos",
+      "sistemas_integracoes",
+      "implantacao"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Grupo Oi"
+      }
+    ],
+    "notes": "Apresentação do projeto de unificação/reforma tributária com impactos em sistemas, cronograma e implantação nas empresas do grupo."
+  },
+  {
+    "file": "RES- [Twist] - Tratamento Tributos no Drop.eml",
+    "document_type": "email",
+    "business_domain": "fiscal",
+    "topics": [
+      "fiscal_tributos",
+      "email_correspondencia",
+      "ma"
+    ],
+    "entities": [],
+    "notes": "E-mail de trabalho sobre o tratamento de tributos no contexto do drop/downstream da transação Twist."
+  },
+  {
+    "file": "Planejamento de Custos Societários - Atd Fiscal - Logistica___2024.03.27.xlsx",
+    "document_type": "planilha",
+    "business_domain": "fiscal",
+    "topics": [
+      "fiscal_tributos",
+      "iss",
+      "pis_cofins"
+    ],
+    "entities": [],
+    "notes": "Planilha de planejamento de custos com honorários, ISS, PIS/COFINS e taxas de registro associadas às atividades fiscais/logísticas."
+  },
+  {
+    "file": "ANEXO CXXVI (art527 RICMS)_ARBOR_AMDOCS_CLIENTCO PI_2_signed.pdf",
+    "document_type": "relatorio",
+    "business_domain": "fiscal",
+    "topics": [
+      "fiscal_tributos",
+      "icms",
+      "sped"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Client Co Serviços de Rede Nordeste S.A."
+      }
+    ],
+    "notes": "Formulário fiscal vinculado ao RICMS para comunicação de uso de sistema eletrônico de processamento de dados, com inscrição estadual e dados cadastrais."
+  },
+  {
+    "file": "Contratos Serede_22012025.xlsx",
+    "document_type": "planilha",
+    "business_domain": "suprimentos",
+    "topics": [
+      "contratos",
+      "fornecedores",
+      "compras_procurement"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Serede"
+      }
+    ],
+    "notes": "Planilha de gestão de contratos/clientes da Serede com vigência, escopo e termos aditivos, típica de acompanhamento de suprimentos/contratos."
+  },
+  {
+    "file": "Contratos Clientes Serede_17032025.xlsx",
+    "document_type": "planilha",
+    "business_domain": "suprimentos",
+    "topics": [
+      "contratos",
+      "fornecedores",
+      "compras_procurement"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Serede"
+      }
+    ],
+    "notes": "Base de contratos vigentes de clientes da Serede, com controle de vigência, escopo e observações contratuais."
+  },
+  {
+    "file": "Lista de Contratos_Serede 06-mar-25 vs6 - enviado para Oi update.xlsx",
+    "document_type": "planilha",
+    "business_domain": "suprimentos",
+    "topics": [
+      "contratos",
+      "fornecedores",
+      "compras_procurement"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Serede"
+      }
+    ],
+    "notes": "Lista consolidada de contratos da Serede por área responsável, usada para acompanhamento de carteira contratual em suprimentos."
+  },
+  {
+    "file": "RES- Retirada da Oi do preâmbulo.eml",
+    "document_type": "email",
+    "business_domain": "suprimentos",
+    "topics": [
+      "contratos",
+      "email_correspondencia",
+      "fornecedores"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "Tahto"
+      }
+    ],
+    "notes": "E-mail de negociação contratual pedindo ajuste de preâmbulo em contratos de uso exclusivo da Tahto."
+  },
+  {
+    "file": "Mapa de Estrutura 20032024.xlsx",
+    "document_type": "planilha",
+    "business_domain": "pessoas",
+    "topics": [
+      "estrutura_organizacional",
+      "dados_bases"
+    ],
+    "entities": [],
+    "notes": "Mapa de estrutura organizacional com níveis hierárquicos, diretorias e códigos de gestão de pessoas."
+  },
+  {
+    "file": "Resumo Material ClientCo_BPO (FTE TSA).xlsx",
+    "document_type": "planilha",
+    "business_domain": "pessoas",
+    "topics": [
+      "estrutura_organizacional",
+      "dados_bases",
+      "tsa"
+    ],
+    "entities": [
+      {
+        "type": "empresa",
+        "value": "ClientCo"
+      }
+    ],
+    "notes": "Planilha de alocação de pessoas/FTE TSA entre Oi e ClientCo, com visão de estrutura e premissas de BPO."
+  },
+  {
+    "file": "Twist - Pessoas_20241216.pptx",
+    "document_type": "apresentacao",
+    "business_domain": "pessoas",
+    "topics": [
+      "estrutura_organizacional",
+      "comunicacao",
+      "tsa"
+    ],
+    "entities": [],
+    "notes": "Apresentação de status da frente de Pessoas/RH do projeto Twist, com comunicação, cadastro e pendências operacionais."
+  },
+  {
+    "file": "Twist Organograma Tecnologia V3.pdf",
+    "document_type": "relatorio",
+    "business_domain": "pessoas",
+    "topics": [
+      "estrutura_organizacional",
+      "dados_bases",
+      "infra_ti"
+    ],
+    "entities": [],
+    "notes": "Organograma da estrutura de Tecnologia com desenho organizacional e distribuição das equipes, usado para análise de pessoas."
+  }
+]

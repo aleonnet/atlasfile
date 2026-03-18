@@ -46,14 +46,31 @@ class AreaFolder(BaseModel):
     folder: str
 
 
+class BusinessDomainFolder(BaseModel):
+    business_domain: str
+    folder: str
+
+
 class LayoutConfig(BaseModel):
     mode: LayoutMode = Field(default=LayoutMode.para_jd)
     roots: LayoutRoots = Field(default_factory=LayoutRoots)
     areas_root: str = Field(default="02_AREAS")
     area_folders: list[AreaFolder] = Field(default_factory=list)
+    business_domain_folders: list[BusinessDomainFolder] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_area_folders_unique(self) -> "LayoutConfig":
+        if not self.business_domain_folders and self.area_folders:
+            self.business_domain_folders = [
+                BusinessDomainFolder(business_domain=af.area_key, folder=af.folder)
+                for af in self.area_folders
+            ]
+        if not self.area_folders and self.business_domain_folders:
+            self.area_folders = [
+                AreaFolder(area_key=bf.business_domain, folder=bf.folder)
+                for bf in self.business_domain_folders
+            ]
+
         keys = [a.area_key for a in self.area_folders]
         if len(keys) != len(set(keys)):
             dup = sorted({k for k in keys if keys.count(k) > 1})
@@ -62,6 +79,15 @@ class LayoutConfig(BaseModel):
         if len(folders) != len(set(folders)):
             dup = sorted({f for f in folders if folders.count(f) > 1})
             raise ValueError(f"layout.area_folders has duplicate folder(s): {dup}")
+
+        domain_keys = [row.business_domain for row in self.business_domain_folders]
+        if len(domain_keys) != len(set(domain_keys)):
+            dup = sorted({k for k in domain_keys if domain_keys.count(k) > 1})
+            raise ValueError(f"layout.business_domain_folders has duplicate business_domain(s): {dup}")
+        domain_folders = [row.folder for row in self.business_domain_folders]
+        if len(domain_folders) != len(set(domain_folders)):
+            dup = sorted({f for f in domain_folders if domain_folders.count(f) > 1})
+            raise ValueError(f"layout.business_domain_folders has duplicate folder(s): {dup}")
         return self
 
     def folder_for_area(self, area_key: str) -> Optional[str]:
@@ -70,10 +96,72 @@ class LayoutConfig(BaseModel):
                 return af.folder
         return None
 
+    def folder_for_business_domain(self, business_domain: str) -> Optional[str]:
+        for row in self.business_domain_folders:
+            if row.business_domain == business_domain:
+                return row.folder
+        return None
+
 
 class WorkArea(BaseModel):
     key: str
     jd_number: int | None = None
+    aliases: list[str] = Field(default_factory=list)
+
+
+class BusinessDomain(BaseModel):
+    key: str
+    label: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    primary_scope: str | None = None
+    subfunction_topics: list[str] = Field(default_factory=list)
+
+
+class DocumentTypeDetectionRule(BaseModel):
+    any_of: list[str] = Field(default_factory=list)
+    all_of: list[str] = Field(default_factory=list)
+    with_any_of: list[str] = Field(default_factory=list)
+    exclude_any_of: list[str] = Field(default_factory=list)
+    extensions: list[str] = Field(default_factory=list)
+    confidence: float
+    reason: str = "structural_header"
+
+    @model_validator(mode="after")
+    def _validate_rule(self) -> "DocumentTypeDetectionRule":
+        if not self.any_of and not self.all_of:
+            raise ValueError("document_type.detection_rule must define any_of and/or all_of")
+        if not (0.0 <= float(self.confidence) <= 1.0):
+            raise ValueError("document_type.detection_rule.confidence must be between 0 and 1")
+        return self
+
+
+class DocumentType(BaseModel):
+    key: str
+    label: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    extensions: list[str] = Field(default_factory=list)
+    folder: str
+    extension_confidence_by_extension: dict[str, float] = Field(default_factory=dict)
+    fallback_priority: int = 100
+    detection_rules: list[DocumentTypeDetectionRule] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_document_type(self) -> "DocumentType":
+        for ext, confidence in self.extension_confidence_by_extension.items():
+            if not str(ext).strip():
+                raise ValueError("document_type.extension_confidence_by_extension keys must not be empty")
+            if not (0.0 <= float(confidence) <= 1.0):
+                raise ValueError("document_type.extension_confidence_by_extension values must be between 0 and 1")
+        if self.fallback_priority < 0:
+            raise ValueError("document_type.fallback_priority must be >= 0")
+        if not self.folder.strip():
+            raise ValueError("document_type.folder is required")
+        return self
+
+
+class KnownEntity(BaseModel):
+    type: str
+    value: str
     aliases: list[str] = Field(default_factory=list)
 
 
@@ -132,20 +220,57 @@ class LLMPolicy(BaseModel):
 
 class ClassificationConfig(BaseModel):
     work_areas: list[WorkArea] = Field(default_factory=list)
+    business_domains: list[BusinessDomain] = Field(default_factory=list)
+    document_types: list[DocumentType] = Field(default_factory=list)
+    entity_catalog: list[KnownEntity] = Field(default_factory=list)
     routing_rules: list[RoutingRule] = Field(default_factory=list)
     confidence_thresholds: ConfidenceThresholds = Field(default_factory=ConfidenceThresholds)
     llm_policy: LLMPolicy = Field(default_factory=LLMPolicy)
 
     @model_validator(mode="after")
     def _validate_areas(self) -> "ClassificationConfig":
+        if not self.business_domains and self.work_areas:
+            self.business_domains = [
+                BusinessDomain(key=area.key, aliases=list(area.aliases))
+                for area in self.work_areas
+            ]
+        if not self.work_areas and self.business_domains:
+            self.work_areas = [
+                WorkArea(key=domain.key, aliases=list(domain.aliases))
+                for domain in self.business_domains
+            ]
+
         keys = [a.key for a in self.work_areas]
         if len(keys) != len(set(keys)):
             dup = sorted({k for k in keys if keys.count(k) > 1})
             raise ValueError(f"classification.work_areas has duplicate key(s): {dup}")
+
+        domain_keys = [d.key for d in self.business_domains]
+        if len(domain_keys) != len(set(domain_keys)):
+            dup = sorted({k for k in domain_keys if domain_keys.count(k) > 1})
+            raise ValueError(f"classification.business_domains has duplicate key(s): {dup}")
+
+        doc_type_keys = [d.key for d in self.document_types]
+        if len(doc_type_keys) != len(set(doc_type_keys)):
+            dup = sorted({k for k in doc_type_keys if doc_type_keys.count(k) > 1})
+            raise ValueError(f"classification.document_types has duplicate key(s): {dup}")
+        if not self.business_domains:
+            raise ValueError("classification.business_domains must not be empty")
+        if not self.document_types:
+            raise ValueError("classification.document_types must not be empty")
+
+        doc_type_folder_keys = [d.folder for d in self.document_types]
+        if len(doc_type_folder_keys) != len(set(doc_type_folder_keys)):
+            dup = sorted({k for k in doc_type_folder_keys if doc_type_folder_keys.count(k) > 1})
+            raise ValueError(f"classification.document_types has duplicate folder(s): {dup}")
+
         return self
 
+    def business_domain_keys(self) -> list[str]:
+        return [d.key for d in self.business_domains]
+
     def area_keys(self) -> list[str]:
-        return [a.key for a in self.work_areas]
+        return self.business_domain_keys()
 
 
 class NamingConfig(BaseModel):
@@ -184,12 +309,12 @@ class ProjectProfileV2(BaseModel):
 
     @model_validator(mode="after")
     def _cross_validate(self) -> "ProjectProfileV2":
-        area_keys = self.classification.area_keys()
-        if area_keys:
-            missing = [k for k in area_keys if not self.layout.folder_for_area(k)]
+        business_domain_keys = self.classification.business_domain_keys()
+        if business_domain_keys:
+            missing = [k for k in business_domain_keys if not self.layout.folder_for_business_domain(k)]
             if missing:
                 raise ValueError(
-                    "layout.area_folders must define a folder for every classification.work_areas key; "
+                    "layout.business_domain_folders must define a folder for every classification.business_domains key; "
                     f"missing: {missing}"
                 )
 

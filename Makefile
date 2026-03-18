@@ -1,5 +1,7 @@
 # AtlasFile - test and build targets
-# Recomendado: make docker-update (testa e sobe api + web + mcp).
+# Recomendado para rebuild do stack base: make docker-update.
+# O smoke funcional completo do ciclo (ingestão, triagem, busca/highlight e assistente)
+# fica documentado em docs/plano_teste_e2e_v0.4.0.md.
 
 .PHONY: test test-backend test-frontend docker-build docker-up docker-update docker-smoke-init reset-index reset-chat
 
@@ -20,6 +22,7 @@ docker-up:
 	docker compose up -d --build
 
 # Roda test, depois sobe opensearch + dashboards + api + mcp + web com rebuild. Remove imagens <none>.
+# O smoke embutido aqui é curto: template -> initialize -> profile.
 # Por padrão NÃO reseta índices. Opções:
 #   make docker-update RESET_INDEX=1        → reseta índice de documentos
 #   make docker-update RESET_CHAT=1         → reseta índice de sessões de chat

@@ -4,6 +4,15 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.7.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [bootstrap_config_source](bootstrap_config_source_31378c1a.plan.md) | Bootstrap config-driven: `default.json` como fonte única da política de classificação; remoção de `DEFAULT_*`; inclusão de `suprimentos`, `edital` e `plano`; benchmark e editor blindados contra drift |
+| 2 | [fechar_ciclo_atlasfile](fechar_ciclo_atlasfile_837ac0a4.plan.md) | Fechamento do ciclo com `training_pool` real e disjunto, ampliação do `validation_set`, benchmark oficial, rebuild Docker e smoke funcional de ingestão, busca/highlight e assistente |
+
+---
+
 ## 0.6.0
 
 | # | Plano | Escopo |

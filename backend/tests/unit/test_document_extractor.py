@@ -9,6 +9,8 @@ from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_BREAK
+from openpyxl import Workbook
+from pptx import Presentation
 
 from app.document_extractor import (
     ExtractionResult,
@@ -19,6 +21,38 @@ from app.document_extractor import (
     _split_chunks,
     extract_document_content,
 )
+
+
+def _write_simple_pdf(path: Path, text: str) -> None:
+    escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    stream = f"BT /F1 18 Tf 50 100 Td ({escaped}) Tj ET".encode("latin-1", errors="ignore")
+    objects = [
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+        (
+            b"3 0 obj\n"
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\n"
+            b"endobj\n"
+        ),
+        b"4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+        b"5 0 obj\n<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream\nendobj\n",
+    ]
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets: list[int] = []
+    for obj in objects:
+        offsets.append(len(pdf))
+        pdf.extend(obj)
+    xref_offset = len(pdf)
+    pdf.extend(b"xref\n0 6\n0000000000 65535 f \n")
+    for offset in offsets:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    pdf.extend(
+        b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n"
+        + str(xref_offset).encode("ascii")
+        + b"\n%%EOF\n"
+    )
+    path.write_bytes(bytes(pdf))
 
 
 def test_split_chunks_empty() -> None:
@@ -202,6 +236,79 @@ def test_extract_msg_with_stubbed_module(monkeypatch) -> None:
         assert "arquivo.pdf" in result.text_excerpt
     finally:
         path.unlink(missing_ok=True)
+
+
+def test_extract_pdf_from_generated_real_file() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        path = Path(f.name)
+    try:
+        _write_simple_pdf(path, "Atlas PDF Contrato")
+        result = extract_document_content(path, max_chars=1000)
+        assert result.content_type == "pdf"
+        assert result.extraction_status == "ok"
+        assert "Atlas PDF Contrato" in result.text_excerpt
+        assert "page:1" in result.chunk_locations
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_pptx_from_generated_real_file() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as f:
+        path = Path(f.name)
+    try:
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        title_box = slide.shapes.add_textbox(left=0, top=0, width=7_000_000, height=500_000)
+        title_box.text_frame.text = "Kickoff Neptune"
+        table_shape = slide.shapes.add_table(rows=2, cols=2, left=0, top=700_000, width=7_000_000, height=1_200_000)
+        table = table_shape.table
+        table.cell(0, 0).text = "Tema"
+        table.cell(0, 1).text = "Status"
+        table.cell(1, 0).text = "Cronograma"
+        table.cell(1, 1).text = "Aprovado"
+        prs.save(str(path))
+
+        result = extract_document_content(path, max_chars=1000)
+        assert result.content_type == "pptx"
+        assert result.extraction_status == "ok"
+        assert "Kickoff Neptune" in result.text_excerpt
+        assert "Cronograma Aprovado" in result.text_excerpt
+        assert "slide:1" in result.chunk_locations
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_xlsx_from_generated_real_file() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
+        path = Path(f.name)
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Financeiro"
+        ws["A1"] = "Conta"
+        ws["B1"] = "Valor"
+        ws["A2"] = "Caixa"
+        ws["B2"] = 1250
+        wb.save(str(path))
+
+        result = extract_document_content(path, max_chars=1000)
+        assert result.content_type == "xlsx"
+        assert result.extraction_status == "ok"
+        assert "sheet Financeiro row 1 col A" in result.chunk_text
+        assert "Caixa" in result.text_excerpt
+        assert "1250" in result.text_excerpt
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_msg_from_real_fixture() -> None:
+    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "msg" / "strangeDate.msg"
+    result = extract_document_content(fixture, max_chars=1500)
+
+    assert result.content_type == "msg"
+    assert result.extraction_status == "ok"
+    assert "MSG Test File" in result.text_excerpt
+    assert "Provide example of this file type" in result.text_excerpt
 
 
 def test_extract_docx_locations_with_explicit_page_break() -> None:

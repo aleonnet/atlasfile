@@ -13,7 +13,9 @@ const PARA_DEFAULTS = {
 } as const;
 
 export function ProfileLayoutEditor({ profile, onChange }: Props) {
-  const folders = profile.layout.area_folders || [];
+  const folders = (profile.layout.business_domain_folders && profile.layout.business_domain_folders.length > 0)
+    ? profile.layout.business_domain_folders
+    : (profile.layout.area_folders || []).map((row) => ({ business_domain: row.area_key, folder: row.folder }));
 
   function updateField<K extends keyof ProjectProfileV2>(key: K, value: ProjectProfileV2[K]) {
     onChange({ ...profile, [key]: value });
@@ -25,6 +27,17 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
 
   function updateAreasRoot(value: string) {
     onChange({ ...profile, layout: { ...profile.layout, areas_root: value } });
+  }
+
+  function updateDomainFolders(nextFolders: Array<{ business_domain: string; folder: string }>) {
+    onChange({
+      ...profile,
+      layout: {
+        ...profile.layout,
+        business_domain_folders: nextFolders,
+        area_folders: nextFolders.map((row) => ({ area_key: row.business_domain, folder: row.folder }))
+      }
+    });
   }
 
   function updateMode(value: "para_jd" | "custom") {
@@ -59,29 +72,20 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
   }
 
   function updateAreaKey(index: number, nextKey: string) {
-    onChange({
-      ...profile,
-      layout: { ...profile.layout, area_folders: folders.map((r, i) => (i === index ? { ...r, area_key: nextKey } : r)) }
-    });
+    updateDomainFolders(folders.map((r, i) => (i === index ? { ...r, business_domain: nextKey } : r)));
   }
 
   function updateFolder(index: number, folder: string) {
-    onChange({
-      ...profile,
-      layout: { ...profile.layout, area_folders: folders.map((r, i) => (i === index ? { ...r, folder } : r)) }
-    });
+    updateDomainFolders(folders.map((r, i) => (i === index ? { ...r, folder } : r)));
   }
 
   function addAreaFolder() {
-    const key = `nova_area_${folders.length + 1}`;
-    onChange({
-      ...profile,
-      layout: { ...profile.layout, area_folders: [...folders, { area_key: key, folder: `${String(folders.length + 1).padStart(2, "0")}_${key}` }] }
-    });
+    const key = `novo_dominio_${folders.length + 1}`;
+    updateDomainFolders([...folders, { business_domain: key, folder: key }]);
   }
 
   function removeAreaFolder(areaKey: string) {
-    onChange({ ...profile, layout: { ...profile.layout, area_folders: folders.filter((r) => r.area_key !== areaKey) } });
+    updateDomainFolders(folders.filter((r) => r.business_domain !== areaKey));
   }
 
   return (
@@ -93,7 +97,7 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
           <div className="pl-mode-row">
             <label className="pl-radio">
               <input type="radio" name="layout-mode" value="para_jd" checked={profile.layout.mode === "para_jd"} onChange={() => updateMode("para_jd")} />
-              <span>PARA + JD</span>
+              <span>PARA</span>
             </label>
             <label className="pl-radio">
               <input type="radio" name="layout-mode" value="custom" checked={profile.layout.mode === "custom"} onChange={() => updateMode("custom")} />
@@ -112,21 +116,21 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
           </div>
 
           <label className="pl-field pl-field-areas-root">
-            <span className="pl-field-label">Areas root (onde ficam as áreas)</span>
+            <span className="pl-field-label">Areas root (onde ficam os domínios)</span>
             <input className="pl-input" value={profile.layout.areas_root} onChange={(e) => updateAreasRoot(e.target.value)} />
           </label>
         </div>
       </details>
 
-      {/* ── Mapeamento áreas → pastas ── */}
+      {/* ── Mapeamento domínios → pastas ── */}
       <details className="pl-collapsible">
-        <summary className="pl-collapsible-header">Mapeamento de áreas → pastas</summary>
+        <summary className="pl-collapsible-header">Mapeamento de domínios → pastas</summary>
         <div className="pl-collapsible-body">
           <div className="pl-table-wrap">
             <table className="pl-table">
               <thead>
                 <tr>
-                  <th>area_key</th>
+                  <th>business_domain</th>
                   <th>folder</th>
                   <th></th>
                 </tr>
@@ -135,20 +139,20 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
                 {folders.map((row, idx) => (
                   <tr key={idx}>
                     <td>
-                      <input className="pl-input pl-input-table" value={row.area_key} onChange={(e) => updateAreaKey(idx, e.target.value)} />
+                      <input className="pl-input pl-input-table" value={row.business_domain} onChange={(e) => updateAreaKey(idx, e.target.value)} />
                     </td>
                     <td>
                       <input className="pl-input pl-input-table" value={row.folder} onChange={(e) => updateFolder(idx, e.target.value)} />
                     </td>
                     <td>
-                      <button type="button" className="pl-btn-icon" title="Remover" onClick={() => removeAreaFolder(row.area_key)}>✕</button>
+                      <button type="button" className="pl-btn-icon" title="Remover" onClick={() => removeAreaFolder(row.business_domain)}>✕</button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <button type="button" className="btn pl-add-btn" onClick={addAreaFolder}>+ Adicionar area_folder</button>
+          <button type="button" className="btn pl-add-btn" onClick={addAreaFolder}>+ Adicionar business_domain_folder</button>
         </div>
       </details>
 

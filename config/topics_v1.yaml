@@ -627,3 +627,325 @@ topics:
       - anexos
       - anexo
     area_bias: [entregaveis, juridica, contratos_comunicacao]
+
+  - key: ma
+    label: M&A / Transação
+    surface_forms:
+      - m&a
+      - ma
+      - merger
+      - acquisition
+      - aquisicao
+      - aquisição
+
+  - key: carve_out
+    label: Carve-out
+    surface_forms:
+      - carve-out
+      - carve out
+      - carveout
+      - segregacao
+      - segregação
+
+  - key: board
+    label: Board / Conselho
+    surface_forms:
+      - board
+      - conselho
+      - conselho de administracao
+      - conselho de administração
+
+  - key: cap_table
+    label: Cap Table / Capital Social
+    surface_forms:
+      - cap table
+      - capital social
+      - quadro societario
+      - quadro societário
+
+  - key: fato_relevante
+    label: Fato Relevante
+    surface_forms:
+      - fato relevante
+      - comunicado ao mercado
+
+  - key: ata_reuniao
+    label: Ata de Reunião
+    surface_forms:
+      - ata de reuniao
+      - ata de reunião
+      - reuniao de conselho
+      - reunião de conselho
+
+  - key: controladoria
+    label: Controladoria
+    surface_forms:
+      - controladoria
+      - fechamento gerencial
+      - reporting gerencial
+
+  - key: tesouraria
+    label: Tesouraria
+    surface_forms:
+      - tesouraria
+      - treasury
+      - caixa corporativo
+
+  - key: contas_a_pagar
+    label: Contas a Pagar
+    surface_forms:
+      - contas a pagar
+      - contas payable
+      - fornecedores a pagar
+
+  - key: contas_a_receber
+    label: Contas a Receber
+    surface_forms:
+      - contas a receber
+      - accounts receivable
+      - recebiveis
+      - recebíveis
+
+  - key: orcamento
+    label: Orçamento
+    surface_forms:
+      - orcamento
+      - orçamento
+      - budget
+      - forecast
+
+  - key: retencoes
+    label: Retenções
+    surface_forms:
+      - retencao
+      - retenção
+      - retencoes
+      - retenções
+
+  - key: nfe
+    label: NFe
+    surface_forms:
+      - nfe
+      - nf-e
+      - nota fiscal eletronica
+      - nota fiscal eletrônica
+
+  - key: recrutamento
+    label: Recrutamento
+    surface_forms:
+      - recrutamento
+      - recrutador
+      - hiring
+      - selecao
+      - seleção
+
+  - key: trabalhista
+    label: Trabalhista
+    surface_forms:
+      - trabalhista
+      - clt
+      - acordo coletivo
+      - dissidio
+      - dissídio
+
+  - key: treinamento
+    label: Treinamento
+    surface_forms:
+      - treinamento
+      - capacitação
+      - capacitacao
+      - onboarding
+
+  - key: infra_ti
+    label: Infraestrutura de TI
+    surface_forms:
+      - infraestrutura de ti
+      - infra de ti
+      - cloud infrastructure
+
+  - key: api
+    label: API
+    surface_forms:
+      - api
+      - apis
+      - rest
+      - webhook
+
+  - key: cloud
+    label: Cloud
+    surface_forms:
+      - cloud
+      - aws
+      - azure
+      - gcp
+
+  - key: runbook
+    label: Runbook
+    surface_forms:
+      - runbook
+      - playbook operacional
+      - manual operacional
+
+  - key: implantacao
+    label: Implantação
+    surface_forms:
+      - implantacao
+      - implantação
+      - go-live
+      - rollout
+
+  - key: anatel
+    label: Anatel
+    surface_forms:
+      - anatel
+      - agência nacional de telecomunicações
+
+  - key: cvm
+    label: CVM
+    surface_forms:
+      - cvm
+      - comissão de valores mobiliários
+
+  - key: cade
+    label: Cade
+    surface_forms:
+      - cade
+      - conselho administrativo de defesa economica
+      - conselho administrativo de defesa econômica
+
+  - key: anuencia_previa
+    label: Anuência Prévia
+    surface_forms:
+      - anuencia previa
+      - anuência prévia
+
+  - key: licencas
+    label: Licenças
+    surface_forms:
+      - licenca
+      - licença
+      - licencas
+      - licenças
+
+  - key: obrigacoes_regulatorias
+    label: Obrigações Regulatórias
+    surface_forms:
+      - obrigacoes regulatorias
+      - obrigações regulatórias
+      - condicionante regulatoria
+      - condicionante regulatória
+
+  - key: auditoria
+    label: Auditoria
+    surface_forms:
+      - auditoria
+      - audit
+      - auditor
+
+  - key: anticorrupcao
+    label: Anticorrupção
+    surface_forms:
+      - anticorrupcao
+      - anticorrupção
+      - bribery
+
+  - key: codigo_conduta
+    label: Código de Conduta
+    surface_forms:
+      - codigo de conduta
+      - código de conduta
+      - code of conduct
+
+  - key: risk_register
+    label: Risk Register
+    surface_forms:
+      - risk register
+      - registro de riscos
+
+  - key: cutover
+    label: Cutover
+    surface_forms:
+      - cutover
+      - virada
+      - janela de virada
+
+  - key: depreciacao
+    label: Depreciação
+    surface_forms:
+      - depreciacao
+      - depreciação
+      - depreciado
+
+  - key: icms
+    label: ICMS
+    surface_forms:
+      - icms
+
+  - key: iss
+    label: ISS
+    surface_forms:
+      - iss
+
+  - key: nfse
+    label: NFS-e
+    surface_forms:
+      - nfse
+      - nfs-e
+      - nota fiscal de servico eletronica
+      - nota fiscal de serviço eletrônica
+
+  - key: pis_cofins
+    label: PIS / COFINS
+    surface_forms:
+      - pis
+      - cofins
+      - pis/cofins
+
+  - key: spe
+    label: SPE
+    surface_forms:
+      - spe
+      - sociedade de proposito especifico
+      - sociedade de propósito específico
+
+  - key: sped
+    label: SPED
+    surface_forms:
+      - sped
+
+  - key: compras_procurement
+    label: Compras / Procurement
+    surface_forms:
+      - compras
+      - procurement
+      - sourcing
+      - strategic sourcing
+      - vendor management
+
+  - key: rfp_rfq
+    label: RFP / RFQ / Edital
+    surface_forms:
+      - rfp
+      - rfq
+      - request for proposal
+      - request for quotation
+      - edital
+      - procedimento competitivo
+
+  - key: plano_projeto
+    label: Plano / Projeto
+    surface_forms:
+      - plano
+      - project plan
+      - gantt
+      - wbs
+      - work breakdown structure
+      - cronograma detalhado
+
+  - key: minuta
+    label: Minuta
+    surface_forms:
+      - minuta
+      - draft
+      - minuta padrao
+      - minuta padrão

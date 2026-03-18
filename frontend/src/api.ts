@@ -218,7 +218,8 @@ export async function searchDocuments(
   if (projectId) url.searchParams.set("project_id", projectId);
   if (filters?.doc_kind) url.searchParams.set("doc_kind", filters.doc_kind);
   if (filters?.document_type) url.searchParams.set("document_type", filters.document_type);
-  if (filters?.area_key) url.searchParams.set("area_key", filters.area_key);
+  if (filters?.business_domain) url.searchParams.set("business_domain", filters.business_domain);
+  else if (filters?.area_key) url.searchParams.set("area_key", filters.area_key);
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Falha na busca");
   return res.json();
@@ -251,12 +252,17 @@ export async function triageDecision(
   projectId: string,
   docId: string,
   action: "approve" | "correct" | "reject",
-  targetArea?: string
+  targetBusinessDomain?: string,
+  targetDocumentType?: string
 ): Promise<void> {
   const res = await fetch(`${API_URL}/api/triage/${projectId}/${docId}/decision`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, target_area: targetArea })
+    body: JSON.stringify({
+      action,
+      target_business_domain: targetBusinessDomain,
+      target_document_type: targetDocumentType
+    })
   });
   if (!res.ok) throw new Error("Falha ao enviar decisao");
 }
@@ -306,6 +312,7 @@ export async function fetchModels(): Promise<ModelOption[]> {
 export async function sendChatMessage(
   messages: ChatMessage[],
   options?: {
+    projectId?: string;
     provider?: string;
     model?: string;
     openaiApiKey?: string;
@@ -317,7 +324,8 @@ export async function sendChatMessage(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (options?.openaiApiKey) headers["X-OpenAI-API-Key"] = options.openaiApiKey;
   if (options?.anthropicApiKey) headers["X-Anthropic-API-Key"] = options.anthropicApiKey;
-  const body: { messages: ChatMessage[]; provider?: string; model?: string; enable_thinking?: boolean } = { messages };
+  const body: { messages: ChatMessage[]; project_id?: string; provider?: string; model?: string; enable_thinking?: boolean } = { messages };
+  if (options?.projectId) body.project_id = options.projectId;
   if (options?.provider) body.provider = options.provider;
   if (options?.model) body.model = options.model;
   if (options?.enableThinking === true) body.enable_thinking = true;

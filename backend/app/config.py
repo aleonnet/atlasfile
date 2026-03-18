@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     opensearch_chat_sessions_index: str = "atlasfile_chat_sessions"
     opensearch_user: str = "admin"
     opensearch_password: str = "admin123"
+    opensearch_nested_objects_limit: int = 50000
 
     projects_root: str = "/projects"
     auto_scan_on_startup: bool = False

@@ -89,7 +89,7 @@ export function AssistantSettingsModal({
           const restored: ChannelConfig = {
             ...cfg,
             channels_enabled: true,
-            telegram: { enabled: true, bot_token: savedToken },
+            telegram: { enabled: true, bot_token: savedToken, mirror_responses: cfg.telegram.mirror_responses },
           };
           setChannelCfg(restored);
           persistConfig(restored);
@@ -101,7 +101,7 @@ export function AssistantSettingsModal({
         if (savedToken) {
           const restored: ChannelConfig = {
             channels_enabled: true,
-            telegram: { enabled: true, bot_token: savedToken },
+            telegram: { enabled: true, bot_token: savedToken, mirror_responses: false },
           };
           setChannelCfg(restored);
         }

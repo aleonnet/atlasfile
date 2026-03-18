@@ -1,111 +1,152 @@
-# Design do classificador -- fundamentação e benchmarks
+# Design do classificador -- estado atual da 0.7.0
 
-## Arquitetura: cascata com fallback por confiança
+## Contrato operacional
 
-O classificador do AtlasFile opera em 4 camadas sequenciais:
+Na 0.7.0 o classificador principal do AtlasFile e o `bootstrap` deterministico implementado em `backend/app/classification_bootstrap.py`.
 
+O fluxo operacional e:
+
+```text
+1. Detectar document_type
+2. Extrair entidades deterministicas
+3. Classificar business_domain
+4. Derivar topics
+5. Calcular confidence final
+6. Auto-route ou triagem humana
 ```
-1. Routing rules  →  match por path/filename (word boundary)  →  confiança 0.95+
-2. Alias scoring  →  word boundary + sqrt normalization        →  confiança variável
-3. LLM (opcional) →  enriquece/override com guardrails         →  confiança do LLM
-4. Triage humano  →  decisão final para baixa confiança        →  confiança 1.0
+
+O classificador legado continua existindo apenas como baseline de comparacao no benchmark. O LLM nao e classificador primario e fica desabilitado por padrao no `default.json`.
+
+## Arquitetura atual
+
+```mermaid
+flowchart TD
+    A[Arquivo + excerpt] --> B[detect_document_type]
+    B --> C[extract_entities]
+    C --> D[classify_business_domain]
+    D --> E[match_topics]
+    E --> F[confidence final]
+    F --> G{auto_route_min atingido?}
+    G -->|sim| H[02_AREAS/<business_domain>/<document_type>]
+    G -->|nao| I[_TRIAGE_REVIEW/pending]
 ```
 
-Esta arquitetura está alinhada com o padrão cascata da literatura (ver seção de referências abaixo).
+## Eixo 1 -- `document_type`
 
-## Decisões de design
+`detect_document_type()` segue esta ordem:
 
-### Word boundary matching (`\b`)
+1. `extension_confidence_by_extension`
+2. `detection_rules` estruturais
+3. score por aliases + bonus de extensao
+4. fallback por `fallback_priority`
 
-**Problema**: substring match gerava falsos positivos (`"ativo"` casava com `"interativo"`, `"sap"` com `"terapia"`).
+### Sinais usados hoje
 
-**Solução**: regex `\b` com cache de patterns compilados. Helper `_match_normalize` converte underscores e hífens em espaços para que `\b` funcione em nomes compostos (`Contrato_Servicos.pdf`).
+- extensao do arquivo
+- nome do arquivo
+- cabecalho e inicio do excerpt
+- regras `any_of`, `all_of`, `with_any_of`, `exclude_any_of`
 
-**Overhead**: ~32ms/2MB de texto (negligível). Cache em memória de ~50 patterns.
+### Resultado
 
-**Referências**:
-- NUPunkt (legal sentence boundaries): +29-32% precisão com detecção correta de limites vs ferramentas genéricas. [arXiv:2504.04131](https://arxiv.org/html/2504.04131v1)
-- Visualyze Keyword Classifier usa PCRE regex nativamente. [docs.visualyze.ai](https://docs.visualyze.ai/getting-started/rpa-studio/document-ai/document-classifier/types/keyword-classifier)
+O metodo sempre retorna:
 
-### Normalização sqrt (inspirada no Lucene fieldNorm)
+- `document_type`
+- `document_type_confidence`
+- `document_type_reason`
+- `top_document_type_candidates`
 
-**Problema**: `hits / len(aliases)` penalizava linearmente áreas com muitos aliases. `financeiro` (17 aliases, 5 hits) = 0.29 vs `contratos_comunicacao` (9 aliases, 2 hits) = 0.22 -- separação insuficiente.
+## Eixo 2 -- `business_domain`
 
-**Solução**: `min(1.0, hits / sqrt(len(aliases)))`. Com sqrt: `financeiro` = 1.0, `contratos_comunicacao` = 0.67 -- separação clara.
+`classify_business_domain()` usa:
 
-**Referência formal**: Lucene DefaultSimilarity `norm = 1/sqrt(numTerms)` -- [Lucene 4.9 API](https://lucene.apache.org/core/4_9_0/core/org/apache/lucene/search/similarities/DefaultSimilarity.html), [Elastic Guide](https://elastic.co/guide/en/elasticsearch/guide/current/practical-scoring-function.html)
+- hits de aliases no filename
+- hits de aliases no excerpt
+- hits de aliases nas entidades extraidas
+- overlap entre o `document_type` detectado e o lexicon de dominios
 
-### LLM como fallback com guardrails
+Os pesos atuais sao fixos no codigo:
 
-O LLM participa em 3 modos configuráveis:
+- filename: `3`
+- excerpt: `2`
+- entities: `2`
+- document_type: `2`
 
-| Modo | Comportamento |
-|------|---------------|
-| `tag_only` | Enriquece tags, document_type, topics. Não altera area_key. |
-| `review` | Pode divergir da área, mas envia para triagem humana. |
-| `full_override` | Pode alterar area_key se guardrails permitirem. |
+Tambem ha um componente de especificidade do alias para desempate. Se nenhum dominio pontuar, o metodo faz best-effort com base no `document_type` ou na ordem configurada no profile.
 
-Guardrails: confiança mínima para override, exigir explicação, limite de alterações de área.
+### Resultado
 
-## Benchmarks comparativos
+O metodo sempre retorna:
 
-### Abordagens de classificação documental em produção
+- `business_domain`
+- `business_domain_confidence`
+- `business_domain_reason`
+- `top_business_domain_candidates`
 
-| Ferramenta | Método | Stack | Resultado |
-|-----------|--------|-------|-----------|
-| **Paperless-ngx** | `CountVectorizer(ngram_range=(1,2))` + `MLPClassifier` (scikit-learn) | Neural network treinada nos docs existentes. Retrain automático. | Referência open-source mais usada (37k stars). Exige massa de treinamento. |
-| **Visualyze** | Keywords/regex PCRE por classe, inclusão e exclusão | Rule-based determinístico | Preciso para domínios com vocabulário definido. Word boundary nativo. |
-| **M-Files Extension Kit** | Regras condicionais (trigger + condição + ação) + ML opcional | Enterprise DMS | Padrão: regras como 1a camada, AI como enriquecimento. |
-| **Alfresco Intelligence Services** | Folder rules + Amazon AI renditions | Enterprise DMS + cloud AI | Layout detection via AI, routing via regras de pasta. |
-| **CLARA (OpenReview 2025)** | LLM para condições + engine de regras determinística | Híbrido neuro-simbólico | Melhor interpretabilidade e robustez vs LLM puro. |
+## Eixo 3 -- entidades e topics
 
-**Fontes:**
-- Paperless-ngx: [classifier.py](https://git.labexposed.com/lgcosta/paperless-ngx/src/commit/83734c3bee86d1fb99853afa8498b138c07f91c2/src/documents/classifier.py)
-- Visualyze: [docs.visualyze.ai](https://docs.visualyze.ai/getting-started/rpa-studio/document-ai/document-classifier/types/keyword-classifier)
-- M-Files: [extensionkit.unitfly.com](https://extensionkit.unitfly.com/documentation/how-to-create-rules)
-- Alfresco: [docs.alfresco.com](https://docs.alfresco.com/intelligence-services/latest/using/)
-- CLARA: [OpenReview](https://openreview.net/forum?id=eAW6yuszK7)
+`extract_entities()` faz extracao deterministica em duas camadas:
 
-### Scoring e normalização
+1. regexes basicas para `cnpj`, `email`, `contrato` e `valor`
+2. `entity_catalog` do profile, quando preenchido
 
-| Abordagem | Resultado | Referência |
-|-----------|-----------|------------|
-| BM25 (Elasticsearch/Lucene) | Saturação via k1: 1o hit = 0.92, 5 hits = 2.73, 100 hits = 3.17 | [Elastic Blog](https://elastic.co/blog/practical-bm25-part-2-the-bm25-algorithm-and-its-variables) |
-| Lucene fieldNorm | `norm = 1.0 / sqrt(numTerms)` -- penalização sub-linear | [Lucene API](https://lucene.apache.org/core/4_9_0/core/org/apache/lucene/search/similarities/DefaultSimilarity.html) |
-| XGBoost + TF-IDF (27k docs) | **86% F1** | [Procycons 2025](https://procycons.com/en/blogs/long-document-classification-benchmark-2025/) |
-| Logistic Regression + TF-IDF | **79% F1** (treino <20s) | [Procycons 2025](https://procycons.com/en/blogs/long-document-classification-benchmark-2025/) |
-| BERT-base (27k docs) | **82% F1** (23min, 2GB GPU) | [Procycons 2025](https://procycons.com/en/blogs/long-document-classification-benchmark-2025/) |
-| LLM embeddings vs TF-IDF | LLM supera TF-IDF em 12.7% em média | [MachineLearningMastery](https://machinelearningmastery.com/llm-embeddings-vs-tf-idf-vs-bag-of-words-which-works-better-in-scikit-learn/) |
+Depois disso, `match_topics()` roda sobre filename + excerpt usando `config/topics_v1.yaml`.
 
-### Sistemas cascata com fallback
+## Confidence final e triagem
 
-| Sistema | Resultado | Referência |
-|---------|-----------|------------|
-| "Fail Fast, or Ask" | Erro cai de 3% para <1%, latência -40%, custo -50% | [arXiv:2507.14406](https://arxiv.org/abs/2507.14406) |
-| Cascaded LLM Frameworks | Double-threshold policy (reject / accept / escalate) supera single-model | [arXiv:2602.15391](https://arxiv.org/abs/2602.15391) |
+`classify_bootstrap()` define a confidence geral como:
 
-## AtlasFile vs Paperless-ngx
+```text
+min(document_type_confidence, business_domain_confidence)
+```
 
-| Aspecto | AtlasFile | Paperless-ngx |
-|---------|-----------|---------------|
-| **Classificação** | Rule-based (routing + aliases) + LLM opcional | ML (CountVectorizer + MLPClassifier) + matching modes |
-| **Treinamento** | Zero -- funciona day-1 com regras predefinidas | Precisa de massa de docs para treinar |
-| **Flexibilidade** | Regras editáveis pelo usuário | Aprende padrões automaticamente |
-| **LLM** | Integrado com guardrails (3 modos) | Sem LLM nativo |
-| **Domínio** | M&A / carve-out (vocabulário especializado) | Documentos pessoais/genéricos |
+O gate operacional usa `classification.confidence_thresholds`:
 
-**Veredicto**: AtlasFile opera em domínio especializado sem massa de treinamento no dia zero, onde controle e auditabilidade são críticos. A abordagem rule-based é correta para o usecase.
+- `auto_route_min`: vai para `02_AREAS/<business_domain>/<document_type>/`
+- abaixo do gate: vai para `_TRIAGE_REVIEW/pending`
 
-## AtlasFile vs Docling
+Ou seja: o sistema sempre sugere um `business_domain` e um `document_type`, mas baixa confianca continua indo para triagem.
 
-| Aspecto | AtlasFile (extrator atual) | Docling |
-|---------|---------------------------|---------|
-| **Função** | Extrai texto de PDF/DOCX/XLSX/PPTX/MSG/RAR/ZIP | Converte documentos em representação estruturada |
-| **Acurácia** | pypdf (text layer), XML direto para DOCX | 97.9% em tabelas complexas |
-| **Velocidade** | Rápido (leitura direta sem modelo) | 137s no 1o PDF (CPU), 5s subsequentes |
-| **Recursos** | ~50MB deps | 1.74GB (CPU) a 9.74GB (GPU) |
-| **Docker** | Container atual ~500MB total | Adicionaria 1.7-9.7GB |
+## Papel do LLM
 
-**Veredicto**: Docling é um extrator/parser, não classificador. Não substitui o classificador. Trade-offs de recurso (1.7GB+, 137s 1o processamento) não justificam para o usecase atual. Considerar no futuro se qualidade de extração de tabelas se tornar gargalo.
+O schema ainda suporta `tag_only`, `review` e `full_override`, mas o contrato da 0.7.0 e:
 
-**Fontes**: [shekhargulati.com](https://shekhargulati.com/2025/02/05/reducing-size-of-docling-pytorch-docker-image/), [Procycons PDF Extraction Benchmark 2025](https://procycons.com/en/blogs/pdf-data-extraction-benchmark/)
+- `llm_policy.enabled = false` no template default
+- LLM nao substitui o bootstrap
+- quando habilitado, o LLM atua como enriquecedor ou revisor
+- custo/uso do LLM de classificacao, quando existir, vai para `atlasfile_classification_usage`
+
+## Benchmark e promocao de modelo
+
+O script oficial e `backend/scripts/benchmark_classification.py`.
+
+Modos suportados hoje:
+
+- `baseline`: classificador legado, apenas para referencia
+- `bootstrap`: classificador operacional atual
+- `sparse_logreg`: candidato supervisionado
+- `sparse_linear_svc`: candidato supervisionado
+- `all`: executa todos os modos acima
+
+Gates do benchmark:
+
+- `validation_set` rotulado em `config/validation_set`
+- `training_pool` disjunto em `config/training_pool`
+- checagem de integridade por overlap entre datasets
+
+Promocao de modelo supervisionado nao e automatica. O fluxo correto e:
+
+1. revisar `validation_set`
+2. rodar benchmark
+3. comparar com o bootstrap
+4. promover explicitamente apenas se houver ganho verificado
+
+## O que este documento substitui
+
+Este documento substitui o desenho antigo de:
+
+- `routing_rules -> alias scoring -> LLM override` como fluxo principal
+- `area_key` como taxonomia primaria
+- `document_type` como campo dependente do LLM
+
+Na 0.7.0, o contrato real e `business_domain + document_type` com bootstrap deterministico como baseline operacional.

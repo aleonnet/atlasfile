@@ -10,6 +10,7 @@ import {
   fetchSuggestions,
   getFileDownloadUrl,
   planProjectLayout,
+  sendChatMessage,
   searchDocuments,
   updateProjectProfile,
   validateProjectProfile
@@ -196,6 +197,26 @@ describe("fetchSuggestions", () => {
   });
 });
 
+describe("sendChatMessage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("includes project_id when provided", async () => {
+    let capturedBody = "";
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      void input;
+      capturedBody = String(init?.body ?? "");
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ content: "ok", tool_calls_used: [] })
+      } as Response);
+    });
+    await sendChatMessage([{ role: "user", content: "buscar documento" }], { projectId: "proj1" });
+    expect(capturedBody).toContain('"project_id":"proj1"');
+  });
+});
+
 describe("fetchReconcileStatus", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -234,10 +255,11 @@ describe("profile/layout api", () => {
       mode: "para_jd",
       roots: { projects: "01_PROJECTS", areas: "02_AREAS", resources: "03_RESOURCES", archive: "04_ARCHIVE" },
       areas_root: "02_AREAS",
-      area_folders: [{ area_key: "juridica", folder: "02_juridica" }]
+      business_domain_folders: [{ business_domain: "juridica", folder: "02_juridica" }]
     },
     classification: {
-      work_areas: [{ key: "juridica", aliases: ["juridico"] }],
+      business_domains: [{ key: "juridica", label: "Jurídica", aliases: ["juridico"] }],
+      document_types: [{ key: "relatorio", label: "Relatório", folder: "relatorio", aliases: ["relatorio"], extensions: [".pdf"] }],
       routing_rules: [],
       confidence_thresholds: { auto_route_min: 0.85, triage_min: 0.5 },
       llm_policy: {}

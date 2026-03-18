@@ -2,9 +2,9 @@
   "template_meta": {
     "slug": "default",
     "name": "M&A / Carve-out",
-    "description": "Template padrão para projetos de M&A e carve-out com 9 áreas pré-definidas cobrindo societário, jurídico, ativos, financeiro, contratos, pessoas, sistemas, processos e entregáveis.",
+    "description": "Template padrão para projetos de M&A e carve-out com taxonomia baseada em business_domain e document_type, mantendo raízes PARA e bootstrap mínimo para cold start.",
     "created_at": "2026-03-05T00:00:00+00:00",
-    "updated_at": "2026-03-05T00:00:00+00:00"
+    "updated_at": "2026-03-16T00:00:00+00:00"
   },
   "profile_version": 2,
   "project_id": "__PROJECT_ID__",
@@ -27,283 +27,51 @@
       "archive": "04_ARCHIVE"
     },
     "areas_root": "02_AREAS",
-    "area_folders": [
-      {
-        "area_key": "societario_fiscal",
-        "folder": "01_societario_fiscal"
-      },
-      {
-        "area_key": "juridica",
-        "folder": "02_juridica"
-      },
-      {
-        "area_key": "ativos",
-        "folder": "03_ativos"
-      },
-      {
-        "area_key": "financeiro",
-        "folder": "04_financeiro"
-      },
-      {
-        "area_key": "contratos_comunicacao",
-        "folder": "05_contratos_comunicacao"
-      },
-      {
-        "area_key": "pessoas",
-        "folder": "06_pessoas"
-      },
-      {
-        "area_key": "sistemas_migracao",
-        "folder": "07_sistemas_migracao"
-      },
-      {
-        "area_key": "processos_tsa",
-        "folder": "08_processos_tsa"
-      },
-      {
-        "area_key": "entregaveis",
-        "folder": "09_entregaveis"
-      }
+    "business_domain_folders": [
+      { "business_domain": "societario", "folder": "societario" },
+      { "business_domain": "juridico", "folder": "juridico" },
+      { "business_domain": "ativos", "folder": "ativos" },
+      { "business_domain": "financeiro", "folder": "financeiro" },
+      { "business_domain": "fiscal", "folder": "fiscal" },
+      { "business_domain": "pessoas", "folder": "pessoas" },
+      { "business_domain": "ti", "folder": "ti" },
+      { "business_domain": "operacoes", "folder": "operacoes" },
+      { "business_domain": "regulatorio", "folder": "regulatorio" },
+      { "business_domain": "compliance", "folder": "compliance" },
+      { "business_domain": "suprimentos", "folder": "suprimentos" }
     ]
   },
   "classification": {
-    "work_areas": [
-      {
-        "key": "societario_fiscal",
-        "jd_number": 1,
-        "aliases": [
-          "societario",
-          "fiscal",
-          "cnpj",
-          "filiais",
-          "incorporacao",
-          "estabelecimentos",
-          "imposto",
-          "tributo",
-          "aliquota",
-          "regime",
-          "enquadramento"
-        ]
-      },
-      {
-        "key": "juridica",
-        "jd_number": 2,
-        "aliases": [
-          "juridico",
-          "passivo",
-          "contingencia",
-          "parecer",
-          "juridica",
-          "litigio",
-          "sentenca",
-          "agravo",
-          "mandado",
-          "procuracao"
-        ]
-      },
-      {
-        "key": "ativos",
-        "jd_number": 3,
-        "aliases": [
-          "ativo",
-          "imobilizado",
-          "cmdb",
-          "segregacao_ativos",
-          "doacao",
-          "patrimonio",
-          "inventario_ativos",
-          "depreciacao",
-          "cessao"
-        ]
-      },
-      {
-        "key": "financeiro",
-        "jd_number": 4,
-        "aliases": [
-          "carveout",
-          "contabil",
-          "seguros",
-          "garantias",
-          "fianca",
-          "receita",
-          "ebitda",
-          "custos",
-          "margem",
-          "resultado",
-          "dre",
-          "demonstrativo",
-          "orcamento",
-          "balanco",
-          "fluxo_caixa",
-          "budget",
-          "pnl"
-        ]
-      },
-      {
-        "key": "contratos_comunicacao",
-        "jd_number": 5,
-        "aliases": [
-          "contrato",
-          "fornecedor",
-          "comunicacao",
-          "preambulo",
-          "eml",
-          "aditivo",
-          "distrato",
-          "sla",
-          "nda"
-        ]
-      },
-      {
-        "key": "pessoas",
-        "jd_number": 6,
-        "aliases": [
-          "colaborador",
-          "rh",
-          "beneficio",
-          "hc",
-          "organograma",
-          "gerencia",
-          "diretoria",
-          "folha",
-          "ferias",
-          "rescisao",
-          "admissao",
-          "treinamento",
-          "headcount"
-        ]
-      },
-      {
-        "key": "sistemas_migracao",
-        "jd_number": 7,
-        "aliases": [
-          "sistema",
-          "plataforma",
-          "migracao_sistemas",
-          "sap",
-          "integracao",
-          "banco_dados",
-          "cloud",
-          "infra"
-        ]
-      },
-      {
-        "key": "processos_tsa",
-        "jd_number": 8,
-        "aliases": [
-          "tsa",
-          "sox",
-          "processo_operacional",
-          "atendimento",
-          "pos-closing",
-          "procedimento",
-          "fluxograma",
-          "manual_operacional",
-          "instrucao"
-        ]
-      },
-      {
-        "key": "entregaveis",
-        "jd_number": 9,
-        "aliases": [
-          "output",
-          "visao_consolidada",
-          "framework_3ps",
-          "metricas",
-          "escopo",
-          "milestone",
-          "cronograma",
-          "baseline",
-          "workstream"
-        ]
-      }
+    "business_domains": [
+      { "key": "societario", "label": "Societário", "aliases": ["societario", "fato relevante", "spe", "upi", "acoes", "capital social", "governanca societaria", "compra e venda de acoes", "estrutura societaria"], "primary_scope": "Estrutura societária, SPE/UPI, atos societários, governança societária e relação com acionistas.", "subfunction_topics": ["ma", "carve_out", "board", "cap_table", "governanca", "fato_relevante", "ata_reuniao", "spe"] },
+      { "key": "juridico", "label": "Jurídico", "aliases": ["juridico", "juridica", "contrato", "aditivo", "edital", "parecer", "litigio", "procuracao", "recuperacao judicial", "falencia", "lei 11101", "clausula", "contencioso"], "primary_scope": "Contratos sob ótica legal, pareceres, contencioso, procurações e temas legais de recuperação judicial e privacidade.", "subfunction_topics": ["parecer", "procuracao", "contencioso", "falencia_rj", "privacidade_lgpd", "docusign", "spa", "nda"] },
+      { "key": "ativos", "label": "Ativos", "aliases": ["ativos", "ativo", "imobilizado", "cmdb", "inventario", "depreciacao", "item de infraestrutura", "carga de ativos", "base de ativos"], "primary_scope": "Inventário, imobilizado, patrimônio, base de ativos e segregação ou transferência de ativos.", "subfunction_topics": ["ativos_imobilizado", "cmdb", "inventario", "depreciacao", "segregacao", "rede_infra"] },
+      { "key": "financeiro", "label": "Financeiro", "aliases": ["financeiro", "contabilidade", "controladoria", "tesouraria", "faturamento", "contas a pagar", "contas a receber", "fluxo de caixa", "conciliacao", "orcamento", "conta vinculada"], "primary_scope": "FP&A, controladoria, contabilidade gerencial, tesouraria, faturamento, AP/AR, cobrança, caixa e orçamento.", "subfunction_topics": ["contabilidade", "controladoria", "tesouraria", "contas_a_pagar", "contas_a_receber", "faturamento", "fluxo_caixa", "precificacao", "orcamento"] },
+      { "key": "fiscal", "label": "Fiscal", "aliases": ["fiscal", "tributario", "icms", "iss", "pis", "cofins", "nfs-e", "nota fiscal", "retencao", "sped"], "primary_scope": "Tributos, retenções, obrigações acessórias, notas fiscais e apuração tributária.", "subfunction_topics": ["fiscal_tributos", "icms", "iss", "pis_cofins", "retencoes", "nfe", "nfse", "sped"] },
+      { "key": "pessoas", "label": "Pessoas", "aliases": ["pessoas", "rh", "headcount", "folha", "sindicato", "organograma", "recrutamento", "beneficios", "trabalhista"], "primary_scope": "Recrutamento, folha, benefícios, organograma, relações trabalhistas, performance e treinamento.", "subfunction_topics": ["estrutura_organizacional", "folha_pagamento", "rh_beneficios", "recrutamento", "trabalhista", "treinamento"] },
+      { "key": "ti", "label": "TI", "aliases": ["ti", "tecnologia", "sap", "sap business one", "integracao", "infra", "migracao", "sistema", "software", "erp", "business one", "servicos ti", "servicos de ti"], "primary_scope": "Sistemas corporativos, ERP, integrações, infraestrutura, cloud, arquitetura técnica e implantação tecnológica.", "subfunction_topics": ["sap", "sistemas_integracoes", "migracao", "arquitetura", "infra_ti", "api", "cloud"] },
+      { "key": "operacoes", "label": "Operações", "aliases": ["operacoes", "operacional", "milestone", "cronograma", "workstream", "tsa", "kickoff", "planejamento", "status report", "implantacao", "cutover", "frentes de trabalho", "procedimentos operacionais", "servicos administrativos", "compartilhamento de sites", "compartilhamento de servicos administrativos", "contrato de compartilhamento", "transitional services agreement"], "primary_scope": "Implantação, PMO, transição, TSA, runbooks, suporte à operação e fluxos operacionais.", "subfunction_topics": ["tsa", "cronograma", "status_report", "riscos", "escopo", "runbook", "cutover", "implantacao"] },
+      { "key": "regulatorio", "label": "Regulatório", "aliases": ["regulatorio", "anatel", "cvm", "regulacao", "cade", "anuencia previa", "licenca", "obrigacao regulatoria"], "primary_scope": "Temas com Anatel, CVM, Cade e demais condicionantes regulatórias.", "subfunction_topics": ["anatel", "cvm", "cade", "anuencia_previa", "licencas", "obrigacoes_regulatorias"] },
+      { "key": "compliance", "label": "Compliance", "aliases": ["compliance", "lgpd", "privacidade", "anticorrupcao", "auditoria", "codigo de conduta", "sox", "controles internos"], "primary_scope": "Controles internos, auditoria, ética, anticorrupção, due diligence de terceiros e políticas.", "subfunction_topics": ["sox_controles", "compliance", "auditoria", "anticorrupcao", "codigo_conduta", "risk_register"] },
+      { "key": "suprimentos", "label": "Suprimentos", "aliases": ["suprimentos", "compras", "procurement", "sourcing", "vendor", "fornecedor", "fornecedores", "rfp", "rfq"], "primary_scope": "Procurement, strategic sourcing, gestão de fornecedores, concorrências, cotações e governança de compras.", "subfunction_topics": ["fornecedores", "compras_procurement", "rfp_rfq"] }
     ],
-    "routing_rules": [
-      {
-        "when_path_contains": [
-          "output/"
-        ],
-        "route_to": "entregaveis",
-        "confidence": 0.98
-      },
-      {
-        "when_filename_contains": [
-          "contrato",
-          "fornecedor",
-          "preambulo"
-        ],
-        "route_to": "contratos_comunicacao",
-        "confidence": 0.9
-      },
-      {
-        "when_filename_contains": [
-          "filiais",
-          "cnpj",
-          "estabelecimentos"
-        ],
-        "route_to": "societario_fiscal",
-        "confidence": 0.9
-      },
-      {
-        "when_filename_contains": [
-          "cmdb",
-          "ativo",
-          "imobilizado",
-          "doacao"
-        ],
-        "route_to": "ativos",
-        "confidence": 0.9
-      },
-      {
-        "when_filename_contains": [
-          "colaboradores",
-          "organograma",
-          "gh_"
-        ],
-        "route_to": "pessoas",
-        "confidence": 0.9
-      },
-      {
-        "when_filename_contains": [
-          "parecer",
-          "litigio",
-          "mandado",
-          "procuracao"
-        ],
-        "route_to": "juridica",
-        "confidence": 0.9
-      },
-      {
-        "when_filename_contains": [
-          "dre",
-          "ebitda",
-          "budget",
-          "orcamento",
-          "balanco",
-          "pnl"
-        ],
-        "route_to": "financeiro",
-        "confidence": 0.9
-      },
-      {
-        "when_filename_contains": [
-          "migracao",
-          "sap",
-          "integracao"
-        ],
-        "route_to": "sistemas_migracao",
-        "confidence": 0.9
-      },
-      {
-        "when_filename_contains": [
-          "tsa",
-          "sox",
-          "fluxograma"
-        ],
-        "route_to": "processos_tsa",
-        "confidence": 0.9
-      }
+    "document_types": [
+      { "key": "contrato", "label": "Contrato", "aliases": ["contrato", "agreement", "acordo", "contrato de", "compra e venda de acoes", "share purchase agreement", "contrato de compartilhamento", "mla", "tsa"], "extensions": [".pdf", ".docx"], "folder": "contrato", "fallback_priority": 80, "detection_rules": [{ "any_of": ["contrato de", "share purchase agreement", "compra e venda de acoes", "contrato de compartilhamento", "servicos administrativos"], "confidence": 0.96, "reason": "structural_header" }, { "all_of": ["contrato", "contratante"], "confidence": 0.96, "reason": "structural_header" }, { "all_of": ["contrato", "contratada"], "confidence": 0.96, "reason": "structural_header" }] },
+      { "key": "aditivo", "label": "Aditivo", "aliases": ["aditivo", "termo aditivo", "aditamento", "1o aditamento", "1º aditivo"], "extensions": [".pdf", ".docx"], "folder": "aditivo", "fallback_priority": 70, "detection_rules": [{ "any_of": ["termo aditivo", "aditamento", "1o aditamento", "1º aditivo"], "confidence": 0.97, "reason": "structural_header" }] },
+      { "key": "fato_relevante", "label": "Fato relevante", "aliases": ["fato relevante", "companhia aberta"], "extensions": [".pdf"], "folder": "fato_relevante", "fallback_priority": 30, "detection_rules": [{ "any_of": ["fato relevante"], "confidence": 0.98, "reason": "structural_header" }] },
+      { "key": "parecer", "label": "Parecer", "aliases": ["parecer", "nota juridica"], "extensions": [".pdf", ".docx"], "folder": "parecer", "fallback_priority": 40, "detection_rules": [{ "any_of": ["parecer", "nota juridica", "nota jurídica"], "confidence": 0.96, "reason": "structural_header" }] },
+      { "key": "procuracao", "label": "Procuração", "aliases": ["procuracao", "procuração"], "extensions": [".pdf", ".docx"], "folder": "procuracao", "fallback_priority": 50, "detection_rules": [{ "any_of": ["procuracao", "procuração"], "confidence": 0.97, "reason": "structural_header" }] },
+      { "key": "ata", "label": "Ata", "aliases": ["ata", "ata de reuniao"], "extensions": [".pdf", ".docx"], "folder": "ata", "fallback_priority": 60, "detection_rules": [{ "any_of": ["ata", "ata de reuniao", "ata de reunião"], "confidence": 0.94, "reason": "structural_header" }] },
+      { "key": "relatorio", "label": "Relatório", "aliases": ["relatorio", "relatório", "report"], "extensions": [".pdf", ".docx"], "folder": "relatorio", "fallback_priority": 10, "detection_rules": [{ "any_of": ["relatorio", "relatório", "report"], "confidence": 0.9, "reason": "structural_header" }] },
+      { "key": "especificacao", "label": "Especificação", "aliases": ["especificacao", "especificação", "requisito", "especificacao tecnica", "especificação técnica"], "extensions": [".pdf", ".docx"], "folder": "especificacao", "fallback_priority": 20, "detection_rules": [{ "any_of": ["especificacao", "especificação", "requisito"], "confidence": 0.93, "reason": "structural_header" }] },
+      { "key": "edital", "label": "Edital", "aliases": ["edital", "procedimento competitivo", "request for proposal", "request for quotation", "rfp", "rfq"], "extensions": [".pdf", ".docx"], "folder": "edital", "fallback_priority": 35, "detection_rules": [{ "any_of": ["edital", "procedimento competitivo"], "confidence": 0.96, "reason": "structural_header" }] },
+      { "key": "plano", "label": "Plano", "aliases": ["plano", "project plan", "gantt", "wbs", "work breakdown structure"], "extensions": [".pdf", ".docx"], "folder": "plano", "fallback_priority": 25, "detection_rules": [{ "any_of": ["plano", "project plan", "gantt", "wbs", "work breakdown structure"], "confidence": 0.94, "reason": "structural_header" }, { "all_of": ["projeto", "cronograma"], "confidence": 0.88, "reason": "structural_header" }] },
+      { "key": "apresentacao", "label": "Apresentação", "aliases": ["apresentacao", "apresentação", "deck", "slides", "slide", "kickoff", "milestones", "planejamento preliminar"], "extensions": [".pptx"], "folder": "apresentacao", "extension_confidence_by_extension": { ".pptx": 0.98 }, "fallback_priority": 15, "detection_rules": [{ "extensions": [".pdf"], "any_of": ["slide", "slides"], "with_any_of": ["kickoff", "milestones", "planejamento", "sumario", "sumário"], "confidence": 0.95, "reason": "structural_slide_pdf" }] },
+      { "key": "planilha", "label": "Planilha", "aliases": ["planilha", "xlsx", "csv"], "extensions": [".xls", ".xlsx", ".xlsm", ".xltx", ".xltm", ".csv"], "folder": "planilha", "extension_confidence_by_extension": { ".xlsx": 0.98, ".xlsm": 0.98, ".xltx": 0.98, ".xltm": 0.98, ".csv": 0.9 }, "fallback_priority": 15 },
+      { "key": "email", "label": "E-mail", "aliases": ["email", "e-mail", "subject:", "assunto:"], "extensions": [".msg", ".eml"], "folder": "email", "extension_confidence_by_extension": { ".msg": 0.98, ".eml": 0.98 }, "fallback_priority": 15 },
+      { "key": "nota_fiscal", "label": "Nota fiscal", "aliases": ["nota fiscal", "nfse", "nfs-e"], "extensions": [".pdf", ".xml"], "folder": "nota_fiscal", "extension_confidence_by_extension": { ".xml": 0.98 }, "fallback_priority": 18, "detection_rules": [{ "any_of": ["nota fiscal", "nfse", "nfs-e"], "confidence": 0.97, "reason": "structural_header" }] }
     ],
+    "entity_catalog": [],
     "confidence_thresholds": {
       "auto_route_min": 0.85,
       "triage_min": 0.5
@@ -330,7 +98,7 @@
     "_available_fields": {
       "date": "Data de ingestão (formato definido em date_format)",
       "project": "ID do projeto (normalizado, lowercase, sem acentos)",
-      "area": "Área classificada (ex: financeiro, juridica)",
+      "area": "Domínio classificado (ex: financeiro, juridico)",
       "original_name": "Nome original do arquivo sem extensão (preservado intacto)",
       "document_type": "Tipo classificado (ex: contrato, relatorio, ata)"
     },

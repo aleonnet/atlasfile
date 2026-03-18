@@ -5,7 +5,7 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from opensearchpy import OpenSearch
@@ -16,7 +16,9 @@ from app.reconcile import (
     _project_scope_query,
     _try_migrate_old_format,
     reconcile_project_index,
+    sync_search_index_for_project,
 )
+from app.utils import sha256_file
 
 
 def _minimal_profile(project_root: Path | None = None) -> dict[str, Any]:
@@ -44,6 +46,43 @@ def _minimal_profile(project_root: Path | None = None) -> dict[str, Any]:
         },
         "paths": {
             "inbox": "_INBOX_DROP",
+            "triage": {
+                "pending": "_TRIAGE_REVIEW/pending",
+                "resolved": "_TRIAGE_REVIEW/resolved",
+                "rejected": "_TRIAGE_REVIEW/rejected",
+            },
+        },
+        "naming": {
+            "canonical_pattern": "{date}__{project}__{original_name}",
+            "date_format": "%Y%m%d",
+        },
+    }
+
+
+def _two_level_profile() -> dict[str, Any]:
+    return {
+        "project_id": "test_proj",
+        "business_domains": [
+            {"key": "financeiro", "folder": "financeiro"},
+        ],
+        "classification": {
+            "document_types": [
+                {"key": "contrato", "folder": "contrato"},
+            ],
+        },
+        "layout": {
+            "roots": {
+                "projects": "01_PROJECTS",
+                "areas": "02_AREAS",
+                "resources": "03_RESOURCES",
+                "archive": "04_ARCHIVE",
+            },
+            "areas_root": "02_AREAS",
+            "business_domain_folders": [
+                {"business_domain": "financeiro", "folder": "financeiro"},
+            ],
+        },
+        "paths": {
             "triage": {
                 "pending": "_TRIAGE_REVIEW/pending",
                 "resolved": "_TRIAGE_REVIEW/resolved",
@@ -375,6 +414,58 @@ def test_reconcile_mixed_patterns_correct_original_filename(tmp_path: Path) -> N
     f2 = by_canonical["20260303__contrato_final__v01.pdf"]
     assert f2["original_filename"] == "contrato_final.pdf"
     assert f2["naming_pattern"] == "{date}__{original_name}"
+
+
+def test_sync_search_reindexes_same_sha_when_document_type_missing(tmp_path: Path) -> None:
+    profile = _two_level_profile()
+    contract_dir = tmp_path / "02_AREAS" / "financeiro" / "contrato"
+    contract_dir.mkdir(parents=True)
+    file_path = contract_dir / "20260302__test_proj__Contrato TI__v01.pdf"
+    file_path.write_bytes(b"contract")
+
+    (tmp_path / "_INDEX.md").write_text(
+        "\n".join(
+            [
+                "# _INDEX",
+                "",
+                "| doc_id | project_id | area | original_filename | canonical_filename | decision | confidence | path | naming_pattern |",
+                "|---|---|---|---|---|---|---:|---|---|",
+                f"| doc-1 | test_proj | financeiro | Contrato TI.pdf | {file_path.name} | auto | 0.90 | {file_path} | {{date}}__{{project}}__{{original_name}} |",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    current_sha = sha256_file(file_path)
+    client = MagicMock()
+    client.search.return_value = {"hits": {"hits": [{"_id": "doc-1"}]}}
+    client.get.return_value = {
+        "_source": {
+            "sha256": current_sha,
+            "project_id": "test_proj",
+            "business_domain": "financeiro",
+            "document_type": "",
+        }
+    }
+
+    with (
+        patch("app.reconcile.ensure_index"),
+        patch("app.reconcile.index_document") as mock_index_document,
+    ):
+        report = sync_search_index_for_project(
+            client,
+            tmp_path,
+            "test_proj",
+            profile=profile,
+        )
+
+    assert report["indexed_docs"] == 1
+    assert report["skipped_docs"] == 0
+    payload = mock_index_document.call_args.args[1]
+    assert payload["business_domain"] == "financeiro"
+    assert payload["document_type"] == "contrato"
+    assert payload["tags"] == ["financeiro", "contrato"]
 
 
 # ── cleanup_orphans flag in run_reconcile ──

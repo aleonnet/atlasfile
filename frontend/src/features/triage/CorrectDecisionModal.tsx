@@ -1,15 +1,15 @@
-import { useState } from "react";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
-import type { ProjectArea, TriageItem } from "../../types";
-
-type InputLikeEvent = { target: { value: string } };
+import type { ProjectArea, ProjectDocumentType, TriageItem } from "../../types";
 
 type Props = {
   item: TriageItem | null;
   submitting: boolean;
-  areaValue: string;
-  areaOptions: ProjectArea[];
-  onChangeArea: (value: string) => void;
+  businessDomainValue: string;
+  businessDomainOptions: ProjectArea[];
+  documentTypeValue: string;
+  documentTypeOptions: ProjectDocumentType[];
+  onChangeBusinessDomain: (value: string) => void;
+  onChangeDocumentType: (value: string) => void;
   onCancel: () => void;
   onSubmit: () => void;
 };
@@ -17,29 +17,33 @@ type Props = {
 export function CorrectDecisionModal({
   item,
   submitting,
-  areaValue,
-  areaOptions,
-  onChangeArea,
+  businessDomainValue,
+  businessDomainOptions,
+  documentTypeValue,
+  documentTypeOptions,
+  onChangeBusinessDomain,
+  onChangeDocumentType,
   onCancel,
   onSubmit
 }: Props) {
   useEscapeKey(item ? onCancel : null);
-  const [newAreaKey, setNewAreaKey] = useState("");
 
   if (!item) return null;
 
-  const isNewArea = newAreaKey.trim().length > 0;
-  const effectiveArea = isNewArea ? newAreaKey.trim() : areaValue;
-  const existingKeys = new Set(areaOptions.map((a) => a.key));
-  const willCreate = isNewArea && !existingKeys.has(newAreaKey.trim());
+  const existingDomains = new Set(businessDomainOptions.map((a) => a.key));
+  const existingDocumentTypes = new Set(documentTypeOptions.map((a) => a.key));
+  const suggestedBusinessDomain = (item.suggested_business_domain || item.suggested_area || "").trim();
+  const suggestedDocumentType = (item.suggested_document_type || "").trim();
+  const llmProposedBusinessDomain = (item.llm_proposed_area || "").trim();
+  const suggestedBusinessDomainMissing = !!suggestedBusinessDomain && !existingDomains.has(suggestedBusinessDomain);
+  const suggestedDocumentTypeMissing = !!suggestedDocumentType && !existingDocumentTypes.has(suggestedDocumentType);
+  const llmProposedBusinessDomainMissing =
+    !!llmProposedBusinessDomain &&
+    llmProposedBusinessDomain !== suggestedBusinessDomain &&
+    !existingDomains.has(llmProposedBusinessDomain);
 
   function handleSubmit() {
-    if (isNewArea) {
-      onChangeArea(newAreaKey.trim());
-      setTimeout(onSubmit, 0);
-    } else {
-      onSubmit();
-    }
+    onSubmit();
   }
 
   return (
@@ -57,50 +61,75 @@ export function CorrectDecisionModal({
             )}
             <p>LLM: <em>{item.llm_explanation}</em></p>
             {item.llm_proposed_area && (
-              <p>Área proposta: <code>{item.llm_proposed_area}</code></p>
+              <p>Domínio proposto: <code>{item.llm_proposed_area}</code></p>
             )}
           </div>
         )}
 
-        <label htmlFor="area-select">Área destino</label>
+        {suggestedBusinessDomainMissing && (
+          <p className="modal-new-area-warning">
+            A sugestão de domínio <code>{suggestedBusinessDomain}</code> não existe na taxonomia do projeto.
+            Selecione um domínio já configurado.
+          </p>
+        )}
+
+        {llmProposedBusinessDomainMissing && (
+          <p className="modal-new-area-warning">
+            O domínio proposto pelo LLM <code>{llmProposedBusinessDomain}</code> não está configurado no projeto.
+            Escolha um domínio válido do catálogo.
+          </p>
+        )}
+
+        {suggestedDocumentTypeMissing && (
+          <p className="modal-new-area-warning">
+            O tipo documental sugerido <code>{suggestedDocumentType}</code> não existe no profile atual.
+            Selecione um tipo já configurado.
+          </p>
+        )}
+
+        <label htmlFor="business-domain-select">Domínio destino</label>
         <select
-          id="area-select"
-          value={isNewArea ? "" : areaValue}
-          onChange={(e: InputLikeEvent) => {
-            onChangeArea(e.target.value);
-            setNewAreaKey("");
-          }}
-          disabled={submitting || isNewArea}
+          id="business-domain-select"
+          value={businessDomainValue}
+          onChange={(e) => onChangeBusinessDomain(e.target.value)}
+          disabled={submitting}
         >
-          {areaOptions.map((area) => (
+          {businessDomainOptions.map((area) => (
             <option key={area.key} value={area.key}>
               {area.label} ({area.key})
             </option>
           ))}
         </select>
 
-        <div className="modal-new-area">
-          <label htmlFor="new-area-input">— ou criar nova área —</label>
-          <input
-            id="new-area-input"
-            type="text"
-            placeholder="ex: financeiro_relatorios"
-            value={newAreaKey}
-            onChange={(e) => setNewAreaKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-            disabled={submitting}
-          />
-          {willCreate && (
-            <p className="modal-new-area-warning">
-              Esta área será criada automaticamente no profile e no disco.
-            </p>
-          )}
-        </div>
+        <label htmlFor="document-type-select">Tipo documental</label>
+        <select
+          id="document-type-select"
+          value={documentTypeValue}
+          onChange={(e) => onChangeDocumentType(e.target.value)}
+          disabled={submitting}
+        >
+          {documentTypeOptions.map((item) => (
+            <option key={item.key} value={item.key}>
+              {item.label} ({item.key})
+            </option>
+          ))}
+        </select>
 
         <div className="modal-actions">
-          <button className="btn" disabled={submitting} onClick={() => { setNewAreaKey(""); onCancel(); }}>
+          <button
+            className="btn"
+            disabled={submitting}
+            onClick={() => {
+              onCancel();
+            }}
+          >
             Cancelar
           </button>
-          <button className="btn primary" disabled={submitting || !effectiveArea} onClick={handleSubmit}>
+          <button
+            className="btn primary"
+            disabled={submitting || !businessDomainValue || !documentTypeValue}
+            onClick={handleSubmit}
+          >
             {submitting ? "Aprovando..." : "Aprovar e mover"}
           </button>
         </div>

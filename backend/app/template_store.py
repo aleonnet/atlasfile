@@ -7,12 +7,15 @@ Listing merges both; user templates override builtin when slugs collide.
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from pydantic import ValidationError
 
 from .profile_schema_v2 import ProjectProfileV2
 
@@ -42,9 +45,164 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _validate_template_profile(data: dict[str, Any]) -> None:
+    try:
+        ProjectProfileV2.model_validate(data)
+    except ValidationError as e:
+        raise ValueError(f"Template profile inválido: {e}") from e
+
+
+def _baseline_template_profile(slug: str) -> dict[str, Any]:
+    try:
+        path, _source = _resolve_template_path(slug)
+    except FileNotFoundError:
+        path = BUILTIN_DIR / f"{DEFAULT_SLUG}.json"
+    data = _read_json(path)
+    data.pop("template_meta", None)
+    return data
+
+
+def _normalized_string_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    normalized: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if item:
+            normalized.append(item)
+    return normalized
+
+
+def _materialize_work_areas(
+    business_domains: list[dict[str, Any]],
+    existing_work_areas: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    existing_by_key = {
+        str(row.get("key") or "").strip(): row
+        for row in existing_work_areas
+        if str(row.get("key") or "").strip()
+    }
+    materialized: list[dict[str, Any]] = []
+    for index, domain in enumerate(business_domains, start=1):
+        key = str(domain.get("key") or "").strip()
+        if not key:
+            continue
+        existing = existing_by_key.get(key, {})
+        jd_number = domain.get("jd_number", existing.get("jd_number", index))
+        if not isinstance(jd_number, int) or jd_number <= 0:
+            jd_number = index
+        materialized.append(
+            {
+                "key": key,
+                "jd_number": jd_number,
+                "aliases": _normalized_string_list(domain.get("aliases", existing.get("aliases", []))),
+            }
+        )
+    return materialized
+
+
+def _materialize_domain_folders(
+    *,
+    business_domains: list[dict[str, Any]],
+    layout: dict[str, Any],
+) -> list[dict[str, str]]:
+    existing_rows = layout.get("business_domain_folders") or []
+    if not existing_rows:
+        existing_rows = [
+            {
+                "business_domain": row.get("area_key"),
+                "folder": row.get("folder"),
+            }
+            for row in (layout.get("area_folders") or [])
+        ]
+    existing_by_key = {
+        str(row.get("business_domain") or "").strip(): str(row.get("folder") or "").strip()
+        for row in existing_rows
+        if str(row.get("business_domain") or "").strip()
+    }
+    materialized: list[dict[str, str]] = []
+    for domain in business_domains:
+        key = str(domain.get("key") or "").strip()
+        if not key:
+            continue
+        folder = str(
+            domain.get("folder")
+            or existing_by_key.get(key)
+            or key
+        ).strip()
+        materialized.append({"business_domain": key, "folder": folder or key})
+    return materialized
+
+
+def _filter_routing_rules(routing_rules: Any, *, business_domain_keys: set[str]) -> list[dict[str, Any]]:
+    if not isinstance(routing_rules, list):
+        return []
+    filtered: list[dict[str, Any]] = []
+    for row in routing_rules:
+        if not isinstance(row, dict):
+            continue
+        route_to = str(row.get("route_to") or "").strip()
+        if route_to and route_to not in business_domain_keys:
+            continue
+        filtered.append(copy.deepcopy(row))
+    return filtered
+
+
+def _materialize_template_profile(data: dict[str, Any], *, slug: str) -> dict[str, Any]:
+    profile_data = copy.deepcopy(data)
+    profile_data.pop("template_meta", None)
+    baseline = _baseline_template_profile(slug)
+    materialized = copy.deepcopy(baseline)
+
+    for key, value in profile_data.items():
+        if key in {"classification", "layout"}:
+            continue
+        materialized[key] = copy.deepcopy(value)
+
+    classification = copy.deepcopy((baseline.get("classification") or {}))
+    classification.update(copy.deepcopy(profile_data.get("classification") or {}))
+    layout = copy.deepcopy((baseline.get("layout") or {}))
+    layout.update(copy.deepcopy(profile_data.get("layout") or {}))
+
+    business_domains = classification.get("business_domains") or []
+    classification["business_domains"] = copy.deepcopy(business_domains)
+    classification["work_areas"] = _materialize_work_areas(
+        classification["business_domains"],
+        classification.get("work_areas") or (baseline.get("classification") or {}).get("work_areas") or [],
+    )
+
+    domain_folder_rows = _materialize_domain_folders(
+        business_domains=classification["business_domains"],
+        layout=layout,
+    )
+    layout["business_domain_folders"] = domain_folder_rows
+    layout["area_folders"] = [
+        {"area_key": row["business_domain"], "folder": row["folder"]}
+        for row in domain_folder_rows
+    ]
+
+    document_types = classification.get("document_types") or []
+    classification["document_types"] = copy.deepcopy(document_types)
+    business_domain_keys = [
+        str(domain.get("key") or "").strip()
+        for domain in classification["business_domains"]
+        if str(domain.get("key") or "").strip()
+    ]
+    business_domain_key_set = set(business_domain_keys)
+    classification["routing_rules"] = _filter_routing_rules(
+        classification.get("routing_rules"),
+        business_domain_keys=business_domain_key_set,
+    )
+
+    materialized["layout"] = layout
+    materialized["classification"] = classification
+    return ProjectProfileV2.model_validate(materialized).model_dump(mode="json")
+
+
 def _extract_meta(data: dict[str, Any], slug: str, *, source: str = "builtin") -> dict[str, Any]:
     meta = data.get("template_meta", {})
-    areas = data.get("classification", {}).get("work_areas", [])
+    classification = data.get("classification", {})
+    areas = classification.get("business_domains") or []
     return {
         "slug": meta.get("slug", slug),
         "name": meta.get("name", slug),
@@ -101,16 +259,18 @@ def save_template(slug: str, data: dict[str, Any]) -> dict[str, Any]:
     user = _user_dir()
     user.mkdir(parents=True, exist_ok=True)
     now = _utc_now_iso()
+    materialized_profile = _materialize_template_profile(data, slug=slug)
     meta = data.get("template_meta", {})
     meta.setdefault("slug", slug)
     meta.setdefault("name", slug)
     meta.setdefault("description", "")
     meta.setdefault("created_at", now)
     meta["updated_at"] = now
-    data["template_meta"] = meta
+    payload = {**materialized_profile, "template_meta": meta}
+    _validate_template_profile(materialized_profile)
     path = user / f"{slug}.json"
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    return _extract_meta(data, slug, source="user")
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return _extract_meta(payload, slug, source="user")
 
 
 def delete_template(slug: str) -> None:

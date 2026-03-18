@@ -251,7 +251,7 @@ describe("IngestTriageCard", () => {
       expect(screen.getByText("Data / Hora")).toBeInTheDocument();
     });
     expect(screen.getByText("Arquivo")).toBeInTheDocument();
-    expect(screen.getByText("Área / Pasta")).toBeInTheDocument();
+    expect(screen.getByText("Domínio / Tipo")).toBeInTheDocument();
     expect(screen.getByText("Decisão")).toBeInTheDocument();
     expect(screen.getByText("Conf.")).toBeInTheDocument();
     expect(screen.getByText(/Processamentos/i)).toBeInTheDocument();
@@ -329,7 +329,7 @@ describe("IngestTriageCard", () => {
     expect(screen.getByText(/Regra:/)).toBeInTheDocument();
   });
 
-  it("shows LLM context and approve-with-proposed-area button on triage items", async () => {
+  it("shows LLM context on triage items without auto-create shortcut", async () => {
     const triageItems = [
       {
         doc_id: "t2",
@@ -355,6 +355,6 @@ describe("IngestTriageCard", () => {
 
     expect(screen.getByText(/Relatorio ESG sem area existente/i)).toBeInTheDocument();
     expect(screen.getAllByText(/esg_sustentabilidade/i).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/Aprovar: esg_sustentabilidade/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Aprovar: esg_sustentabilidade/i)).not.toBeInTheDocument();
   });
 });

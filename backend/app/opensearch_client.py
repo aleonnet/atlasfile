@@ -22,14 +22,24 @@ def get_client() -> OpenSearch:
     )
 
 
+def _document_index_dynamic_settings() -> dict[str, Any]:
+    return {
+        "number_of_replicas": 0,
+        "highlight.max_analyzed_offset": 10_000_000,
+        "mapping.nested_objects.limit": int(settings.opensearch_nested_objects_limit),
+    }
+
+
 def ensure_index(client: OpenSearch) -> None:
     index_name = settings.opensearch_index
     properties: dict[str, Any] = {
         "doc_id": {"type": "keyword"},
         "project_id": {"type": "keyword"},
         "area_key": {"type": "keyword"},
+        "business_domain": {"type": "keyword"},
         "title": {"type": "text"},
         "title_normalized": {"type": "text"},
+        "title_ocr_folded": {"type": "text"},
         "title_suggest": {"type": "search_as_you_type"},
         "chunk_locations": {"type": "keyword"},
         "content_chunks": {
@@ -38,6 +48,7 @@ def ensure_index(client: OpenSearch) -> None:
                 "location": {"type": "keyword"},
                 "text": {"type": "text"},
                 "text_normalized": {"type": "text"},
+                "text_ocr_folded": {"type": "text"},
             },
         },
         "content_type": {"type": "keyword"},
@@ -46,10 +57,12 @@ def ensure_index(client: OpenSearch) -> None:
         "original_filename": {"type": "keyword"},
         "original_filename_text": {"type": "text"},
         "original_filename_normalized": {"type": "text"},
+        "original_filename_ocr_folded": {"type": "text"},
         "original_filename_suggest": {"type": "search_as_you_type"},
         "canonical_filename": {"type": "keyword"},
         "canonical_filename_text": {"type": "text"},
         "canonical_filename_normalized": {"type": "text"},
+        "canonical_filename_ocr_folded": {"type": "text"},
         "path": {"type": "keyword"},
         "source_channel": {"type": "keyword"},
         "source_ref": {"type": "keyword"},
@@ -59,9 +72,12 @@ def ensure_index(client: OpenSearch) -> None:
         "processed_at": {"type": "date"},
         "decision": {"type": "keyword"},
         "confidence_score": {"type": "float"},
+        "business_domain_confidence": {"type": "float"},
+        "document_type_confidence": {"type": "float"},
         "sha256": {"type": "keyword"},
         "tags": {"type": "keyword"},
         "document_type": {"type": "keyword"},
+        "entities": {"type": "object", "enabled": False},
         "correspondent": {"type": "keyword"},
         "review_status": {"type": "keyword"},
         "doc_kind": {"type": "keyword"},
@@ -72,11 +88,17 @@ def ensure_index(client: OpenSearch) -> None:
 
     if client.indices.exists(index=index_name):
         # Backward-compatible mapping expansion for existing indexes.
+        client.indices.put_settings(index=index_name, body={"index": _document_index_dynamic_settings()})
         client.indices.put_mapping(index=index_name, body={"properties": properties})
         return
 
     mapping: dict[str, Any] = {
-        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0, "highlight.max_analyzed_offset": 10_000_000}},
+        "settings": {
+            "index": {
+                "number_of_shards": 1,
+                **_document_index_dynamic_settings(),
+            }
+        },
         "mappings": {"properties": properties},
     }
     client.indices.create(index=index_name, body=mapping)

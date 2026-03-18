@@ -3,6 +3,7 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TemplateEditorView } from "./TemplateEditorView";
+import { saveTemplate } from "../../api";
 
 const fullProfile = {
   profile_version: 2,
@@ -15,12 +16,45 @@ const fullProfile = {
     roots: { projects: "01_PROJECTS", areas: "02_AREAS", resources: "03_RESOURCES", archive: "04_ARCHIVE" },
     areas_root: "02_AREAS",
     area_folders: [{ area_key: "fiscal", folder: "11_Fiscal" }, { area_key: "juridico", folder: "12_Juridico" }],
+    business_domain_folders: [{ business_domain: "fiscal", folder: "11_Fiscal" }, { business_domain: "juridico", folder: "12_Juridico" }],
   },
   classification: {
     work_areas: [
       { key: "fiscal", jd_number: 11, aliases: ["tributario", "impostos"] },
       { key: "juridico", jd_number: 12, aliases: ["legal", "contratos"] },
     ],
+    business_domains: [
+      { key: "fiscal", label: "Fiscal", aliases: ["tributario", "impostos"], primary_scope: "Fiscal primary scope", subfunction_topics: ["tax_topic"] },
+      { key: "juridico", label: "Jurídico", aliases: ["legal", "contratos"], primary_scope: "Legal primary scope", subfunction_topics: ["legal_topic"] },
+    ],
+    document_types: [
+      {
+        key: "relatorio",
+        label: "Relatório",
+        aliases: ["relatorio", "report"],
+        extensions: [".pdf"],
+        folder: "relatorio",
+        extension_confidence_by_extension: {},
+        fallback_priority: 10,
+        detection_rules: [{ any_of: ["relatorio"], confidence: 0.9, reason: "structural_header" }],
+      },
+    ],
+    document_type_priors: { relatorio: { default: "fiscal", weight: 0.4 } },
+    entity_domain_affinity: { imposto: { domain: "fiscal", weight: 0.6 } },
+    context_boosts: [{ business_domain: "fiscal", document_types: ["relatorio"], any_of: ["tributario"], weight: 0.2 }],
+    thresholds: {
+      document_type_extension_bonus: 0.08,
+      document_type_alias_confidence_base: 0.35,
+      document_type_alias_confidence_scale: 0.6,
+      document_type_confidence_cap: 0.96,
+      document_type_best_effort_confidence: 0.25,
+      business_domain_lexical_scale: 0.75,
+      business_domain_lexical_cap: 0.85,
+      business_domain_context_boost_cap: 0.35,
+      business_domain_alias_fallback_confidence: 0.2,
+      business_domain_best_effort_confidence: 0.05,
+      entity_boost_profiles: { default: { cap: 0.45, scale: 0.5 } },
+    },
     routing_rules: [
       { when_filename_contains: ["contrato", "aditivo"], route_to: "juridico", confidence: 0.9 },
       { when_path_contains: ["output/"], route_to: "fiscal", confidence: 0.98 },
@@ -48,20 +82,12 @@ const mockTemplateData = {
   profile: fullProfile,
 };
 
-const mockModels = [
-  { provider: "openai", model: "gpt-4o-mini", label: "OpenAI gpt-4o-mini (base)" },
-  { provider: "openai", model: "gpt-4.1", label: "OpenAI gpt-4.1 (médio)" },
-  { provider: "openai", model: "gpt-4.1-mini", label: "OpenAI gpt-4.1-mini" },
-  { provider: "anthropic", model: "claude-sonnet-4-6", label: "Anthropic Claude Sonnet 4.6 (médio)" },
-];
-
 vi.mock("../../api", () => ({
   listTemplates: vi.fn(() => Promise.resolve(mockTemplateList)),
   getTemplate: vi.fn(() => Promise.resolve(mockTemplateData)),
   saveTemplate: vi.fn(() => Promise.resolve(mockTemplateList[0])),
   createTemplate: vi.fn(() => Promise.resolve(mockTemplateList[0])),
   deleteTemplate: vi.fn(() => Promise.resolve()),
-  fetchModels: vi.fn(() => Promise.resolve(mockModels)),
 }));
 
 async function openEditor() {
@@ -90,95 +116,13 @@ describe("TemplateEditorView", () => {
     });
   });
 
-  it("opens editor modal with all 5 collapsible sections", async () => {
+  it("opens editor modal with the simplified operator surface", async () => {
     await openEditor();
+    expect(screen.getByText("Naming (formato canônico)")).toBeInTheDocument();
     expect(screen.getByText("Estrutura de Layout")).toBeInTheDocument();
-    expect(screen.getByText("Routing Rules")).toBeInTheDocument();
-    expect(screen.getByText("Confidence Thresholds")).toBeInTheDocument();
-    expect(screen.getByText("LLM Policy")).toBeInTheDocument();
+    expect(screen.getByText("Tipos documentais")).toBeInTheDocument();
+    expect(screen.getByText("Catálogo de entidades")).toBeInTheDocument();
     expect(screen.getByText("Indexação")).toBeInTheDocument();
-  });
-
-  describe("Routing Rules section", () => {
-    it("displays existing rules in the table", async () => {
-      await openEditor();
-      const section = screen.getByText("Routing Rules").closest("details")!;
-      fireEvent.click(within(section).getByText("Routing Rules"));
-      await waitFor(() => {
-        expect(within(section).getByText("2 regras")).toBeInTheDocument();
-      });
-    });
-
-    it("adds a new rule via button", async () => {
-      await openEditor();
-      const section = screen.getByText("Routing Rules").closest("details")!;
-      fireEvent.click(within(section).getByText("Routing Rules"));
-      await act(async () => {
-        fireEvent.click(within(section).getByText("+ Adicionar regra"));
-      });
-      await waitFor(() => {
-        expect(within(section).getByText("3 regras")).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("Confidence Thresholds section", () => {
-    it("shows numeric inputs with default values", async () => {
-      await openEditor();
-      const section = screen.getByText("Confidence Thresholds").closest("details")!;
-      fireEvent.click(within(section).getByText("Confidence Thresholds"));
-      const autoInput = within(section).getByLabelText("Auto-route mínimo") as HTMLInputElement;
-      const triageInput = within(section).getByLabelText("Triage mínimo") as HTMLInputElement;
-      expect(autoInput.value).toBe("0.85");
-      expect(triageInput.value).toBe("0.5");
-    });
-
-    it("updates threshold values", async () => {
-      await openEditor();
-      const section = screen.getByText("Confidence Thresholds").closest("details")!;
-      fireEvent.click(within(section).getByText("Confidence Thresholds"));
-      const autoInput = within(section).getByLabelText("Auto-route mínimo") as HTMLInputElement;
-      await act(async () => {
-        fireEvent.change(autoInput, { target: { value: "0.9" } });
-      });
-      expect(autoInput.value).toBe("0.9");
-    });
-  });
-
-  describe("LLM Policy section", () => {
-    it("displays toggle, combined model select, and mode select", async () => {
-      await openEditor();
-      const section = screen.getByText("LLM Policy").closest("details")!;
-      fireEvent.click(within(section).getByText("LLM Policy"));
-      expect(within(section).getByText("ativado")).toBeInTheDocument();
-      expect(within(section).getByLabelText("Ativar LLM")).toBeInTheDocument();
-      const modelSelect = within(section).getByLabelText("Modelo") as HTMLSelectElement;
-      expect(modelSelect.value).toBe("openai/gpt-4.1-mini");
-      const modeSelect = within(section).getByLabelText("Modo") as HTMLSelectElement;
-      expect(modeSelect.value).toBe("tag_only");
-    });
-
-    it("toggles LLM enabled state", async () => {
-      await openEditor();
-      const section = screen.getByText("LLM Policy").closest("details")!;
-      fireEvent.click(within(section).getByText("LLM Policy"));
-      const toggle = within(section).getByLabelText("Ativar LLM");
-      expect(toggle.className).toContain("active");
-      await act(async () => {
-        fireEvent.click(toggle);
-      });
-      expect(toggle.className).not.toContain("active");
-    });
-
-    it("shows guardrails sub-section", async () => {
-      await openEditor();
-      const section = screen.getByText("LLM Policy").closest("details")!;
-      fireEvent.click(within(section).getByText("LLM Policy"));
-      expect(within(section).getByText("Guardrails")).toBeInTheDocument();
-      expect(within(section).getByText("Exigir explicação")).toBeInTheDocument();
-      const maxChanges = within(section).getByLabelText("Max area changes") as HTMLInputElement;
-      expect(maxChanges.value).toBe("1");
-    });
   });
 
   describe("Indexação section", () => {
@@ -204,5 +148,54 @@ describe("TemplateEditorView", () => {
       });
       expect(modeSelect.value).toBe("excerpt");
     });
+  });
+
+  it("adds entries to the optional entity catalog", async () => {
+    await openEditor();
+    const section = screen.getByText("Catálogo de entidades").closest("details")!;
+    fireEvent.click(within(section).getByText("Catálogo de entidades"));
+
+    await act(async () => {
+      fireEvent.click(within(section).getByText("+ Adicionar entidade"));
+    });
+
+    await waitFor(() => {
+      expect(within(section).getByText("1 entidades")).toBeInTheDocument();
+    });
+  });
+
+  it("saves only the minimal human contract and strips legacy/operator-heavy fields", async () => {
+    await openEditor();
+    const section = screen.getByText("Estrutura de Layout").closest("details")!;
+    const fiscalKeyInput = within(section).getByDisplayValue("fiscal");
+    const fiscalRow = fiscalKeyInput.closest("tr");
+    expect(fiscalRow).not.toBeNull();
+    const fiscalLabelInput = within(fiscalRow as HTMLTableRowElement).getByDisplayValue("Fiscal") as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.change(fiscalLabelInput, { target: { value: "Fiscal Atualizado" } });
+      fireEvent.click(screen.getByText("Salvar template"));
+    });
+
+    await waitFor(() => expect(saveTemplate).toHaveBeenCalled());
+    const payload = vi.mocked(saveTemplate).mock.calls[0][1] as Record<string, unknown>;
+    const classification = payload.classification as Record<string, unknown>;
+    const layout = payload.layout as Record<string, unknown>;
+    const savedDomains = classification.business_domains as Array<Record<string, unknown>>;
+    const fiscalDomain = savedDomains.find((row) => row.key === "fiscal");
+
+    expect(fiscalDomain?.label).toBe("Fiscal Atualizado");
+    expect(fiscalDomain?.primary_scope).toBe("Fiscal primary scope");
+    expect(fiscalDomain?.subfunction_topics).toEqual(["tax_topic"]);
+    expect(classification).not.toHaveProperty("work_areas");
+    expect(classification).not.toHaveProperty("document_type_priors");
+    expect(classification).not.toHaveProperty("entity_domain_affinity");
+    expect(classification).not.toHaveProperty("context_boosts");
+    expect(classification).not.toHaveProperty("thresholds");
+    expect(classification).not.toHaveProperty("routing_rules");
+    expect(classification).not.toHaveProperty("confidence_thresholds");
+    expect(classification).not.toHaveProperty("llm_policy");
+    expect(layout).not.toHaveProperty("area_folders");
+    expect(layout).toHaveProperty("business_domain_folders");
   });
 });

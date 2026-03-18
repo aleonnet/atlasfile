@@ -25,13 +25,18 @@ def _minimal_profile(project_root: Path) -> dict[str, Any]:
             "para_roots": {"projects": "01_PROJECTS", "areas": "02_AREAS", "resources": "03_RESOURCES", "archive": "04_ARCHIVE"},
             "areas_root": "02_AREAS",
             "area_folders": [{"area_key": "juridica", "folder": "juridica"}],
+            "business_domain_folders": [{"business_domain": "juridica", "folder": "juridica"}],
         },
         "paths": {
             "inbox": "_INBOX_DROP",
             "triage": {"pending": "_TRIAGE_REVIEW/pending", "resolved": "_TRIAGE_REVIEW/resolved", "rejected": "_TRIAGE_REVIEW/rejected"},
             "profile_dir": "_PROFILE",
         },
-        "classification": {"llm_policy": {"enabled": False}},
+        "classification": {
+            "business_domains": [{"key": "juridica", "aliases": ["juridica"], "folder": "juridica"}],
+            "document_types": [{"key": "contrato", "aliases": ["contrato"], "extensions": [".pdf"], "folder": "contrato"}],
+            "llm_policy": {"enabled": False},
+        },
         "confidence_thresholds": {"auto_route_min": 0.85, "triage_min": 0.5},
     }
 
@@ -185,7 +190,7 @@ def test_process_inbox_file_dedup_via_search_index(
 @patch("app.ingestion.sha256_file", return_value="unique_sha")
 @patch("app.ingestion._find_original_in_triage", return_value=None)
 @patch("app.ingestion._find_original_in_search_index", return_value=None)
-@patch("app.ingestion.classify")
+@patch("app.ingestion.classify_bootstrap")
 @patch("app.ingestion.read_text_excerpt", return_value="excerpt text")
 @patch("app.ingestion.index_document")
 @patch("app.ingestion._append_index_md")
@@ -202,7 +207,11 @@ def test_process_inbox_file_non_dup_proceeds_to_classification(
 ) -> None:
     """Non-duplicate files go through the full classification pipeline."""
     mock_classify.return_value = {
+        "business_domain": "juridica",
         "area_key": "juridica",
+        "document_type": "contrato",
+        "document_type_confidence": 0.96,
+        "business_domain_confidence": 0.92,
         "confidence": 0.92,
         "reason": "alias_match",
         "top_candidates": [{"area_key": "juridica", "score": 0.92}],

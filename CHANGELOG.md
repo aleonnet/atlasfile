@@ -4,6 +4,42 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.7.0] -- Unreleased
+
+### Classificação e benchmark
+
+- `bootstrap` consolidado como classificador operacional atual em `business_domain` + `document_type`
+- refatoração config-driven do bootstrap: `classification.*` e `default.json` passam a ser a fonte de verdade da política de negócio; remoção de `DEFAULT_*` e fallback silencioso
+- taxonomia expandida com `suprimentos` em `business_domain` e `edital` / `plano` em `document_type`
+- `config/validation_set` e `config/training_pool` operacionalizados como artefatos distintos
+- decisões de triagem `approve` / `correct` alimentam `config/training_pool/records.jsonl`
+- benchmark oficial (`backend/scripts/benchmark_classification.py`) endurecido com:
+  - checagem de integridade entre `validation_set` e `training_pool`
+  - gates de elegibilidade do supervisionado
+  - accuracy, macro-F1, recall por classe e matriz de confusão por eixo
+- `sparse_logreg` e `sparse_linear_svc` seguem como candidatos de benchmark; promoção automática não foi introduzida neste release
+
+### Busca, índice e assistente
+
+- busca prioriza nome de arquivo e título exatos acima de ruído de score/evidências
+- chat web passa `project_id` explicitamente ao orquestrador e às tools MCP compatíveis
+- Telegram ganha `/projeto <project_id>` para fixar ou limpar o escopo de projeto no chat
+- `/api/search`, `/api/stats`, triagem e UI operam de forma consistente com `business_domain` / `document_type`
+
+### Operação e datasets
+
+- `training_pool` desacoplado dos projetos físicos para benchmark reproduzível a partir de `config/training_pool/files`
+- limpeza do estado operacional para manter apenas projetos úteis de validação do fluxo
+- `validation_set` ampliado para cobrir classes antes sub-representadas sem sobreposição com o `training_pool`
+
+### Docs
+
+- novo roteiro `docs/plano_teste_e2e_v0.7.0.md`, orientado a teste via frontend e fiel ao estado implementado
+- planos concluídos do ciclo arquivados em `docs/planos_concluidos/`
+- `README.md` atualizado para refletir bootstrap operacional, datasets de benchmark e layout por `business_domain/document_type`
+
+---
+
 ## [0.6.0] -- 2026-03-12
 
 ### Canais transparentes

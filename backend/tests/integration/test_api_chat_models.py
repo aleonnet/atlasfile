@@ -41,6 +41,21 @@ def test_post_chat_200_with_mock(client: TestClient) -> None:
     assert data["tool_calls_used"] == []
 
 
+def test_post_chat_passes_project_id_to_orchestrator(client: TestClient) -> None:
+    async def fake_run_chat_loop(*args, **kwargs):
+        assert kwargs["project_id"] == "proj-chat"
+        return {"content": "Scoped reply", "tool_calls_used": []}
+
+    with patch("app.main.run_chat_loop", new_callable=AsyncMock, side_effect=fake_run_chat_loop):
+        r = client.post(
+            "/api/chat",
+            json={"project_id": "proj-chat", "messages": [{"role": "user", "content": "Hello"}]},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["content"] == "Scoped reply"
+
+
 def test_post_classify_200_with_mock(client: TestClient) -> None:
     """POST /api/classify returns document_type, tags, confidence when classify_with_llm is mocked."""
     async def fake_classify(*args, **kwargs):

@@ -274,3 +274,10 @@ def test_md_to_tg_html_inline_code():
     from app.channels.telegram import _md_to_tg_html
 
     assert "<code>var</code>" in _md_to_tg_html("`var`")
+
+
+def test_telegram_command_arg_extracts_value():
+    from app.channels.telegram import _command_arg
+
+    assert _command_arg("/projeto taxonomia_e2e_12") == "taxonomia_e2e_12"
+    assert _command_arg("/projeto") == ""

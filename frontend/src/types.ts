@@ -10,6 +10,27 @@ export interface ProjectArea {
   label: string;
 }
 
+export interface ProjectDocumentType {
+  key: string;
+  label: string;
+  folder?: string | null;
+  aliases?: string[];
+  extensions?: string[];
+  extension_confidence_by_extension?: Record<string, number>;
+  fallback_priority?: number;
+  detection_rules?: ProjectDocumentTypeDetectionRule[];
+}
+
+export interface ProjectDocumentTypeDetectionRule {
+  any_of?: string[];
+  all_of?: string[];
+  with_any_of?: string[];
+  exclude_any_of?: string[];
+  extensions?: string[];
+  confidence: number;
+  reason?: string;
+}
+
 export interface SearchEvidence {
   location: string;
   snippet: string;
@@ -20,6 +41,7 @@ export interface SearchHit {
   doc_id: string;
   project_id: string;
   area_key: string;
+  business_domain?: string | null;
   original_filename: string;
   canonical_filename: string;
   path: string;
@@ -30,6 +52,7 @@ export interface SearchHit {
   total_evidences?: number;
   omitted_evidences?: number;
   content_type?: string | null;
+  document_type?: string | null;
 }
 
 export interface SearchResponse {
@@ -93,10 +116,12 @@ export interface TriageItem {
   filename: string;
   project_id: string;
   suggested_area?: string;
+  suggested_business_domain?: string;
+  suggested_document_type?: string;
   suggested_path?: string;
   confidence_score: number;
   reason: string;
-  top_candidates: { area_key: string; score: number }[];
+  top_candidates: Array<{ area_key?: string; business_domain?: string; score: number }>;
   source_path: string;
   metadata_path: string;
   llm_explanation?: string;
@@ -255,6 +280,11 @@ export interface ProfileAreaFolder {
   folder: string;
 }
 
+export interface ProfileBusinessDomainFolder {
+  business_domain: string;
+  folder: string;
+}
+
 export interface ProjectProfileV2 {
   profile_version: 2;
   project_id: string;
@@ -277,16 +307,27 @@ export interface ProjectProfileV2 {
       archive: string;
     };
     areas_root: string;
-    area_folders: ProfileAreaFolder[];
+    area_folders?: ProfileAreaFolder[];
+    business_domain_folders?: ProfileBusinessDomainFolder[];
   };
   classification: {
-    work_areas: Array<{ key: string; jd_number?: number | null; aliases: string[] }>;
-    routing_rules: RoutingRule[];
-    confidence_thresholds: {
+    work_areas?: Array<{ key: string; jd_number?: number | null; aliases: string[] }>;
+    business_domains?: Array<{
+      key: string;
+      label?: string | null;
+      aliases: string[];
+      primary_scope?: string | null;
+      subfunction_topics?: string[];
+      folder?: string | null;
+    }>;
+    document_types?: ProjectDocumentType[];
+    entity_catalog?: Array<{ type: string; value: string; aliases: string[] }>;
+    routing_rules?: RoutingRule[];
+    confidence_thresholds?: {
       auto_route_min: number;
       triage_min: number;
     };
-    llm_policy: LLMPolicy;
+    llm_policy?: LLMPolicy;
   };
   naming?: {
     canonical_pattern?: string;
@@ -331,6 +372,7 @@ export interface ScanFileResult {
   doc_id: string;
   project_id: string;
   area_key: string;
+  business_domain?: string | null;
   title: string;
   original_filename: string;
   canonical_filename: string;
@@ -340,6 +382,8 @@ export interface ScanFileResult {
   sha256: string;
   tags: string[];
   document_type?: string;
+  document_type_confidence?: number;
+  business_domain_confidence?: number;
   topics?: string[];
   topics_source?: string;
   review_status?: string;
@@ -379,6 +423,7 @@ export interface SearchFilters {
   doc_kind?: string;
   document_type?: string;
   area_key?: string;
+  business_domain?: string;
 }
 
 export interface StatsBucket {
@@ -391,6 +436,7 @@ export interface StatsResponse {
   total_documents: number;
   by_doc_kind: StatsBucket[];
   by_area_key: StatsBucket[];
+  by_business_domain: StatsBucket[];
   by_document_type: StatsBucket[];
   by_extension: StatsBucket[];
   by_tags: StatsBucket[];

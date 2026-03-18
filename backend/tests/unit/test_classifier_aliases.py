@@ -5,44 +5,63 @@ verifies that representative documents classify into the expected area.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from app.ingestion import _score_area, classify
 
+WORK_AREAS = [
+    {
+        "key": "societario_fiscal",
+        "aliases": ["societario", "fiscal", "cnpj", "filiais", "estabelecimentos", "regime"],
+    },
+    {
+        "key": "juridica",
+        "aliases": ["juridico", "juridica", "passivo", "contingencia", "parecer", "litigio", "sentenca", "mandado", "procuracao"],
+    },
+    {
+        "key": "ativos",
+        "aliases": ["ativo", "imobilizado", "cmdb", "inventario_ativos", "depreciacao", "cessao"],
+    },
+    {
+        "key": "financeiro",
+        "aliases": ["carveout", "contabil", "receita", "ebitda", "custos", "margem", "resultado", "dre", "demonstrativo", "orcamento", "balanco", "fluxo_caixa", "budget", "pnl"],
+    },
+    {
+        "key": "contratos_comunicacao",
+        "aliases": ["contrato", "fornecedor", "comunicacao", "preambulo", "eml", "aditivo", "distrato", "sla", "nda"],
+    },
+    {
+        "key": "pessoas",
+        "aliases": ["colaborador", "rh", "organograma", "gerencia", "diretoria", "folha", "rescisao", "admissao", "treinamento", "headcount"],
+    },
+    {
+        "key": "sistemas_migracao",
+        "aliases": ["sistema", "plataforma", "migracao_sistemas", "sap", "integracao", "banco_dados", "cloud", "infra"],
+    },
+    {
+        "key": "processos_tsa",
+        "aliases": ["tsa", "sox", "processo_operacional", "atendimento", "pos-closing", "procedimento", "fluxograma", "manual_operacional", "instrucao"],
+    },
+    {
+        "key": "entregaveis",
+        "aliases": ["output", "visao_consolidada", "framework_3ps", "metricas", "escopo", "milestone", "cronograma", "baseline", "workstream"],
+    },
+]
 
-def _load_template() -> dict:
-    template_path = Path(__file__).resolve().parents[3] / "config" / "templates" / "default.json"
-    with open(template_path) as f:
-        return json.load(f)
+ROUTING_RULES = [
+    {"when_path_contains": ["output/"], "route_to": "entregaveis", "confidence": 0.98},
+    {"when_filename_contains": ["contrato", "fornecedor", "preambulo"], "route_to": "contratos_comunicacao", "confidence": 0.9},
+    {"when_filename_contains": ["filiais", "cnpj", "estabelecimentos"], "route_to": "societario_fiscal", "confidence": 0.9},
+    {"when_filename_contains": ["cmdb", "ativo", "imobilizado", "doacao"], "route_to": "ativos", "confidence": 0.9},
+    {"when_filename_contains": ["colaboradores", "organograma", "gh_"], "route_to": "pessoas", "confidence": 0.9},
+    {"when_filename_contains": ["parecer", "litigio", "mandado", "procuracao"], "route_to": "juridica", "confidence": 0.9},
+    {"when_filename_contains": ["dre", "ebitda", "budget", "orcamento", "balanco", "pnl"], "route_to": "financeiro", "confidence": 0.9},
+    {"when_filename_contains": ["migracao", "sap", "integracao"], "route_to": "sistemas_migracao", "confidence": 0.9},
+    {"when_filename_contains": ["tsa", "sox", "fluxograma"], "route_to": "processos_tsa", "confidence": 0.9},
+]
 
-
-def _load_template_work_areas() -> list[dict]:
-    return _load_template()["classification"]["work_areas"]
-
-
-def _load_template_routing_rules() -> list[dict]:
-    return _load_template()["classification"]["routing_rules"]
-
-
-def _profile_with_areas(work_areas: list[dict], routing_rules: list[dict] | None = None) -> dict:
-    return {
-        "work_areas": work_areas,
-        "routing_rules": routing_rules or [],
-    }
-
-
-def _full_profile() -> dict:
-    tmpl = _load_template()
-    return {
-        "work_areas": tmpl["classification"]["work_areas"],
-        "routing_rules": tmpl["classification"]["routing_rules"],
-    }
-
-
-WORK_AREAS = _load_template_work_areas()
-PROFILE = _profile_with_areas(WORK_AREAS)
-FULL_PROFILE = _full_profile()
+PROFILE = {"work_areas": WORK_AREAS, "routing_rules": []}
+FULL_PROFILE = {"work_areas": WORK_AREAS, "routing_rules": ROUTING_RULES}
 
 
 # -- financeiro --

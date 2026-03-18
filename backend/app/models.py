@@ -7,6 +7,8 @@ class SearchHit(BaseModel):
     doc_id: str
     project_id: str
     area_key: str
+    business_domain: str | None = None
+    document_type: str | None = None
     original_filename: str
     canonical_filename: str
     path: str
@@ -49,6 +51,8 @@ class TriageItem(BaseModel):
     filename: str
     project_id: str
     suggested_area: Optional[str] = None
+    suggested_business_domain: Optional[str] = None
+    suggested_document_type: Optional[str] = None
     suggested_path: Optional[str] = None
     confidence_score: float
     reason: str
@@ -60,6 +64,8 @@ class TriageItem(BaseModel):
 class TriageDecisionRequest(BaseModel):
     action: str  # approve | correct | reject
     target_area: Optional[str] = None
+    target_business_domain: Optional[str] = None
+    target_document_type: Optional[str] = None
     note: Optional[str] = None
 
 
@@ -72,6 +78,7 @@ class DocumentMetadataUpdate(BaseModel):
     document_type: Optional[str] = None
     correspondent: Optional[str] = None
     area_key: Optional[str] = None
+    business_domain: Optional[str] = None
     review_status: Optional[str] = None
 
 
@@ -82,6 +89,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    project_id: str | None = None
     provider: str | None = None  # openai | anthropic; default from config
     model: str | None = None  # override model
     enable_thinking: bool = False  # OpenAI: reasoning_effort; Anthropic: thinking.enabled
@@ -267,6 +275,7 @@ class StatsResponse(BaseModel):
     total_documents: int = 0
     by_doc_kind: list[StatsBucket] = Field(default_factory=list)
     by_area_key: list[StatsBucket] = Field(default_factory=list)
+    by_business_domain: list[StatsBucket] = Field(default_factory=list)
     by_document_type: list[StatsBucket] = Field(default_factory=list)
     by_extension: list[StatsBucket] = Field(default_factory=list)
     by_tags: list[StatsBucket] = Field(default_factory=list)
@@ -282,6 +291,7 @@ class ListDocumentItem(BaseModel):
     doc_kind: str | None = None
     document_type: str | None = None
     area_key: str | None = None
+    business_domain: str | None = None
     tags: list[str] = Field(default_factory=list)
     ingested_at: str | None = None
 

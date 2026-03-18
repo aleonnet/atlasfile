@@ -1,10 +1,17 @@
 # Template de profile de projeto (V2)
 
-O profile de cada projeto é armazenado em `_PROFILE/profile.json` no formato JSON, seguindo o schema `ProjectProfileV2` definido em `backend/app/profile_schema_v2.py`.
+O profile de cada projeto fica em `_PROFILE/profile.json` e segue o schema `ProjectProfileV2` em `backend/app/profile_schema_v2.py`.
 
-Templates globais ficam em `config/templates/` e são usados na inicialização de novos projetos.
+## Contrato operacional da 0.7.0
 
-## Exemplo completo
+- O eixo funcional canonico e `classification.business_domains`.
+- O eixo formal canonico e `classification.document_types`.
+- O layout fisico final em `02_AREAS/` e derivado como `02_AREAS/<business_domain>/<document_type>/`.
+- `layout.business_domain_folders` mapeia o primeiro nivel fisico.
+- `area_key` continua existindo no runtime e no indice como espelho de `business_domain`, nao como taxonomia separada.
+- `work_areas` e `layout.area_folders` ainda existem no schema para leitura/espelhamento, mas novos templates e novos perfis devem usar `business_domains` e `business_domain_folders` como fonte de verdade.
+
+## Exemplo minimo alinhado a 0.7.0
 
 ```json
 {
@@ -12,7 +19,6 @@ Templates globais ficam em `config/templates/` e são usados na inicialização 
   "project_id": "example_project",
   "project_label": "Example Project",
   "project_root": "/projects/example_project",
-
   "paths": {
     "inbox": "_INBOX_DROP",
     "triage": {
@@ -21,7 +27,6 @@ Templates globais ficam em `config/templates/` e são usados na inicialização 
       "rejected": "_TRIAGE_REVIEW/rejected"
     }
   },
-
   "layout": {
     "mode": "para_jd",
     "roots": {
@@ -31,55 +36,86 @@ Templates globais ficam em `config/templates/` e são usados na inicialização 
       "archive": "04_ARCHIVE"
     },
     "areas_root": "02_AREAS",
-    "area_folders": [
-      { "area_key": "contratos_comunicacao", "folder": "01_contratos_comunicacao" },
-      { "area_key": "financeiro", "folder": "02_financeiro" },
-      { "area_key": "juridica", "folder": "03_juridica" }
+    "business_domain_folders": [
+      { "business_domain": "juridico", "folder": "juridico" },
+      { "business_domain": "financeiro", "folder": "financeiro" },
+      { "business_domain": "suprimentos", "folder": "suprimentos" }
     ]
   },
-
   "classification": {
-    "work_areas": [
+    "business_domains": [
       {
-        "key": "contratos_comunicacao",
-        "jd_number": 1,
-        "aliases": ["contrato", "fornecedor", "sla", "nda", "termo aditivo"]
+        "key": "juridico",
+        "label": "Juridico",
+        "aliases": ["juridico", "contrato", "aditivo", "parecer"],
+        "primary_scope": "Contratos sob otica legal, pareceres, contencioso e procuracoes.",
+        "subfunction_topics": ["parecer", "procuracao", "contencioso"]
       },
       {
         "key": "financeiro",
-        "jd_number": 2,
-        "aliases": ["financeiro", "fiscal", "balanco", "dre", "fluxo caixa"]
+        "label": "Financeiro",
+        "aliases": ["financeiro", "controladoria", "tesouraria", "faturamento"],
+        "primary_scope": "FP&A, controladoria, tesouraria, AP/AR e caixa.",
+        "subfunction_topics": ["controladoria", "tesouraria", "faturamento"]
       },
       {
-        "key": "juridica",
-        "jd_number": 3,
-        "aliases": ["juridico", "parecer", "liminar", "procuracao"]
+        "key": "suprimentos",
+        "label": "Suprimentos",
+        "aliases": ["suprimentos", "compras", "procurement", "fornecedor"],
+        "primary_scope": "Compras, sourcing e governanca de fornecedores.",
+        "subfunction_topics": ["fornecedores", "compras_procurement", "rfp_rfq"]
       }
     ],
-
-    "routing_rules": [
+    "document_types": [
       {
-        "when_path_contains": ["output/", "entrega/"],
-        "route_to": "entregaveis",
-        "confidence": 0.98
+        "key": "contrato",
+        "label": "Contrato",
+        "aliases": ["contrato", "agreement", "acordo"],
+        "extensions": [".pdf", ".docx"],
+        "folder": "contrato",
+        "fallback_priority": 80,
+        "detection_rules": [
+          {
+            "all_of": ["contrato", "contratante"],
+            "confidence": 0.96,
+            "reason": "structural_header"
+          }
+        ]
       },
       {
-        "when_filename_contains": ["contrato", "fornecedor", "sla"],
-        "route_to": "contratos_comunicacao",
-        "confidence": 0.95
+        "key": "planilha",
+        "label": "Planilha",
+        "aliases": ["planilha", "xlsx", "csv"],
+        "extensions": [".xls", ".xlsx", ".csv"],
+        "folder": "planilha",
+        "extension_confidence_by_extension": {
+          ".xlsx": 0.98,
+          ".csv": 0.90
+        },
+        "fallback_priority": 15
       },
       {
-        "when_filename_contains": ["parecer", "liminar"],
-        "route_to": "juridica",
-        "confidence": 0.95
+        "key": "edital",
+        "label": "Edital",
+        "aliases": ["edital", "procedimento competitivo", "rfp", "rfq"],
+        "extensions": [".pdf", ".docx"],
+        "folder": "edital",
+        "fallback_priority": 35,
+        "detection_rules": [
+          {
+            "any_of": ["edital", "procedimento competitivo"],
+            "confidence": 0.96,
+            "reason": "structural_header"
+          }
+        ]
       }
     ],
-
+    "entity_catalog": [],
+    "routing_rules": [],
     "confidence_thresholds": {
       "auto_route_min": 0.85,
       "triage_min": 0.50
     },
-
     "llm_policy": {
       "enabled": false,
       "provider": "openai",
@@ -93,38 +129,48 @@ Templates globais ficam em `config/templates/` e são usados na inicialização 
       }
     }
   },
-
+  "naming": {
+    "canonical_pattern": "{date}__{project}__{original_name}",
+    "date_format": "%Y%m%d"
+  },
   "indexing": {
     "topics_path": "config/topics_v1.yaml",
-    "extraction_max_chars": 20000,
-    "extraction_mode": "excerpt"
-  }
+    "extraction_max_chars": 50000,
+    "extraction_mode": "all"
+  },
+  "version": 1
 }
 ```
 
 ## Blocos do profile
 
-| Bloco | Propósito |
+| Bloco | Proposito |
 |-------|-----------|
-| `paths` | Diretórios de inbox e triagem |
-| `layout` | Modo (PARA+JD / custom), raízes, mapeamento área → pasta |
-| `classification.work_areas` | Áreas com JD number e aliases para scoring |
-| `classification.routing_rules` | Regras explícitas por path/filename (word boundary matching) |
-| `classification.confidence_thresholds` | Limites para auto-route e triagem |
-| `classification.llm_policy` | Configuração do LLM (provider, modelo, modo, guardrails) |
-| `indexing` | Dicionário de topics, limite de extração, modo (excerpt/all) |
+| `paths` | Diretarios de inbox e triagem |
+| `layout` | Raizes PARA e mapeamento `business_domain -> folder` |
+| `classification.business_domains` | Dominios canonicos do projeto |
+| `classification.document_types` | Tipos documentais canonicos e regras de deteccao |
+| `classification.entity_catalog` | Entidades conhecidas adicionais para extracao deterministica |
+| `classification.routing_rules` | Atalhos deterministas opcionais por path ou filename |
+| `classification.confidence_thresholds` | Gates de auto-route e triagem |
+| `classification.llm_policy` | Configuracao do LLM; no template default da 0.7.0 fica desabilitado |
+| `naming` | Pattern canonico do nome do arquivo |
+| `indexing` | Topics, limite de extracao e modo (`excerpt` ou `all`) |
 
-## Modos do LLM (`llm_policy.mode`)
+## Regras importantes
 
-| Modo | Comportamento |
-|------|---------------|
-| `tag_only` | Enriquece tags, document_type, topics. Não altera area_key. |
-| `review` | Pode divergir da área, mas envia para triagem em vez de override direto. |
-| `full_override` | Pode alterar area_key se guardrails permitirem (confiança baixa + explicação). |
+- `classification.business_domains` nao pode ser vazio.
+- `classification.document_types` nao pode ser vazio.
+- Cada `document_type.folder` deve ser unico.
+- Cada `layout.business_domain_folders.business_domain` deve existir em `classification.business_domains`.
+- `naming.canonical_pattern` precisa conter `{original_name}`.
+- `routing_rules` sao opcionais; o bootstrap atual nao depende delas para funcionar.
+- `entity_catalog` pode ficar vazio; regexes basicas continuam ativas para CNPJ, email, contrato e valores.
 
-## Notas
+## LLM no profile
 
-- Se `jd_number` for informado na `work_area`, a pasta usa esse número (`NN_area_key`).
-- Se `jd_number` não for informado, o motor usa o próximo número disponível.
-- `area_folders` em `layout` deve ter uma entrada para cada `work_area` em `classification`.
-- O profile é versionado (`version` + `updated_at`) e o histórico fica em `_PROFILE/history/`.
+O schema ainda suporta `tag_only`, `review` e `full_override`, mas o contrato operacional da 0.7.0 e:
+
+- LLM desabilitado por padrao em `config/templates/default.json`.
+- LLM nao e classificador primario.
+- Quando habilitado, atua como enriquecedor ou revisor, nunca como pre-requisito para o fluxo.

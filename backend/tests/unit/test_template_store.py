@@ -28,9 +28,46 @@ SAMPLE_TEMPLATE_DATA = {
         "roots": {"projects": "01", "areas": "02", "resources": "03", "archive": "04"},
         "areas_root": "02",
         "area_folders": [{"area_key": "test_area", "folder": "01_test"}],
+        "business_domain_folders": [{"business_domain": "test_area", "folder": "01_test"}],
     },
     "classification": {
         "work_areas": [{"key": "test_area", "jd_number": 1, "aliases": ["test"]}],
+        "business_domains": [
+            {
+                "key": "test_area",
+                "label": "Test Area",
+                "aliases": ["test"],
+                "primary_scope": "Test area primary scope.",
+                "subfunction_topics": ["test_topic"],
+            }
+        ],
+        "document_types": [
+            {
+                "key": "relatorio",
+                "label": "Relatório",
+                "aliases": ["relatorio", "report"],
+                "extensions": [".pdf"],
+                "folder": "relatorio",
+                "fallback_priority": 10,
+                "detection_rules": [{"any_of": ["relatorio"], "confidence": 0.9, "reason": "structural_header"}],
+            }
+        ],
+        "document_type_priors": {"relatorio": {"default": "test_area", "weight": 0.4}},
+        "entity_domain_affinity": {"teste": {"domain": "test_area", "weight": 0.6}},
+        "context_boosts": [{"business_domain": "test_area", "document_types": ["relatorio"], "any_of": ["teste"], "weight": 0.2}],
+        "thresholds": {
+            "document_type_extension_bonus": 0.08,
+            "document_type_alias_confidence_base": 0.35,
+            "document_type_alias_confidence_scale": 0.6,
+            "document_type_confidence_cap": 0.96,
+            "document_type_best_effort_confidence": 0.25,
+            "business_domain_lexical_scale": 0.75,
+            "business_domain_lexical_cap": 0.85,
+            "business_domain_context_boost_cap": 0.35,
+            "business_domain_alias_fallback_confidence": 0.2,
+            "business_domain_best_effort_confidence": 0.05,
+            "entity_boost_profiles": {"default": {"cap": 0.45, "scale": 0.5}},
+        },
         "routing_rules": [],
         "confidence_thresholds": {"auto_route_min": 0.85, "triage_min": 0.5},
         "llm_policy": {
@@ -152,3 +189,40 @@ def test_create_profile_from_user_template(tmp_path: Path, monkeypatch):
     )
     assert profile.project_id == "CustomProject"
     assert len(profile.classification.work_areas) == 1
+
+
+def test_save_template_persists_minimal_bootstrap_contract(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("app.template_store._user_dir", lambda: tmp_path)
+    minimal = {**SAMPLE_TEMPLATE_DATA}
+    minimal["layout"] = {
+        "mode": "para_jd",
+        "roots": {"projects": "01", "areas": "02", "resources": "03", "archive": "04"},
+        "areas_root": "02",
+        "business_domain_folders": [{"business_domain": "test_area", "folder": "01_test"}],
+    }
+    minimal["classification"] = {
+        "business_domains": minimal["classification"]["business_domains"],
+        "document_types": minimal["classification"]["document_types"],
+        "entity_catalog": [],
+    }
+
+    save_template("minimal_bootstrap", minimal)
+
+    stored = json.loads((tmp_path / "minimal_bootstrap.json").read_text(encoding="utf-8"))
+    classification = stored["classification"]
+    assert "work_areas" in classification
+    assert "document_type_priors" not in classification
+    assert "entity_domain_affinity" not in classification
+    assert "context_boosts" not in classification
+    assert "thresholds" not in classification
+    assert "confidence_thresholds" in classification
+    assert "llm_policy" in classification
+
+
+def test_default_template_business_domains_include_scope_metadata():
+    tmpl = get_template(DEFAULT_SLUG)
+    domains = ((tmpl.get("profile") or {}).get("classification") or {}).get("business_domains") or []
+
+    assert domains
+    assert all(str(domain.get("primary_scope") or "").strip() for domain in domains)
+    assert all(isinstance(domain.get("subfunction_topics"), list) and domain.get("subfunction_topics") for domain in domains)

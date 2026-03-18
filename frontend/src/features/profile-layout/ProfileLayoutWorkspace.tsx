@@ -238,7 +238,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
             <div className="pl-migration-warning">
               <span className="pl-migration-icon">⚠</span>
               <div>
-                <p className="pl-migration-warn-text">Alterações detectadas em layout (areas_root/area_folders)</p>
+                <p className="pl-migration-warn-text">Alterações detectadas em layout (areas_root/business_domain_folders)</p>
                 <p className="pl-migration-warn-sub">Salvar o profile NÃO move arquivos automaticamente.</p>
               </div>
             </div>

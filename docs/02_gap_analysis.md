@@ -1,50 +1,93 @@
-# Gap analysis: estado atual vs framework AtlasFile
+# Gap analysis -- status na 0.7.0
 
-## Base analisada
+Este documento atualiza o gap analysis original para refletir o estado atual do AtlasFile. O foco aqui nao e mais descrever o caos do snapshot inicial, e sim mostrar o que ja foi fechado e o que ainda falta.
 
-- Snapshot: `folder_snapshot_2026_03_01.json`
-- Escala observada:
-  - ~20.531 pastas
-  - ~73.081 arquivos
-  - profundidade maxima 14
+## Gaps ja fechados
 
-## Gaps principais
+### Estrutura e contrato de projeto
 
-1. **Padrao de topo heterogeneo**
-   - coexistem prefixos numericos, sublinhados tecnicos e nomes livres.
-   - impacto: baixa previsibilidade para automacao e busca.
+Fechado:
 
-2. **Nomeacao inconsistente**
-   - presenca de espacos, formatos de versao variados, simbolos especiais.
-   - impacto: colisao, dificuldade de parsing e risco operacional em multiplas plataformas.
+- profile local por projeto em `_PROFILE/profile.json`
+- roots PARA padronizadas
+- `_INBOX_DROP` e `_TRIAGE_REVIEW` como fluxo operacional
+- layout fisico em `02_AREAS/<business_domain>/<document_type>/`
 
-3. **Duplicidade de nomes**
-   - repeticao alta de nomes como `Summary.pdf`, `image1.png`, etc.
-   - impacto: ambiguidade de referencia e erro humano.
+### Busca e indexacao
 
-4. **Caminhos longos**
-   - volume relevante de caminhos acima de limites praticos.
-   - impacto: risco de falha em sync, scripts e transferencias.
+Fechado:
 
-5. **Sem camada padrao de indexacao local**
-   - busca depende de estrutura manual e ferramentas dispersas.
-   - impacto: latencia para encontrar evidencias e documentos criticos.
+- indice local em OpenSearch
+- busca full-text BM25 com highlight
+- suggest/autocomplete
+- filtros por projeto e metadados
+- campos `*_ocr_folded` para melhorar busca em OCR ruidoso
+- priorizacao de match exato de titulo/nome de arquivo
 
-6. **Rastreabilidade parcial**
-   - sem padrao unico para vincular origem e nome canonico.
-   - impacto: risco de perda de cadeia de custodia em casos sensiveis.
+### Rastreabilidade
 
-## Estado alvo
+Fechado:
 
-- Ingestao por projeto (`_INBOX_DROP`)
-- Classificacao orientada por `/_PROJECT_PROFILE.md`
-- Triagem humana minima para baixa confianca
-- `_INDEX.md` com trilha de decisao
-- Busca local OpenSearch BM25 com filtros por metadados
+- `_INDEX.md` por projeto
+- `doc_id`
+- `canonical_filename`
+- `sha256`
+- reconcile entre filesystem e indice
 
-## KPI de fechamento de gap
+### Classificacao e triagem
 
-- Aumentar taxa de acerto automatico de classificacao (sem triagem)
-- Reduzir tempo medio de busca de documento critico
-- Reduzir volume de caminhos fora de padrao
-- Manter rastreabilidade minima em 100% dos documentos ingeridos
+Fechado:
+
+- taxonomia canonica por `business_domain` e `document_type`
+- bootstrap deterministico como baseline operacional
+- triagem humana via frontend
+- separacao entre `validation_set` e `training_pool`
+- benchmark oficial com gate de integridade entre datasets
+
+## Gaps ainda abertos
+
+### Acuracia do eixo funcional
+
+Aberto:
+
+- `business_domain` ainda e o eixo mais fragil do classificador
+- ha sobreposicao semantica relevante entre `juridico`, `societario`, `financeiro`, `ti` e `operacoes`
+- classes com pouco suporte estatistico continuam limitando ajuste fino
+
+### Ciclo supervisionado
+
+Aberto:
+
+- ainda nao existe retreino em lote com promocao automatizada
+- os modelos supervisionados continuam em modo benchmark-only
+- a promocao de um novo classificador ainda depende de decisao explicita apos benchmark
+
+### Busca semantica
+
+Aberto:
+
+- nao ha busca vetorial/hibrida implementada
+- o assistente trabalha hoje sobre BM25 + tools MCP
+
+### Retencao e observabilidade avancada
+
+Aberto:
+
+- politica de retencao automatizada
+- dashboards operacionais
+- alertas e observabilidade aprofundada
+
+## Estado alvo de curto prazo
+
+- manter bootstrap como baseline operacional
+- elevar a qualidade do `business_domain` com ajustes guiados por benchmark
+- ampliar `validation_set` apenas nas classes subcobertas
+- promover supervisionado so se superar o bootstrap com evidencia
+
+## KPIs de fechamento do gap remanescente
+
+- aumentar `business_domain_accuracy`
+- aumentar `exact_match_accuracy`
+- reduzir `triage_rate` sem perder qualidade
+- manter `dataset_integrity_status = ok`
+- manter rastreabilidade completa em 100% dos documentos ingeridos

@@ -18,6 +18,9 @@ def _routing_rule_to_dict(rule: Any) -> dict[str, Any]:
 
 def profile_v2_to_runtime(profile: ProjectProfileV2, project_root: Path) -> dict[str, Any]:
     area_folder_map = {af.area_key: af.folder for af in profile.layout.area_folders}
+    business_domain_folder_map = {
+        row.business_domain: row.folder for row in profile.layout.business_domain_folders
+    }
     work_areas: list[dict[str, Any]] = []
     for area in profile.classification.work_areas:
         work_areas.append(
@@ -26,6 +29,18 @@ def profile_v2_to_runtime(profile: ProjectProfileV2, project_root: Path) -> dict
                 "jd_number": area.jd_number,
                 "aliases": list(area.aliases),
                 "folder": area_folder_map.get(area.key),
+            }
+        )
+    business_domains: list[dict[str, Any]] = []
+    for domain in profile.classification.business_domains:
+        business_domains.append(
+            {
+                "key": domain.key,
+                "label": domain.label,
+                "aliases": list(domain.aliases),
+                "primary_scope": domain.primary_scope,
+                "subfunction_topics": list(domain.subfunction_topics),
+                "folder": business_domain_folder_map.get(domain.key),
             }
         )
 
@@ -38,6 +53,7 @@ def profile_v2_to_runtime(profile: ProjectProfileV2, project_root: Path) -> dict
         "triage_paths": profile.paths.triage.model_dump(mode="json"),
         "work_root": profile.layout.areas_root,
         "work_areas": work_areas,
+        "business_domains": business_domains,
         "routing_rules": [_routing_rule_to_dict(r) for r in profile.classification.routing_rules],
         "confidence_thresholds": profile.classification.confidence_thresholds.model_dump(mode="json"),
         "llm_policy": profile.classification.llm_policy.model_dump(mode="json"),

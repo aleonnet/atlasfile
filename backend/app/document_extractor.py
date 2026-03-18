@@ -475,7 +475,9 @@ def _extract_msg(path: Path, max_chars: int) -> ExtractionResult:
 
     try:
         msg = extract_msg.Message(str(path))
-        msg.process()
+        process = getattr(msg, "process", None)
+        if callable(process):
+            process()
         subject = (getattr(msg, "subject", "") or "").strip()
         body = (getattr(msg, "body", "") or "").strip()
         attachments: list[str] = []

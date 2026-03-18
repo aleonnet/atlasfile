@@ -1,51 +1,76 @@
 # Template de framework por projeto
 
-## Estrutura de um projeto
+## Estrutura de um projeto na 0.7.0
 
 ```text
 /<PROJETO>/
-├── _INBOX_DROP/                         # Ponto de entrada de documentos
+├── _INBOX_DROP/                         # Entrada de novos documentos
 ├── _TRIAGE_REVIEW/
-│   ├── pending/                         # Aguardando decisão humana
+│   ├── pending/                         # Aguardando decisao humana
 │   ├── resolved/                        # Aprovados/corrigidos
 │   └── rejected/                        # Rejeitados
 ├── _PROFILE/
-│   ├── profile.json                     # Profile V2 (JSON) — schema completo
-│   ├── ingest_history.json              # Histórico de ingestões (FIFO, cap 50)
-│   └── history/                         # Versões anteriores do profile
-├── 01_contratos_comunicacao/            # Áreas de trabalho (JD numbering)
-├── 02_financeiro/
-├── ...
-├── 09_entregaveis/
+│   ├── profile.json                     # Profile V2
+│   ├── ingest_history.json              # Historico das ultimas ingestoes
+│   └── history/                         # Versoes anteriores do profile
+├── 01_PROJECTS/
+├── 02_AREAS/
+│   ├── juridico/
+│   │   ├── contrato/
+│   │   ├── aditivo/
+│   │   └── parecer/
+│   ├── financeiro/
+│   │   ├── planilha/
+│   │   └── relatorio/
+│   └── suprimentos/
+│       └── edital/
+├── 03_RESOURCES/
+├── 04_ARCHIVE/
 └── _INDEX.md                            # Registro local de documentos ingeridos
 ```
 
-## Princípios
+## Principios
 
-- Cada projeto define suas áreas, regras e políticas no `_PROFILE/profile.json` (Profile V2, JSON).
-- Templates globais em `config/templates/` servem de base para inicialização de novos projetos.
-- Áreas de trabalho ficam na raiz do projeto com prefixo JD (`NN_area_key`).
-- Triagem humana ocorre no frontend, não por navegação manual em pasta.
-- `_INDEX.md` mantém rastreabilidade local (nome original → canônico → SHA256).
+- Cada projeto nasce de um template em `config/templates/` e materializa seu contrato em `_PROFILE/profile.json`.
+- O eixo funcional e `business_domain`; o eixo formal e `document_type`.
+- O destino fisico padrao de ingestao automatica e `02_AREAS/<business_domain>/<document_type>/`.
+- `01_PROJECTS`, `03_RESOURCES` e `04_ARCHIVE` continuam existindo como roots PARA e entram no reconcile e na indexacao.
+- `_INDEX.md` e o indice OpenSearch, em conjunto, preservam a rastreabilidade minima: nome original, nome canonico, path e SHA256.
+- Triagem humana ocorre via frontend; o filesystem reflete o resultado da decisao.
 
-## Ciclo de ingestão
+## Ciclo de ingestao atual
 
 1. Arquivo entra em `_INBOX_DROP`.
-2. Dedup por SHA256 — se já existe, registra e remove da inbox.
-3. Routing rules verificam path e filename (word boundary matching).
-4. Alias scoring calcula confiança por área (sqrt normalization).
-5. LLM (se habilitado) enriquece: area override, tags, document_type, topics.
-6. Alta confiança (>= `auto_route_min`): move para `NN_<area>/`.
-7. Baixa confiança: move para `_TRIAGE_REVIEW/pending`.
-8. Humano decide no frontend: `Approve`, `Correct` ou `Reject`.
-9. Documento indexado no OpenSearch com metadados completos.
+2. O sistema calcula SHA256 e elimina duplicatas precocemente.
+3. O bootstrap detecta `document_type`.
+4. O bootstrap extrai entidades deterministicas.
+5. O bootstrap classifica `business_domain`.
+6. O sistema deriva `topics` e calcula a confidence final.
+7. Se atingir `auto_route_min`, move para `02_AREAS/<business_domain>/<document_type>/`.
+8. Se nao atingir, move para `_TRIAGE_REVIEW/pending`.
+9. O humano decide `Approve`, `Correct` ou `Reject`.
+10. O documento e indexado no OpenSearch e registrado no `_INDEX.md`.
 
-## Inicialização de projeto
+## Papel do template
 
-Via UI (seletor de projetos → template) ou via script:
+O template define:
+
+- roots PARA
+- `business_domains`
+- `document_types`
+- thresholds de auto-route/triagem
+- naming canonico
+- configuracao de extracao
+- politica opcional de LLM
+
+`routing_rules` continuam suportadas no schema, mas nao sao pre-requisito do fluxo operacional atual.
+
+## Inicializacao de projeto
+
+Via UI ou via script:
 
 ```bash
 python3 scripts/bootstrap_project.py --name "meu_projeto" --id "meu_projeto"
 ```
 
-O template define: áreas de trabalho, routing rules, confidence thresholds, LLM policy e configuração de indexação.
+Ao inicializar, o sistema copia o template escolhido e cria a estrutura fisica do projeto. A partir dai, toda ingestao passa a obedecer ao `profile.json` local do projeto.

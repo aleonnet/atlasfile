@@ -10,6 +10,7 @@ from app.utils import (
     DEFAULT_CANONICAL_PATTERN,
     build_canonical_filename,
     extract_original_name_from_canonical,
+    fold_ocr_spacing,
     fs_safe,
     normalize_text,
     sanitize_token,
@@ -34,6 +35,12 @@ def test_normalize_text_removes_accents() -> None:
 def test_normalize_text_strips_combining_chars() -> None:
     # NFKD decomposes; we strip combining
     assert normalize_text("café") == "cafe"
+
+
+def test_fold_ocr_spacing_rejoins_single_letter_runs() -> None:
+    assert fold_ocr_spacing("C O N T R A T O") == "contrato"
+    assert fold_ocr_spacing("F a t o   R e l e v a n t e") == "fato relevante"
+    assert fold_ocr_spacing("Texto normal sem ruído") == "texto normal sem ruido"
 
 
 def test_sanitize_token() -> None:

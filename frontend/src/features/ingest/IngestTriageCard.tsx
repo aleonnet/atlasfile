@@ -32,7 +32,8 @@ type FlatRow = {
   key: string;
   timestamp: string;
   filename: string;
-  area_key: string;
+  business_domain: string;
+  document_type?: string;
   decision: "auto" | "triage_pending" | "duplicate" | "error";
   confidence: number | null;
   llm: boolean;
@@ -52,7 +53,8 @@ function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
         key: `${ts}-${item.doc_id}`,
         timestamp: ts,
         filename: item.original_filename,
-        area_key: item.area_key,
+        business_domain: item.business_domain || item.area_key,
+        document_type: item.document_type,
         decision: item.decision,
         confidence: item.confidence_score,
         llm: item.topics_source === "llm_policy" || !!item.llm_explanation || !!item.rule_area_key,
@@ -69,7 +71,7 @@ function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
         key: `${ts}-err-${i}`,
         timestamp: ts,
         filename: err.filename,
-        area_key: err.error.slice(0, 40),
+        business_domain: err.error.slice(0, 40),
         decision: "error",
         confidence: null,
         llm: false,
@@ -395,7 +397,7 @@ export function IngestTriageCard({
                     <th className="itc-th-status" />
                     <th className="itc-th-datetime">Data / Hora</th>
                     <th className="itc-th-file">Arquivo</th>
-                    <th className="itc-th-area">Área / Pasta</th>
+                    <th className="itc-th-area">Domínio / Tipo</th>
                     <th className="itc-th-decision">Decisão</th>
                     <th className="itc-th-conf">Conf.</th>
                   </tr>
@@ -404,7 +406,7 @@ export function IngestTriageCard({
                   {pageRows.map((row) => {
                     const hasLlmDetail = row.llm && (row.llm_explanation || row.rule_area_key || row.llm_proposed_area);
                     const isExpanded = expandedLlm.has(row.key);
-                    const areaOverridden = row.rule_area_key && row.rule_area_key !== row.area_key;
+                    const areaOverridden = row.rule_area_key && row.rule_area_key !== row.business_domain;
                     return (
                       <React.Fragment key={row.key}>
                         <tr className={`itc-scan-row${hasLlmDetail ? " itc-row-clickable" : ""}`} onClick={hasLlmDetail ? () => toggleLlmRow(row.key) : undefined}>
@@ -423,8 +425,9 @@ export function IngestTriageCard({
                               <span className="itc-scan-llm-indicator" title="Classificado com LLM">🤖</span>
                             )}
                           </td>
-                          <td className="itc-scan-area" title={row.area_key}>
-                            {row.area_key}
+                          <td className="itc-scan-area" title={row.business_domain}>
+                            {row.business_domain}
+                            {row.document_type ? ` / ${row.document_type}` : ""}
                             {areaOverridden && (
                               <span className="itc-area-override" title={`Regra: ${row.rule_area_key}`}>
                                 ← {row.rule_area_key}
@@ -449,10 +452,10 @@ export function IngestTriageCard({
                                 {row.rule_area_key && (
                                   <p>Regra: <code>{row.rule_area_key}</code> (conf {(row.rule_confidence ?? 0).toFixed(2)})</p>
                                 )}
-                                <p>LLM: <code>{row.area_key}</code> (conf {(row.confidence ?? 0).toFixed(2)})</p>
+                                <p>LLM: <code>{row.business_domain}</code> (conf {(row.confidence ?? 0).toFixed(2)})</p>
                                 {row.llm_explanation && <p>Motivo: <em>{row.llm_explanation}</em></p>}
                                 {row.llm_proposed_area && (
-                                  <p className="itc-proposed-area">Área proposta (nova): <code>{row.llm_proposed_area}</code></p>
+                                  <p className="itc-proposed-area">Domínio proposto: <code>{row.llm_proposed_area}</code></p>
                                 )}
                               </div>
                             </td>
@@ -493,12 +496,15 @@ export function IngestTriageCard({
             <ul className="list">
               {triageItems.map((item) => {
                 const hasLlmContext = item.llm_explanation || item.rule_area_key || item.llm_proposed_area;
+                const suggestedBusinessDomain = item.suggested_business_domain || item.suggested_area;
                 return (
                   <li key={item.doc_id} className="list-item">
                     <strong className="list-title">{item.filename}</strong>
                     <div className="sub list-meta">
                       projeto: {projectLabelById.get(item.project_id) || item.project_id} | sugestão:{" "}
-                      {item.suggested_area || "sem sugestão"} | confiança: {item.confidence_score.toFixed(2)}
+                      {suggestedBusinessDomain || "sem sugestão"}
+                      {item.suggested_document_type ? ` / ${item.suggested_document_type}` : ""}
+                      {" "} | confiança: {item.confidence_score.toFixed(2)}
                     </div>
 
                     {hasLlmContext && (
@@ -508,7 +514,7 @@ export function IngestTriageCard({
                         )}
                         {item.llm_explanation && <p>LLM: <em>{item.llm_explanation}</em></p>}
                         {item.llm_proposed_area && (
-                          <p className="itc-proposed-area">Área proposta (nova): <code>{item.llm_proposed_area}</code></p>
+                          <p className="itc-proposed-area">Domínio proposto: <code>{item.llm_proposed_area}</code></p>
                         )}
                       </div>
                     )}
@@ -516,21 +522,12 @@ export function IngestTriageCard({
                     <div className="row">
                       <button
                         className="btn"
-                        disabled={!item.suggested_area}
-                        title={!item.suggested_area ? "Sem sugestão de área" : ""}
+                        disabled={!suggestedBusinessDomain}
+                        title={!suggestedBusinessDomain ? "Sem sugestão de domínio" : ""}
                         onClick={() => void onDecision(item, "approve")}
                       >
                         Aprovar
                       </button>
-                      {item.llm_proposed_area && (
-                        <button
-                          className="btn primary"
-                          onClick={() => void onDecision({ ...item, suggested_area: item.llm_proposed_area }, "correct")}
-                          title={`Aprovar e criar área: ${item.llm_proposed_area}`}
-                        >
-                          Aprovar: {item.llm_proposed_area}
-                        </button>
-                      )}
                       <button className="btn" onClick={() => void onDecision(item, "correct")}>
                         Corrigir
                       </button>

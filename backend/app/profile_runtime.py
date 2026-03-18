@@ -47,6 +47,17 @@ def area_folder_map(profile: dict[str, Any]) -> dict[str, str]:
     return mapped
 
 
+def business_domain_folder_map(profile: dict[str, Any]) -> dict[str, str]:
+    layout = profile.get("layout") or {}
+    mapped: dict[str, str] = {}
+    for row in layout.get("business_domain_folders") or []:
+        business_domain = str(row.get("business_domain") or "").strip()
+        folder = str(row.get("folder") or "").strip()
+        if business_domain and folder:
+            mapped[business_domain] = folder
+    return mapped or area_folder_map(profile)
+
+
 def resolve_area_folder_name(profile: dict[str, Any], area_key: str) -> str:
     mapped = area_folder_map(profile)
     if area_key in mapped:
@@ -63,4 +74,31 @@ def resolve_area_folder_name(profile: dict[str, Any], area_key: str) -> str:
             return f"{jd:02d}_{sanitize_token(area_key)}"
         break
     return sanitize_token(area_key)
+
+
+def resolve_business_domain_folder_name(profile: dict[str, Any], business_domain: str) -> str:
+    mapped = business_domain_folder_map(profile)
+    if business_domain in mapped:
+        return mapped[business_domain]
+
+    for domain in profile.get("business_domains", []):
+        if str(domain.get("key") or "") != business_domain:
+            continue
+        explicit = str(domain.get("folder") or "").strip()
+        if explicit:
+            return explicit
+        break
+    raise ValueError(f"business_domain folder is not configured: {business_domain}")
+
+
+def resolve_document_type_folder_name(profile: dict[str, Any], document_type: str) -> str:
+    classification = profile.get("classification") or {}
+    for doc_type in classification.get("document_types") or []:
+        if str(doc_type.get("key") or "") != document_type:
+            continue
+        explicit = str(doc_type.get("folder") or "").strip()
+        if explicit:
+            return explicit
+        break
+    raise ValueError(f"document_type folder is not configured: {document_type}")
 

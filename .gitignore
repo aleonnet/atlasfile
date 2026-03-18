@@ -8,3 +8,7 @@ dist/
 opensearch_data/
 *.code-workspace
 .cursor/
+config/validation_set/files/
+config/training_pool/files/
+config/training_pool/records.jsonl
+.atlasfile_eval/

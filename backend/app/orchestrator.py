@@ -100,6 +100,31 @@ def get_llm_config(use: str) -> tuple[str, str]:
     return (settings.default_llm_provider, settings.default_llm_model)
 
 
+_PROJECT_SCOPED_TOOL_NAMES = {"search_documents", "list_documents", "get_stats", "list_tags"}
+
+
+def _chat_system_prompt(project_id: str | None) -> str:
+    prompt = get_system_prompt_chat()
+    scope = str(project_id or "").strip()
+    if not scope:
+        return prompt
+    return (
+        prompt
+        + "\n\n## Escopo ativo\n"
+        + f"- project_id ativo desta conversa: `{scope}`.\n"
+        + "- Para tools que aceitam `project_id`, use esse valor por padrao.\n"
+        + "- Nao misture resultados de outros projetos, a menos que o usuario peca isso explicitamente."
+    )
+
+
+def _apply_project_scope_to_tool_args(tool_name: str, args: dict[str, Any] | None, project_id: str | None) -> dict[str, Any]:
+    scoped_args = dict(args or {})
+    scope = str(project_id or "").strip()
+    if scope and tool_name in _PROJECT_SCOPED_TOOL_NAMES and not str(scoped_args.get("project_id") or "").strip():
+        scoped_args["project_id"] = scope
+    return scoped_args
+
+
 def mcp_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert MCP tool list (name, description, inputSchema) to OpenAI tools format."""
     out = []
@@ -161,6 +186,7 @@ async def run_chat_loop(
     model: str,
     api_key: str | None = None,
     enable_thinking: bool = False,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Run chat with tool calls: get MCP tools, send to LLM, on tool_calls execute via MCP and re-send.
@@ -175,10 +201,28 @@ async def run_chat_loop(
     max_tool_result_chars = get_max_tool_result_chars(provider, model)
     if provider == "openai":
         tools_api = mcp_tools_to_openai(tools_mcp)
-        result = await _run_chat_openai(trimmed, model, tools_api, api_key, tool_calls_used, enable_thinking, max_tool_result_chars)
+        result = await _run_chat_openai(
+            trimmed,
+            model,
+            tools_api,
+            api_key,
+            tool_calls_used,
+            enable_thinking,
+            max_tool_result_chars,
+            project_id,
+        )
     elif provider == "anthropic":
         tools_api = mcp_tools_to_anthropic(tools_mcp)
-        result = await _run_chat_anthropic(trimmed, model, tools_api, api_key, tool_calls_used, enable_thinking, max_tool_result_chars)
+        result = await _run_chat_anthropic(
+            trimmed,
+            model,
+            tools_api,
+            api_key,
+            tool_calls_used,
+            enable_thinking,
+            max_tool_result_chars,
+            project_id,
+        )
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
@@ -194,11 +238,12 @@ async def _run_chat_openai(
     tool_calls_used: list[dict[str, Any]],
     enable_thinking: bool = False,
     max_tool_result_chars: int = MAX_TOOL_RESULT_CHARS_FALLBACK,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=api_key or None)  # None => env OPENAI_API_KEY
-    system_content = get_system_prompt_chat()
+    system_content = _chat_system_prompt(project_id)
     # Mensagens sem role system do cliente; system único no backend
     loop_messages = [{"role": "system", "content": system_content}] + [m for m in messages if m.get("role") != "system"]
     create_kw: dict[str, Any] = {
@@ -237,6 +282,7 @@ async def _run_chat_openai(
                 args = json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else (tc.function.arguments or {})
             except json.JSONDecodeError:
                 args = {}
+            args = _apply_project_scope_to_tool_args(name, args, project_id)
             result = await mcp_call_tool(name, args)
             result = _truncate_tool_result(result, max_tool_result_chars)
             preview = result[:200] + "..." if len(result) > 200 else result
@@ -271,6 +317,7 @@ async def _run_chat_anthropic(
     tool_calls_used: list[dict[str, Any]],
     enable_thinking: bool = False,
     max_tool_result_chars: int = MAX_TOOL_RESULT_CHARS_FALLBACK,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     from anthropic import AsyncAnthropic
 
@@ -309,7 +356,7 @@ async def _run_chat_anthropic(
                 body = [{"type": "text", "text": str(content)}]
             anthropic_messages.append({"role": role, "content": body})
 
-    base_system = system or get_system_prompt_chat()
+    base_system = system or _chat_system_prompt(project_id)
     create_kw: dict[str, Any] = {
         "model": model,
         "max_tokens": 16000 if enable_thinking else 4096,
@@ -358,6 +405,7 @@ async def _run_chat_anthropic(
                 pass
             else:
                 inp = {}
+            inp = _apply_project_scope_to_tool_args(name, inp, project_id)
             result = await mcp_call_tool(name, inp)
             result = _truncate_tool_result(result, max_tool_result_chars)
             preview = result[:200] + "..." if len(result) > 200 else result

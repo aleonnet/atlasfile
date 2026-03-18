@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { createTemplate, deleteTemplate, fetchModels, getTemplate, listTemplates, saveTemplate } from "../../api";
+import { createTemplate, deleteTemplate, getTemplate, listTemplates, saveTemplate } from "../../api";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
-import type { ModelOption, TemplateMeta } from "../../types";
+import type { TemplateMeta } from "../../types";
 import "./templates.css";
 
 type EditorState = {
@@ -18,13 +18,8 @@ export function TemplateEditorView() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [modelCatalog, setModelCatalog] = useState<ModelOption[]>([]);
 
   useEscapeKey(confirmDelete ? () => setConfirmDelete(null) : editor ? () => setEditor(null) : null);
-
-  useEffect(() => {
-    void fetchModels().then(setModelCatalog).catch(() => setModelCatalog([]));
-  }, []);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -69,12 +64,16 @@ export function TemplateEditorView() {
         project_label: "__PROJECT_LABEL__",
         project_root: "__PROJECT_ROOT__",
         paths: { inbox: "_INBOX_DROP", triage: { pending: "_TRIAGE_REVIEW/pending", resolved: "_TRIAGE_REVIEW/resolved", rejected: "_TRIAGE_REVIEW/rejected" } },
-        layout: { mode: "para_jd", roots: { projects: "01_PROJECTS", areas: "02_AREAS", resources: "03_RESOURCES", archive: "04_ARCHIVE" }, areas_root: "02_AREAS", area_folders: [] },
+        layout: {
+          mode: "para_jd",
+          roots: { projects: "01_PROJECTS", areas: "02_AREAS", resources: "03_RESOURCES", archive: "04_ARCHIVE" },
+          areas_root: "02_AREAS",
+          business_domain_folders: []
+        },
         classification: {
-          work_areas: [],
-          routing_rules: [],
-          confidence_thresholds: { auto_route_min: 0.85, triage_min: 0.5 },
-          llm_policy: { enabled: false, provider: "openai", model: "gpt-4o-mini", mode: "tag_only", allow_override_fields: ["document_type", "tags", "confidence", "topics"], override_guardrails: { area_override_only_if_rule_confidence_below: 0.65, require_explanation: true, max_area_changes: 1 } },
+          business_domains: [],
+          document_types: [],
+          entity_catalog: [],
         },
         naming: { canonical_pattern: "{date}__{project}__{original_name}", date_format: "%Y%m%d" },
         indexing: { topics_path: "config/topics_v1.yaml", extraction_max_chars: 50000, extraction_mode: "all" },
@@ -115,14 +114,11 @@ export function TemplateEditorView() {
     if (!editor || !editor.profileData) return;
     setSaving(true);
     try {
-      const data = {
-        ...editor.profileData,
-        template_meta: {
-          slug: editor.slug,
-          name: editor.name,
-          description: editor.description,
-        },
-      };
+      const data = buildTemplatePayload(editor.profileData, {
+        slug: editor.slug,
+        name: editor.name,
+        description: editor.description,
+      });
       if (editor.isNew) {
         await createTemplate(data);
       } else {
@@ -137,35 +133,109 @@ export function TemplateEditorView() {
     }
   }
 
+  function buildTemplatePayload(
+    profileData: Record<string, unknown>,
+    templateMeta: { slug: string; name: string; description: string }
+  ) {
+    const classification = (profileData.classification as Record<string, unknown>) ?? {};
+    const layout = (profileData.layout as Record<string, unknown>) ?? {};
+    const { area_folders: _ignoredAreaFolders, ...layoutWithoutLegacy } = layout;
+    const businessDomains =
+      ((classification.business_domains as Array<Record<string, unknown>> | undefined) ?? []).map((domain) => ({
+        key: String(domain.key ?? "").trim(),
+        label: String(domain.label ?? ""),
+        aliases: Array.isArray(domain.aliases) ? domain.aliases : [],
+        primary_scope: String(domain.primary_scope ?? ""),
+        subfunction_topics: Array.isArray(domain.subfunction_topics) ? domain.subfunction_topics : [],
+      }));
+    const domainFolders =
+      ((layout.business_domain_folders as Array<Record<string, unknown>> | undefined) ?? []).map((row) => ({
+        business_domain: String(row.business_domain ?? "").trim(),
+        folder: String(row.folder ?? "").trim(),
+      })).filter((row) => row.business_domain);
+    const documentTypes =
+      ((classification.document_types as Array<Record<string, unknown>> | undefined) ?? []).map((row) => ({
+        ...row,
+        key: String(row.key ?? "").trim(),
+        label: String(row.label ?? ""),
+        aliases: Array.isArray(row.aliases) ? row.aliases : [],
+        extensions: Array.isArray(row.extensions) ? row.extensions : [],
+        folder: String(row.folder ?? "").trim(),
+      }));
+    const entityCatalog =
+      ((classification.entity_catalog as Array<Record<string, unknown>> | undefined) ?? []).map((row) => ({
+        type: String(row.type ?? "").trim(),
+        value: String(row.value ?? "").trim(),
+        aliases: Array.isArray(row.aliases) ? row.aliases : [],
+      })).filter((row) => row.type && row.value);
+
+    return {
+      ...profileData,
+      template_meta: {
+        slug: templateMeta.slug,
+        name: templateMeta.name,
+        description: templateMeta.description,
+      },
+      layout: {
+        ...layoutWithoutLegacy,
+        business_domain_folders: domainFolders,
+      },
+      classification: {
+        business_domains: businessDomains,
+        document_types: documentTypes,
+        entity_catalog: entityCatalog,
+      },
+    };
+  }
+
   // Editor modal
   if (editor) {
     const cls = editor.profileData?.classification as Record<string, unknown> | undefined;
-    const areas = (cls?.work_areas as Array<Record<string, unknown>>) ?? [];
-    const rules = (cls?.routing_rules as Array<Record<string, unknown>>) ?? [];
-    const thresholds = (cls?.confidence_thresholds as Record<string, number>) ?? { auto_route_min: 0.85, triage_min: 0.5 };
-    const llm = (cls?.llm_policy as Record<string, unknown>) ?? {};
-    const guardrails = (llm.override_guardrails as Record<string, unknown>) ?? {};
+    const layoutData = (editor.profileData?.layout as Record<string, unknown>) ?? {};
+    const workAreas = (cls?.work_areas as Array<Record<string, unknown>> | undefined) ?? [];
+    const workAreaMap = new Map(
+      workAreas
+        .map((row) => [String(row.key ?? ""), row] as const)
+        .filter(([key]) => key)
+    );
+    const rawDomains =
+      (cls?.business_domains as Array<Record<string, unknown>> | undefined) ??
+      workAreas ??
+      [];
+    const folderRows =
+      (layoutData.business_domain_folders as Array<Record<string, unknown>> | undefined) ??
+      (layoutData.area_folders as Array<Record<string, unknown>> | undefined)?.map((row) => ({
+        business_domain: row.area_key,
+        folder: row.folder
+      })) ??
+      [];
+    const folderMap = new Map(
+      folderRows
+        .map((row) => [String(row.business_domain ?? ""), String(row.folder ?? "")] as const)
+        .filter(([key]) => key)
+    );
+    const domains: Array<Record<string, unknown>> = rawDomains.map((row) => ({
+      ...(workAreaMap.get(String(row.key ?? "")) ?? {}),
+      ...row,
+      aliases: Array.isArray(row.aliases)
+        ? row.aliases
+        : Array.isArray((workAreaMap.get(String(row.key ?? "")) ?? {}).aliases)
+          ? ((workAreaMap.get(String(row.key ?? "")) ?? {}).aliases as unknown[])
+          : [],
+      primary_scope: row.primary_scope ?? "",
+      subfunction_topics: Array.isArray(row.subfunction_topics) ? row.subfunction_topics : [],
+      jd_number: row.jd_number ?? (workAreaMap.get(String(row.key ?? "")) ?? {}).jd_number ?? null,
+      folder: String(row.folder ?? folderMap.get(String(row.key ?? "")) ?? row.key ?? "")
+    }));
+    const documentTypes = (cls?.document_types as Array<Record<string, unknown>>) ?? [];
+    const entityCatalog = (cls?.entity_catalog as Array<Record<string, unknown>>) ?? [];
     const naming = (editor.profileData?.naming as Record<string, unknown>) ?? {};
     const indexing = (editor.profileData?.indexing as Record<string, unknown>) ?? {};
-    const areaKeys = areas.map((a) => String(a.key ?? "")).filter(Boolean);
 
     function updateClassification(field: string, value: unknown) {
       if (!editor?.profileData) return;
       const c = { ...(editor.profileData.classification as Record<string, unknown>), [field]: value };
       setEditor({ ...editor, profileData: { ...editor.profileData, classification: c } });
-    }
-
-    function updateThresholds(field: string, value: number) {
-      updateClassification("confidence_thresholds", { ...thresholds, [field]: value });
-    }
-
-    function updateLlmPolicy(field: string, value: unknown) {
-      const updated = { ...llm, [field]: value };
-      updateClassification("llm_policy", updated);
-    }
-
-    function updateGuardrails(field: string, value: unknown) {
-      updateLlmPolicy("override_guardrails", { ...guardrails, [field]: value });
     }
 
     function updateNaming(field: string, value: unknown) {
@@ -180,56 +250,106 @@ export function TemplateEditorView() {
       setEditor({ ...editor, profileData: { ...editor.profileData, indexing: idx } });
     }
 
-    function updateArea(idx: number, field: string, value: unknown) {
+    function syncDomainMirrors(nextDomains: Array<Record<string, unknown>>) {
       if (!editor?.profileData) return;
       const classification = { ...(editor.profileData.classification as Record<string, unknown>) };
-      const wa = [...(classification.work_areas as Array<Record<string, unknown>>)];
-      wa[idx] = { ...wa[idx], [field]: value };
-      classification.work_areas = wa;
-      setEditor({ ...editor, profileData: { ...editor.profileData, classification } });
+      const layout = { ...(editor.profileData.layout as Record<string, unknown>) };
+      const normalizedDomains = nextDomains.map((domain) => ({
+        key: String(domain.key ?? ""),
+        label: String(domain.label ?? ""),
+        aliases: Array.isArray(domain.aliases) ? domain.aliases : [],
+        primary_scope: String(domain.primary_scope ?? ""),
+        subfunction_topics: Array.isArray(domain.subfunction_topics) ? domain.subfunction_topics : [],
+        jd_number: Number.isFinite(Number(domain.jd_number)) && Number(domain.jd_number) > 0
+          ? Number(domain.jd_number)
+          : undefined,
+        folder: String(domain.folder ?? domain.key ?? "")
+      }));
+      const normalizedFolders = normalizedDomains
+        .map((domain) => ({
+          business_domain: domain.key,
+          folder: domain.folder
+        }))
+        .filter((row) => row.business_domain);
+      classification.business_domains = normalizedDomains.map(({ folder, jd_number, ...domain }) => domain);
+      classification.work_areas = normalizedDomains.map((domain, index) => ({
+        key: domain.key,
+        jd_number: domain.jd_number ?? index + 1,
+        aliases: domain.aliases
+      }));
+      layout.business_domain_folders = normalizedFolders;
+      layout.area_folders = normalizedFolders.map((row) => ({ area_key: row.business_domain, folder: row.folder }));
+      setEditor({ ...editor, profileData: { ...editor.profileData, classification, layout } });
+    }
+
+    function updateArea(idx: number, field: string, value: unknown) {
+      const nextDomains = [...domains];
+      nextDomains[idx] = { ...nextDomains[idx], [field]: value };
+      syncDomainMirrors(nextDomains);
     }
 
     function addArea() {
       if (!editor?.profileData) return;
-      const classification = { ...(editor.profileData.classification as Record<string, unknown>) };
-      const wa = [...(classification.work_areas as Array<Record<string, unknown>>)];
-      const usedJd = wa.map((a) => Number(a.jd_number) || 0);
-      const nextJd = Math.max(0, ...usedJd) + 1;
-      wa.push({ key: "", jd_number: nextJd, aliases: [] });
-      classification.work_areas = wa;
-      const layout = { ...(editor.profileData.layout as Record<string, unknown>) };
-      const af = [...((layout.area_folders as Array<Record<string, unknown>>) || [])];
-      af.push({ area_key: "", folder: `${String(nextJd).padStart(2, "0")}_` });
-      layout.area_folders = af;
-      setEditor({ ...editor, profileData: { ...editor.profileData, classification, layout } });
+      syncDomainMirrors([...domains, { key: "", label: "", aliases: [], folder: "" }]);
     }
 
     function removeArea(idx: number) {
+      const nextDomains = [...domains];
+      nextDomains.splice(idx, 1);
+      syncDomainMirrors(nextDomains);
+    }
+
+    function updateDocumentType(idx: number, field: string, value: unknown) {
       if (!editor?.profileData) return;
       const classification = { ...(editor.profileData.classification as Record<string, unknown>) };
-      const wa = [...(classification.work_areas as Array<Record<string, unknown>>)];
-      const removed = wa.splice(idx, 1)[0];
-      classification.work_areas = wa;
-      const layout = { ...(editor.profileData.layout as Record<string, unknown>) };
-      const af = ((layout.area_folders as Array<Record<string, unknown>>) || []).filter((f) => f.area_key !== removed.key);
-      layout.area_folders = af;
-      setEditor({ ...editor, profileData: { ...editor.profileData, classification, layout } });
-    }
-
-    function updateRule(idx: number, field: string, value: unknown) {
-      const updated = [...rules];
+      const updated = [...documentTypes];
       updated[idx] = { ...updated[idx], [field]: value };
-      updateClassification("routing_rules", updated);
+      classification.document_types = updated;
+      setEditor({ ...editor, profileData: { ...editor.profileData, classification } });
     }
 
-    function addRule() {
-      updateClassification("routing_rules", [...rules, { when_filename_contains: [], route_to: areaKeys[0] ?? "", confidence: 0.9 }]);
+    function addDocumentType() {
+      if (!editor?.profileData) return;
+      const classification = { ...(editor.profileData.classification as Record<string, unknown>) };
+      classification.document_types = [
+        ...documentTypes,
+        {
+          key: "",
+          label: "",
+          aliases: [],
+          extensions: [],
+          folder: "",
+          extension_confidence_by_extension: {},
+          fallback_priority: 100,
+          detection_rules: []
+        }
+      ];
+      setEditor({ ...editor, profileData: { ...editor.profileData, classification } });
     }
 
-    function removeRule(idx: number) {
-      const updated = [...rules];
+    function removeDocumentType(idx: number) {
+      if (!editor?.profileData) return;
+      const classification = { ...(editor.profileData.classification as Record<string, unknown>) };
+      const updated = [...documentTypes];
       updated.splice(idx, 1);
-      updateClassification("routing_rules", updated);
+      classification.document_types = updated;
+      setEditor({ ...editor, profileData: { ...editor.profileData, classification } });
+    }
+
+    function updateEntity(idx: number, field: string, value: unknown) {
+      const updated = [...entityCatalog];
+      updated[idx] = { ...updated[idx], [field]: value };
+      updateClassification("entity_catalog", updated);
+    }
+
+    function addEntity() {
+      updateClassification("entity_catalog", [...entityCatalog, { type: "", value: "", aliases: [] }]);
+    }
+
+    function removeEntity(idx: number) {
+      const updated = [...entityCatalog];
+      updated.splice(idx, 1);
+      updateClassification("entity_catalog", updated);
     }
 
     const inputStyle = { width: "100%", padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg)", color: "var(--text)", fontSize: "0.85rem" } as const;
@@ -295,23 +415,24 @@ export function TemplateEditorView() {
           <details className="itc-collapsible" open>
             <summary className="itc-collapsible-header">
               Estrutura de Layout
-              <span className="itc-badge-count">{areas.length} áreas</span>
+              <span className="itc-badge-count">{domains.length} domínios</span>
             </summary>
             <div className="itc-collapsible-body">
               <table className="itc-scan-table">
                 <thead>
                   <tr>
-                    <th style={{ width: 30 }}>#</th>
-                    <th>AREA_KEY</th>
+                    <th>BUSINESS_DOMAIN</th>
+                    <th>LABEL</th>
                     <th>ALIASES</th>
+                    <th>PASTA</th>
                     <th style={{ width: 40 }} />
                   </tr>
                 </thead>
                 <tbody>
-                  {areas.map((a, i) => (
+                  {domains.map((a, i) => (
                     <tr key={i}>
-                      <td style={{ textAlign: "center", color: "var(--muted)", fontSize: "0.78rem" }}>{String(a.jd_number ?? "")}</td>
                       <td><input style={inputStyle} value={String(a.key ?? "")} onChange={(e) => updateArea(i, "key", e.target.value)} /></td>
+                      <td><input style={inputStyle} value={String(a.label ?? "")} onChange={(e) => updateArea(i, "label", e.target.value)} /></td>
                       <td>
                         <input
                           style={inputStyle}
@@ -319,202 +440,95 @@ export function TemplateEditorView() {
                           onChange={(e) => updateArea(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
                         />
                       </td>
+                      <td><input style={inputStyle} value={String(a.folder ?? "")} onChange={(e) => updateArea(i, "folder", e.target.value)} /></td>
                       <td><button className="btn danger" style={{ padding: "2px 6px", fontSize: "0.75rem" }} onClick={() => removeArea(i)}>×</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <button className="btn" style={{ marginTop: 8, fontSize: "0.82rem" }} onClick={addArea}>+ Adicionar área</button>
+              <button className="btn" style={{ marginTop: 8, fontSize: "0.82rem" }} onClick={addArea}>+ Adicionar domínio</button>
             </div>
           </details>
 
-          {/* ── Routing Rules ── */}
-          <details className="itc-collapsible">
+          <details className="itc-collapsible" open>
             <summary className="itc-collapsible-header">
-              Routing Rules
-              <span className="itc-badge-count">{rules.length} regras</span>
+              Tipos documentais
+              <span className="itc-badge-count">{documentTypes.length} tipos</span>
             </summary>
             <div className="itc-collapsible-body">
               <table className="itc-scan-table">
                 <thead>
                   <tr>
-                    <th style={{ width: 90 }}>Tipo</th>
-                    <th style={{ minWidth: 220 }}>Patterns</th>
-                    <th style={{ width: 160 }}>Área destino</th>
-                    <th style={{ width: 70 }}>Conf.</th>
+                    <th>KEY</th>
+                    <th>LABEL</th>
+                    <th>ALIASES</th>
+                    <th>EXTENSÕES</th>
+                    <th>PASTA</th>
+                    <th style={{ width: 40 }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {documentTypes.map((row, i) => (
+                    <tr key={i}>
+                      <td><input style={inputStyle} value={String(row.key ?? "")} onChange={(e) => updateDocumentType(i, "key", e.target.value)} /></td>
+                      <td><input style={inputStyle} value={String(row.label ?? "")} onChange={(e) => updateDocumentType(i, "label", e.target.value)} /></td>
+                      <td>
+                        <input
+                          style={inputStyle}
+                          value={Array.isArray(row.aliases) ? row.aliases.join(", ") : ""}
+                          onChange={(e) => updateDocumentType(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={inputStyle}
+                          value={Array.isArray(row.extensions) ? row.extensions.join(", ") : ""}
+                          onChange={(e) => updateDocumentType(i, "extensions", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                        />
+                      </td>
+                      <td><input style={inputStyle} value={String(row.folder ?? "")} onChange={(e) => updateDocumentType(i, "folder", e.target.value)} /></td>
+                      <td><button className="btn danger" style={{ padding: "2px 6px", fontSize: "0.75rem" }} onClick={() => removeDocumentType(i)}>×</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button className="btn" style={{ marginTop: 8, fontSize: "0.82rem" }} onClick={addDocumentType}>+ Adicionar tipo</button>
+            </div>
+          </details>
+
+          <details className="itc-collapsible">
+            <summary className="itc-collapsible-header">
+              Catálogo de entidades
+              <span className="itc-badge-count">{entityCatalog.length} entidades</span>
+            </summary>
+            <div className="itc-collapsible-body">
+              <table className="itc-scan-table">
+                <thead>
+                  <tr>
+                    <th>TIPO</th>
+                    <th>VALOR</th>
+                    <th>ALIASES</th>
                     <th style={{ width: 36 }} />
                   </tr>
                 </thead>
                 <tbody>
-                  {rules.map((r, i) => {
-                    const isPath = Array.isArray(r.when_path_contains) && (r.when_path_contains as string[]).length > 0;
-                    const patterns = isPath
-                      ? (r.when_path_contains as string[]).join(", ")
-                      : Array.isArray(r.when_filename_contains) ? (r.when_filename_contains as string[]).join(", ") : "";
-                    return (
-                      <tr key={i}>
-                        <td>
-                          <select
-                            style={{ ...inputStyle, width: "100%" }}
-                            value={isPath ? "path" : "filename"}
-                            onChange={(e) => {
-                              const type = e.target.value;
-                              const vals = patterns.split(",").map((s) => s.trim()).filter(Boolean);
-                              if (type === "path") {
-                                const u = { ...r, when_path_contains: vals, when_filename_contains: undefined };
-                                const updated = [...rules]; updated[i] = u; updateClassification("routing_rules", updated);
-                              } else {
-                                const u = { ...r, when_filename_contains: vals, when_path_contains: undefined };
-                                const updated = [...rules]; updated[i] = u; updateClassification("routing_rules", updated);
-                              }
-                            }}
-                          >
-                            <option value="filename">filename</option>
-                            <option value="path">path</option>
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            style={inputStyle}
-                            value={patterns}
-                            onChange={(e) => {
-                              const vals = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
-                              if (isPath) updateRule(i, "when_path_contains", vals);
-                              else updateRule(i, "when_filename_contains", vals);
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <select style={{ ...inputStyle, width: "100%" }} value={String(r.route_to ?? "")} onChange={(e) => updateRule(i, "route_to", e.target.value)}>
-                            {areaKeys.map((k) => <option key={k} value={k}>{k}</option>)}
-                            {!areaKeys.includes(String(r.route_to ?? "")) && <option value={String(r.route_to ?? "")}>{String(r.route_to ?? "")}</option>}
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            step="0.05"
-                            min="0"
-                            max="1"
-                            style={{ ...inputStyle, width: 60 }}
-                            value={Number(r.confidence ?? 0.9)}
-                            onChange={(e) => updateRule(i, "confidence", parseFloat(e.target.value) || 0)}
-                          />
-                        </td>
-                        <td><button className="btn danger" style={{ padding: "2px 6px", fontSize: "0.75rem" }} onClick={() => removeRule(i)}>×</button></td>
-                      </tr>
-                    );
-                  })}
+                  {entityCatalog.map((row, i) => (
+                    <tr key={i}>
+                      <td><input style={inputStyle} value={String(row.type ?? "")} onChange={(e) => updateEntity(i, "type", e.target.value)} /></td>
+                      <td><input style={inputStyle} value={String(row.value ?? "")} onChange={(e) => updateEntity(i, "value", e.target.value)} /></td>
+                      <td>
+                        <input
+                          style={inputStyle}
+                          value={Array.isArray(row.aliases) ? row.aliases.join(", ") : ""}
+                          onChange={(e) => updateEntity(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                        />
+                      </td>
+                      <td><button className="btn danger" style={{ padding: "2px 6px", fontSize: "0.75rem" }} onClick={() => removeEntity(i)}>×</button></td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-              <button className="btn" style={{ marginTop: 8, fontSize: "0.82rem" }} onClick={addRule}>+ Adicionar regra</button>
-            </div>
-          </details>
-
-          {/* ── Confidence Thresholds ── */}
-          <details className="itc-collapsible">
-            <summary className="itc-collapsible-header">Confidence Thresholds</summary>
-            <div className="itc-collapsible-body">
-              <div className="tmpl-grid-2">
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-auto-route-min">Auto-route mínimo</label>
-                  <input id="tmpl-auto-route-min" type="number" step="0.05" min="0" max="1" value={thresholds.auto_route_min ?? 0.85} onChange={(e) => updateThresholds("auto_route_min", parseFloat(e.target.value) || 0)} />
-                </div>
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-triage-min">Triage mínimo</label>
-                  <input id="tmpl-triage-min" type="number" step="0.05" min="0" max="1" value={thresholds.triage_min ?? 0.5} onChange={(e) => updateThresholds("triage_min", parseFloat(e.target.value) || 0)} />
-                </div>
-              </div>
-            </div>
-          </details>
-
-          {/* ── LLM Policy ── */}
-          <details className="itc-collapsible">
-            <summary className="itc-collapsible-header">
-              LLM Policy
-              <span className="itc-badge-count">{llm.enabled ? "ativado" : "desativado"}</span>
-            </summary>
-            <div className="itc-collapsible-body">
-              <div className="tmpl-llm-row">
-                <label>
-                  LLM ativado
-                  <button
-                    type="button"
-                    className={`tmpl-toggle ${llm.enabled ? "active" : ""}`}
-                    onClick={() => updateLlmPolicy("enabled", !llm.enabled)}
-                    aria-pressed={!!llm.enabled}
-                    aria-label="Ativar LLM"
-                  />
-                </label>
-              </div>
-              <div className="tmpl-grid-2">
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-llm-model">Modelo</label>
-                  <select
-                    id="tmpl-llm-model"
-                    value={`${String(llm.provider ?? "openai")}/${String(llm.model ?? "")}`}
-                    onChange={(e) => {
-                      const [prov, ...rest] = e.target.value.split("/");
-                      updateLlmPolicy("provider", prov);
-                      updateLlmPolicy("model", rest.join("/"));
-                    }}
-                  >
-                    {modelCatalog.map((m) => (
-                      <option key={`${m.provider}/${m.model}`} value={`${m.provider}/${m.model}`}>{m.label}</option>
-                    ))}
-                    {!modelCatalog.some((m) => `${m.provider}/${m.model}` === `${String(llm.provider ?? "openai")}/${String(llm.model ?? "")}`) && (
-                      <option value={`${String(llm.provider ?? "openai")}/${String(llm.model ?? "")}`}>
-                        {String(llm.provider ?? "openai")}/{String(llm.model ?? "")}
-                      </option>
-                    )}
-                  </select>
-                </div>
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-llm-mode">Modo</label>
-                  <select id="tmpl-llm-mode" value={String(llm.mode ?? "tag_only")} onChange={(e) => updateLlmPolicy("mode", e.target.value)}>
-                    <option value="tag_only">tag_only</option>
-                    <option value="review">review</option>
-                    <option value="full_override">full_override</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="tmpl-guardrails-label">Guardrails</div>
-              <div className="tmpl-grid-2">
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-guard-threshold">Override se conf. abaixo de</label>
-                  <input
-                    id="tmpl-guard-threshold"
-                    type="number"
-                    step="0.05"
-                    min="0"
-                    max="1"
-                    value={Number(guardrails.area_override_only_if_rule_confidence_below ?? 0.65)}
-                    onChange={(e) => updateGuardrails("area_override_only_if_rule_confidence_below", parseFloat(e.target.value) || 0)}
-                  />
-                </div>
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-guard-max-changes">Max area changes</label>
-                  <input
-                    id="tmpl-guard-max-changes"
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={Number(guardrails.max_area_changes ?? 1)}
-                    onChange={(e) => updateGuardrails("max_area_changes", parseInt(e.target.value) || 0)}
-                  />
-                </div>
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <label className="tmpl-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={!!guardrails.require_explanation}
-                    onChange={(e) => updateGuardrails("require_explanation", e.target.checked)}
-                  />
-                  Exigir explicação
-                </label>
-              </div>
+              <button className="btn" style={{ marginTop: 8, fontSize: "0.82rem" }} onClick={addEntity}>+ Adicionar entidade</button>
             </div>
           </details>
 
@@ -584,7 +598,7 @@ export function TemplateEditorView() {
                 </span>
               </strong>
               <div className="tmpl-card-meta">
-                {t.areas_count} áreas | Atualizado em {t.updated_at ? new Date(t.updated_at).toLocaleDateString("pt-BR") : "—"}
+                {t.areas_count} domínios | Atualizado em {t.updated_at ? new Date(t.updated_at).toLocaleDateString("pt-BR") : "—"}
                 <span className="tmpl-card-slug">{t.slug}.json</span>
               </div>
               {t.description && <div className="tmpl-card-desc">{t.description}</div>}

@@ -8,7 +8,6 @@ import re
 import shutil
 import threading
 import time
-import unicodedata
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -21,9 +20,10 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from .api.layout import router as layout_router
 from .api.profile import router as profile_router
-from .area_resolver import resolve_area_path
+from .area_resolver import resolve_classification_path
 from .bootstrap import ensure_project_structure
 from .config import settings
+from .evaluation_dataset import TrainingPoolRecord, append_training_pool_record
 from .indexer import backfill_search_fields, index_document, read_text_excerpt
 from .ingest_history import append_ingest_entry, load_ingest_history
 from .ingestion import process_inbox_file
@@ -81,7 +81,7 @@ from .triage import (
 from .llm_catalog import LLM_MODEL_CATALOG
 from .orchestrator import classify_with_llm, get_llm_config, run_chat_loop
 from .usage_costs import get_cost_per_1m
-from .utils import DEFAULT_CANONICAL_PATTERN, build_canonical_filename, normalize_text, utc_now_iso
+from .utils import DEFAULT_CANONICAL_PATTERN, build_canonical_filename, fold_ocr_spacing, normalize_text, utc_now_iso
 from .channels import ChannelManager, ChannelMessage
 from .channels.telegram import TelegramChannel
 
@@ -99,6 +99,8 @@ channel_manager: ChannelManager | None = None
 _channel_locks: dict[str, asyncio.Lock] = {}
 # Chat IDs that requested a forced new session via /novo
 _forced_new_sessions: set[str] = set()
+# Project scope explicitly selected for a channel chat (e.g. Telegram /projeto).
+_channel_project_scopes: dict[str, str] = {}
 
 # SSE event bus: notifies web clients when a session is modified externally
 _session_events: dict[str, asyncio.Event] = {}
@@ -122,6 +124,27 @@ def _get_channel_lock(key: str) -> asyncio.Lock:
     if key not in _channel_locks:
         _channel_locks[key] = asyncio.Lock()
     return _channel_locks[key]
+
+
+def _channel_scope_key(channel_id: str, chat_id: str) -> str:
+    return f"{channel_id}:{chat_id}"
+
+
+def _get_channel_project_scope(channel_id: str, chat_id: str) -> str | None:
+    return _channel_project_scopes.get(_channel_scope_key(channel_id, chat_id))
+
+
+def _set_channel_project_scope(channel_id: str, chat_id: str, project_id: str) -> None:
+    scope = str(project_id or "").strip()
+    key = _channel_scope_key(channel_id, chat_id)
+    if scope:
+        _channel_project_scopes[key] = scope
+    else:
+        _channel_project_scopes.pop(key, None)
+
+
+def _clear_channel_project_scope(channel_id: str, chat_id: str) -> None:
+    _channel_project_scopes.pop(_channel_scope_key(channel_id, chat_id), None)
 
 
 def _find_active_channel_session(channel_id: str, chat_id: str) -> dict[str, Any] | None:
@@ -192,10 +215,16 @@ async def _handle_channel_message(msg: ChannelMessage) -> str:
         if session and _session_timed_out(session, timeout):
             session = None
 
+        active_project_id = _get_channel_project_scope(msg.channel_id, msg.chat_id)
+        session_project_id = str((session or {}).get("project_id") or "").strip()
+        if not active_project_id and session_project_id:
+            active_project_id = session_project_id
+            _set_channel_project_scope(msg.channel_id, msg.chat_id, active_project_id)
+
         history = _build_history_from_session(session) if session else []
         history.append({"role": "user", "content": msg.text})
 
-        result = await run_chat_loop(history, provider, model)
+        result = await run_chat_loop(history, provider, model, project_id=active_project_id)
         content = result.get("content", "") if isinstance(result, dict) else str(result)
         usage = result.get("usage", {}) if isinstance(result, dict) else {}
 
@@ -216,6 +245,7 @@ async def _handle_channel_message(msg: ChannelMessage) -> str:
                 "usage_totals": new_totals,
                 "usage_by_model": existing_by_model,
                 "updatedAt": now_ms,
+                **({"project_id": active_project_id} if active_project_id else {}),
             }})
             _notify_session_update(session["id"])
         else:
@@ -231,6 +261,7 @@ async def _handle_channel_message(msg: ChannelMessage) -> str:
                 "channel_chat_id": msg.chat_id,
                 "usage_totals": usage,
                 "usage_by_model": by_model,
+                **({"project_id": active_project_id} if active_project_id else {}),
             }
             session_id = str(uuid.uuid4())
             os_client.index(index=_idx, id=session_id, body=doc)
@@ -348,8 +379,7 @@ app.include_router(layout_router)
 app.include_router(channels_router)
 
 def _normalize_query_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value or "")
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower().strip()
+    return fold_ocr_spacing(value)
 
 
 def _strip_html_tags(value: str) -> str:
@@ -434,6 +464,36 @@ def _trim_highlight(snippet: str) -> str:
 
 def _tokenize_normalized(value: str) -> list[str]:
     return [t for t in re.split(r"[^a-z0-9]+", _normalize_query_text(value)) if t]
+
+
+def _normalized_stem(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    return _normalize_query_text(Path(raw).stem)
+
+
+def _field_exact_match_rank(query: str, value: str) -> int:
+    query_norm = _normalize_query_text(query)
+    value_norm = _normalize_query_text(value)
+    if not query_norm or not value_norm:
+        return 0
+    if query_norm == value_norm:
+        return 2
+    stem_norm = _normalized_stem(value)
+    if stem_norm and query_norm == stem_norm:
+        return 1
+    return 0
+
+
+def _search_hit_sort_key(query: str, src: dict[str, Any], score: float, total_evidences: int) -> tuple[int, int, int, float, int]:
+    return (
+        _field_exact_match_rank(query, str(src.get("original_filename") or "")),
+        _field_exact_match_rank(query, str(src.get("title") or "")),
+        _field_exact_match_rank(query, str(src.get("canonical_filename") or "")),
+        score,
+        total_evidences,
+    )
 
 
 def _count_query_occurrences_in_text(text: str, query: str) -> int:
@@ -929,16 +989,25 @@ def api_create_template(body: dict[str, Any]) -> dict[str, Any]:
         profile_data["project_label"] = "__PROJECT_LABEL__"
         profile_data["project_root"] = "__PROJECT_ROOT__"
         profile_data["template_meta"] = {"slug": slug, "name": name, "description": description}
-        return _save_template(slug, profile_data)
+        try:
+            return _save_template(slug, profile_data)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     slug = body.get("template_meta", {}).get("slug") or body.get("slug", "")
     if not slug:
         raise HTTPException(status_code=400, detail="slug obrigatório")
-    return _save_template(slug, body)
+    try:
+        return _save_template(slug, body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.put("/api/templates/{slug}")
 def api_update_template(slug: str, body: dict[str, Any]) -> dict[str, Any]:
-    return _save_template(slug, body)
+    try:
+        return _save_template(slug, body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.delete("/api/templates/{slug}")
@@ -957,7 +1026,8 @@ def get_project_areas(project_ref: str) -> dict[str, Any]:
     project_root = _resolve_project_root(project_ref)
     profile, _ = _initialize_project_if_needed(project_root)
     areas: list[dict[str, str]] = []
-    for area in profile.get("work_areas", []):
+    business_domains = profile.get("business_domains") or []
+    for area in business_domains:
         key = str(area.get("key", "")).strip()
         if not key:
             continue
@@ -1184,6 +1254,7 @@ def get_document(doc_id: str) -> dict[str, Any]:
         "doc_id": src.get("doc_id"),
         "project_id": src.get("project_id"),
         "area_key": src.get("area_key"),
+        "business_domain": src.get("business_domain") or src.get("area_key"),
         "title": src.get("title"),
         "original_filename": src.get("original_filename"),
         "canonical_filename": src.get("canonical_filename"),
@@ -1218,6 +1289,7 @@ def get_document_chunks(doc_id: str, locations: list[str] = Query(..., min_lengt
         "doc_id": src.get("doc_id"),
         "project_id": src.get("project_id"),
         "area_key": src.get("area_key"),
+        "business_domain": src.get("business_domain") or src.get("area_key"),
         "title": src.get("title"),
         "original_filename": src.get("original_filename"),
         "canonical_filename": src.get("canonical_filename"),
@@ -1257,7 +1329,7 @@ def update_document_tags(doc_id: str, payload: DocumentTagsUpdate) -> dict[str, 
 
 @app.patch("/api/documents/{doc_id}")
 def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate) -> dict[str, Any]:
-    """Partial update: document_type, correspondent, area_key, review_status."""
+    """Partial update: document_type, correspondent, business_domain/area_key, review_status."""
     try:
         os_client.get(index=settings.opensearch_index, id=doc_id)
     except Exception:
@@ -1269,6 +1341,10 @@ def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate) -> di
         doc_updates["correspondent"] = payload.correspondent
     if payload.area_key is not None:
         doc_updates["area_key"] = payload.area_key
+        doc_updates["business_domain"] = payload.area_key
+    if payload.business_domain is not None:
+        doc_updates["business_domain"] = payload.business_domain
+        doc_updates["area_key"] = payload.business_domain
     if payload.review_status is not None:
         doc_updates["review_status"] = payload.review_status
     if not doc_updates:
@@ -1300,12 +1376,13 @@ def list_tags(project_id: str | None = Query(None, description="Filter by projec
 
 @app.get("/api/stats", response_model=StatsResponse)
 def get_stats(project_id: str | None = Query(None, description="Filter by project")) -> StatsResponse:
-    """Aggregate document statistics: total count and breakdowns by doc_kind, area_key, document_type, extension, tags."""
+    """Aggregate document statistics: total count and breakdowns by doc_kind, business_domain, area_key, document_type, extension, tags."""
     query: dict[str, Any] = {"match_all": {}}
     if project_id:
         query = {"bool": {"filter": [_project_scope_filter(project_id)]}}
     aggs: dict[str, Any] = {
         "by_doc_kind": {"terms": {"field": "doc_kind", "size": 20}},
+        "by_business_domain": {"terms": {"field": "business_domain", "size": 50}},
         "by_area_key": {"terms": {"field": "area_key", "size": 50}},
         "by_document_type": {"terms": {"field": "document_type", "size": 50}},
         "by_extension": {"terms": {"field": "extension", "size": 30}},
@@ -1313,7 +1390,17 @@ def get_stats(project_id: str | None = Query(None, description="Filter by projec
         "by_project_id": {"terms": {"field": "project_id", "size": 100}},
     }
     body: dict[str, Any] = {"size": 0, "query": query, "aggs": aggs}
-    _empty_stats = StatsResponse(project_id=project_id, total_documents=0, by_doc_kind=[], by_area_key=[], by_document_type=[], by_extension=[], by_tags=[], by_project_id=[])
+    _empty_stats = StatsResponse(
+        project_id=project_id,
+        total_documents=0,
+        by_doc_kind=[],
+        by_business_domain=[],
+        by_area_key=[],
+        by_document_type=[],
+        by_extension=[],
+        by_tags=[],
+        by_project_id=[],
+    )
     try:
         result = os_client.search(index=settings.opensearch_index, body=body)
     except OSNotFoundError:
@@ -1329,6 +1416,7 @@ def get_stats(project_id: str | None = Query(None, description="Filter by projec
         project_id=project_id,
         total_documents=total_documents,
         by_doc_kind=_buckets("by_doc_kind"),
+        by_business_domain=_buckets("by_business_domain"),
         by_area_key=_buckets("by_area_key"),
         by_document_type=_buckets("by_document_type"),
         by_extension=_buckets("by_extension"),
@@ -1358,7 +1446,14 @@ async def api_chat(
     api_key = x_openai_api_key if provider == "openai" else (x_anthropic_api_key if provider == "anthropic" else None)
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     try:
-        result = await run_chat_loop(messages, provider, model, api_key=api_key, enable_thinking=body.enable_thinking)
+        result = await run_chat_loop(
+            messages,
+            provider,
+            model,
+            api_key=api_key,
+            enable_thinking=body.enable_thinking,
+            project_id=body.project_id,
+        )
         usage_raw = result.get("usage")
         usage = TurnUsage(**usage_raw) if isinstance(usage_raw, dict) else None
         cp_raw = result.get("context_pressure")
@@ -1921,26 +2016,25 @@ def get_triage(project_id: str) -> list[dict[str, Any]]:
 
 
 def _ensure_area_in_profile(project_root: Path, profile: dict[str, Any], area_key: str) -> dict[str, Any]:
-    """Add area_key to work_areas + area_folders if missing, save profile, return updated dict."""
+    """Validate that a business domain exists in the profile."""
+    del project_root
     work_areas = profile.get("classification", {}).get("work_areas", [])
-    existing_keys = {str(a.get("key", "")).strip() for a in work_areas}
-    if area_key in existing_keys:
-        return profile
+    business_domains = profile.get("classification", {}).get("business_domains", [])
+    existing_keys = {str(a.get("key", "")).strip() for a in work_areas} | {
+        str(a.get("key", "")).strip() for a in business_domains
+    }
+    if area_key not in existing_keys:
+        raise ValueError(f"business_domain not configured in profile: {area_key}")
+    return profile
 
-    area_folders = profile.get("layout", {}).get("area_folders", [])
 
-    used_jd = {int(a.get("jd_number", 0)) for a in work_areas if a.get("jd_number")}
-    next_jd = max(used_jd, default=0) + 1
-
-    folder_name = f"{next_jd:02d}_{area_key}"
-    work_areas.append({"key": area_key, "jd_number": next_jd, "aliases": [area_key.replace("_", " ")]})
-    area_folders.append({"area_key": area_key, "folder": folder_name})
-
-    profile["classification"]["work_areas"] = work_areas
-    profile["layout"]["area_folders"] = area_folders
-
-    saved = save_profile(project_root=project_root, profile=profile, updated_by="triage:auto_area")
-    return saved.model_dump(mode="json")
+def _ensure_document_type_in_profile(project_root: Path, profile: dict[str, Any], document_type: str) -> dict[str, Any]:
+    del project_root
+    document_types = profile.get("classification", {}).get("document_types", [])
+    existing_keys = {str(item.get("key", "")).strip() for item in document_types}
+    if document_type not in existing_keys:
+        raise ValueError(f"document_type not configured in profile: {document_type}")
+    return profile
 
 
 @app.post("/api/triage/{project_id}/{doc_id}/decision")
@@ -1989,28 +2083,31 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
         return {"status": "ok", "action": "rejected", "doc_id": doc_id}
 
     # approve or correct
-    target_area = data.get("suggested_area")
+    target_area = data.get("suggested_business_domain") or data.get("suggested_area")
+    target_document_type = data.get("suggested_document_type") or data.get("document_type")
     if action == "correct":
-        if not request.target_area:
-            raise HTTPException(status_code=400, detail="target_area obrigatorio para correct")
-        target_area = request.target_area
+        target_area = request.target_business_domain or request.target_area
+        target_document_type = request.target_document_type or target_document_type
+        if not target_area:
+            raise HTTPException(status_code=400, detail="target_business_domain obrigatorio para correct")
 
     if not target_area:
         raise HTTPException(status_code=400, detail="Area alvo nao definida para aprovacao/correcao")
+    if not target_document_type:
+        raise HTTPException(status_code=400, detail="document_type alvo nao definido para aprovacao/correcao")
 
-    # Auto-create area if it doesn't exist in the profile
-    area_exists = any(a.get("key") == target_area for a in profile.get("work_areas", []))
-    if not area_exists:
+    try:
         profile = _ensure_area_in_profile(project_root, profile, target_area)
-
-    area_path = resolve_area_path(
-        project_root=project_root,
-        profile=profile,
-        area_key=target_area,
-        create_if_missing=True,
-    )
-    if not area_path:
-        raise HTTPException(status_code=400, detail=f"Area invalida: {target_area}")
+        profile = _ensure_document_type_in_profile(project_root, profile, target_document_type)
+        area_path = resolve_classification_path(
+            project_root=project_root,
+            profile=profile,
+            business_domain=target_area,
+            document_type=target_document_type,
+            create_if_missing=True,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     canonical_filename = data.get("canonical_filename") or ""
     if not canonical_filename:
@@ -2022,7 +2119,7 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
                 "project": project_id,
                 "area": target_area,
                 "original_name": data.get("original_filename", source_path.stem),
-                "document_type": data.get("document_type", ""),
+                "document_type": target_document_type,
             },
             original_suffix=source_path.suffix or ".bin",
         )
@@ -2035,6 +2132,7 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
         "doc_id": doc_id,
         "project_id": project_id,
         "area_key": target_area,
+        "business_domain": target_area,
         "title": source_path.stem,
         "content": read_text_excerpt(dest_path),
         "original_filename": data.get("original_filename", source_path.name),
@@ -2049,14 +2147,32 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
         "decision": "approved" if action == "approve" else "corrected",
         "confidence_score": float(data.get("confidence_score", 0.0)),
         "sha256": data.get("sha256", ""),
-        "tags": [target_area],
+        "tags": [target_area, target_document_type],
+        "document_type": target_document_type,
+        "entities": data.get("entities", []),
     }
     index_document(os_client, indexed_payload, profile=profile)
+    append_training_pool_record(
+        TrainingPoolRecord(
+            doc_id=doc_id,
+            project_id=project_id,
+            original_filename=str(indexed_payload.get("original_filename") or source_path.name),
+            path=str(dest_path),
+            business_domain=target_area,
+            document_type=target_document_type,
+            decision=str(indexed_payload["decision"]),
+            topics=list(data.get("topics", []) or []),
+            entities=list(data.get("entities", []) or []),
+            notes=str(request.note or ""),
+        )
+    )
 
     data["decision"] = indexed_payload["decision"]
     data["processed_at"] = indexed_payload["processed_at"]
     data["final_path"] = str(dest_path)
     data["area_key"] = target_area
+    data["business_domain"] = target_area
+    data["document_type"] = target_document_type
 
     pending_meta.unlink(missing_ok=True)
     (triage_resolved_dir(project_root) / f"{doc_id}.json").write_text(
@@ -2070,6 +2186,7 @@ def list_documents(
     project_id: str | None = None,
     doc_kind: str | None = None,
     document_type: str | None = None,
+    business_domain: str | None = None,
     area_key: str | None = None,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -2082,6 +2199,8 @@ def list_documents(
         filters.append({"term": {"doc_kind": doc_kind}})
     if document_type:
         filters.append({"term": {"document_type": document_type}})
+    if business_domain:
+        filters.append({"term": {"business_domain": business_domain}})
     if area_key:
         filters.append({"term": {"area_key": area_key}})
 
@@ -2092,7 +2211,7 @@ def list_documents(
         "size": size,
         "_source": [
             "project_id", "title", "original_filename", "path",
-            "doc_kind", "document_type", "area_key", "tags", "ingested_at",
+            "doc_kind", "document_type", "business_domain", "area_key", "tags", "ingested_at",
         ],
     }
     try:
@@ -2113,6 +2232,7 @@ def list_documents(
             doc_kind=src.get("doc_kind"),
             document_type=src.get("document_type"),
             area_key=src.get("area_key"),
+            business_domain=src.get("business_domain") or src.get("area_key"),
             tags=src.get("tags") or [],
             ingested_at=src.get("ingested_at"),
         ))
@@ -2123,6 +2243,7 @@ def list_documents(
 def search(
     q: str = Query(..., min_length=2),
     project_id: str | None = None,
+    business_domain: str | None = None,
     area_key: str | None = None,
     tags: list[str] | None = Query(None, description="Filter by tags (any match)"),
     document_type: str | None = Query(None, description="Filter by document_type"),
@@ -2159,8 +2280,11 @@ def search(
         "type": "best_fields",
         "fields": [
             "title_normalized^4",
+            "title_ocr_folded^5",
             "original_filename_normalized^4",
+            "original_filename_ocr_folded^5",
             "canonical_filename_normalized^3",
+            "canonical_filename_ocr_folded^4",
         ],
         "fuzziness": "AUTO",
         "prefix_length": 1,
@@ -2178,8 +2302,11 @@ def search(
                     "should": [
                         {"multi_match": {"query": q, "fields": ["content_chunks.text^2"], "fuzziness": "AUTO", "prefix_length": 1, "operator": "or"}},
                         {"multi_match": {"query": normalized_q, "fields": ["content_chunks.text_normalized^2"], "fuzziness": "AUTO", "prefix_length": 1, "operator": "or"}},
+                        {"multi_match": {"query": normalized_q, "fields": ["content_chunks.text_ocr_folded^4"], "fuzziness": "AUTO", "prefix_length": 1, "operator": "or"}},
                         {"match_phrase": {"content_chunks.text_normalized": {"query": normalized_q, "slop": 0, "boost": 6}}},
+                        {"match_phrase": {"content_chunks.text_ocr_folded": {"query": normalized_q, "slop": 0, "boost": 8}}},
                         {"match_phrase": {"content_chunks.text_normalized": {"query": normalized_q, "slop": 2, "boost": 4}}},
+                        {"match_phrase": {"content_chunks.text_ocr_folded": {"query": normalized_q, "slop": 2, "boost": 6}}},
                         {"match_phrase": {"content_chunks.text": {"query": q, "slop": 2, "boost": 3}}},
                     ],
                     "minimum_should_match": 1,
@@ -2211,9 +2338,15 @@ def search(
                 "boost": 2,
             }
         },
+        {"match_phrase": {"title": {"query": q, "slop": 0, "boost": 10}}},
+        {"match_phrase": {"original_filename_text": {"query": q, "slop": 0, "boost": 12}}},
+        {"match_phrase": {"canonical_filename_text": {"query": q, "slop": 0, "boost": 8}}},
         {"match_phrase": {"title_normalized": {"query": normalized_q, "slop": 0, "boost": 6}}},
+        {"match_phrase": {"title_ocr_folded": {"query": normalized_q, "slop": 0, "boost": 7}}},
         {"match_phrase": {"original_filename_normalized": {"query": normalized_q, "slop": 0, "boost": 5}}},
+        {"match_phrase": {"original_filename_ocr_folded": {"query": normalized_q, "slop": 0, "boost": 6}}},
         {"match_phrase": {"canonical_filename_normalized": {"query": normalized_q, "slop": 0, "boost": 4}}},
+        {"match_phrase": {"canonical_filename_ocr_folded": {"query": normalized_q, "slop": 0, "boost": 5}}},
         nested_content_query,
     ]
     if strict_mode:
@@ -2225,7 +2358,7 @@ def search(
                         "multi_match": {
                             "query": normalized_q,
                             "type": "best_fields",
-                            "fields": ["content_chunks.text_normalized^6"],
+                            "fields": ["content_chunks.text_normalized^6", "content_chunks.text_ocr_folded^8"],
                             "operator": "and",
                             "boost": 10,
                         }
@@ -2237,6 +2370,8 @@ def search(
     filters: list[dict[str, Any]] = []
     if project_id:
         filters.append(_project_scope_filter(project_id))
+    if business_domain:
+        filters.append({"term": {"business_domain": business_domain}})
     if area_key:
         filters.append({"term": {"area_key": area_key}})
     if tags:
@@ -2280,7 +2415,7 @@ def search(
         result = os_client.search(index=settings.opensearch_index, body=body)
     except OSNotFoundError:
         return SearchResponse(total=0, page=page, hits=[])
-    hits: list[SearchHit] = []
+    ranked_hits: list[tuple[tuple[int, int, int, float, int], SearchHit]] = []
     for h in result["hits"]["hits"]:
         src = h["_source"]
         highlighted_by_field = dict(h.get("highlight", {}))
@@ -2328,26 +2463,33 @@ def search(
             max_ev = settings.search_evidences_max_per_hit
             omitted_evidences = max(0, total_evidences - min(len(evidences), max_ev))
             evidences = evidences[:max_ev]
-        hits.append(
-            SearchHit(
-                doc_id=src["doc_id"],
-                project_id=src["project_id"],
-                area_key=src["area_key"],
-                original_filename=src["original_filename"],
-                canonical_filename=src["canonical_filename"],
-                path=src["path"],
-                score=float(h.get("_score", 0.0)),
-                highlights=highlights,
-                match_locations=match_locations,
-                evidences=evidences,
-                total_evidences=total_evidences,
-                omitted_evidences=omitted_evidences,
-                content_type=src.get("content_type"),
+        score = float(h.get("_score", 0.0))
+        ranked_hits.append(
+            (
+                _search_hit_sort_key(q, src, score, total_evidences),
+                SearchHit(
+                    doc_id=src["doc_id"],
+                    project_id=src["project_id"],
+                    area_key=src["area_key"],
+                    business_domain=src.get("business_domain") or src.get("area_key"),
+                    document_type=src.get("document_type"),
+                    original_filename=src["original_filename"],
+                    canonical_filename=src["canonical_filename"],
+                    path=src["path"],
+                    score=score,
+                    highlights=highlights,
+                    match_locations=match_locations,
+                    evidences=evidences,
+                    total_evidences=total_evidences,
+                    omitted_evidences=omitted_evidences,
+                    content_type=src.get("content_type"),
+                ),
             )
         )
     total = result["hits"]["total"]["value"] if isinstance(result["hits"]["total"], dict) else int(result["hits"]["total"])
     total_pages = max(1, (total + page_size - 1) // page_size)
-    hits.sort(key=lambda h: (-h.total_evidences, -h.score))
+    ranked_hits.sort(key=lambda item: item[0], reverse=True)
+    hits = [item[1] for item in ranked_hits]
     return SearchResponse(total=total, page=page, page_size=page_size, total_pages=total_pages, hits=hits)
 
 
@@ -2388,8 +2530,11 @@ def suggest(
                             "type": "best_fields",
                             "fields": [
                                 "title_normalized^2",
+                                "title_ocr_folded^3",
                                 "original_filename_normalized^2",
+                                "original_filename_ocr_folded^3",
                                 "canonical_filename_normalized",
+                                "canonical_filename_ocr_folded^2",
                             ],
                             "fuzziness": "AUTO",
                             "prefix_length": 1,
@@ -2420,6 +2565,7 @@ def suggest(
                                     "should": [
                                         {"multi_match": {"query": q, "fields": ["content_chunks.text^2"], "fuzziness": "AUTO", "prefix_length": 1, "operator": "or"}},
                                         {"match_phrase_prefix": {"content_chunks.text_normalized": {"query": _normalize_query_text(q)}}},
+                                        {"match_phrase_prefix": {"content_chunks.text_ocr_folded": {"query": _normalize_query_text(q)}}},
                                     ],
                                     "minimum_should_match": 1,
                                 }
@@ -2428,8 +2574,11 @@ def suggest(
                         }
                     },
                     {"match_phrase_prefix": {"title_normalized": {"query": _normalize_query_text(q)}}},
+                    {"match_phrase_prefix": {"title_ocr_folded": {"query": _normalize_query_text(q)}}},
                     {"match_phrase_prefix": {"original_filename_normalized": {"query": _normalize_query_text(q)}}},
+                    {"match_phrase_prefix": {"original_filename_ocr_folded": {"query": _normalize_query_text(q)}}},
                     {"match_phrase_prefix": {"canonical_filename_normalized": {"query": _normalize_query_text(q)}}},
+                    {"match_phrase_prefix": {"canonical_filename_ocr_folded": {"query": _normalize_query_text(q)}}},
                 ],
                 "minimum_should_match": 1,
             }

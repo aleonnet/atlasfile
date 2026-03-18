@@ -10,7 +10,7 @@ from opensearchpy.helpers import bulk, scan
 from .config import settings
 from .document_extractor import extract_document_content
 from .topics import match_topics
-from .utils import normalize_text, sha256_file
+from .utils import fold_ocr_spacing, normalize_text, sha256_file
 
 
 def read_text_excerpt(path: Path, limit: int = 20000) -> str:
@@ -160,7 +160,7 @@ def _enrich_search_fields(payload: dict[str, Any], *, profile: dict[str, Any] | 
 
     path_value = str(enriched.get("path", "") or "")
     extraction_metadata = dict(enriched.get("extraction_metadata", {}) or {})
-    current_extractor_version = "3"  # 3 = nested content_chunks
+    current_extractor_version = "4"  # 4 = nested content_chunks + OCR-folded fields
     extraction_metadata["extractor_version"] = current_extractor_version
     if path_value and (not enriched.get("sha256") or str(enriched.get("sha256", "")).strip() == ""):
         path_obj_for_sha = Path(path_value)
@@ -190,6 +190,7 @@ def _enrich_search_fields(payload: dict[str, Any], *, profile: dict[str, Any] | 
                 "location": c["location"],
                 "text": c["text"],
                 "text_normalized": normalize_text(c.get("text", "")),
+                "text_ocr_folded": fold_ocr_spacing(c.get("text", "")),
             }
             for c in chunks_raw
         ]
@@ -205,12 +206,17 @@ def _enrich_search_fields(payload: dict[str, Any], *, profile: dict[str, Any] | 
     title = str(enriched.get("title", ""))
     original_filename = str(enriched.get("original_filename", ""))
     canonical_filename = str(enriched.get("canonical_filename", ""))
+    if not enriched.get("business_domain") and enriched.get("area_key"):
+        enriched["business_domain"] = enriched.get("area_key")
 
     enriched["title_normalized"] = normalize_text(title)
+    enriched["title_ocr_folded"] = fold_ocr_spacing(title)
     enriched["original_filename_text"] = original_filename
     enriched["original_filename_normalized"] = normalize_text(original_filename)
+    enriched["original_filename_ocr_folded"] = fold_ocr_spacing(original_filename)
     enriched["canonical_filename_text"] = canonical_filename
     enriched["canonical_filename_normalized"] = normalize_text(canonical_filename)
+    enriched["canonical_filename_ocr_folded"] = fold_ocr_spacing(canonical_filename)
     enriched["title_suggest"] = title or original_filename
     enriched["original_filename_suggest"] = original_filename
     pre_topics = enriched.get("topics")
@@ -248,15 +254,19 @@ def backfill_search_fields(client: OpenSearch) -> int:
         if not src:
             continue
         metadata = src.get("extraction_metadata", {}) if isinstance(src.get("extraction_metadata", {}), dict) else {}
-        version_mismatch = metadata.get("extractor_version") != "3"
+        version_mismatch = metadata.get("extractor_version") != "4"
         needs_backfill = version_mismatch or any(
             field not in src
             for field in (
                 "title_normalized",
+                "title_ocr_folded",
+                "business_domain",
                 "original_filename_text",
                 "original_filename_normalized",
+                "original_filename_ocr_folded",
                 "canonical_filename_text",
                 "canonical_filename_normalized",
+                "canonical_filename_ocr_folded",
                 "title_suggest",
                 "original_filename_suggest",
                 "chunk_locations",

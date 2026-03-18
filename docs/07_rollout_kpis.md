@@ -1,74 +1,94 @@
 # Rollout e KPIs
 
-## Fases
+## Estado consolidado da 0.7.0
 
-### Fase 0 — Framework e contratos (concluída)
+### Bloco 1 -- Fundacoes e contrato de projeto
 
-- Estrutura de projeto, naming convention, índices e profile template definidos.
-- Documentação de referência: benchmarking, gap analysis, modelo de índice.
+Consolidado:
 
-### Fase 1 — MVP operacional (concluída)
+- Profile V2 em JSON com schema validado por Pydantic
+- templates em `config/templates/`
+- roots PARA mantidas
+- layout operacional em `02_AREAS/<business_domain>/<document_type>/`
+- naming canonico configuravel
 
-- Ingestão por `_INBOX_DROP` com classificação por routing rules + alias scoring.
-- Triagem humana no frontend (`Approve`, `Correct`, `Reject`).
-- Busca full-text BM25 com highlight e autocomplete.
-- Indexação em OpenSearch com 35+ campos.
-- MCP server com tools de busca, tags e metadados.
-- Assistente LLM com chat multi-modelo e sessões persistentes.
+### Bloco 2 -- Ingestao, triagem e indice
 
-### Fase 2 — Hardening (concluída)
+Consolidado:
 
-- Profile V2 (JSON) com schema validado (Pydantic).
-- Templates CRUD (builtin + user) com editor visual.
-- Dedup precoce por SHA256.
-- Histórico de ingestões persistente (FIFO, cap 50).
-- Word boundary matching + sqrt normalization no classificador.
-- Reconciliação automática (filesystem ↔ OpenSearch).
-- Extração multi-formato (PDF, DOCX, XLSX, PPTX, HTML, MSG, ZIP, RAR).
-- Layout workspace (simulação e aplicação de migração de pastas).
-- Endpoint de estatísticas agregadas (`GET /api/stats`).
-- Filtros de busca por `doc_kind` e `area_key`.
+- ingestao por `_INBOX_DROP`
+- dedup por SHA256
+- triagem humana via frontend (`Approve`, `Correct`, `Reject`)
+- reconcile filesystem <-> OpenSearch
+- indexacao `pure nested` por chunks
+- busca BM25 com highlight, suggest e filtros estruturados
+- campos `*_ocr_folded` para robustez a OCR
 
-### Fase 3 — Evolução IA (concluída)
+### Bloco 3 -- Classificacao documental
 
-- LLM no fluxo de classificação (3 modos: tag_only, review, full_override).
-- Contexto de projeto injetado no prompt (áreas, aliases, topics).
-- LLM visibility: campos `rule_area_key`, `llm_explanation`, `llm_proposed_area`.
-- Auto-criação de áreas quando LLM propõe área inexistente.
-- Guardrails configuráveis (confiança mínima para override, exigir explicação).
-- Topics semânticos via dicionário (`config/topics_v1.yaml`).
+Consolidado:
 
-### Fase 4 — Canais e observabilidade (concluída)
+- taxonomia canonica por `business_domain` e `document_type`
+- bootstrap deterministico como classificador operacional
+- `validation_set` e `training_pool` separados
+- benchmark oficial via `backend/scripts/benchmark_classification.py`
+- candidatos supervisionados `sparse_logreg` e `sparse_linear_svc` avaliados, mas ainda sem promocao automatica
 
-- Camada nativa de channels (Telegram via aiogram 3.x; extensível para Discord, Slack).
-- Canais como pipe transparente: sessões, histórico e usage unificados com o chat web.
-- Sincronização cross-channel: append atômico de mensagens, refresh antes de enviar, eliminação de overwrite destrutivo.
-- Espelhamento configurável: respostas via web encaminhadas ao canal de origem (Markdown→HTML); toggle per-channel na UI.
-- SSE real-time: atualização automática do chat web quando sessão é modificada por outro canal.
-- Rastreamento de uso e custo por sessão (tokens input/output/cache + custo estimado por modelo).
-- Custo configurável por modelo via `config/usage_costs.json`.
-- Rastreamento separado de uso LLM na classificação de documentos (`classification_usage`).
-- Gestão de janela de contexto: truncamento FIFO automático + indicador visual (ContextRing).
-- Autosave de sessão com título automático.
-- DOCX com localização amigável (Página/Parágrafo) via estratégia híbrida.
-- Redesign da busca no estilo Mintlify.
+### Bloco 4 -- Assistente e canais
 
-### Fase 5 — Próximos passos (planejado)
+Consolidado:
 
-- Reranking semântico (embeddings).
-- Aprendizado supervisionado com histórico de triagem.
-- Política de retenção e arquivamento (ver `06_retention_policy.md`).
-- Observabilidade e métricas operacionais avançadas (dashboards, alertas).
+- chat web com sessoes persistentes
+- Telegram com escopo por projeto
+- tools MCP sobre o indice real
+- busca priorizando match exato de titulo/nome de arquivo
+- rastreamento de uso/custo de chat
 
-## KPIs
+## O que nao deve ser tratado como concluido
 
-| KPI | Descrição |
+Ainda planejado ou parcial:
+
+- retreino em lote + benchmark + promocao explicita de modelo supervisionado
+- busca vetorial/hibrida
+- reranking semantico
+- politica de retencao automatizada
+- dashboards e alertas operacionais avancados
+
+## Proximo ciclo recomendado
+
+1. Congelar `validation_set` revisado.
+2. Ajustar o bootstrap apenas onde houver evidencia no benchmark.
+3. Rerodar `--mode all` e medir delta.
+4. So promover supervisionado se superar o bootstrap com gate explicito.
+5. Repetir o ciclo apos novas triagens revisadas entrarem no `training_pool`.
+
+## KPIs operacionais
+
+| KPI | Descricao |
 |-----|-----------|
-| `auto_classification_rate` | % de documentos classificados automaticamente (sem triagem) |
+| `auto_classification_rate` | % de documentos roteados sem triagem |
 | `triage_rate` | % de documentos enviados para triagem humana |
-| `triage_sla_breach_rate` | % de triagens pendentes acima do SLA (48h) |
-| `search_first_result_success_rate` | % de buscas onde o 1o resultado é relevante |
-| `indexing_latency_p95` | Latência p95 de indexação após ingestão |
-| `traceability_completeness_rate` | % de documentos com rastreabilidade completa (original → canônico → SHA256) |
-| `duplicate_detection_rate` | % de duplicatas detectadas antes do fluxo completo |
-| `llm_override_accuracy` | % de overrides do LLM aceitos (não corrigidos na triagem) |
+| `triage_sla_breach_rate` | % de triagens pendentes acima do SLA |
+| `search_first_result_success_rate` | % de buscas em que o 1o resultado atende a intencao |
+| `indexing_latency_p95` | Latencia p95 entre ingestao e disponibilidade no indice |
+| `traceability_completeness_rate` | % de documentos com nome original, nome canonico, path e SHA256 |
+| `duplicate_detection_rate` | % de duplicatas pegas antes da indexacao |
+
+## KPIs de benchmark de classificacao
+
+| KPI | Descricao |
+|-----|-----------|
+| `business_domain_accuracy` | Acuracia do eixo funcional no `validation_set` |
+| `document_type_accuracy` | Acuracia do eixo formal no `validation_set` |
+| `exact_match_accuracy` | Acuracia do par `business_domain + document_type` |
+| `dataset_integrity_status` | Status de separacao entre `validation_set` e `training_pool` |
+| `docs_per_class_min` | Menor suporte por classe no benchmark |
+
+## Papel do LLM neste rollout
+
+Na 0.7.0:
+
+- o LLM nao e classificador principal
+- a classificacao por LLM fica desabilitada por padrao no template default
+- quando habilitado, seu papel e enriquecimento ou revisao
+- o custo de classificacao deve ser auditado separadamente em `atlasfile_classification_usage`

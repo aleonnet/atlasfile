@@ -50,9 +50,10 @@ vi.mock("./api", () => ({
         project_label: "Projeto 1",
         project_root: "/p1",
         paths: { inbox: "_INBOX_DROP", triage: { pending: "_TRIAGE_REVIEW/pending", resolved: "_TRIAGE_REVIEW/resolved", rejected: "_TRIAGE_REVIEW/rejected" } },
-        layout: { mode: "para_jd", roots: { projects: "01_PROJECTS", areas: "02_AREAS", resources: "03_RESOURCES", archive: "04_ARCHIVE" }, areas_root: "02_AREAS", area_folders: [] },
+        layout: { mode: "para_jd", roots: { projects: "01_PROJECTS", areas: "02_AREAS", resources: "03_RESOURCES", archive: "04_ARCHIVE" }, areas_root: "02_AREAS", business_domain_folders: [] },
         classification: {
-          work_areas: [],
+          business_domains: [],
+          document_types: [],
           routing_rules: [],
           confidence_thresholds: { auto_route_min: 0.85, triage_min: 0.5 },
           llm_policy: { enabled: false, provider: "openai", model: "gpt-4o-mini", mode: "tag_only", allow_override_fields: ["document_type", "tags", "confidence", "topics"], override_guardrails: { area_override_only_if_rule_confidence_below: 0.65, require_explanation: true, max_area_changes: 1 } }

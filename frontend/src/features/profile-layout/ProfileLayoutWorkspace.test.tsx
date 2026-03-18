@@ -27,10 +27,11 @@ const baseProfile = {
       archive: "04_ARCHIVE"
     },
     areas_root: "02_AREAS",
-    area_folders: [{ area_key: "juridica", folder: "02_juridica" }]
+    business_domain_folders: [{ business_domain: "juridica", folder: "02_juridica" }]
   },
   classification: {
-    work_areas: [{ key: "juridica", jd_number: 2, aliases: ["juridico"] }],
+    business_domains: [{ key: "juridica", label: "Jurídica", aliases: ["juridico"] }],
+    document_types: [{ key: "relatorio", label: "Relatório", folder: "relatorio", aliases: ["relatorio"], extensions: [".pdf"] }],
     routing_rules: [],
     confidence_thresholds: { auto_route_min: 0.85, triage_min: 0.5 },
     llm_policy: { enabled: false, provider: "openai", model: "gpt-4o-mini", mode: "tag_only", allow_override_fields: ["document_type", "tags", "confidence", "topics"], override_guardrails: { area_override_only_if_rule_confidence_below: 0.65, require_explanation: true, max_area_changes: 1 } }

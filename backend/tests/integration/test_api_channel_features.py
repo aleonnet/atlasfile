@@ -1,12 +1,13 @@
 """Integration tests for new channel/usage features added in the usage+channel plan."""
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.channels.base import ChannelMessage
 
 
 @pytest.fixture
@@ -85,6 +86,33 @@ def test_create_session_defaults_to_web(client: TestClient) -> None:
     data = r.json()
     assert data["channel"] == "web"
     assert data.get("channel_chat_id") is None
+
+
+@pytest.mark.asyncio
+async def test_handle_channel_message_uses_explicit_project_scope() -> None:
+    from app.main import _clear_channel_project_scope, _handle_channel_message, _set_channel_project_scope
+
+    message = ChannelMessage(
+        channel_id="telegram",
+        sender_id="user-1",
+        sender_name="User",
+        chat_id="tg-123",
+        text="Buscar documento",
+    )
+    _set_channel_project_scope("telegram", "tg-123", "proj-scope")
+    try:
+        with patch("app.main.get_llm_config", return_value=("openai", "gpt-4o-mini")), \
+             patch("app.main._find_active_channel_session", return_value=None), \
+             patch("app.main.run_chat_loop", new_callable=AsyncMock, return_value={"content": "ok", "usage": {}}) as mock_loop, \
+             patch("app.main.os_client") as mock_os:
+            reply = await _handle_channel_message(message)
+    finally:
+        _clear_channel_project_scope("telegram", "tg-123")
+
+    assert reply == "ok"
+    assert mock_loop.await_args.kwargs["project_id"] == "proj-scope"
+    indexed_body = mock_os.index.call_args.kwargs["body"]
+    assert indexed_body["project_id"] == "proj-scope"
 
 
 # ---------------------------------------------------------------------------

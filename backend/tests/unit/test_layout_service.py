@@ -8,6 +8,9 @@ from app.profile_schema_v2 import ProjectProfileV2
 
 
 def _make_profile(project_root: Path, area_folders: list[dict]) -> ProjectProfileV2:
+    normalized_folders = area_folders or [{"area_key": "general", "folder": "00_general"}]
+    domain_keys = [str(row["area_key"]) for row in normalized_folders]
+    default_domain = domain_keys[0]
     return ProjectProfileV2(
         project_id="test",
         project_label="Test",
@@ -16,9 +19,41 @@ def _make_profile(project_root: Path, area_folders: list[dict]) -> ProjectProfil
             "mode": "para_jd",
             "roots": {"projects": "01_PROJECTS", "areas": "02_AREAS", "resources": "03_RESOURCES", "archive": "04_ARCHIVE"},
             "areas_root": "02_AREAS",
-            "area_folders": area_folders,
+            "area_folders": normalized_folders,
         },
-        classification={"work_areas": [], "routing_rules": [], "confidence_thresholds": {"auto_route_min": 0.85, "triage_min": 0.5}, "llm_policy": {}},
+        classification={
+            "work_areas": [{"key": key, "aliases": [key]} for key in domain_keys],
+            "business_domains": [{"key": key, "label": key.title(), "aliases": [key]} for key in domain_keys],
+            "document_types": [
+                {
+                    "key": "relatorio",
+                    "label": "Relatório",
+                    "aliases": ["relatorio"],
+                    "extensions": [".pdf", ".txt"],
+                    "folder": "relatorio",
+                    "fallback_priority": 10,
+                }
+            ],
+            "document_type_priors": {"relatorio": {"default": default_domain, "weight": 0.2}},
+            "entity_domain_affinity": {"sample": {"domain": default_domain, "weight": 0.2}},
+            "context_boosts": [],
+            "thresholds": {
+                "document_type_extension_bonus": 0.08,
+                "document_type_alias_confidence_base": 0.35,
+                "document_type_alias_confidence_scale": 0.6,
+                "document_type_confidence_cap": 0.96,
+                "document_type_best_effort_confidence": 0.25,
+                "business_domain_lexical_scale": 0.75,
+                "business_domain_lexical_cap": 0.85,
+                "business_domain_context_boost_cap": 0.35,
+                "business_domain_alias_fallback_confidence": 0.2,
+                "business_domain_best_effort_confidence": 0.05,
+                "entity_boost_profiles": {"default": {"cap": 0.45, "scale": 0.5}},
+            },
+            "routing_rules": [],
+            "confidence_thresholds": {"auto_route_min": 0.85, "triage_min": 0.5},
+            "llm_policy": {},
+        },
     )
 
 

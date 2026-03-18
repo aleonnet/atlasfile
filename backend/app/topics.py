@@ -71,17 +71,13 @@ def _load_topics_config(profile: Any | None = None) -> dict[str, Any]:
             topic_key = str(topic.get("key", "")).strip()
             if not topic_key:
                 continue
-            synonyms = topic.get("synonyms") or []
-            if not isinstance(synonyms, list):
-                synonyms = []
-            area_bias = topic.get("area_bias") or []
-            if not isinstance(area_bias, list):
-                area_bias = []
+            surface_forms = topic.get("surface_forms") or topic.get("synonyms") or []
+            if not isinstance(surface_forms, list):
+                surface_forms = []
             normalized_topics.append(
                 {
                     "key": topic_key,
-                    "synonyms_norm": [normalize_text(str(s).strip()) for s in synonyms if str(s).strip()],
-                    "area_bias": [str(a).strip() for a in area_bias if str(a).strip()],
+                    "surface_forms_norm": [normalize_text(str(s).strip()) for s in surface_forms if str(s).strip()],
                 }
             )
 
@@ -121,15 +117,13 @@ def match_topics(*, text: str, area_key: str | None, profile: Any | None = None)
     scored: list[tuple[int, str]] = []
     for t in topics_norm:
         score = 0
-        for syn in t.get("synonyms_norm") or []:
+        for syn in t.get("surface_forms_norm") or []:
             score += hit(syn)
         if score <= 0:
             continue
-        if area_key and area_key in (t.get("area_bias") or []):
-            score += 2
         scored.append((score, t["key"]))
 
     scored.sort(key=lambda x: (-x[0], x[1]))
     keys = [k for _, k in scored[:max_topics]]
-    return (keys, "synonym_match")
+    return (keys, "surface_form_match")
 

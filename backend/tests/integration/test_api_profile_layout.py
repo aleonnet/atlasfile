@@ -244,6 +244,7 @@ def test_validate_returns_errors_for_invalid_profile(client: TestClient, tmp_pat
         profile = client.get(f"/api/projects/{project_root.name}/profile").json()["profile"]
 
         profile["layout"]["area_folders"] = []
+        profile["layout"]["business_domain_folders"] = []
 
         resp = client.post(
             f"/api/projects/{project_root.name}/profile/validate",

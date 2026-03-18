@@ -1,116 +1,111 @@
-# Modelo de índice
+# Modelo de indice
 
-## `_INDEX.md` (por projeto)
+## `_INDEX.md` por projeto
 
-Registro local em Markdown com campos mínimos por documento ingerido:
+`_INDEX.md` continua sendo o registro local de rastreabilidade, mas no runtime atual ele ainda usa uma linha compacta em Markdown.
 
-- `doc_id` — identificador único (UUID4)
-- `project_id` — identificador do projeto
-- `original_filename` — nome original do arquivo
-- `canonical_filename` — nome canônico gerado
-- `current_path` — path final do arquivo
-- `area_key` — área de classificação
-- `source_channel` — canal de origem
-- `source_ref` — referência da fonte
-- `sender` — remetente
-- `received_at` — timestamp de recebimento
-- `ingested_at` — timestamp de processamento
-- `decision` — `auto`, `triage_pending`, `duplicate`
-- `confidence_score` — confiança da classificação
-- `sha256` — hash do arquivo
+Colunas persistidas hoje:
 
-## OpenSearch mapping (`atlasfile_documents`)
+- `doc_id`
+- `project_id`
+- `area`
+- `original_filename`
+- `canonical_filename`
+- `decision`
+- `confidence_score`
+- `path`
+- `naming_pattern`
 
-Índice principal com 35+ campos, definido em `backend/app/opensearch_client.py`:
+Observacoes:
 
-### Identificação
+- a coluna `area` recebe o valor de `area_key`, que hoje espelha `business_domain`
+- `document_type` e `sha256` ficam no indice OpenSearch e nos metadados do fluxo, nao em coluna dedicada do `_INDEX.md`
+- por isso a rastreabilidade completa precisa considerar `_INDEX.md` + OpenSearch
 
-| Campo | Tipo | Origem |
-|-------|------|--------|
-| `doc_id` | keyword | UUID4 gerado na ingestão |
-| `project_id` | keyword | Profile do projeto |
-| `area_key` | keyword | Classificação (rules/aliases/LLM) |
+## OpenSearch: `atlasfile_documents`
 
-### Título
+O mapping atual fica em `backend/app/opensearch_client.py`.
 
-| Campo | Tipo | Origem |
-|-------|------|--------|
-| `title` | text | `inbox_file.stem` |
-| `title_normalized` | text | `normalize_text(title)` |
-| `title_suggest` | search_as_you_type | Autocomplete |
+### Eixos canonicos
 
-### Conteúdo (Pure Nested Architecture)
+| Campo | Tipo | Observacao |
+|-------|------|------------|
+| `business_domain` | keyword | Eixo funcional principal |
+| `document_type` | keyword | Eixo formal principal |
+| `area_key` | keyword | Espelho de `business_domain` para compatibilidade |
 
-Todo o conteúdo textual é armazenado exclusivamente em `content_chunks` (nested). Campos flat de conteúdo foram removidos na v0.4.0.
+### Busca por titulo e nomes
 
-| Campo | Tipo | Origem |
-|-------|------|--------|
-| `content_chunks` | nested | `{location, text, text_normalized}` — chunking (~1200 chars/chunk). Fonte única para busca full-text, highlight e retrieval |
-| `chunk_locations` | keyword | IDs dos chunks (ex: `page:1`, `sheet:Plan1`) |
+| Campo | Tipo | Observacao |
+|-------|------|------------|
+| `title` | text | Titulo derivado do nome do arquivo |
+| `title_normalized` | text | Busca sem acentos |
+| `title_ocr_folded` | text | Busca robusta a OCR |
+| `title_suggest` | search_as_you_type | Suggest |
+| `original_filename` | keyword | Nome original bruto |
+| `original_filename_text` | text | Busca lexical |
+| `original_filename_normalized` | text | Busca sem acentos |
+| `original_filename_ocr_folded` | text | Busca robusta a OCR |
+| `original_filename_suggest` | search_as_you_type | Suggest |
+| `canonical_filename` | keyword | Nome canonico persistido |
+| `canonical_filename_text` | text | Busca lexical |
+| `canonical_filename_normalized` | text | Busca sem acentos |
+| `canonical_filename_ocr_folded` | text | Busca robusta a OCR |
 
-**Campos removidos (v0.4.0):** `content`, `content_normalized`, `content_chunks_text`, `content_chunks_normalized` — eram cópias redundantes do texto dos chunks.
+### Conteudo textual
 
-### Extração
+Todo o conteudo indexado permanece em `content_chunks` no modelo `pure nested`.
 
-| Campo | Tipo | Origem |
-|-------|------|--------|
-| `content_type` | keyword | MIME type da extração |
+| Campo | Tipo | Observacao |
+|-------|------|------------|
+| `chunk_locations` | keyword | `page:1`, `slide:2`, `sheet:Plan1` etc |
+| `content_chunks.location` | keyword | Localidade do trecho |
+| `content_chunks.text` | text | Busca full-text |
+| `content_chunks.text_normalized` | text | Busca sem acentos |
+| `content_chunks.text_ocr_folded` | text | Busca robusta a OCR |
+
+Campos flat de conteudo continuam fora do indice.
+
+### Extracao e metadados tecnicos
+
+| Campo | Tipo | Observacao |
+|-------|------|------------|
+| `content_type` | keyword | MIME type |
 | `extraction_status` | keyword | `ok`, `partial`, `error` |
-| `extraction_metadata` | object (disabled) | Metadados da extração |
+| `extraction_metadata` | object disabled | Storage tecnico, sem indexacao |
+| `doc_kind` | keyword | Categoria derivada da extensao |
+| `extension` | keyword | Extensao do arquivo |
 
-### Nomes de arquivo
+### Decisao, confianca e triagem
 
-| Campo | Tipo | Origem |
-|-------|------|--------|
-| `original_filename` | keyword | Nome original |
-| `original_filename_text` | text | Full-text search |
-| `original_filename_normalized` | text | Normalizado |
-| `original_filename_suggest` | search_as_you_type | Autocomplete |
-| `canonical_filename` | keyword | Configurável via `naming.canonical_pattern` (default: `{date}__{project}__{original_name}__vNN.ext`) |
-| `canonical_filename_text` | text | Full-text search |
-| `canonical_filename_normalized` | text | Normalizado |
-
-### Localização e metadados
-
-| Campo | Tipo | Origem |
-|-------|------|--------|
-| `path` | keyword | Path final do arquivo |
-| `extension` | keyword | `.pdf`, `.docx`, etc. |
-| `doc_kind` | keyword | `pdf`, `docx`, `plain_text`, etc. |
-| `source_channel` | keyword | Canal de origem |
-| `source_ref` | keyword | Referência |
-| `sender` | keyword | Remetente |
-
-### Timestamps
-
-| Campo | Tipo | Origem |
-|-------|------|--------|
-| `received_at` | date | Timestamp de recebimento |
-| `ingested_at` | date | Timestamp de processamento |
-| `processed_at` | date | Timestamp de pós-processamento |
-
-### Classificação e decisão
-
-| Campo | Tipo | Origem |
-|-------|------|--------|
+| Campo | Tipo | Observacao |
+|-------|------|------------|
 | `decision` | keyword | `auto`, `triage_pending`, `duplicate` |
-| `confidence_score` | float | Score do classificador |
-| `sha256` | keyword | Hash do arquivo |
-| `review_status` | keyword | `needs_review` se confiança < threshold |
+| `confidence_score` | float | Gate geral de roteamento |
+| `business_domain_confidence` | float | Confianca do eixo funcional |
+| `document_type_confidence` | float | Confianca do eixo formal |
+| `review_status` | keyword | `needs_review` quando aplicavel |
+| `tags` | keyword | Tags leves de classificacao |
+| `topics` | keyword | Topics detectados |
+| `topics_source` | keyword | Origem dos topics |
+| `entities` | object disabled | Entidades extraidas |
+| `sha256` | keyword | Integridade e dedup |
 
-### Enriquecimento (regras + LLM)
+### Proveniencia e datas
 
-| Campo | Tipo | Origem |
-|-------|------|--------|
-| `tags` | keyword (array) | `[area_key]` + tags do LLM |
-| `document_type` | keyword | Tipo do documento (LLM) |
-| `correspondent` | keyword | Correspondente (LLM) |
-| `topics` | keyword (array) | `match_topics()` ou LLM |
-| `topics_source` | keyword | `synonym_match`, `llm_policy`, `none` |
+| Campo | Tipo | Observacao |
+|-------|------|------------|
+| `project_id` | keyword | Escopo por projeto |
+| `path` | keyword | Path final do arquivo |
+| `source_channel` | keyword | Canal de origem |
+| `source_ref` | keyword | Referencia externa |
+| `sender` | keyword | Remetente |
+| `received_at` | date | Data recebida |
+| `ingested_at` | date | Data de ingestao |
+| `processed_at` | date | Data de processamento |
+| `correspondent` | keyword | Metadado opcional |
 
-## OpenSearch mapping (`atlasfile_chat_sessions`)
-
-Índice separado para sessões de chat:
+## Indice de sessoes: `atlasfile_chat_sessions`
 
 | Campo | Tipo |
 |-------|------|
@@ -119,3 +114,32 @@ Todo o conteúdo textual é armazenado exclusivamente em `content_chunks` (neste
 | `model` | keyword |
 | `createdAt` | date |
 | `updatedAt` | date |
+| `project_id` | keyword |
+| `usage_totals` | object |
+| `usage_by_model` | object disabled |
+| `channel` | keyword |
+| `channel_chat_id` | keyword |
+
+## Indice de uso de classificacao: `atlasfile_classification_usage`
+
+Indice separado para rastrear custo/uso de LLM na classificacao quando o LLM estiver habilitado.
+
+| Campo | Tipo |
+|-------|------|
+| `doc_id` | keyword |
+| `filename` | keyword |
+| `project_id` | keyword |
+| `provider` | keyword |
+| `model` | keyword |
+| `timestamp` | date |
+| `input_tokens` | integer |
+| `output_tokens` | integer |
+| `cache_read_input_tokens` | integer |
+| `cache_creation_input_tokens` | integer |
+| `estimated_cost_usd` | float |
+
+## Notas de arquitetura
+
+- `mapping.nested_objects.limit` e configurado dinamicamente no indice de documentos.
+- Busca e highlight usam `content_chunks`; a resposta de leitura pode recompor `content` on-the-fly, mas esse campo nao e persistido no mapping.
+- Os campos `*_ocr_folded` foram adicionados para melhorar busca em documentos com OCR ruidoso.

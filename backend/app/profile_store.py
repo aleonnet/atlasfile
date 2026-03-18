@@ -7,19 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from .profile_schema_v2 import ProjectProfileV2
+from .template_store import create_profile_from_template
 from .utils import normalize_text
 
 PROFILE_DIR = "_PROFILE"
 PROFILE_FILE = "profile.json"
 HISTORY_DIR = "history"
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
-def _template_path(slug: str = "default") -> Path:
-    return _repo_root() / "config" / "templates" / f"{slug}.json"
 
 
 def _profile_dir(project_root: Path) -> Path:
@@ -76,13 +69,12 @@ def create_default_profile(
     project_label: str | None = None,
     template_slug: str = "default",
 ) -> ProjectProfileV2:
-    template = _read_json(_template_path(template_slug))
-    template.pop("template_meta", None)
-    template["project_id"] = normalize_text(project_id or project_root.name)
-    template["project_label"] = project_label or project_root.name
-    template["project_root"] = str(project_root)
-    template["version"] = int(template.get("version", 1) or 1)
-    return ProjectProfileV2.model_validate(template)
+    return create_profile_from_template(
+        template_slug,
+        project_root=project_root,
+        project_id=normalize_text(project_id or project_root.name),
+        project_label=project_label or project_root.name,
+    )
 
 
 def load_profile(project_root: Path) -> ProjectProfileV2:

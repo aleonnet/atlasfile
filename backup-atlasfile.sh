@@ -26,8 +26,10 @@ set -euo pipefail
 
 # Caminho absoluto do script (para --help após cd)
 SCRIPT_PATH=""
+SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ]; then
-  SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  SCRIPT_PATH="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
 fi
 
 # Cores para output
@@ -40,9 +42,11 @@ NC='\033[0m' # No Color
 # Data no formato YYYYMMDD (padrão do arquivo de referência)
 DATE=$(date +%Y%m%d)
 
-# Diretório pai do projeto (backups gravados aqui para não ficarem dentro do repo)
-BASE_DIR="/Users/alessandro/Development"
-PROJECT_DIR="AtlasFile"
+# Diretório do projeto derivado da localização do script; backups gravados no pai
+# do repositório para não ficarem dentro do repo.
+PROJECT_ROOT="${SCRIPT_DIR:-$(pwd)}"
+BASE_DIR="$(cd "${PROJECT_ROOT}/.." && pwd)"
+PROJECT_DIR="$(basename "${PROJECT_ROOT}")"
 cd "$BASE_DIR"
 
 # Excludes padrão: pastas/arquivos regeneráveis ou que não fazem sentido no backup
@@ -174,9 +178,9 @@ echo ""
 # AtlasFile (DEFAULT_EXCLUDES + --extra_excludes quando informado)
 ###############################################################################
 if [ ${#extra_excludes[@]} -gt 0 ]; then
-  backup_project "AtlasFile" "AtlasFile" "${extra_excludes[@]}"
+  backup_project "${PROJECT_DIR}" "${PROJECT_DIR}" "${extra_excludes[@]}"
 else
-  backup_project "AtlasFile" "AtlasFile"
+  backup_project "${PROJECT_DIR}" "${PROJECT_DIR}"
 fi
 
 ###############################################################################
@@ -188,8 +192,8 @@ echo -e "${BLUE}╚════════════════════�
 echo ""
 echo -e "${GREEN}Arquivos criados:${NC}"
 cd "${BASE_DIR}"
-ls -lh AtlasFile_*"_${DATE}.tar.gz" 2>/dev/null | awk '{print "  " $9 " - " $5}' || echo "  Nenhum arquivo encontrado"
+ls -lh "${PROJECT_DIR}"_*"_${DATE}.tar.gz" 2>/dev/null | awk '{print "  " $9 " - " $5}' || echo "  Nenhum arquivo encontrado"
 echo ""
 echo -e "${YELLOW}Total:${NC}"
-du -ch AtlasFile_*"_${DATE}.tar.gz" 2>/dev/null | awk 'END{print "  " $1}' || echo "  0"
+du -ch "${PROJECT_DIR}"_*"_${DATE}.tar.gz" 2>/dev/null | awk 'END{print "  " $1}' || echo "  0"
 echo ""

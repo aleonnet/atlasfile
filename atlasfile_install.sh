@@ -34,6 +34,7 @@ mktempfile() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+ENV_FILE="${SCRIPT_DIR}/.env"
 
 DOWNLOADER=""
 detect_downloader() {
@@ -59,6 +60,36 @@ download_file() {
     curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 --retry-connrefused -o "$output" "$url"
   else
     wget -q --https-only --secure-protocol=TLSv1_2 --tries=3 --timeout=20 -O "$output" "$url"
+  fi
+}
+
+http_check() {
+  local url="$1"
+  local auth="${2:-}"
+  local insecure="${3:-0}"
+
+  if [[ -z "$DOWNLOADER" ]]; then
+    detect_downloader
+  fi
+
+  if [[ "$DOWNLOADER" == "curl" ]]; then
+    local curl_args=(-fsS)
+    if [[ "$insecure" == "1" ]]; then
+      curl_args+=(-k)
+    fi
+    if [[ -n "$auth" ]]; then
+      curl_args+=(-u "$auth")
+    fi
+    curl "${curl_args[@]}" "$url" >/dev/null 2>&1
+  else
+    local wget_args=(--spider --tries=3 --timeout=20)
+    if [[ "$insecure" == "1" ]]; then
+      wget_args+=(--no-check-certificate)
+    fi
+    if [[ -n "$auth" ]]; then
+      wget_args+=(--user "${auth%%:*}" --password "${auth#*:}")
+    fi
+    wget "${wget_args[@]}" "$url" >/dev/null 2>&1
   fi
 }
 
@@ -172,7 +203,67 @@ OS="unknown"
 NO_PROMPT="${ATLASFILE_NO_PROMPT:-0}"
 DRY_RUN="${ATLASFILE_DRY_RUN:-0}"
 VERBOSE="${ATLASFILE_VERBOSE:-0}"
+PROJECTS_HOST_ROOT_EXPLICIT=0
+if [[ -n "${ATLASFILE_PROJECTS_HOST_ROOT:-}" || -n "${PROJECTS_HOST_ROOT:-}" ]]; then
+  PROJECTS_HOST_ROOT_EXPLICIT=1
+fi
 PROJECTS_HOST_ROOT="${ATLASFILE_PROJECTS_HOST_ROOT:-${PROJECTS_HOST_ROOT:-$HOME/Documents/Projects}}"
+OPENSEARCH_ADMIN_PASSWORD="${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-${OPENSEARCH_PASSWORD:-Kaid0Search!2026X}}"
+
+read_env_value() {
+  local key="$1"
+  local raw=""
+
+  [[ -f "$ENV_FILE" ]] || return 1
+
+  raw="$(
+    awk -F= -v search="$key" '
+      /^[[:space:]]*#/ || !/=/{next}
+      {
+        current=$1
+        sub(/^[[:space:]]+/, "", current)
+        sub(/[[:space:]]+$/, "", current)
+        if (current == search) {
+          value=substr($0, index($0, "=") + 1)
+          sub(/^[[:space:]]+/, "", value)
+          sub(/[[:space:]]+$/, "", value)
+          print value
+        }
+      }
+    ' "$ENV_FILE" | tail -n 1
+  )"
+
+  [[ -n "$raw" ]] || return 1
+
+  if [[ "$raw" == \"*\" && "$raw" == *\" ]]; then
+    raw="${raw:1:${#raw}-2}"
+  elif [[ "$raw" == \'*\' && "$raw" == *\' ]]; then
+    raw="${raw:1:${#raw}-2}"
+  fi
+
+  printf '%s\n' "$raw"
+}
+
+sync_runtime_env_from_file() {
+  local value=""
+
+  [[ -f "$ENV_FILE" ]] || return 0
+
+  if [[ "$PROJECTS_HOST_ROOT_EXPLICIT" != "1" ]]; then
+    value="$(read_env_value PROJECTS_HOST_ROOT || true)"
+    if [[ -n "$value" ]]; then
+      PROJECTS_HOST_ROOT="$value"
+    fi
+  fi
+
+  value="$(read_env_value OPENSEARCH_INITIAL_ADMIN_PASSWORD || true)"
+  if [[ -z "$value" ]]; then
+    value="$(read_env_value OPENSEARCH_PASSWORD || true)"
+  fi
+  if [[ -n "$value" ]]; then
+    OPENSEARCH_ADMIN_PASSWORD="$value"
+  fi
+}
 
 print_usage() {
   cat <<EOF
@@ -192,10 +283,24 @@ Options:
 EOF
 }
 
+require_option_value() {
+  local opt="$1"
+  local value="${2-}"
+  if [[ -z "$value" || "$value" == --* ]]; then
+    ui_error "Missing value for ${opt}"
+    exit 1
+  fi
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --projects-root) PROJECTS_HOST_ROOT="$2"; shift 2 ;;
+      --projects-root)
+        require_option_value "$1" "${2-}"
+        PROJECTS_HOST_ROOT="$2"
+        PROJECTS_HOST_ROOT_EXPLICIT=1
+        shift 2
+        ;;
       --dry-run) DRY_RUN=1; shift ;;
       --verbose) VERBOSE=1; shift ;;
       --gum) export ATLASFILE_USE_GUM=1; shift ;;
@@ -210,7 +315,7 @@ parse_args() {
 detect_os_or_die() {
   if [[ "$OSTYPE" == "darwin"* ]]; then
     OS="macos"
-  elif [[ "$OSTYPE" == "linux-gnu"* ]] || [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+  elif [[ "$OSTYPE" == linux* ]] || [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
     OS="linux"
   else
     OS="unknown"
@@ -298,11 +403,10 @@ ensure_prereqs() {
 }
 
 generate_env_if_missing() {
-  local env_file="${SCRIPT_DIR}/.env"
+  local env_file="${ENV_FILE}"
   if [[ -f "$env_file" ]]; then
-    ui_info ".env already exists; keeping current values"
-    # Still honour --projects-root override: update PROJECTS_HOST_ROOT if
-    # the caller passed a custom value via CLI or env var.
+    sync_runtime_env_from_file
+    ui_info ".env already exists; using file values unless overrides were provided"
     return 0
   fi
 
@@ -348,21 +452,21 @@ health_check() {
   echo ""
 
   local ok=1
-  if curl -fsS "http://localhost:8000/health" >/dev/null 2>&1; then
+  if http_check "http://localhost:8000/health"; then
     ui_success "Backend OK: http://localhost:8000/health"
   else
     ui_error "Backend health failed"
     ok=0
   fi
 
-  if curl -k -fsS -u "admin:${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-Kaid0Search!2026X}" "https://localhost:9200" >/dev/null 2>&1; then
+  if http_check "https://localhost:9200" "admin:${OPENSEARCH_ADMIN_PASSWORD}" "1"; then
     ui_success "OpenSearch OK: https://localhost:9200"
   else
     ui_error "OpenSearch health failed"
     ok=0
   fi
 
-  if curl -fsS "http://localhost:5173" >/dev/null 2>&1; then
+  if http_check "http://localhost:5173"; then
     ui_success "Frontend OK: http://localhost:5173"
   else
     ui_error "Frontend health failed"

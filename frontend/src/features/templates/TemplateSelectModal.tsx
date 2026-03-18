@@ -62,7 +62,10 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
   if (!open) return null;
 
   const previewAreas = (preview as Record<string, unknown> | null)
-    ? ((preview?.classification as Record<string, unknown>)?.work_areas as Array<Record<string, unknown>> | undefined) ?? []
+    ? (
+        ((preview?.classification as Record<string, unknown>)?.business_domains as Array<Record<string, unknown>> | undefined) ??
+        []
+      )
     : [];
 
   return (
@@ -72,7 +75,7 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
 
         <div className="tmpl-select-body">
           <p className="tmpl-hint">
-            Selecione um template para configurar o projeto. Áreas, aliases e regras podem ser editados depois.
+            Selecione um template para configurar o projeto. Domínios, tipos documentais, layout e catálogo de entidades podem ser ajustados depois.
           </p>
 
           {loading && <p className="tmpl-loading">Carregando templates...</p>}
@@ -91,7 +94,7 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
                   <div className="tmpl-item-title-row">
                     <strong>{t.name}</strong>
                     {t.slug === "default" && <span className="tmpl-badge-default">default</span>}
-                    <span className="tmpl-areas-count">{t.areas_count} áreas</span>
+                    <span className="tmpl-areas-count">{t.areas_count} domínios</span>
                   </div>
                   {t.description && <p className="tmpl-desc">{t.description}</p>}
                 </div>
@@ -105,7 +108,6 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
               <div className="tmpl-preview-list">
                 {previewAreas.map((a, i) => (
                   <div key={i} className="tmpl-preview-area">
-                    <code>{String(a.jd_number ?? "").padStart(2, "0")}</code>
                     <span className="tmpl-preview-key">{String(a.key)}</span>
                     <span className="tmpl-preview-aliases">
                       {(a.aliases as string[] | undefined)?.slice(0, 4).join(", ")}

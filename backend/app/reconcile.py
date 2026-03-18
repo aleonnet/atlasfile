@@ -16,7 +16,13 @@ from opensearchpy.exceptions import TransportError
 from .config import settings
 from .indexer import index_document, read_text_excerpt
 from .opensearch_client import ensure_index
-from .profile_runtime import area_folder_map, areas_root_rel, para_scan_roots, triage_paths
+from .profile_runtime import (
+    area_folder_map,
+    areas_root_rel,
+    para_scan_roots,
+    resolve_document_type_folder_name,
+    triage_paths,
+)
 from .project_profile import load_project_profile
 from .utils import (
     DEFAULT_CANONICAL_PATTERN,
@@ -298,11 +304,50 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
     }
 
 
-def _build_doc_payload(row: dict[str, str], p: Path, current_sha: str) -> dict[str, Any]:
+def _infer_document_type_from_layout_path(
+    file_path: Path,
+    *,
+    project_root: Path,
+    profile: dict[str, Any],
+) -> str | None:
+    areas_root = project_root / areas_root_rel(profile)
+    try:
+        rel = file_path.relative_to(areas_root)
+    except ValueError:
+        return None
+    if len(rel.parts) < 3:
+        return None
+
+    document_type_folder = rel.parts[1]
+    classification = profile.get("classification") or {}
+    for doc_type in classification.get("document_types") or []:
+        key = str(doc_type.get("key") or "").strip()
+        if key and resolve_document_type_folder_name(profile, key) == document_type_folder:
+            return key
+    return None
+
+
+def _build_doc_payload(
+    row: dict[str, str],
+    p: Path,
+    current_sha: str,
+    *,
+    project_root: Path,
+    profile: dict[str, Any],
+) -> dict[str, Any]:
+    document_type = _infer_document_type_from_layout_path(
+        p,
+        project_root=project_root,
+        profile=profile,
+    )
+    tags = [row["area"]] if row["area"] else []
+    if document_type:
+        tags.append(document_type)
     return {
         "doc_id": row["doc_id"],
         "project_id": row["project_id"],
         "area_key": row["area"],
+        "business_domain": row["area"],
         "title": p.stem,
         "content": read_text_excerpt(p),
         "original_filename": row["original_filename"],
@@ -317,7 +362,8 @@ def _build_doc_payload(row: dict[str, str], p: Path, current_sha: str) -> dict[s
         "decision": row["decision"],
         "confidence_score": float(row["confidence"] or 0.0),
         "sha256": current_sha,
-        "tags": [row["area"]] if row["area"] else [],
+        "tags": tags,
+        "document_type": document_type,
     }
 
 
@@ -360,7 +406,13 @@ def rebuild_search_index(
                 if _is_ignored_file(p):
                     continue
                 current_sha = sha256_file(p)
-                payload = _build_doc_payload(row, p, current_sha)
+                payload = _build_doc_payload(
+                    row,
+                    p,
+                    current_sha,
+                    project_root=project_root,
+                    profile=profile,
+                )
                 index_document(client, payload, refresh=False, profile=profile)
                 indexed += 1
                 if progress is not None:
@@ -478,7 +530,13 @@ def sync_search_index_for_project(
         for row in rows:
             p = Path(row["path"])
             current_sha = sha256_file(p)
-            payload = _build_doc_payload(row, p, current_sha)
+            payload = _build_doc_payload(
+                row,
+                p,
+                current_sha,
+                project_root=project_root,
+                profile=profile,
+            )
             index_document(client, payload, refresh=False, profile=profile)
             indexed_docs += 1
             if progress is not None:
@@ -521,13 +579,26 @@ def sync_search_index_for_project(
         current_sha = sha256_file(p)
         try:
             get_res = client.get(
-                index=settings.opensearch_index, id=doc_id, _source=["sha256", "project_id"]
+                index=settings.opensearch_index,
+                id=doc_id,
+                _source=["sha256", "project_id", "business_domain", "document_type"],
             )
             src = get_res.get("_source") or {}
             existing_sha = src.get("sha256") or ""
             existing_pid = src.get("project_id") or ""
+            expected_business_domain = row["area"] or ""
+            expected_document_type = _infer_document_type_from_layout_path(
+                p,
+                project_root=project_root,
+                profile=profile,
+            ) or ""
             # Skip only when both content hash AND project_id match
-            if existing_sha == current_sha and existing_pid == row["project_id"]:
+            if (
+                existing_sha == current_sha
+                and existing_pid == row["project_id"]
+                and (src.get("business_domain") or "") == expected_business_domain
+                and (src.get("document_type") or "") == expected_document_type
+            ):
                 skipped_docs += 1
                 if progress is not None:
                     progress["progress_skipped"] = progress.get("progress_skipped", 0) + 1
@@ -542,7 +613,13 @@ def sync_search_index_for_project(
         except Exception:
             pass
         try:
-            payload = _build_doc_payload(row, p, current_sha)
+            payload = _build_doc_payload(
+                row,
+                p,
+                current_sha,
+                project_root=project_root,
+                profile=profile,
+            )
             for attempt in range(3):
                 try:
                     index_document(client, payload, refresh=False, profile=profile)
