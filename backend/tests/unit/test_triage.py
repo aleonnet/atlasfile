@@ -122,6 +122,7 @@ def _prepare_pending_triage_item(
 
 def _patch_triage_dependencies(monkeypatch, tmp_path: Path) -> tuple[MagicMock, MagicMock]:
     monkeypatch.setattr(main_module.settings, "projects_root", str(tmp_path), raising=False)
+    monkeypatch.setattr(main_module.settings, "classifier_datasets_root", str(tmp_path / "datasets"), raising=False)
     index_mock = MagicMock()
     training_pool_mock = MagicMock()
     monkeypatch.setattr(main_module, "index_document", index_mock)
@@ -190,6 +191,9 @@ def test_decide_triage_correct_recomputes_canonical_filename_and_upserts_index(
     assert initial_canonical not in index_text
     assert " | corrected | " in index_text
     assert " | triage_pending | " not in index_text
+    assert resolved_meta["training_pool_status"] == "appended"
+    assert resolved_meta["training_pool_record_path"].startswith("training_pool/files/")
+    assert resolved_meta["training_pool_sha256"]
 
 
 def test_decide_triage_correct_updates_document_type_token_and_preserves_ingest_date(
@@ -242,3 +246,51 @@ def test_decide_triage_correct_updates_document_type_token_and_preserves_ingest_
     index_text = (project_root / "_INDEX.md").read_text(encoding="utf-8")
     assert expected_canonical in index_text
     assert initial_canonical not in index_text
+
+
+def test_decide_triage_skips_training_pool_when_document_overlaps_validation_set(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    project_id = "triage_project_overlap"
+    doc_id = "doc-overlap-a"
+    naming_pattern = "{date}__{project}__{business_domain}__{original_name}"
+    original_filename = "Contrato_Validacao.pdf"
+    canonical_filename = "20260319__triage_project_overlap__juridico__Contrato_Validacao__v01.pdf"
+
+    project_root, source_path = _prepare_pending_triage_item(
+        tmp_path=tmp_path,
+        project_id=project_id,
+        doc_id=doc_id,
+        naming_pattern=naming_pattern,
+        original_filename=original_filename,
+        canonical_filename=canonical_filename,
+        suggested_business_domain="juridico",
+        suggested_document_type="contrato",
+    )
+    index_mock, training_pool_mock = _patch_triage_dependencies(monkeypatch, tmp_path)
+    snapshot_mock = MagicMock()
+    monkeypatch.setattr(main_module, "materialize_training_pool_snapshot", snapshot_mock)
+    monkeypatch.setattr(main_module, "validation_overlap_for_file", lambda *_args, **_kwargs: ["validation.pdf"])
+
+    result = main_module.decide_triage(
+        project_id,
+        doc_id,
+        TriageDecisionRequest(
+            action="approve",
+        ),
+    )
+
+    assert result == {"status": "ok", "action": "approved", "doc_id": doc_id}
+    final_path = project_root / "02_AREAS" / "juridico" / "contrato" / canonical_filename
+    assert final_path.exists()
+    assert not source_path.exists()
+    index_mock.assert_called_once()
+    training_pool_mock.assert_not_called()
+    snapshot_mock.assert_not_called()
+
+    resolved_meta = json.loads(
+        (project_root / "_TRIAGE_REVIEW" / "resolved" / f"{doc_id}.json").read_text(encoding="utf-8")
+    )
+    assert resolved_meta["training_pool_status"] == "skipped_overlap_with_validation_set"
+    assert resolved_meta["training_pool_validation_files"] == ["validation.pdf"]

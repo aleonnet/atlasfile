@@ -87,6 +87,7 @@ def test_benchmark_sparse_candidates_scores_synthetic_txt_dataset(tmp_path: Path
     )
 
     assert result["gate"]["eligible"] is True
+    assert result["training_examples_resolved"] == 6
     for family in ("sparse_logreg", "sparse_linear_svc"):
         summary = result["benchmarks"][family]["summary"]
         assert summary["role"] == "benchmark_candidate"

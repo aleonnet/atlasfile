@@ -54,7 +54,7 @@ def _render_text(benchmarks: dict[str, Any]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Benchmark oficial do classificador sobre config/validation_set/expected.json."
+        description="Benchmark oficial do classificador sobre o dataset operacional configurado em CLASSIFIER_DATASETS_ROOT."
     )
     parser.add_argument(
         "--mode",
@@ -93,8 +93,12 @@ def main() -> int:
     payload = {
         "operational_classifier_mode": cycle_payload["operational_classifier_mode"],
         "dataset_integrity": cycle_payload["dataset_integrity"],
+        "dataset_manifest": cycle_payload.get("dataset_manifest"),
         "gates": cycle_payload["gates"],
+        "training_pool_records_jsonl": cycle_payload.get("training_pool_records_jsonl"),
+        "training_pool_records_resolved": cycle_payload.get("training_pool_records_resolved"),
         "training_pool_records": cycle_payload["training_pool_records"],
+        "training_examples_skipped_count": cycle_payload.get("training_examples_skipped_count", 0),
         "benchmarks": {},
     }
     if "training_examples_skipped" in cycle_payload:

@@ -31,7 +31,13 @@ from .classifier_registry import (
 )
 from .classifier_runtime import resolve_classifier_mode
 from .config import settings
-from .evaluation_dataset import TrainingPoolRecord, append_training_pool_record
+from .evaluation_dataset import (
+    TrainingPoolRecord,
+    append_training_pool_record,
+    dataset_relative_path,
+    materialize_training_pool_snapshot,
+    validation_overlap_for_file,
+)
 from .indexer import backfill_search_fields, index_document, read_text_excerpt
 from .ingest_history import append_ingest_entry, load_ingest_history
 from .ingestion import _append_index_md, process_inbox_file
@@ -2490,20 +2496,41 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
     }
     index_document(os_client, indexed_payload, profile=profile)
     _append_index_md(project_root, indexed_payload)
-    append_training_pool_record(
-        TrainingPoolRecord(
+
+    training_pool_status = "appended"
+    training_pool_details: dict[str, Any] = {}
+    validation_overlap = validation_overlap_for_file(dest_path)
+    if validation_overlap:
+        training_pool_status = "skipped_overlap_with_validation_set"
+        training_pool_details = {
+            "training_pool_validation_files": validation_overlap,
+        }
+    else:
+        snapshot_path, snapshot_sha = materialize_training_pool_snapshot(
+            source_path=dest_path,
             doc_id=doc_id,
-            project_id=project_id,
             original_filename=str(indexed_payload.get("original_filename") or source_path.name),
-            path=str(dest_path),
-            business_domain=target_business_domain,
-            document_type=target_document_type,
-            decision=str(indexed_payload["decision"]),
-            topics=list(data.get("topics", []) or []),
-            entities=list(data.get("entities", []) or []),
-            notes=str(request.note or ""),
         )
-    )
+        append_training_pool_record(
+            TrainingPoolRecord(
+                doc_id=doc_id,
+                project_id=project_id,
+                original_filename=str(indexed_payload.get("original_filename") or source_path.name),
+                path=dataset_relative_path(snapshot_path),
+                source_path=str(dest_path),
+                business_domain=target_business_domain,
+                document_type=target_document_type,
+                decision=str(indexed_payload["decision"]),
+                sha256=snapshot_sha,
+                topics=list(data.get("topics", []) or []),
+                entities=list(data.get("entities", []) or []),
+                notes=str(request.note or ""),
+            )
+        )
+        training_pool_details = {
+            "training_pool_record_path": dataset_relative_path(snapshot_path),
+            "training_pool_sha256": snapshot_sha,
+        }
 
     data["decision"] = indexed_payload["decision"]
     data["processed_at"] = indexed_payload["processed_at"]
@@ -2515,6 +2542,8 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
     data["business_domain"] = target_business_domain
     data["document_type"] = target_document_type
     data["naming_pattern"] = canonical_pattern
+    data["training_pool_status"] = training_pool_status
+    data.update(training_pool_details)
 
     pending_meta.unlink(missing_ok=True)
     (triage_resolved_dir(project_root) / f"{doc_id}.json").write_text(

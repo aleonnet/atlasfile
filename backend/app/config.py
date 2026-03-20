@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     opensearch_nested_objects_limit: int = 50000
 
     projects_root: str = "/projects"
+    classifier_datasets_root: str = ""
     auto_scan_on_startup: bool = False
     auto_reconcile_interval_seconds: int = 0
     auto_reconcile_reindex_search: bool = True

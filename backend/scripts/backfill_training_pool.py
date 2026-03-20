@@ -10,10 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.evaluation_dataset import (
     TrainingPoolRecord,
+    dataset_relative_path,
     load_training_pool_records,
-    load_validation_set,
-    resolve_validation_file,
+    materialize_training_pool_snapshot,
     save_training_pool_records,
+    validation_sha_index,
 )
 from app.project_profile import load_project_profile
 from app.triage import triage_resolved_dir
@@ -21,16 +22,7 @@ from app.utils import sha256_file, utc_now_iso
 
 
 def _validation_sha_index() -> dict[str, list[str]]:
-    index: dict[str, list[str]] = {}
-    for entry in load_validation_set():
-        if not entry.is_labeled():
-            continue
-        file_path = resolve_validation_file(entry.file)
-        if not file_path.exists():
-            continue
-        digest = sha256_file(file_path)
-        index.setdefault(digest, []).append(entry.file)
-    return index
+    return validation_sha_index()
 
 
 def _fallback_project_file_path(project_root: Path, data: dict[str, Any]) -> Path | None:
@@ -96,15 +88,22 @@ def collect_training_pool_records_from_resolved(project_root: Path) -> tuple[lis
         note = str(data.get("decision_note") or "").strip()
         note_prefix = "backfill_resolved_triage"
         notes = note_prefix if not note else f"{note_prefix}: {note}"
+        snapshot_path, snapshot_sha = materialize_training_pool_snapshot(
+            source_path=final_path,
+            doc_id=doc_id,
+            original_filename=str(data.get("original_filename") or final_path.name),
+        )
         records.append(
             TrainingPoolRecord(
                 doc_id=doc_id,
                 project_id=project_id,
                 original_filename=str(data.get("original_filename") or final_path.name),
-                path=str(final_path),
+                path=dataset_relative_path(snapshot_path),
+                source_path=str(final_path),
                 business_domain=business_domain,
                 document_type=document_type,
                 decision=decision,
+                sha256=snapshot_sha,
                 reviewed_at=str(data.get("processed_at") or utc_now_iso()),
                 topics=list(data.get("topics", []) or []),
                 entities=list(data.get("entities", []) or []),
@@ -137,7 +136,7 @@ def merge_training_pool_records(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Gera/atualiza config/training_pool/records.jsonl a partir de _TRIAGE_REVIEW/resolved de um projeto."
+        description="Gera/atualiza o training pool operacional a partir de _TRIAGE_REVIEW/resolved de um projeto."
     )
     parser.add_argument("project_root", help="Caminho absoluto ou relativo do projeto AtlasFile")
     parser.add_argument(
@@ -145,7 +144,7 @@ def main() -> int:
         action="store_true",
         help="Remove registros existentes do mesmo project_id antes de gravar o backfill",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Só mostra o resumo; não grava records.jsonl")
+    parser.add_argument("--dry-run", action="store_true", help="Só mostra o resumo; não grava o JSONL operacional")
     args = parser.parse_args()
 
     project_root = Path(args.project_root).expanduser().resolve()

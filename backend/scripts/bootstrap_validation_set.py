@@ -25,7 +25,9 @@ def _iter_candidates(source: Path, extensions: set[str]) -> list[Path]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Copia arquivos reais para config/validation_set/files e sincroniza expected.json.")
+    parser = argparse.ArgumentParser(
+        description="Copia arquivos reais para o validation_set operacional e sincroniza expected.json."
+    )
     parser.add_argument("source", help="Arquivo ou diretório-fonte com documentos candidatos")
     parser.add_argument("--limit", type=int, default=50, help="Máximo de arquivos a copiar")
     parser.add_argument(

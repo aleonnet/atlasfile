@@ -11,6 +11,7 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 - registry persistido em `_ATLASFILE/classifier` com `champion_mode`, ultimo report, gates de promocao e override por projeto
 - novo fluxo de `benchmark + retreino` pela API/UI, com reports versionados, artefatos sparse persistidos e politica `auto_best_with_ui_override`
 - ingestao passa a servir o modo efetivo do classificador (`bootstrap`, `sparse_logreg`, `sparse_linear_svc`) com fallback explicito para `bootstrap` quando o artefato supervisionado estiver ausente ou falhar
+- datasets operacionais consolidados em `_ATLASFILE/classifier/datasets` como fonte fisica unica; o runtime nao copia mais `validation_set`/`training_pool` a partir do repo
 - status em tempo real do ciclo do classificador e do processamento da INBOX corrigidos no frontend, sem reload manual
 - scorecards por documento, override manual e estado operacional exibidos na UI sem expor `baseline` como modo publico
 
@@ -24,7 +25,8 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 ### Docs e validacao
 
 - `docs/plano_teste_e2e_v0.8.0.md` registrado como delta do `0.7.0`, com rerun usando o mesmo lote real de arquivos e evidencia do fix de streaming
-- `README.md` e docs tecnicos atualizados para o contrato `business_domain`, ciclo do classificador e modos publicos da `0.8.0`
+- fixtures de dataset movidas para `backend/tests/fixtures/classifier_datasets`, desacoplando a suíte do dataset operacional do host
+- `README.md` e docs tecnicos atualizados para o contrato `business_domain`, ciclo do classificador, fonte unica em `_ATLASFILE` e fixtures de teste dedicadas
 - novas regressions backend/frontend para naming, triagem, `_INDEX.md` e streaming de INBOX/ciclo
 
 ---

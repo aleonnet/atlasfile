@@ -83,24 +83,31 @@ AtlasFile/
 ## Datasets do classificador
 
 ```text
-config/
-  validation_set/
-    files/
-    expected.json
-  training_pool/
-    files/
-    records.jsonl
+_ATLASFILE/
+  classifier/
+    datasets/
+      validation_set/
+        files/
+        expected.json
+      training_pool/
+        files/
+        records.jsonl
 ```
 
-- `validation_set`: conjunto humano-curado para benchmark e aceite
-- `training_pool`: documentos revisados via triagem que alimentam os candidatos supervisionados
+- `validation_set`: conjunto humano-curado para benchmark e aceite, persistido apenas no volume operacional
+- `training_pool`: snapshots e `records.jsonl` vivos do classificador, persistidos apenas no volume operacional
+- `backend/tests/fixtures/classifier_datasets`: fixtures versionadas usadas somente pela suíte de testes
 - `backend/scripts/benchmark_classification.py`: compara `bootstrap`, `sparse_logreg` e `sparse_linear_svc`
+- `backend/scripts/bootstrap_validation_set.py <origem>`: popula o `validation_set` operacional a partir de arquivos reais
 
 ## Ciclo operacional do classificador
 
 - O registry global em `_ATLASFILE/classifier` persiste `champion_mode`, gates de promocao, ultimo ciclo e ultimo report.
+- O root operacional dos datasets fica em `_ATLASFILE/classifier/datasets`, fora da imagem Docker, com `validation_set` e `training_pool` persistidos no volume de projetos.
+- O runtime nao faz bootstrap silencioso a partir do repo: se o dataset operacional estiver vazio, benchmark/ciclo refletem esse estado explicitamente.
 - Cada projeto pode fixar `classification.operational.override_mode`; sem override, a ingestao usa o campeao atual.
 - O runtime serve `bootstrap`, `sparse_logreg` ou `sparse_linear_svc` e faz fallback explicito para `bootstrap` se o artefato supervisionado estiver ausente ou falhar.
+- A triagem grava snapshots estaveis do training pool e pula documentos que colidam por SHA com o validation set.
 - A UI expoe benchmark + retreino, scorecards por documento, campeao atual e override manual sem reintroduzir `baseline` como modo publico.
 
 ## Execução local
@@ -172,7 +179,7 @@ Arquivo entra em _INBOX_DROP
                   ▼
           Humano: Aprovar / Corrigir / Rejeitar
                   │
-                  └─ Aprovar/Corrigir → grava em config/training_pool/records.jsonl
+                 └─ Aprovar/Corrigir → grava em _ATLASFILE/classifier/datasets/training_pool/records.jsonl
 ```
 
 - `bootstrap` continua como fallback seguro do runtime
@@ -196,6 +203,7 @@ Os placeholders suportados no contrato ativo sao `date`, `project`, `business_do
 | Variável | Descrição | Default |
 |----------|-----------|---------|
 | `PROJECTS_HOST_ROOT` | Path absoluto dos projetos no host | (obrigatório) |
+| `CLASSIFIER_DATASETS_ROOT` | Root operacional dos datasets do classificador | `/projects/_ATLASFILE/classifier/datasets` |
 | `OPENAI_API_KEY` | Chave OpenAI (chat + classificação) | — |
 | `ANTHROPIC_API_KEY` | Chave Anthropic (chat) | — |
 | `CLASSIFICATION_LLM_ENABLED` | Habilitar LLM no fluxo de ingestão | `false` |

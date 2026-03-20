@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from app.classification_bootstrap import classify_bootstrap
@@ -37,27 +38,40 @@ def _load_default_profile() -> dict:
     return profile_v2_to_runtime(profile, Path(profile.project_root))
 
 
+def _fixture_dataset_root() -> Path:
+    return Path(__file__).resolve().parents[1] / "fixtures" / "classifier_datasets"
+
+
 def test_bootstrap_quality_floor_for_current_12_files() -> None:
-    profile = _load_default_profile()
-    entries = [entry for entry in load_validation_set() if entry.file in CURRENT_VALIDATION_FILES]
+    fixture_root = _fixture_dataset_root()
+    previous_root = os.environ.get("CLASSIFIER_DATASETS_ROOT")
+    os.environ["CLASSIFIER_DATASETS_ROOT"] = str(fixture_root)
+    try:
+        profile = _load_default_profile()
+        entries = [entry for entry in load_validation_set() if entry.file in CURRENT_VALIDATION_FILES]
 
-    assert {entry.file for entry in entries} == CURRENT_VALIDATION_FILES
+        assert {entry.file for entry in entries} == CURRENT_VALIDATION_FILES
 
-    document_type_hits = 0
-    business_domain_hits = 0
+        document_type_hits = 0
+        business_domain_hits = 0
 
-    for entry in entries:
-        file_path = resolve_validation_file(entry.file)
-        extracted = extract_document_content(file_path, max_chars=50_000)
-        result = classify_bootstrap(
-            profile=profile,
-            source_path=file_path,
-            text_excerpt=extracted.text_excerpt,
-        )
-        if result["document_type"] == entry.document_type:
-            document_type_hits += 1
-        if result["business_domain"] == entry.business_domain:
-            business_domain_hits += 1
+        for entry in entries:
+            file_path = resolve_validation_file(entry.file)
+            extracted = extract_document_content(file_path, max_chars=50_000)
+            result = classify_bootstrap(
+                profile=profile,
+                source_path=file_path,
+                text_excerpt=extracted.text_excerpt,
+            )
+            if result["document_type"] == entry.document_type:
+                document_type_hits += 1
+            if result["business_domain"] == entry.business_domain:
+                business_domain_hits += 1
 
-    assert document_type_hits == len(entries)
-    assert business_domain_hits >= 9
+        assert document_type_hits == len(entries)
+        assert business_domain_hits >= 9
+    finally:
+        if previous_root is None:
+            os.environ.pop("CLASSIFIER_DATASETS_ROOT", None)
+        else:
+            os.environ["CLASSIFIER_DATASETS_ROOT"] = previous_root

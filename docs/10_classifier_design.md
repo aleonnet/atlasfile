@@ -5,6 +5,7 @@
 Na 0.8.0 o AtlasFile resolve um modo efetivo de classificacao antes da ingestao. O runtime considera:
 
 - `champion_mode` persistido no registry global em `_ATLASFILE/classifier/registry.json`
+- datasets operacionais persistidos em `_ATLASFILE/classifier/datasets`
 - `classification.operational.override_mode` no profile do projeto, quando o override por projeto estiver habilitado
 - fallback explicito para `bootstrap` se o artefato supervisionado estiver ausente ou falhar em runtime
 
@@ -27,6 +28,8 @@ O fluxo operacional e:
 ```
 
 O `baseline` legado nao faz mais parte do contrato publico do produto, da UI nem do benchmark oficial exposto ao usuario.
+
+`validation_set` e `training_pool` operacionais existem apenas em `_ATLASFILE/classifier/datasets`. O repo nao participa do runtime desses datasets; fixtures versionadas para testes ficam em `backend/tests/fixtures/classifier_datasets`.
 
 ## Arquitetura atual
 
@@ -169,8 +172,8 @@ Modos suportados pelo benchmark oficial:
 
 Gates do benchmark:
 
-- `validation_set` rotulado em `config/validation_set`
-- `training_pool` disjunto em `config/training_pool`
+- `validation_set` rotulado em `_ATLASFILE/classifier/datasets/validation_set`
+- `training_pool` disjunto em `_ATLASFILE/classifier/datasets/training_pool`
 - checagem de integridade por overlap entre datasets
 - gates minimos de volume total e suporte por classe para habilitar os modos supervisionados
 
@@ -178,8 +181,9 @@ Ao final do ciclo, o sistema:
 
 1. persiste artefatos supervisionados em `_ATLASFILE/classifier/models`
 2. salva um report versionado em `_ATLASFILE/classifier/reports`
-3. escolhe o `champion_mode` conforme `promotion_policy`
-4. atualiza o registry global com campeao, report e status do ultimo ciclo
+3. registra `dataset_manifest` com lineage e digests de `validation_set` e `training_pool`
+4. escolhe o `champion_mode` conforme `promotion_policy`
+5. atualiza o registry global com campeao, report, manifesto e status do ultimo ciclo
 
 Na 0.8.0 a politica padrao e `auto_best_with_ui_override`: o melhor candidato elegivel pode virar campeao, mas o projeto ainda pode fixar `classification.operational.override_mode` quando precisar servir outro modo explicitamente.
 

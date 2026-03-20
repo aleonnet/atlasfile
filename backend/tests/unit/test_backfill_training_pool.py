@@ -3,12 +3,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.evaluation_dataset import TrainingPoolRecord
+from app.evaluation_dataset import TrainingPoolRecord, training_pool_files_dir
 from app.utils import sha256_file
 from scripts.backfill_training_pool import collect_training_pool_records_from_resolved, merge_training_pool_records
 
 
+def _configure_dataset_paths(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("app.classifier_registry.repo_root", lambda: tmp_path)
+    monkeypatch.setenv("CLASSIFIER_DATASETS_ROOT", str(tmp_path / "datasets"))
+
+
 def test_collect_training_pool_records_from_resolved_reads_only_reviewed_docs(tmp_path: Path, monkeypatch) -> None:
+    _configure_dataset_paths(monkeypatch, tmp_path)
     project_root = tmp_path / "proj"
     resolved_dir = project_root / "_TRIAGE_REVIEW" / "resolved"
     resolved_dir.mkdir(parents=True, exist_ok=True)
@@ -56,12 +62,15 @@ def test_collect_training_pool_records_from_resolved_reads_only_reviewed_docs(tm
     assert len(records) == 1
     assert records[0].project_id == "proj-1"
     assert records[0].doc_id == "doc-1"
-    assert records[0].path == str(approved_file)
+    assert records[0].path == "training_pool/files/doc-1__Contrato.pdf"
+    assert records[0].source_path == str(approved_file)
+    assert (training_pool_files_dir() / "doc-1__Contrato.pdf").exists()
     assert records[0].notes == "backfill_resolved_triage: revisado"
     assert skipped == [{"metadata": str(resolved_dir / "doc-2.json"), "reason": "unsupported_decision:rejected"}]
 
 
 def test_collect_training_pool_records_from_resolved_skips_validation_overlap(tmp_path: Path, monkeypatch) -> None:
+    _configure_dataset_paths(monkeypatch, tmp_path)
     project_root = tmp_path / "proj"
     resolved_dir = project_root / "_TRIAGE_REVIEW" / "resolved"
     resolved_dir.mkdir(parents=True, exist_ok=True)
@@ -143,6 +152,7 @@ def test_merge_training_pool_records_can_replace_project_records() -> None:
 
 
 def test_collect_training_pool_records_from_resolved_uses_project_fallback_path(tmp_path: Path, monkeypatch) -> None:
+    _configure_dataset_paths(monkeypatch, tmp_path)
     project_root = tmp_path / "proj"
     resolved_dir = project_root / "_TRIAGE_REVIEW" / "resolved"
     resolved_dir.mkdir(parents=True, exist_ok=True)
@@ -174,4 +184,5 @@ def test_collect_training_pool_records_from_resolved_uses_project_fallback_path(
 
     assert skipped == []
     assert len(records) == 1
-    assert records[0].path == str(approved_file)
+    assert records[0].path == "training_pool/files/doc-1__arquivo.pdf"
+    assert records[0].source_path == str(approved_file)

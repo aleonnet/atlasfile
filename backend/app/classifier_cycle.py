@@ -29,9 +29,12 @@ from .document_extractor import extract_document_content
 from .evaluation_dataset import (
     TrainingPoolRecord,
     ValidationSetEntry,
+    classifier_datasets_root,
     load_training_pool_records,
     load_validation_set,
     resolve_validation_file,
+    training_pool_records_path,
+    validation_set_expected_path,
 )
 from .profile_schema_v2 import ProjectProfileV2
 from .project_profile import profile_v2_to_runtime
@@ -159,7 +162,8 @@ def compute_dataset_integrity(
     for example in validation_examples:
         entry = example["entry"]
         file_path = Path(example["file_path"])
-        validation_by_sha[sha256_file(file_path)].append(entry.file)
+        validation_digest = str(example.get("sha256") or sha256_file(file_path))
+        validation_by_sha[validation_digest].append(entry.file)
         validation_by_name[_normalized_file_key(entry.file)].append(entry.file)
 
     overlap_sha256: list[dict[str, Any]] = []
@@ -187,7 +191,7 @@ def compute_dataset_integrity(
                 )
             continue
 
-        training_sha = sha256_file(path)
+        training_sha = str(record.sha256 or sha256_file(path))
         overlapping_validation_files = sorted(validation_by_sha.get(training_sha, []))
         if overlapping_validation_files:
             overlap_sha256.append(
@@ -245,6 +249,7 @@ def load_validation_examples(entries: list[ValidationSetEntry]) -> list[dict[str
             {
                 "entry": entry,
                 "file_path": file_path,
+                "sha256": sha256_file(file_path),
                 "text": extract_feature_text(file_path, original_name=entry.file),
             }
         )
@@ -254,6 +259,9 @@ def load_validation_examples(entries: list[ValidationSetEntry]) -> list[dict[str
 def resolve_training_path(repo_root: Path, record: TrainingPoolRecord) -> Path:
     path = Path(record.path).expanduser()
     if not path.is_absolute():
+        dataset_candidate = (classifier_datasets_root() / path).resolve()
+        if dataset_candidate.exists() or (path.parts and path.parts[0] == "training_pool"):
+            return dataset_candidate
         path = (repo_root / path).resolve()
     return path
 
@@ -275,10 +283,60 @@ def load_training_examples(repo_root: Path, records: list[TrainingPoolRecord]) -
             {
                 "record": record,
                 "file_path": path,
+                "sha256": str(record.sha256 or sha256_file(path)),
                 "text": text,
             }
         )
     return examples, skipped
+
+
+def build_dataset_manifest(
+    *,
+    profile_path: Path,
+    validation_examples: list[dict[str, Any]],
+    training_records: list[TrainingPoolRecord],
+    resolved_training_examples: list[dict[str, Any]] | None = None,
+    skipped_training_examples: list[str] | None = None,
+) -> dict[str, Any]:
+    expected_path = validation_set_expected_path()
+    records_path = training_pool_records_path()
+    resolved_examples = resolved_training_examples or []
+    skipped = skipped_training_examples or []
+    return {
+        "datasets_root": str(classifier_datasets_root()),
+        "profile_path": str(profile_path),
+        "validation_set": {
+            "expected_path": str(expected_path),
+            "expected_sha256": sha256_file(expected_path) if expected_path.exists() else "",
+            "labeled_records": len(validation_examples),
+            "files": [
+                {
+                    "file": example["entry"].file,
+                    "path": str(example["file_path"]),
+                    "sha256": str(example.get("sha256") or ""),
+                }
+                for example in validation_examples
+            ],
+        },
+        "training_pool": {
+            "records_path": str(records_path),
+            "records_sha256": sha256_file(records_path) if records_path.exists() else "",
+            "jsonl_records": len(training_records),
+            "resolved_examples": len(resolved_examples),
+            "skipped_examples": len(skipped),
+            "files": [
+                {
+                    "doc_id": example["record"].doc_id,
+                    "project_id": example["record"].project_id,
+                    "original_filename": example["record"].original_filename,
+                    "path": str(example["file_path"]),
+                    "source_path": str(example["record"].source_path or ""),
+                    "sha256": str(example.get("sha256") or example["record"].sha256 or ""),
+                }
+                for example in resolved_examples
+            ],
+        },
+    }
 
 
 def evaluate_bootstrap(
@@ -323,7 +381,7 @@ def benchmark_sparse_candidates(
         min_training_docs=min_training_docs,
         min_docs_per_class=min_docs_per_class,
     )
-    output: dict[str, Any] = {"gate": gate, "benchmarks": {}}
+    output: dict[str, Any] = {"gate": gate, "benchmarks": {}, "training_examples_resolved": 0}
     if not gate["eligible"]:
         for family in SPARSE_MODEL_FAMILIES:
             output["benchmarks"][family] = {
@@ -339,6 +397,15 @@ def benchmark_sparse_candidates(
         return output
 
     training_examples, skipped = load_training_examples(repo_root, training_records)
+    output["training_examples_resolved"] = len(training_examples)
+    output["resolved_training_examples"] = [
+        {
+            "record": example["record"],
+            "file_path": example["file_path"],
+            "sha256": example["sha256"],
+        }
+        for example in training_examples
+    ]
     if skipped:
         gate = compute_supervised_gate(
             [example["record"] for example in training_examples],
@@ -497,11 +564,17 @@ def evaluate_classifier_cycle(
         validation_examples=validation_examples,
         training_records=training_records,
     )
+    dataset_manifest = build_dataset_manifest(
+        profile_path=profile_path,
+        validation_examples=validation_examples,
+        training_records=training_records,
+    )
     if dataset_integrity["status"] == "error":
         return {
             "generated_at": utc_now_iso(),
             "operational_classifier_mode": DEFAULT_CLASSIFIER_MODE,
             "dataset_integrity": dataset_integrity,
+            "dataset_manifest": dataset_manifest,
             "gates": {
                 "supervised": compute_supervised_gate(
                     training_records,
@@ -509,7 +582,10 @@ def evaluate_classifier_cycle(
                     min_docs_per_class=min_docs_per_class,
                 )
             },
+            "training_pool_records_jsonl": len(training_records),
+            "training_pool_records_resolved": 0,
             "training_pool_records": len(training_records),
+            "training_examples_skipped_count": 0,
             "benchmarks": {},
         }
 
@@ -528,12 +604,25 @@ def evaluate_classifier_cycle(
         "bootstrap": bootstrap,
         **supervised["benchmarks"],
     }
+    resolved_training_examples = list(supervised.pop("resolved_training_examples", []))
+    skipped_training_examples = list(supervised.get("training_examples_skipped", []) or [])
+    dataset_manifest = build_dataset_manifest(
+        profile_path=profile_path,
+        validation_examples=validation_examples,
+        training_records=training_records,
+        resolved_training_examples=resolved_training_examples,
+        skipped_training_examples=skipped_training_examples,
+    )
     payload = {
         "generated_at": utc_now_iso(),
         "operational_classifier_mode": DEFAULT_CLASSIFIER_MODE,
         "dataset_integrity": dataset_integrity,
+        "dataset_manifest": dataset_manifest,
         "gates": {"supervised": supervised["gate"]},
+        "training_pool_records_jsonl": len(training_records),
+        "training_pool_records_resolved": int(supervised.get("training_examples_resolved") or 0),
         "training_pool_records": len(training_records),
+        "training_examples_skipped_count": len(skipped_training_examples),
         "benchmarks": benchmarks,
     }
     if "training_examples_skipped" in supervised:
@@ -553,6 +642,7 @@ def run_classifier_cycle(
     repo = Path(__file__).resolve().parents[2]
     profile_path_obj = (repo / profile_path).resolve() if not Path(profile_path).is_absolute() else Path(profile_path)
     registry = load_classifier_registry()
+    report: dict[str, Any] | None = None
     registry.latest_cycle_status = "running"
     registry.latest_cycle_started_at = utc_now_iso()
     registry.latest_cycle_finished_at = None
@@ -569,6 +659,7 @@ def run_classifier_cycle(
             progress_callback=progress_callback,
         )
         if (report.get("dataset_integrity") or {}).get("status") == "error":
+            registry.latest_dataset_manifest = report.get("dataset_manifest")
             raise ValueError("dataset_integrity_error")
         artifacts = dict(report.pop("artifacts", {}) or {})
         _emit_progress(progress_callback, phase="persisting_artifacts", progress_current=4, progress_total=5)
@@ -579,7 +670,9 @@ def run_classifier_cycle(
         champion_mode, champion_summary = choose_champion_mode(
             registry=registry,
             benchmarks=report["benchmarks"],
-            training_pool_records=int(report.get("training_pool_records") or 0),
+            training_pool_records=int(
+                report.get("training_pool_records_resolved") or report.get("training_pool_records") or 0
+            ),
         )
         report["champion"] = {
             "mode": champion_mode,
@@ -598,6 +691,8 @@ def run_classifier_cycle(
         registry.champion_report_id = report_id
         registry.latest_report_id = report_id
         registry.champion_summary = champion_summary
+        registry.latest_dataset_manifest = report.get("dataset_manifest")
+        registry.champion_dataset_manifest = report.get("dataset_manifest")
         registry.latest_cycle_status = "succeeded"
         registry.latest_cycle_finished_at = utc_now_iso()
         save_classifier_registry(registry)
@@ -605,6 +700,8 @@ def run_classifier_cycle(
         report["report_id"] = report_id
         return report
     except Exception as exc:
+        if report and report.get("dataset_manifest"):
+            registry.latest_dataset_manifest = report.get("dataset_manifest")
         registry.latest_cycle_status = "failed"
         registry.latest_cycle_finished_at = utc_now_iso()
         registry.latest_cycle_error = str(exc)

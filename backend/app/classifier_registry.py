@@ -130,6 +130,8 @@ class ClassifierRegistry(BaseModel):
     latest_report_id: str | None = None
     champion_report_id: str | None = None
     champion_summary: ClassifierSummary | None = None
+    latest_dataset_manifest: dict[str, Any] | None = None
+    champion_dataset_manifest: dict[str, Any] | None = None
     latest_cycle_status: Literal["never_run", "running", "succeeded", "failed"] = "never_run"
     latest_cycle_started_at: str | None = None
     latest_cycle_finished_at: str | None = None
