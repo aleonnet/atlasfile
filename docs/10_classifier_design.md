@@ -29,7 +29,7 @@ O fluxo operacional e:
 
 O `baseline` legado nao faz mais parte do contrato publico do produto, da UI nem do benchmark oficial exposto ao usuario.
 
-`validation_set` e `training_pool` operacionais existem apenas em `_ATLASFILE/classifier/datasets`. O repo nao participa do runtime desses datasets; fixtures versionadas para testes ficam em `backend/tests/fixtures/classifier_datasets`.
+`validation_set` e `training_pool` operacionais existem apenas em `_ATLASFILE/classifier/datasets`. O repo nao participa do runtime desses datasets; no repositório fica apenas uma fixture mínima de `validation_set` para um teste de integração em `backend/tests/fixtures/classifier_datasets`.
 
 ## Arquitetura atual
 

@@ -96,7 +96,7 @@ _ATLASFILE/
 
 - `validation_set`: conjunto humano-curado para benchmark e aceite, persistido apenas no volume operacional
 - `training_pool`: snapshots e `records.jsonl` vivos do classificador, persistidos apenas no volume operacional
-- `backend/tests/fixtures/classifier_datasets`: fixtures versionadas usadas somente pela suíte de testes
+- `backend/tests/fixtures/classifier_datasets/validation_set`: fixture mínima versionada usada por um teste de integração; não representa dataset operacional nem cópia completa dos datasets reais
 - `backend/scripts/benchmark_classification.py`: compara `bootstrap`, `sparse_logreg` e `sparse_linear_svc`
 - `backend/scripts/bootstrap_validation_set.py <origem>`: popula o `validation_set` operacional a partir de arquivos reais
 

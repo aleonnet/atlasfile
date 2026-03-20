@@ -25,8 +25,8 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 ### Docs e validacao
 
 - `docs/plano_teste_e2e_v0.8.0.md` registrado como delta do `0.7.0`, com rerun usando o mesmo lote real de arquivos e evidencia do fix de streaming
-- fixtures de dataset movidas para `backend/tests/fixtures/classifier_datasets`, desacoplando a suíte do dataset operacional do host
-- `README.md` e docs tecnicos atualizados para o contrato `business_domain`, ciclo do classificador, fonte unica em `_ATLASFILE` e fixtures de teste dedicadas
+- fixture mínima de `validation_set` mantida em `backend/tests/fixtures/classifier_datasets` apenas para um teste de integração, sem versionar cópia completa dos datasets operacionais
+- `README.md` e docs tecnicos atualizados para o contrato `business_domain`, ciclo do classificador, fonte unica em `_ATLASFILE` e fixture mínima de teste dedicada
 - novas regressions backend/frontend para naming, triagem, `_INDEX.md` e streaming de INBOX/ciclo
 
 ---
