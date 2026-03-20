@@ -40,6 +40,7 @@ AtlasFile/
 │   │   ├── mcp/             # MCP server (tools)
 │   │   ├── mcp_client/      # Cliente MCP (chat/orchestrator)
 │   │   └── prompts/         # System prompts (classify, chat)
+│   ├── scripts/             # Benchmark, ciclo ML, datasets operacionais, status
 │   └── tests/               # Unit + integration (pytest)
 ├── frontend/                # SPA React + TypeScript
 │   └── src/
@@ -48,11 +49,10 @@ AtlasFile/
 │       └── hooks/           # useEscapeKey
 ├── config/
 │   ├── templates/           # Templates de projeto (default.json, user templates)
-│   ├── validation_set/      # Conjunto de avaliação humana do classificador
-│   ├── training_pool/       # Rótulos revisados para benchmark supervisionado
+│   ├── topics_v1.yaml       # Catálogo de topics derivado no runtime
 │   └── usage_costs.json     # Preços $/1M tokens por provider/modelo
 ├── docs/                    # Documentação de referência (benchmarking, conventions, KPIs)
-├── scripts/                 # Bootstrap, smoke test, CI, reset index
+├── scripts/                 # Bootstrap, smoke test, CI, reset index, dashboards
 ├── docker-compose.yml
 ├── Makefile
 └── CHANGELOG.md
@@ -128,6 +128,8 @@ cp .env.example .env
 # 2. Suba o stack
 make docker-update
 ```
+
+Para a função de cada script operacional e técnico, veja `docs/11_scripts_and_operations.md`.
 
 ### Serviços
 

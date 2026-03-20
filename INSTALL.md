@@ -2,6 +2,8 @@
 
 Este guia cobre o setup completo para qualquer pessoa rodar o AtlasFile localmente.
 
+Para uma visão consolidada dos scripts do repositório e de quando cada um entra no processo, veja `docs/11_scripts_and_operations.md`.
+
 ---
 
 ## 1) Pré-requisitos
@@ -46,6 +48,8 @@ cp .env.example .env
 
 O campo **obrigatório** é `PROJECTS_HOST_ROOT` — o path absoluto no host onde ficam seus projetos. Este diretório será montado como `/projects` dentro do container.
 
+Esse mesmo root também passa a armazenar o estado operacional compartilhado do AtlasFile em `PROJECTS_HOST_ROOT/_ATLASFILE/`, incluindo registry, reports, models e datasets vivos do classificador.
+
 ### Exemplos
 
 ```bash
@@ -70,6 +74,10 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 # Habilitar LLM no fluxo de ingestão (default: false)
 CLASSIFICATION_LLM_ENABLED=true
+
+# Root operacional dos datasets do classificador
+# Default recomendado: não alterar
+CLASSIFIER_DATASETS_ROOT=/projects/_ATLASFILE/classifier/datasets
 ```
 
 Veja `.env.example` para a lista completa de variáveis (CORS, OpenSearch, reconciliação, etc.).
@@ -91,7 +99,38 @@ Ou individualmente:
 
 ---
 
-## 5) Subir os serviços
+## 5) O que acontece no primeiro boot
+
+Depois do primeiro `make docker-update`, o AtlasFile passa a usar `PROJECTS_HOST_ROOT/_ATLASFILE/` como estado operacional persistido:
+
+```text
+<PROJECTS_HOST_ROOT>/
+├── _ATLASFILE/
+│   └── classifier/
+│       ├── datasets/
+│       │   ├── validation_set/
+│       │   │   ├── files/
+│       │   │   └── expected.json
+│       │   └── training_pool/
+│       │       ├── files/
+│       │       └── records.jsonl
+│       ├── models/
+│       ├── reports/
+│       └── registry.json
+└── <SEUS_PROJETOS>/
+```
+
+Estado inicial de um AtlasFile novo:
+
+- a ingestão já funciona com o classificador `bootstrap`, sem depender de `validation_set` ou `training_pool` previamente populados;
+- `validation_set` e `training_pool` começam vazios no root operacional;
+- benchmark e retreino supervisionado só ficam úteis depois que você alimentar o `validation_set` com arquivos reais e acumular exemplos revisados no `training_pool`.
+
+O repo não é mais usado como seed automático desses datasets no runtime.
+
+---
+
+## 6) Subir os serviços
 
 ### Primeira vez ou rebuild completo
 
@@ -123,7 +162,7 @@ docker compose ps
 
 ---
 
-## 6) Verificação de saúde
+## 7) Verificação de saúde
 
 ### Frontend
 
@@ -145,7 +184,7 @@ curl -k -u "admin:Kaid0Search!2026X" https://localhost:9200
 
 ---
 
-## 7) Criar um projeto
+## 8) Criar um projeto
 
 ### Via UI (recomendado)
 
@@ -179,17 +218,47 @@ O script reutiliza os mesmos módulos do backend (`profile_store`, `bootstrap`),
 
 ---
 
-## 8) Teste funcional rápido (fim a fim)
+## 9) Preparar datasets do classificador (opcional)
+
+Para um AtlasFile novo do zero, esta etapa é opcional. Só é necessária quando você quiser usar benchmark, score comparativo e ciclo supervisionado com dados reais.
+
+### `validation_set`
+
+Popule o dataset operacional com arquivos reais usando o script do backend (requer ambiente Python do backend já configurado):
+
+```bash
+cd backend
+python scripts/bootstrap_validation_set.py "/caminho/para/documentos_reais"
+```
+
+Isso copia os arquivos aceitos para `PROJECTS_HOST_ROOT/_ATLASFILE/classifier/datasets/validation_set/files/` e sincroniza `expected.json`.
+
+### `training_pool`
+
+O `training_pool` operacional é alimentado automaticamente por decisões `Approve` / `Correct` na triagem. Para importar histórico já revisado de um projeto (também requer ambiente Python do backend):
+
+```bash
+cd backend
+python scripts/backfill_training_pool.py "/caminho/absoluto/do/projeto" --replace-project-records
+```
+
+Isso grava snapshots estáveis e atualiza `PROJECTS_HOST_ROOT/_ATLASFILE/classifier/datasets/training_pool/`.
+
+---
+
+## 10) Teste funcional rápido (fim a fim)
 
 1. Copie um arquivo para `<PROJECTS_HOST_ROOT>/meu_projeto/_INBOX_DROP/`
 
 2. Na UI (<http://localhost:5173>), selecione o projeto e clique em **Processar INBOX** no card "Ingestão e triagem".
 
 3. Resultado esperado:
-   - Arquivo roteado para `NN_area/` (se confiança alta), ou
+   - Arquivo roteado para `02_AREAS/{business_domain}/{document_type}/` (se confiança alta), ou
    - Item em triagem pendente para `Approve/Correct/Reject`.
 
-4. Use a busca (Cmd+K ou Enter) para localizar o documento indexado.
+4. Se você aprovar ou corrigir um item na triagem, o AtlasFile também atualiza o `training_pool` operacional em `_ATLASFILE/classifier/datasets/training_pool/`.
+
+5. Use a busca (Cmd+K ou Enter) para localizar o documento indexado.
 
 ### Via API (alternativa)
 
@@ -199,7 +268,7 @@ curl -X POST http://localhost:8000/api/ingest/scan/meu_projeto
 
 ---
 
-## 9) Operação diária
+## 11) Operação diária
 
 - **Ingestão**: coloque arquivos em `/<PROJETO>/_INBOX_DROP/`
 - **Processamento**: clique em "Processar INBOX" na UI ou aguarde reconciliação automática
@@ -209,7 +278,7 @@ curl -X POST http://localhost:8000/api/ingest/scan/meu_projeto
 
 ---
 
-## 10) Atualização Docker após mudanças de código
+## 12) Atualização Docker após mudanças de código
 
 O comando recomendado roda testes, faz rebuild e smoke test:
 
@@ -240,7 +309,7 @@ docker compose up -d --build web
 
 ---
 
-## 11) Makefile targets
+## 13) Makefile targets
 
 | Target | O que faz |
 |--------|-----------|
@@ -255,7 +324,7 @@ docker compose up -d --build web
 
 ---
 
-## 12) Troubleshooting
+## 14) Troubleshooting
 
 ### Docker Desktop: "Integrity issue detected"
 
@@ -298,7 +367,7 @@ Para recriar índices com mapping atualizado (ex.: após upgrade):
 
 ---
 
-## 13) Credenciais e portas (dev)
+## 15) Credenciais e portas (dev)
 
 | Serviço | URL | Credenciais |
 |---------|-----|-------------|
@@ -312,7 +381,7 @@ Para recriar índices com mapping atualizado (ex.: após upgrade):
 
 ---
 
-## 14) Dashboard programático (OpenSearch Dashboards)
+## 16) Dashboard programático (OpenSearch Dashboards)
 
 Os saved objects estão em `dashboards/atlasfile.ndjson`.
 
@@ -322,7 +391,7 @@ Os saved objects estão em `dashboards/atlasfile.ndjson`.
 
 ---
 
-## 15) Backup
+## 17) Backup
 
 Para gerar um backup versionado do repositório (exclui `node_modules`, `.venv`, `dist`, etc.):
 

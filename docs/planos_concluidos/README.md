@@ -4,6 +4,18 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.8.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [ml_ciclo_e_benchmarking](ml_ciclo_e_benchmarking_961e78ef.plan.md) | Diagnóstico factual do benchmark atual, clarificação do papel de `baseline` vs `bootstrap` e direção incremental para ciclo ML com benchmark, retreino e promoção controlada |
+| 2 | [ciclo_ml_0_7](ciclo_ml_0_7_b3080de2.plan.md) | Registry operacional do classificador, benchmark + retreino com reports persistidos, champion/override, serving supervisionado com fallback e transparência na UI |
+| 3 | [naming_e2e_commit](naming_e2e_commit_ff496695.plan.md) | Corte final de `{area}` para `{business_domain}`, reescrita do E2E `0.8.0` como delta do `0.7.0` e fechamento estrutural com gates de qualidade |
+| 4 | [classifier-dataset-root](classifier-dataset-root_b9b69d72.plan.md) | Primeira migração para root operacional dos datasets em `_ATLASFILE`, com snapshots do training pool, dataset manifest, lineage e guardrails de integridade |
+| 5 | [classifier-single-source](classifier-single-source_896138eb.plan.md) | Segundo corte arquitetural para remover o seed físico do repo do runtime, mover fixtures para `backend/tests/fixtures` e consolidar `_ATLASFILE` como fonte física única |
+
+---
+
 ## 0.7.0
 
 | # | Plano | Escopo |
