@@ -416,19 +416,23 @@ async def _run_chat_anthropic(
 
 
 def _build_project_context(profile: dict[str, Any] | None) -> str:
-    """Build a context block describing the project's work areas and valid topics for the LLM."""
+    """Build a context block describing the project's business domains and valid topics for the LLM."""
     if profile is None:
         return ""
     parts: list[str] = []
 
-    work_areas = profile.get("work_areas") or (profile.get("classification") or {}).get("work_areas") or []
-    if work_areas:
-        lines = ["Áreas disponíveis neste projeto:"]
-        for wa in work_areas:
-            key = str(wa.get("key", "")).strip()
+    business_domains = (
+        profile.get("business_domains")
+        or (profile.get("classification") or {}).get("business_domains")
+        or []
+    )
+    if business_domains:
+        lines = ["Domínios de negócio disponíveis neste projeto:"]
+        for domain in business_domains:
+            key = str(domain.get("key", "")).strip()
             if not key:
                 continue
-            aliases = wa.get("aliases") or []
+            aliases = domain.get("aliases") or []
             alias_str = ", ".join(str(a) for a in aliases if str(a).strip())
             line = f"- {key}"
             if alias_str:
@@ -443,8 +447,8 @@ def _build_project_context(profile: dict[str, Any] | None) -> str:
         parts.append(f"Topics válidos: {', '.join(topic_keys[:40])}")
 
     parts.append(
-        "Se nenhuma área existente for adequada, proponha uma nova area_key descritiva e explique o motivo em \"explanation\".\n"
-        "Se a classificação for ambígua entre áreas, use confidence < 0.6."
+        "Escolha sempre um dos business_domains configurados no projeto.\n"
+        "Se a classificação for ambígua entre domínios, use confidence < 0.6."
     )
     return "\n\n".join(parts)
 
@@ -460,7 +464,7 @@ async def classify_with_llm(
 ) -> dict[str, Any]:
     """
     Classify document excerpt via LLM; LLM must call submit_classification.
-    Returns { document_type?: str, tags: list[str], confidence: float, area_key?: str, topics?: list[str], explanation?: str }.
+    Returns { document_type?: str, tags: list[str], confidence: float, business_domain?: str, topics?: list[str], explanation?: str }.
     """
     if provider_override and model_override:
         provider, model = provider_override, model_override
@@ -469,7 +473,7 @@ async def classify_with_llm(
     tools_mcp = await mcp_list_tools()
     submit_only = [t for t in tools_mcp if t["name"] == "submit_classification"]
     if not submit_only:
-        return {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
+        return {"document_type": None, "tags": [], "confidence": 0.0, "business_domain": None, "topics": [], "explanation": None}
 
     project_context = _build_project_context(profile)
 
@@ -480,7 +484,7 @@ async def classify_with_llm(
         tools_api = mcp_tools_to_anthropic(submit_only)
         content, usage_raw = await _classify_anthropic(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
     else:
-        return {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
+        return {"document_type": None, "tags": [], "confidence": 0.0, "business_domain": None, "topics": [], "explanation": None}
 
     if usage_raw:
         usage_raw["estimated_cost_usd"] = estimate_usage_cost(usage_raw, provider, model)
@@ -491,12 +495,12 @@ async def classify_with_llm(
             "document_type": content.get("document_type"),
             "tags": content.get("tags") or [],
             "confidence": float(content.get("confidence", 0.0)),
-            "area_key": content.get("area_key"),
+            "business_domain": content.get("business_domain"),
             "topics": content.get("topics") or [],
             "explanation": content.get("explanation"),
         }
     else:
-        base = {"document_type": None, "tags": [], "confidence": 0.0, "area_key": None, "topics": [], "explanation": None}
+        base = {"document_type": None, "tags": [], "confidence": 0.0, "business_domain": None, "topics": [], "explanation": None}
     base["usage"] = usage_raw
     base["provider"] = provider
     base["model"] = model

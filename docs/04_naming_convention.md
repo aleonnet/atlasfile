@@ -18,14 +18,14 @@ O nome canonico e configuravel via `naming.canonical_pattern` no template/profil
 |-------|-----------|
 | `{date}` | Data de ingestao no formato `naming.date_format` |
 | `{project}` | ID do projeto normalizado |
-| `{area}` | Valor do `business_domain` normalizado |
+| `{business_domain}` | Valor do `business_domain` normalizado |
 | `{original_name}` | Nome original do arquivo sem extensao, preservado ao maximo |
 | `{document_type}` | Tipo documental normalizado |
 
 Observacao importante:
 
-- o placeholder continua se chamando `{area}` no runtime
-- na 0.7.0 ele recebe o `business_domain`
+- o contrato atual do runtime usa `{business_domain}`
+- o placeholder legado `{area}` existe apenas para parsing/migracao de nomes antigos no reconcile
 
 ### Sufixo obrigatorio
 
@@ -35,7 +35,7 @@ O sistema sempre adiciona:
 __v{version}{ext}
 ```
 
-### Pattern default da 0.7.0
+### Pattern default da 0.8.0
 
 ```text
 {date}__{project}__{original_name}
@@ -51,22 +51,22 @@ Exemplo:
 
 | Pattern | Resultado |
 |---------|-----------|
-| `{date}__{project}__{area}__{original_name}` | `20260316__smoke_cycle__juridico__Contrato_SPA__v01.pdf` |
+| `{date}__{project}__{business_domain}__{original_name}` | `20260316__smoke_cycle__juridico__Contrato_SPA__v01.pdf` |
 | `{project}__{document_type}__{original_name}` | `smoke_cycle__contrato__Contrato_SPA__v01.pdf` |
-| `{date}__{project}__{area}__{document_type}__{original_name}` | `20260316__smoke_cycle__financeiro__planilha__UPI Receita Tri__v01.xlsx` |
+| `{date}__{project}__{business_domain}__{document_type}__{original_name}` | `20260316__smoke_cycle__financeiro__planilha__UPI Receita Tri__v01.xlsx` |
 
 ## Regras
 
 - separar blocos com `__`
 - `{original_name}` e obrigatorio
-- `{project}`, `{area}` e `{document_type}` passam por `sanitize_token`
+- `{project}`, `{business_domain}` e `{document_type}` passam por `sanitize_token`
 - `{original_name}` passa por `fs_safe`, preservando ao maximo o nome humano
 - apenas caracteres invalidos de filesystem sao removidos
 - a versao sempre segue `vNN`
 
 ## Layout fisico relacionado ao nome
 
-O nome do arquivo e independente da pasta, mas o destino operacional padrao na 0.7.0 e:
+O nome do arquivo e independente da pasta, mas o destino operacional padrao na 0.8.0 e:
 
 ```text
 02_AREAS/<business_domain>/<document_type>/

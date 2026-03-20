@@ -139,7 +139,6 @@ export function TemplateEditorView() {
   ) {
     const classification = (profileData.classification as Record<string, unknown>) ?? {};
     const layout = (profileData.layout as Record<string, unknown>) ?? {};
-    const { area_folders: _ignoredAreaFolders, ...layoutWithoutLegacy } = layout;
     const businessDomains =
       ((classification.business_domains as Array<Record<string, unknown>> | undefined) ?? []).map((domain) => ({
         key: String(domain.key ?? "").trim(),
@@ -177,7 +176,7 @@ export function TemplateEditorView() {
         description: templateMeta.description,
       },
       layout: {
-        ...layoutWithoutLegacy,
+        ...layout,
         business_domain_folders: domainFolders,
       },
       classification: {
@@ -192,22 +191,11 @@ export function TemplateEditorView() {
   if (editor) {
     const cls = editor.profileData?.classification as Record<string, unknown> | undefined;
     const layoutData = (editor.profileData?.layout as Record<string, unknown>) ?? {};
-    const workAreas = (cls?.work_areas as Array<Record<string, unknown>> | undefined) ?? [];
-    const workAreaMap = new Map(
-      workAreas
-        .map((row) => [String(row.key ?? ""), row] as const)
-        .filter(([key]) => key)
-    );
     const rawDomains =
       (cls?.business_domains as Array<Record<string, unknown>> | undefined) ??
-      workAreas ??
       [];
     const folderRows =
       (layoutData.business_domain_folders as Array<Record<string, unknown>> | undefined) ??
-      (layoutData.area_folders as Array<Record<string, unknown>> | undefined)?.map((row) => ({
-        business_domain: row.area_key,
-        folder: row.folder
-      })) ??
       [];
     const folderMap = new Map(
       folderRows
@@ -215,16 +203,10 @@ export function TemplateEditorView() {
         .filter(([key]) => key)
     );
     const domains: Array<Record<string, unknown>> = rawDomains.map((row) => ({
-      ...(workAreaMap.get(String(row.key ?? "")) ?? {}),
       ...row,
-      aliases: Array.isArray(row.aliases)
-        ? row.aliases
-        : Array.isArray((workAreaMap.get(String(row.key ?? "")) ?? {}).aliases)
-          ? ((workAreaMap.get(String(row.key ?? "")) ?? {}).aliases as unknown[])
-          : [],
+      aliases: Array.isArray(row.aliases) ? row.aliases : [],
       primary_scope: row.primary_scope ?? "",
       subfunction_topics: Array.isArray(row.subfunction_topics) ? row.subfunction_topics : [],
-      jd_number: row.jd_number ?? (workAreaMap.get(String(row.key ?? "")) ?? {}).jd_number ?? null,
       folder: String(row.folder ?? folderMap.get(String(row.key ?? "")) ?? row.key ?? "")
     }));
     const documentTypes = (cls?.document_types as Array<Record<string, unknown>>) ?? [];
@@ -260,9 +242,6 @@ export function TemplateEditorView() {
         aliases: Array.isArray(domain.aliases) ? domain.aliases : [],
         primary_scope: String(domain.primary_scope ?? ""),
         subfunction_topics: Array.isArray(domain.subfunction_topics) ? domain.subfunction_topics : [],
-        jd_number: Number.isFinite(Number(domain.jd_number)) && Number(domain.jd_number) > 0
-          ? Number(domain.jd_number)
-          : undefined,
         folder: String(domain.folder ?? domain.key ?? "")
       }));
       const normalizedFolders = normalizedDomains
@@ -271,14 +250,8 @@ export function TemplateEditorView() {
           folder: domain.folder
         }))
         .filter((row) => row.business_domain);
-      classification.business_domains = normalizedDomains.map(({ folder, jd_number, ...domain }) => domain);
-      classification.work_areas = normalizedDomains.map((domain, index) => ({
-        key: domain.key,
-        jd_number: domain.jd_number ?? index + 1,
-        aliases: domain.aliases
-      }));
+      classification.business_domains = normalizedDomains.map(({ folder, ...domain }) => domain);
       layout.business_domain_folders = normalizedFolders;
-      layout.area_folders = normalizedFolders.map((row) => ({ area_key: row.business_domain, folder: row.folder }));
       setEditor({ ...editor, profileData: { ...editor.profileData, classification, layout } });
     }
 
@@ -395,7 +368,7 @@ export function TemplateEditorView() {
                     placeholder="{date}__{project}__{original_name}"
                   />
                   <p className="onboarding-hint" style={{ margin: "4px 0 0", fontSize: "0.75rem" }}>
-                    Campos: {"{date}"}, {"{project}"}, {"{area}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext adicionado automaticamente.
+                    Campos: {"{date}"}, {"{project}"}, {"{business_domain}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext adicionado automaticamente.
                   </p>
                 </div>
                 <div className="tmpl-field">

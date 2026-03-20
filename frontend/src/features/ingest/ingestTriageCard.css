@@ -52,6 +52,126 @@ details.itc-collapsible[open] > .itc-collapsible-header::before {
   font-weight: 400;
 }
 
+.itc-run-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.itc-run-status code {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itc-classifier-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.itc-classifier-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.itc-classifier-stat-label {
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.itc-classifier-controls {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.itc-classifier-controls .itc-llm-field {
+  flex: 1 1 280px;
+}
+
+.itc-classifier-policy {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.itc-classifier-cycle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(80, 120, 255, 0.08);
+  border: 1px solid rgba(80, 120, 255, 0.16);
+  font-size: 0.8rem;
+}
+
+.itc-classifier-cycle.active {
+  color: var(--text);
+}
+
+.itc-classifier-cycle-error {
+  color: var(--danger);
+}
+
+.itc-classifier-benchmark-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.itc-classifier-table td {
+  font-size: 0.82rem;
+}
+
+.itc-classifier-champion {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--ok-subtle);
+  color: var(--ok);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.itc-classifier-history {
+  margin-top: 10px;
+}
+
+@media (max-width: 900px) {
+  .itc-classifier-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .itc-classifier-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* ── LLM toggle row ── */
 
 .itc-llm-row {

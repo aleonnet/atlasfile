@@ -40,7 +40,6 @@ export interface SearchEvidence {
 export interface SearchHit {
   doc_id: string;
   project_id: string;
-  area_key: string;
   business_domain?: string | null;
   original_filename: string;
   canonical_filename: string;
@@ -115,18 +114,23 @@ export interface TriageItem {
   doc_id: string;
   filename: string;
   project_id: string;
-  suggested_area?: string;
   suggested_business_domain?: string;
   suggested_document_type?: string;
   suggested_path?: string;
   confidence_score: number;
+  business_domain_confidence?: number | null;
+  document_type_confidence?: number | null;
   reason: string;
-  top_candidates: Array<{ area_key?: string; business_domain?: string; score: number }>;
+  top_candidates: Array<{ business_domain?: string; score: number }>;
+  top_document_type_candidates?: Array<{ document_type?: string; score: number }>;
   source_path: string;
   metadata_path: string;
+  classifier_mode?: string | null;
+  classifier_requested_mode?: string | null;
+  classifier_fallback_reason?: string | null;
   llm_explanation?: string;
-  llm_proposed_area?: string;
-  rule_area_key?: string;
+  llm_proposed_business_domain?: string;
+  rule_business_domain?: string;
   rule_confidence?: number;
 }
 
@@ -275,11 +279,6 @@ export interface ClassificationUsageSummary {
   by_model: ClassificationUsageByModel[];
 }
 
-export interface ProfileAreaFolder {
-  area_key: string;
-  folder: string;
-}
-
 export interface ProfileBusinessDomainFolder {
   business_domain: string;
   folder: string;
@@ -307,11 +306,9 @@ export interface ProjectProfileV2 {
       archive: string;
     };
     areas_root: string;
-    area_folders?: ProfileAreaFolder[];
     business_domain_folders?: ProfileBusinessDomainFolder[];
   };
   classification: {
-    work_areas?: Array<{ key: string; jd_number?: number | null; aliases: string[] }>;
     business_domains?: Array<{
       key: string;
       label?: string | null;
@@ -328,6 +325,9 @@ export interface ProjectProfileV2 {
       triage_min: number;
     };
     llm_policy?: LLMPolicy;
+    operational?: {
+      override_mode?: OperationalClassifierMode | null;
+    };
   };
   naming?: {
     canonical_pattern?: string;
@@ -371,7 +371,6 @@ export interface RoutingRule {
 export interface ScanFileResult {
   doc_id: string;
   project_id: string;
-  area_key: string;
   business_domain?: string | null;
   title: string;
   original_filename: string;
@@ -379,19 +378,22 @@ export interface ScanFileResult {
   path: string;
   decision: "auto" | "triage_pending" | "duplicate";
   confidence_score: number;
+  business_domain_confidence?: number;
+  document_type_confidence?: number;
   sha256: string;
   tags: string[];
   document_type?: string;
-  document_type_confidence?: number;
-  business_domain_confidence?: number;
   topics?: string[];
   topics_source?: string;
   review_status?: string;
   duplicate_of?: string;
-  rule_area_key?: string;
+  classifier_mode?: string;
+  classifier_requested_mode?: string;
+  classifier_fallback_reason?: string;
+  rule_business_domain?: string;
   rule_confidence?: number;
   llm_explanation?: string;
-  llm_proposed_area?: string;
+  llm_proposed_business_domain?: string;
   classification_reason?: string;
 }
 
@@ -417,12 +419,117 @@ export interface IngestHistoryResponse {
   entries: IngestHistoryEntry[];
 }
 
+export interface IngestOperationStatus {
+  last_run_started_at: string | null;
+  last_run_finished_at: string | null;
+  duration_seconds: number | null;
+  project_id: string | null;
+  running: boolean;
+  phase: string;
+  progress_current: number;
+  progress_total: number;
+  progress_file: string | null;
+  processed_count: number;
+  failed_count: number;
+  last_error: string | null;
+}
+
+export type OperationalClassifierMode = "bootstrap" | "sparse_logreg" | "sparse_linear_svc";
+
+export interface ClassifierBenchmarkSummary {
+  mode: string;
+  role?: string;
+  total_labeled: number;
+  business_domain_accuracy: number;
+  document_type_accuracy: number;
+  exact_match_accuracy: number;
+  skipped?: boolean;
+  skip_reason?: string[];
+  training_pool_records?: number;
+  validation_records?: number;
+  vectorizer?: string | null;
+}
+
+export interface ClassifierStatusResponse {
+  project_id?: string | null;
+  available_modes: OperationalClassifierMode[];
+  champion_mode: OperationalClassifierMode;
+  fallback_mode: OperationalClassifierMode;
+  effective_mode: OperationalClassifierMode;
+  override_mode?: OperationalClassifierMode | null;
+  promotion_policy: string;
+  project_override_allowed: boolean;
+  promotion_gates: {
+    primary_metric: string;
+    min_business_domain_accuracy: number;
+    min_document_type_accuracy: number;
+    min_exact_match_accuracy: number;
+    prefer_current_champion_on_tie: boolean;
+  };
+  latest_report_id?: string | null;
+  champion_report_id?: string | null;
+  champion_summary?: ClassifierBenchmarkSummary | null;
+  latest_report_summary?: ClassifierBenchmarkSummary | null;
+  latest_cycle_status: string;
+  latest_cycle_started_at?: string | null;
+  latest_cycle_finished_at?: string | null;
+  latest_cycle_error?: string | null;
+}
+
+export interface ClassifierReportSummary {
+  report_id: string;
+  generated_at?: string | null;
+  operational_classifier_mode?: string | null;
+  champion_mode?: string | null;
+  champion_summary?: ClassifierBenchmarkSummary | null;
+}
+
+export interface ClassifierBenchmarkResultRow {
+  file: string;
+  expected_business_domain: string;
+  predicted_business_domain: string;
+  expected_document_type: string;
+  predicted_document_type: string;
+  business_domain_ok: boolean;
+  document_type_ok: boolean;
+  exact_ok: boolean;
+}
+
+export interface ClassifierReport {
+  report_id: string;
+  generated_at?: string | null;
+  operational_classifier_mode: string;
+  dataset_integrity: Record<string, unknown>;
+  gates: Record<string, unknown>;
+  training_pool_records: number;
+  benchmarks: Record<string, { summary: ClassifierBenchmarkSummary; results: ClassifierBenchmarkResultRow[] }>;
+  champion?: {
+    mode: string;
+    summary: ClassifierBenchmarkSummary;
+    promotion_policy: string;
+  };
+  model_artifacts?: Record<string, { path: string }>;
+  training_examples_skipped?: string[];
+}
+
+export interface ClassifierCycleStatus {
+  last_run_started_at: string | null;
+  last_run_finished_at: string | null;
+  duration_seconds: number | null;
+  running: boolean;
+  phase: string;
+  progress_current: number;
+  progress_total: number;
+  report_id: string | null;
+  champion_mode: string | null;
+  last_error: string | null;
+}
+
 /* ── Search Filters & Stats ── */
 
 export interface SearchFilters {
   doc_kind?: string;
   document_type?: string;
-  area_key?: string;
   business_domain?: string;
 }
 
@@ -435,7 +542,6 @@ export interface StatsResponse {
   project_id: string | null;
   total_documents: number;
   by_doc_kind: StatsBucket[];
-  by_area_key: StatsBucket[];
   by_business_domain: StatsBucket[];
   by_document_type: StatsBucket[];
   by_extension: StatsBucket[];
@@ -446,9 +552,9 @@ export interface StatsResponse {
 /* ── LLM Policy ── */
 
 export interface LLMOverrideGuardrails {
-  area_override_only_if_rule_confidence_below: number;
+  business_domain_override_only_if_rule_confidence_below: number;
   require_explanation: boolean;
-  max_area_changes: number;
+  max_business_domain_changes: number;
 }
 
 export interface LLMPolicy {

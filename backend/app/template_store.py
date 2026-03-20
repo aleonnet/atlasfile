@@ -73,48 +73,12 @@ def _normalized_string_list(values: Any) -> list[str]:
     return normalized
 
 
-def _materialize_work_areas(
-    business_domains: list[dict[str, Any]],
-    existing_work_areas: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    existing_by_key = {
-        str(row.get("key") or "").strip(): row
-        for row in existing_work_areas
-        if str(row.get("key") or "").strip()
-    }
-    materialized: list[dict[str, Any]] = []
-    for index, domain in enumerate(business_domains, start=1):
-        key = str(domain.get("key") or "").strip()
-        if not key:
-            continue
-        existing = existing_by_key.get(key, {})
-        jd_number = domain.get("jd_number", existing.get("jd_number", index))
-        if not isinstance(jd_number, int) or jd_number <= 0:
-            jd_number = index
-        materialized.append(
-            {
-                "key": key,
-                "jd_number": jd_number,
-                "aliases": _normalized_string_list(domain.get("aliases", existing.get("aliases", []))),
-            }
-        )
-    return materialized
-
-
 def _materialize_domain_folders(
     *,
     business_domains: list[dict[str, Any]],
     layout: dict[str, Any],
 ) -> list[dict[str, str]]:
     existing_rows = layout.get("business_domain_folders") or []
-    if not existing_rows:
-        existing_rows = [
-            {
-                "business_domain": row.get("area_key"),
-                "folder": row.get("folder"),
-            }
-            for row in (layout.get("area_folders") or [])
-        ]
     existing_by_key = {
         str(row.get("business_domain") or "").strip(): str(row.get("folder") or "").strip()
         for row in existing_rows
@@ -166,20 +130,12 @@ def _materialize_template_profile(data: dict[str, Any], *, slug: str) -> dict[st
 
     business_domains = classification.get("business_domains") or []
     classification["business_domains"] = copy.deepcopy(business_domains)
-    classification["work_areas"] = _materialize_work_areas(
-        classification["business_domains"],
-        classification.get("work_areas") or (baseline.get("classification") or {}).get("work_areas") or [],
-    )
 
     domain_folder_rows = _materialize_domain_folders(
         business_domains=classification["business_domains"],
         layout=layout,
     )
     layout["business_domain_folders"] = domain_folder_rows
-    layout["area_folders"] = [
-        {"area_key": row["business_domain"], "folder": row["folder"]}
-        for row in domain_folder_rows
-    ]
 
     document_types = classification.get("document_types") or []
     classification["document_types"] = copy.deepcopy(document_types)
@@ -294,7 +250,7 @@ def create_profile_from_template(
 ) -> ProjectProfileV2:
     path, _source = _resolve_template_path(slug)
     data = _read_json(path)
-    data.pop("template_meta", None)
+    data = _materialize_template_profile(data, slug=slug)
     data["project_id"] = project_id
     data["project_label"] = project_label
     data["project_root"] = str(project_root)

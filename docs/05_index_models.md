@@ -8,7 +8,7 @@ Colunas persistidas hoje:
 
 - `doc_id`
 - `project_id`
-- `area`
+- `business_domain`
 - `original_filename`
 - `canonical_filename`
 - `decision`
@@ -18,7 +18,7 @@ Colunas persistidas hoje:
 
 Observacoes:
 
-- a coluna `area` recebe o valor de `area_key`, que hoje espelha `business_domain`
+- a coluna `business_domain` guarda o eixo funcional persistido no fluxo operacional
 - `document_type` e `sha256` ficam no indice OpenSearch e nos metadados do fluxo, nao em coluna dedicada do `_INDEX.md`
 - por isso a rastreabilidade completa precisa considerar `_INDEX.md` + OpenSearch
 
@@ -32,7 +32,6 @@ O mapping atual fica em `backend/app/opensearch_client.py`.
 |-------|------|------------|
 | `business_domain` | keyword | Eixo funcional principal |
 | `document_type` | keyword | Eixo formal principal |
-| `area_key` | keyword | Espelho de `business_domain` para compatibilidade |
 
 ### Busca por titulo e nomes
 

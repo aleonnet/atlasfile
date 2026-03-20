@@ -13,9 +13,7 @@ const PARA_DEFAULTS = {
 } as const;
 
 export function ProfileLayoutEditor({ profile, onChange }: Props) {
-  const folders = (profile.layout.business_domain_folders && profile.layout.business_domain_folders.length > 0)
-    ? profile.layout.business_domain_folders
-    : (profile.layout.area_folders || []).map((row) => ({ business_domain: row.area_key, folder: row.folder }));
+  const folders = profile.layout.business_domain_folders ?? [];
 
   function updateField<K extends keyof ProjectProfileV2>(key: K, value: ProjectProfileV2[K]) {
     onChange({ ...profile, [key]: value });
@@ -35,7 +33,6 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
       layout: {
         ...profile.layout,
         business_domain_folders: nextFolders,
-        area_folders: nextFolders.map((row) => ({ area_key: row.business_domain, folder: row.folder }))
       }
     });
   }
@@ -169,7 +166,7 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
                 onChange={(e) => onChange({ ...profile, naming: { ...profile.naming, canonical_pattern: e.target.value } })}
               />
               <span style={{ fontSize: "0.72rem", color: "var(--muted)", marginTop: 2 }}>
-                Campos: {"{date}"}, {"{project}"}, {"{area}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext automático.
+                Campos: {"{date}"}, {"{project}"}, {"{business_domain}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext automático.
               </span>
             </label>
             <label className="pl-field">

@@ -78,6 +78,7 @@ def build_canonical_filename(
     fields: dict[str, str],
     original_suffix: str,
     version: int = 1,
+    date_override: str | None = None,
 ) -> str:
     """Build a canonical filename from *pattern* and *fields*.
 
@@ -85,9 +86,9 @@ def build_canonical_filename(
     The mandatory suffix ``__v{version:02d}{ext}`` is always appended by the system.
     """
     resolved: dict[str, str] = {
-        "date": datetime.now().strftime(date_format),
+        "date": date_override if date_override is not None else datetime.now().strftime(date_format),
         "project": sanitize_token(fields.get("project", "")),
-        "area": sanitize_token(fields.get("area", "")),
+        "business_domain": sanitize_token(fields.get("business_domain", "")),
         "original_name": fs_safe(fields.get("original_name", "")) or "documento",
         "document_type": sanitize_token(fields.get("document_type", "")),
     }

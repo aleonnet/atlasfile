@@ -17,8 +17,8 @@ from .config import settings
 from .indexer import index_document, read_text_excerpt
 from .opensearch_client import ensure_index
 from .profile_runtime import (
-    area_folder_map,
     areas_root_rel,
+    business_domain_folder_map,
     para_scan_roots,
     resolve_document_type_folder_name,
     triage_paths,
@@ -54,7 +54,7 @@ def _parse_index_rows(index_path: Path) -> list[dict[str, str]]:
         row = {
             "doc_id": cols[0],
             "project_id": cols[1],
-            "area": cols[2],
+            "business_domain": cols[2],
             "original_filename": cols[3],
             "canonical_filename": cols[4],
             "decision": cols[5],
@@ -66,16 +66,24 @@ def _parse_index_rows(index_path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def _infer_area_from_layout_path(work_file: Path, project_root: Path, profile: dict[str, Any], scan_root: Path | None = None) -> str:
+def _infer_business_domain_from_layout_path(
+    work_file: Path,
+    project_root: Path,
+    profile: dict[str, Any],
+    scan_root: Path | None = None,
+) -> str:
     base = scan_root if scan_root is not None else (project_root / areas_root_rel(profile))
     try:
         rel = work_file.relative_to(base)
     except ValueError:
         return "unclassified"
     first = rel.parts[0] if rel.parts else ""
-    folder_to_area = {folder: area for area, folder in area_folder_map(profile).items()}
-    if first in folder_to_area:
-        return folder_to_area[first]
+    folder_to_business_domain = {
+        folder: business_domain
+        for business_domain, folder in business_domain_folder_map(profile).items()
+    }
+    if first in folder_to_business_domain:
+        return folder_to_business_domain[first]
     if "_" in first:
         return first.split("_", 1)[1]
     return "unclassified"
@@ -100,22 +108,22 @@ def _try_migrate_old_format(f: Path, profile: dict[str, Any]) -> Path | None:
     if len(parts) != 4:
         return None
 
-    date_part, proj_part, candidate_area, title_part = parts
+    date_part, proj_part, candidate_business_domain, title_part = parts
     if not (len(date_part) == 8 and date_part.isdigit()):
         return None
 
-    area_keys: set[str] = set()
-    for wa in (profile.get("classification") or {}).get("work_areas", []):
-        k = wa.get("key", "")
+    business_domain_keys: set[str] = set()
+    for domain in (profile.get("classification") or {}).get("business_domains", []):
+        k = domain.get("key", "")
         if k:
-            area_keys.add(sanitize_token(k))
-    for af in (profile.get("layout") or {}).get("area_folders", []):
-        k = af.get("area_key", "")
+            business_domain_keys.add(sanitize_token(k))
+    for row in (profile.get("layout") or {}).get("business_domain_folders", []):
+        k = row.get("business_domain", "")
         if k:
-            area_keys.add(sanitize_token(k))
-    area_keys.add("unclassified")
+            business_domain_keys.add(sanitize_token(k))
+    business_domain_keys.add("unclassified")
 
-    if candidate_area not in area_keys:
+    if candidate_business_domain not in business_domain_keys:
         return None
 
     version_suffix = tail.group(0)
@@ -149,7 +157,9 @@ def _triage_rows(project_root: Path, project_id: str, profile: dict[str, Any]) -
                 {
                     "doc_id": str(data.get("doc_id") or uuid.uuid4()),
                     "project_id": str(data.get("project_id") or project_id),
-                    "area": str(data.get("suggested_area") or data.get("area_key") or "unclassified"),
+                    "business_domain": str(
+                        data.get("suggested_business_domain") or "unclassified"
+                    ),
                     "original_filename": str(data.get("original_filename") or data.get("filename") or ""),
                     "canonical_filename": str(data.get("canonical_filename") or ""),
                     "decision": decision,
@@ -170,7 +180,7 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
         (
             row.get("doc_id", ""),
             row.get("project_id", ""),
-            row.get("area", ""),
+            row.get("business_domain", ""),
             row.get("original_filename", ""),
             row.get("canonical_filename", ""),
             row.get("decision", ""),
@@ -228,17 +238,25 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
                     extracted = extract_original_name_from_canonical(f.name, naming_pattern)
                 orig_fn = extracted or f.name
 
-            # area_key: infer from subfolder for "areas" root; use PARA category otherwise
+            # business_domain: infer from subfolder for "areas" root; use PARA category otherwise
             if category == "areas":
-                inferred_area = _infer_area_from_layout_path(f, project_root, profile, scan_root=scan_dir)
+                inferred_business_domain = _infer_business_domain_from_layout_path(
+                    f,
+                    project_root,
+                    profile,
+                    scan_root=scan_dir,
+                )
             else:
-                inferred_area = category
+                inferred_business_domain = category
 
             work_rows.append(
                 {
                     "doc_id": (prev or {}).get("doc_id", str(uuid.uuid4())),
                     "project_id": project_id,
-                    "area": (prev or {}).get("area", inferred_area),
+                    "business_domain": (prev or {}).get(
+                        "business_domain",
+                        inferred_business_domain,
+                    ),
                     "original_filename": orig_fn,
                     "canonical_filename": f.name,
                     "decision": (prev or {}).get("decision", "auto"),
@@ -264,7 +282,7 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
         (
             row.get("doc_id", ""),
             row.get("project_id", ""),
-            row.get("area", ""),
+            row.get("business_domain", ""),
             row.get("original_filename", ""),
             row.get("canonical_filename", ""),
             row.get("decision", ""),
@@ -279,12 +297,12 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
 
     header = (
         "# _INDEX\n\n"
-        "| doc_id | project_id | area | original_filename | canonical_filename | decision | confidence | path | naming_pattern |\n"
+        "| doc_id | project_id | business_domain | original_filename | canonical_filename | decision | confidence | path | naming_pattern |\n"
         "|---|---|---|---|---|---|---:|---|---|\n"
     )
     lines = [
         (
-            f"| {r['doc_id']} | {r['project_id']} | {r['area']} | {r['original_filename']} | "
+            f"| {r['doc_id']} | {r['project_id']} | {r['business_domain']} | {r['original_filename']} | "
             f"{r['canonical_filename']} | {r['decision']} | {r['confidence']} | {r['path']} | {r.get('naming_pattern', '')} |"
         )
         for r in rows
@@ -340,14 +358,13 @@ def _build_doc_payload(
         project_root=project_root,
         profile=profile,
     )
-    tags = [row["area"]] if row["area"] else []
+    tags = [row["business_domain"]] if row["business_domain"] else []
     if document_type:
         tags.append(document_type)
     return {
         "doc_id": row["doc_id"],
         "project_id": row["project_id"],
-        "area_key": row["area"],
-        "business_domain": row["area"],
+        "business_domain": row["business_domain"],
         "title": p.stem,
         "content": read_text_excerpt(p),
         "original_filename": row["original_filename"],
@@ -586,7 +603,7 @@ def sync_search_index_for_project(
             src = get_res.get("_source") or {}
             existing_sha = src.get("sha256") or ""
             existing_pid = src.get("project_id") or ""
-            expected_business_domain = row["area"] or ""
+            expected_business_domain = row["business_domain"] or ""
             expected_document_type = _infer_document_type_from_layout_path(
                 p,
                 project_root=project_root,

@@ -20,7 +20,6 @@ def _make_search_result(total: int = 1, with_inner_hits: bool = True) -> dict:
         "_source": {
             "doc_id": "doc1",
             "project_id": "proj1",
-            "area_key": "ativos",
             "business_domain": "ativos",
             "document_type": "contrato",
             "original_filename": "file.pdf",
@@ -186,7 +185,6 @@ def test_search_prioritizes_exact_filename_over_more_content_evidences(client: T
                         "_source": {
                             "doc_id": "doc-content-heavy",
                             "project_id": "proj1",
-                            "area_key": "financeiro",
                             "business_domain": "financeiro",
                             "document_type": "relatorio",
                             "title": "Outro documento",
@@ -214,7 +212,6 @@ def test_search_prioritizes_exact_filename_over_more_content_evidences(client: T
                         "_source": {
                             "doc_id": "doc-exact",
                             "project_id": "proj1",
-                            "area_key": "financeiro",
                             "business_domain": "financeiro",
                             "document_type": "plano",
                             "title": "Plano convenio bancario v3_2024.12.27",

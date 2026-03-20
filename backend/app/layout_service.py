@@ -118,16 +118,19 @@ def _resolve_conflict_dst(dst: Path, *, strategy: ConflictStrategy) -> tuple[str
     return ("move", candidate, {"renamed": True})
 
 
-def _old_area_prefix(old_profile: ProjectProfileV2, rel_under_old_areas_root: Path) -> tuple[str | None, Path]:
+def _old_business_domain_prefix(
+    old_profile: ProjectProfileV2,
+    rel_under_old_areas_root: Path,
+) -> tuple[str | None, Path]:
     parts = rel_under_old_areas_root.parts
     if not parts:
         return (None, rel_under_old_areas_root)
 
     first = parts[0]
-    for af in old_profile.layout.area_folders:
-        if af.folder.strip("/").rstrip("/") == first:
+    for row in old_profile.layout.business_domain_folders:
+        if row.folder.strip("/").rstrip("/") == first:
             tail = Path(*parts[1:]) if len(parts) > 1 else Path()
-            return (af.area_key, tail)
+            return (row.business_domain, tail)
     return (None, rel_under_old_areas_root)
 
 
@@ -144,17 +147,20 @@ def _detect_renames(
     new_profile: ProjectProfileV2,
     project_root: Path,
 ) -> dict[str, tuple[Path, Path]]:
-    """Detect area_folders with same area_key but different folder name.
-    Returns {area_key: (old_dir, new_dir)} for dirs eligible for rename."""
-    old_map = {af.area_key: af.folder for af in old_profile.layout.area_folders}
+    """Detect domain folders with same business_domain but different folder name.
+    Returns {business_domain: (old_dir, new_dir)} for dirs eligible for rename."""
+    old_map = {
+        row.business_domain: row.folder
+        for row in old_profile.layout.business_domain_folders
+    }
     renames: dict[str, tuple[Path, Path]] = {}
-    for af in new_profile.layout.area_folders:
-        old_folder = old_map.get(af.area_key)
-        if old_folder and old_folder != af.folder:
+    for row in new_profile.layout.business_domain_folders:
+        old_folder = old_map.get(row.business_domain)
+        if old_folder and old_folder != row.folder:
             old_dir = _safe_join(project_root, f"{old_profile.layout.areas_root}/{old_folder}")
-            new_dir = _safe_join(project_root, f"{new_profile.layout.areas_root}/{af.folder}")
+            new_dir = _safe_join(project_root, f"{new_profile.layout.areas_root}/{row.folder}")
             if old_dir.exists() and not new_dir.exists():
-                renames[af.area_key] = (old_dir, new_dir)
+                renames[row.business_domain] = (old_dir, new_dir)
     return renames
 
 
@@ -181,25 +187,31 @@ def plan_layout_migration(
         ops.append(MigrationOp(op="mkdir", dst=str(new_areas_root), reason="create new areas_root"))
         mkdirs += 1
 
-    # Detect folder renames (same area_key, different folder name, old exists, new doesn't)
+    # Detect folder renames (same business_domain, different folder name, old exists, new doesn't)
     dir_renames = _detect_renames(old_profile, new_profile, project_root)
     renamed_old_dirs: set[Path] = set()
 
-    for area_key, (old_dir, new_dir) in dir_renames.items():
+    for business_domain, (old_dir, new_dir) in dir_renames.items():
         ops.append(MigrationOp(
             op="rename_dir", src=str(old_dir), dst=str(new_dir),
-            reason=f"rename area folder {area_key}",
+            reason=f"rename business_domain folder {business_domain}",
         ))
         renamed_old_dirs.add(old_dir.resolve())
         renames += 1
 
     # mkdir only for truly new folders (not covered by rename)
-    for af in new_profile.layout.area_folders:
-        if af.area_key in dir_renames:
+    for row in new_profile.layout.business_domain_folders:
+        if row.business_domain in dir_renames:
             continue
-        dst_dir = _safe_join(project_root, f"{new_profile.layout.areas_root}/{af.folder}")
+        dst_dir = _safe_join(project_root, f"{new_profile.layout.areas_root}/{row.folder}")
         if not dst_dir.exists():
-            ops.append(MigrationOp(op="mkdir", dst=str(dst_dir), reason=f"create area folder {af.area_key}"))
+            ops.append(
+                MigrationOp(
+                    op="mkdir",
+                    dst=str(dst_dir),
+                    reason=f"create business_domain folder {row.business_domain}",
+                )
+            )
             mkdirs += 1
 
     conflicts = 0
@@ -216,11 +228,17 @@ def plan_layout_migration(
             continue
 
         rel_under_old = src.relative_to(old_areas_root)
-        area_key, tail = _old_area_prefix(old_profile, rel_under_old)
-        if area_key:
-            new_folder = new_profile.layout.folder_for_area(area_key)
+        business_domain, tail = _old_business_domain_prefix(old_profile, rel_under_old)
+        if business_domain:
+            new_folder = new_profile.layout.folder_for_business_domain(business_domain)
             if not new_folder:
-                ops.append(MigrationOp(op="conflict", src=str(src), reason=f"no new folder for area_key={area_key}"))
+                ops.append(
+                    MigrationOp(
+                        op="conflict",
+                        src=str(src),
+                        reason=f"no new folder for business_domain={business_domain}",
+                    )
+                )
                 conflicts += 1
                 continue
             dst = _safe_join(project_root, f"{new_profile.layout.areas_root}/{new_folder}/{tail.as_posix()}")
@@ -260,8 +278,8 @@ def plan_layout_migration(
 
     if cleanup_empty_dirs:
         new_layout_dirs: set[Path] = {new_areas_root.resolve()}
-        for af in new_profile.layout.area_folders:
-            d = _safe_join(project_root, f"{new_profile.layout.areas_root}/{af.folder}")
+        for row in new_profile.layout.business_domain_folders:
+            d = _safe_join(project_root, f"{new_profile.layout.areas_root}/{row.folder}")
             new_layout_dirs.add(d.resolve())
         # Dirs handled by rename are also protected
         for _, new_dir in dir_renames.values():

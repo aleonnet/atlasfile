@@ -19,12 +19,10 @@ from app.ingestion import (
 def _minimal_profile(project_root: Path) -> dict[str, Any]:
     return {
         "project_id": "test_dedup",
-        "work_areas": [{"key": "juridica"}],
         "layout": {
             "mode": "para_jd",
             "para_roots": {"projects": "01_PROJECTS", "areas": "02_AREAS", "resources": "03_RESOURCES", "archive": "04_ARCHIVE"},
             "areas_root": "02_AREAS",
-            "area_folders": [{"area_key": "juridica", "folder": "juridica"}],
             "business_domain_folders": [{"business_domain": "juridica", "folder": "juridica"}],
         },
         "paths": {
@@ -54,7 +52,7 @@ def test_find_original_in_triage_returns_match(tmp_path: Path) -> None:
     profile = _minimal_profile(tmp_path)
     pending_dir = tmp_path / "_TRIAGE_REVIEW" / "pending"
     pending_dir.mkdir(parents=True)
-    meta = {"doc_id": "orig-001", "sha256": "abc123", "area_key": "juridica"}
+    meta = {"doc_id": "orig-001", "sha256": "abc123", "business_domain": "juridica"}
     (pending_dir / "orig-001.json").write_text(json.dumps(meta))
 
     result = _find_original_in_triage(tmp_path, profile, "abc123")
@@ -75,7 +73,7 @@ def test_find_original_in_triage_searches_all_subdirs(tmp_path: Path) -> None:
     profile = _minimal_profile(tmp_path)
     rejected_dir = tmp_path / "_TRIAGE_REVIEW" / "rejected"
     rejected_dir.mkdir(parents=True)
-    meta = {"doc_id": "orig-rej", "sha256": "rej_sha", "suggested_area": "juridica"}
+    meta = {"doc_id": "orig-rej", "sha256": "rej_sha", "suggested_business_domain": "juridica"}
     (rejected_dir / "orig-rej.json").write_text(json.dumps(meta))
 
     result = _find_original_in_triage(tmp_path, profile, "rej_sha")
@@ -90,7 +88,7 @@ def test_find_original_in_index_returns_source() -> None:
     mock_client = MagicMock()
     mock_client.search.return_value = {
         "hits": {
-            "hits": [{"_source": {"doc_id": "idx-001", "area_key": "juridica", "sha256": "sha_x"}}]
+            "hits": [{"_source": {"doc_id": "idx-001", "business_domain": "juridica", "sha256": "sha_x"}}]
         }
     }
     result = _find_original_in_search_index(mock_client, "proj1", "sha_x")
@@ -127,7 +125,7 @@ def test_process_inbox_file_dedup_deletes_inbox_file(
     """When a duplicate is found, the inbox file is deleted and the original info is returned."""
     mock_find_triage.return_value = {
         "doc_id": "original-doc-id",
-        "area_key": "juridica",
+        "business_domain": "juridica",
         "title": "Contrato",
         "canonical_filename": "test__contrato_v01.pdf",
         "path": "/some/path/contrato.pdf",
@@ -165,7 +163,7 @@ def test_process_inbox_file_dedup_via_search_index(
     """Falls back to OpenSearch index when triage has no match."""
     mock_find_index.return_value = {
         "doc_id": "idx-orig",
-        "area_key": "financeiro",
+        "business_domain": "financeiro",
         "title": "Fatura",
         "confidence_score": 0.88,
         "tags": ["financeiro"],
@@ -190,7 +188,7 @@ def test_process_inbox_file_dedup_via_search_index(
 @patch("app.ingestion.sha256_file", return_value="unique_sha")
 @patch("app.ingestion._find_original_in_triage", return_value=None)
 @patch("app.ingestion._find_original_in_search_index", return_value=None)
-@patch("app.ingestion.classify_bootstrap")
+@patch("app.ingestion.classify_with_operational_mode")
 @patch("app.ingestion.read_text_excerpt", return_value="excerpt text")
 @patch("app.ingestion.index_document")
 @patch("app.ingestion._append_index_md")
@@ -208,13 +206,12 @@ def test_process_inbox_file_non_dup_proceeds_to_classification(
     """Non-duplicate files go through the full classification pipeline."""
     mock_classify.return_value = {
         "business_domain": "juridica",
-        "area_key": "juridica",
         "document_type": "contrato",
         "document_type_confidence": 0.96,
         "business_domain_confidence": 0.92,
         "confidence": 0.92,
         "reason": "alias_match",
-        "top_candidates": [{"area_key": "juridica", "score": 0.92}],
+        "top_candidates": [{"business_domain": "juridica", "score": 0.92}],
     }
     inbox_file = _write_file(tmp_path / "_INBOX_DROP" / "new_doc.pdf", b"unique content")
     profile = _minimal_profile(tmp_path)
@@ -229,7 +226,7 @@ def test_process_inbox_file_non_dup_proceeds_to_classification(
     )
 
     assert result["decision"] == "auto"
-    assert result["area_key"] == "juridica"
+    assert result["business_domain"] == "juridica"
     assert "duplicate_of" not in result
     mock_index.assert_called_once()
     mock_append.assert_called_once()
@@ -247,7 +244,7 @@ def test_process_inbox_file_dedup_no_new_json_or_index_entry(
     """Duplicate detection must NOT create new metadata JSON or _INDEX.md entries."""
     mock_find_triage.return_value = {
         "doc_id": "orig-123",
-        "area_key": "juridica",
+        "business_domain": "juridica",
         "confidence_score": 0.9,
         "tags": ["juridica"],
     }

@@ -76,7 +76,7 @@ def test_api_get_document_content_computed_from_chunks() -> None:
             "_source": {
                 "doc_id": "doc1",
                 "project_id": "p1",
-                "area_key": "a",
+                "business_domain": "a",
                 "title": "T",
                 "original_filename": "f.pdf",
                 "canonical_filename": "f.pdf",
@@ -112,7 +112,7 @@ def test_api_get_document_content_empty_when_no_chunks() -> None:
             "_source": {
                 "doc_id": "doc2",
                 "project_id": "p1",
-                "area_key": "a",
+                "business_domain": "a",
                 "title": "T",
                 "original_filename": "f.txt",
                 "canonical_filename": "f.txt",
@@ -144,7 +144,7 @@ def test_api_get_document_chunks_200_filtered() -> None:
             "_source": {
                 "doc_id": "doc1",
                 "project_id": "p1",
-                "area_key": "a",
+                "business_domain": "a",
                 "title": "T",
                 "original_filename": "f",
                 "canonical_filename": "f",

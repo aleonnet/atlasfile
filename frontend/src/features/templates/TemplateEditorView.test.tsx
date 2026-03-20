@@ -15,14 +15,9 @@ const fullProfile = {
     mode: "para_jd",
     roots: { projects: "01_PROJECTS", areas: "02_AREAS", resources: "03_RESOURCES", archive: "04_ARCHIVE" },
     areas_root: "02_AREAS",
-    area_folders: [{ area_key: "fiscal", folder: "11_Fiscal" }, { area_key: "juridico", folder: "12_Juridico" }],
     business_domain_folders: [{ business_domain: "fiscal", folder: "11_Fiscal" }, { business_domain: "juridico", folder: "12_Juridico" }],
   },
   classification: {
-    work_areas: [
-      { key: "fiscal", jd_number: 11, aliases: ["tributario", "impostos"] },
-      { key: "juridico", jd_number: 12, aliases: ["legal", "contratos"] },
-    ],
     business_domains: [
       { key: "fiscal", label: "Fiscal", aliases: ["tributario", "impostos"], primary_scope: "Fiscal primary scope", subfunction_topics: ["tax_topic"] },
       { key: "juridico", label: "Jurídico", aliases: ["legal", "contratos"], primary_scope: "Legal primary scope", subfunction_topics: ["legal_topic"] },
@@ -66,7 +61,11 @@ const fullProfile = {
       model: "gpt-4.1-mini",
       mode: "tag_only",
       allow_override_fields: ["document_type", "tags", "confidence", "topics"],
-      override_guardrails: { area_override_only_if_rule_confidence_below: 0.65, require_explanation: true, max_area_changes: 1 },
+      override_guardrails: {
+        business_domain_override_only_if_rule_confidence_below: 0.65,
+        require_explanation: true,
+        max_business_domain_changes: 1
+      },
     },
   },
   indexing: { topics_path: "config/topics_v1.yaml", extraction_max_chars: 50000, extraction_mode: "all" },
@@ -123,6 +122,8 @@ describe("TemplateEditorView", () => {
     expect(screen.getByText("Tipos documentais")).toBeInTheDocument();
     expect(screen.getByText("Catálogo de entidades")).toBeInTheDocument();
     expect(screen.getByText("Indexação")).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("{business_domain}") && content.includes("{document_type}"))).toBeInTheDocument();
+    expect(screen.queryByText((content) => content.includes("{area}"))).not.toBeInTheDocument();
   });
 
   describe("Indexação section", () => {
@@ -187,15 +188,7 @@ describe("TemplateEditorView", () => {
     expect(fiscalDomain?.label).toBe("Fiscal Atualizado");
     expect(fiscalDomain?.primary_scope).toBe("Fiscal primary scope");
     expect(fiscalDomain?.subfunction_topics).toEqual(["tax_topic"]);
-    expect(classification).not.toHaveProperty("work_areas");
-    expect(classification).not.toHaveProperty("document_type_priors");
-    expect(classification).not.toHaveProperty("entity_domain_affinity");
-    expect(classification).not.toHaveProperty("context_boosts");
-    expect(classification).not.toHaveProperty("thresholds");
-    expect(classification).not.toHaveProperty("routing_rules");
-    expect(classification).not.toHaveProperty("confidence_thresholds");
-    expect(classification).not.toHaveProperty("llm_policy");
-    expect(layout).not.toHaveProperty("area_folders");
-    expect(layout).toHaveProperty("business_domain_folders");
+    expect(Object.keys(classification).sort()).toEqual(["business_domains", "document_types", "entity_catalog"]);
+    expect(Object.keys(layout).sort()).toEqual(["areas_root", "business_domain_folders", "mode", "roots"]);
   });
 });

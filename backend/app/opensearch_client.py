@@ -35,7 +35,6 @@ def ensure_index(client: OpenSearch) -> None:
     properties: dict[str, Any] = {
         "doc_id": {"type": "keyword"},
         "project_id": {"type": "keyword"},
-        "area_key": {"type": "keyword"},
         "business_domain": {"type": "keyword"},
         "title": {"type": "text"},
         "title_normalized": {"type": "text"},
@@ -74,6 +73,9 @@ def ensure_index(client: OpenSearch) -> None:
         "confidence_score": {"type": "float"},
         "business_domain_confidence": {"type": "float"},
         "document_type_confidence": {"type": "float"},
+        "classifier_mode": {"type": "keyword"},
+        "classifier_requested_mode": {"type": "keyword"},
+        "classifier_fallback_reason": {"type": "keyword"},
         "sha256": {"type": "keyword"},
         "tags": {"type": "keyword"},
         "document_type": {"type": "keyword"},

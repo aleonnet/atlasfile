@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.main import _ensure_area_in_profile, _ensure_document_type_in_profile
+from app.main import _ensure_business_domain_in_profile, _ensure_document_type_in_profile
 from app.profile_store import create_default_profile, save_profile
 
 
@@ -23,16 +23,16 @@ def tmp_project(tmp_path: Path):
     return project_root, profile_dict
 
 
-def test_existing_area_is_accepted(tmp_project):
+def test_existing_business_domain_is_accepted(tmp_project):
     project_root, profile = tmp_project
-    result = _ensure_area_in_profile(project_root, profile, "financeiro")
+    result = _ensure_business_domain_in_profile(project_root, profile, "financeiro")
     assert result is profile
 
 
-def test_missing_area_raises_error(tmp_project):
+def test_missing_business_domain_raises_error(tmp_project):
     project_root, profile = tmp_project
     with pytest.raises(ValueError, match="business_domain not configured"):
-        _ensure_area_in_profile(project_root, profile, "esg_sustentabilidade")
+        _ensure_business_domain_in_profile(project_root, profile, "esg_sustentabilidade")
 
 
 def test_existing_document_type_is_accepted(tmp_project):

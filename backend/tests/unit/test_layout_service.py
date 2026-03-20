@@ -7,9 +7,9 @@ from app.layout_service import _is_system_file, plan_layout_migration
 from app.profile_schema_v2 import ProjectProfileV2
 
 
-def _make_profile(project_root: Path, area_folders: list[dict]) -> ProjectProfileV2:
-    normalized_folders = area_folders or [{"area_key": "general", "folder": "00_general"}]
-    domain_keys = [str(row["area_key"]) for row in normalized_folders]
+def _make_profile(project_root: Path, business_domain_folders: list[dict]) -> ProjectProfileV2:
+    normalized_folders = business_domain_folders or [{"business_domain": "general", "folder": "00_general"}]
+    domain_keys = [str(row["business_domain"]) for row in normalized_folders]
     default_domain = domain_keys[0]
     return ProjectProfileV2(
         project_id="test",
@@ -19,10 +19,9 @@ def _make_profile(project_root: Path, area_folders: list[dict]) -> ProjectProfil
             "mode": "para_jd",
             "roots": {"projects": "01_PROJECTS", "areas": "02_AREAS", "resources": "03_RESOURCES", "archive": "04_ARCHIVE"},
             "areas_root": "02_AREAS",
-            "area_folders": normalized_folders,
+            "business_domain_folders": normalized_folders,
         },
         classification={
-            "work_areas": [{"key": key, "aliases": [key]} for key in domain_keys],
             "business_domains": [{"key": key, "label": key.title(), "aliases": [key]} for key in domain_keys],
             "document_types": [
                 {
@@ -100,14 +99,14 @@ def test_rmdir_empty_only_for_actually_empty_dirs(tmp_path: Path) -> None:
     (areas / "03_empty").mkdir(parents=True)
 
     old = _make_profile(project, [
-        {"area_key": "legal", "folder": "01_legal"},
-        {"area_key": "finance", "folder": "02_finance"},
-        {"area_key": "empty", "folder": "03_empty"},
+        {"business_domain": "legal", "folder": "01_legal"},
+        {"business_domain": "finance", "folder": "02_finance"},
+        {"business_domain": "empty", "folder": "03_empty"},
     ])
     # Remove "empty" from new profile; keep others the same
     new = _make_profile(project, [
-        {"area_key": "legal", "folder": "01_legal"},
-        {"area_key": "finance", "folder": "02_finance"},
+        {"business_domain": "legal", "folder": "01_legal"},
+        {"business_domain": "finance", "folder": "02_finance"},
     ])
 
     plan = plan_layout_migration(old_profile=old, new_profile=new, strategy="rename_with_suffix", cleanup_empty_dirs=True)
@@ -119,15 +118,15 @@ def test_rmdir_empty_only_for_actually_empty_dirs(tmp_path: Path) -> None:
 
 
 def test_rename_folder_uses_rename_dir(tmp_path: Path) -> None:
-    """Renaming an area_folder generates rename_dir, not mkdir + moves."""
+    """Renaming a business_domain folder generates rename_dir, not mkdir + moves."""
     project = tmp_path / "proj"
     areas = project / "02_AREAS" / "01_legal"
     areas.mkdir(parents=True)
     (areas / "a.pdf").write_bytes(b"a")
     (areas / "b.pdf").write_bytes(b"b")
 
-    old = _make_profile(project, [{"area_key": "legal", "folder": "01_legal"}])
-    new = _make_profile(project, [{"area_key": "legal", "folder": "renamed_legal"}])
+    old = _make_profile(project, [{"business_domain": "legal", "folder": "01_legal"}])
+    new = _make_profile(project, [{"business_domain": "legal", "folder": "renamed_legal"}])
 
     plan = plan_layout_migration(old_profile=old, new_profile=new, strategy="rename_with_suffix")
     assert plan.renames == 1
@@ -145,7 +144,7 @@ def test_remove_folder_with_files_shows_conflicts(tmp_path: Path) -> None:
     areas.mkdir(parents=True)
     (areas / "important.pdf").write_bytes(b"data")
 
-    old = _make_profile(project, [{"area_key": "legal", "folder": "01_legal"}])
+    old = _make_profile(project, [{"business_domain": "legal", "folder": "01_legal"}])
     new = _make_profile(project, [])
 
     plan = plan_layout_migration(old_profile=old, new_profile=new, strategy="rename_with_suffix")
@@ -163,8 +162,8 @@ def test_rename_fallback_to_move_when_dst_exists(tmp_path: Path) -> None:
     new_dir = project / "02_AREAS" / "renamed_legal"
     new_dir.mkdir(parents=True)
 
-    old = _make_profile(project, [{"area_key": "legal", "folder": "01_legal"}])
-    new = _make_profile(project, [{"area_key": "legal", "folder": "renamed_legal"}])
+    old = _make_profile(project, [{"business_domain": "legal", "folder": "01_legal"}])
+    new = _make_profile(project, [{"business_domain": "legal", "folder": "renamed_legal"}])
 
     plan = plan_layout_migration(old_profile=old, new_profile=new, strategy="rename_with_suffix")
     assert plan.renames == 0

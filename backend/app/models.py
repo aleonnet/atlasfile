@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 class SearchHit(BaseModel):
     doc_id: str
     project_id: str
-    area_key: str
     business_domain: str | None = None
     document_type: str | None = None
     original_filename: str
@@ -50,20 +49,28 @@ class TriageItem(BaseModel):
     doc_id: str
     filename: str
     project_id: str
-    suggested_area: Optional[str] = None
     suggested_business_domain: Optional[str] = None
     suggested_document_type: Optional[str] = None
     suggested_path: Optional[str] = None
     confidence_score: float
+    business_domain_confidence: float | None = None
+    document_type_confidence: float | None = None
     reason: str
     top_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    top_document_type_candidates: list[dict[str, Any]] = Field(default_factory=list)
     source_path: str
     metadata_path: str
+    classifier_mode: str | None = None
+    classifier_requested_mode: str | None = None
+    classifier_fallback_reason: str | None = None
+    llm_explanation: str | None = None
+    llm_proposed_business_domain: str | None = None
+    rule_business_domain: str | None = None
+    rule_confidence: float | None = None
 
 
 class TriageDecisionRequest(BaseModel):
     action: str  # approve | correct | reject
-    target_area: Optional[str] = None
     target_business_domain: Optional[str] = None
     target_document_type: Optional[str] = None
     note: Optional[str] = None
@@ -77,7 +84,6 @@ class DocumentTagsUpdate(BaseModel):
 class DocumentMetadataUpdate(BaseModel):
     document_type: Optional[str] = None
     correspondent: Optional[str] = None
-    area_key: Optional[str] = None
     business_domain: Optional[str] = None
     review_status: Optional[str] = None
 
@@ -274,7 +280,6 @@ class StatsResponse(BaseModel):
     project_id: Optional[str] = None
     total_documents: int = 0
     by_doc_kind: list[StatsBucket] = Field(default_factory=list)
-    by_area_key: list[StatsBucket] = Field(default_factory=list)
     by_business_domain: list[StatsBucket] = Field(default_factory=list)
     by_document_type: list[StatsBucket] = Field(default_factory=list)
     by_extension: list[StatsBucket] = Field(default_factory=list)
@@ -290,7 +295,6 @@ class ListDocumentItem(BaseModel):
     path: str
     doc_kind: str | None = None
     document_type: str | None = None
-    area_key: str | None = None
     business_domain: str | None = None
     tags: list[str] = Field(default_factory=list)
     ingested_at: str | None = None

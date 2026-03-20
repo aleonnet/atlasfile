@@ -673,7 +673,6 @@ function App() {
     if (filters.doc_kind) activeFilters.doc_kind = filters.doc_kind;
     if (filters.document_type) activeFilters.document_type = filters.document_type;
     if (filters.business_domain) activeFilters.business_domain = filters.business_domain;
-    else if (filters.area_key) activeFilters.business_domain = filters.area_key;
     setFullLoading(true);
     try {
       const projectScope = selectedProject === ALL_PROJECTS ? undefined : selectedProject;
@@ -740,7 +739,7 @@ function App() {
         setStatus("Projeto sem domínios configurados para correção");
         return;
       }
-      const suggestedDomain = item.suggested_business_domain || item.suggested_area || "";
+      const suggestedDomain = item.suggested_business_domain || "";
       const suggestedDomainExists = !!suggestedDomain && areas.some((area) => area.key === suggestedDomain);
       const documentTypes = (classification.document_types || []).map((item) => ({
         key: item.key,
@@ -1456,16 +1455,16 @@ function App() {
                   <label className="full-search-filter-label">
                     <span className="sub">Domínio</span>
                     <select
-                      value={searchFilters.business_domain || searchFilters.area_key || ""}
+                      value={searchFilters.business_domain || ""}
                       onChange={(e) => {
                         const v = e.target.value || undefined;
-                        const next = { ...searchFilters, business_domain: v, area_key: undefined };
+                        const next = { ...searchFilters, business_domain: v };
                         setSearchFilters(next);
                         void runFullSearch(1, undefined, next);
                       }}
                     >
                       <option value="">Todas</option>
-                      {(searchStats.by_business_domain.length ? searchStats.by_business_domain : searchStats.by_area_key).map((b) => (
+                      {searchStats.by_business_domain.map((b) => (
                         <option key={b.key} value={b.key}>{b.key} ({b.count})</option>
                       ))}
                     </select>

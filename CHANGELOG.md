@@ -4,7 +4,32 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
-## [0.7.0] -- Unreleased
+## [0.8.0] -- 2026-03-20
+
+### Ciclo operacional do classificador
+
+- registry persistido em `_ATLASFILE/classifier` com `champion_mode`, ultimo report, gates de promocao e override por projeto
+- novo fluxo de `benchmark + retreino` pela API/UI, com reports versionados, artefatos sparse persistidos e politica `auto_best_with_ui_override`
+- ingestao passa a servir o modo efetivo do classificador (`bootstrap`, `sparse_logreg`, `sparse_linear_svc`) com fallback explicito para `bootstrap` quando o artefato supervisionado estiver ausente ou falhar
+- status em tempo real do ciclo do classificador e do processamento da INBOX corrigidos no frontend, sem reload manual
+- scorecards por documento, override manual e estado operacional exibidos na UI sem expor `baseline` como modo publico
+
+### Naming, triagem e indice
+
+- corte do contrato publico legado `area_key` / `{area}` para `business_domain` nas superficies ativas, hints de UI, template/profile e validacao de schema
+- `decide_triage()` agora recomputa `canonical_filename` em `correct`, preserva data de ingestao e versao e regrava o metadata resolvido
+- `_INDEX.md` passa a ser atualizado por `doc_id`, mantendo `corrected` / `rejected` consistentes com filesystem e OpenSearch
+- runtime do profile passa a incluir `naming`, evitando divergencia entre profile salvo e nome canonico aplicado na ingestao
+
+### Docs e validacao
+
+- `docs/plano_teste_e2e_v0.8.0.md` registrado como delta do `0.7.0`, com rerun usando o mesmo lote real de arquivos e evidencia do fix de streaming
+- `README.md` e docs tecnicos atualizados para o contrato `business_domain`, ciclo do classificador e modos publicos da `0.8.0`
+- novas regressions backend/frontend para naming, triagem, `_INDEX.md` e streaming de INBOX/ciclo
+
+---
+
+## [0.7.0] -- 2026-03-18
 
 ### Classificação e benchmark
 

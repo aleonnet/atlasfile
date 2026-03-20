@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import app.main as main_module
+from app.ingestion import _append_index_md
+from app.models import TriageDecisionRequest
+from app.profile_store import create_default_profile, save_profile
 from app.triage import list_pending
 
 
@@ -43,3 +48,197 @@ def test_list_pending_ignores_real_json_documents_in_pending(tmp_path: Path) -> 
     assert items[0].doc_id == "doc-1"
     assert items[0].filename == "mapeamento_visoes_analiticas.json"
     assert real_json_doc.exists()
+
+
+def _prepare_pending_triage_item(
+    *,
+    tmp_path: Path,
+    project_id: str,
+    doc_id: str,
+    naming_pattern: str,
+    original_filename: str,
+    canonical_filename: str,
+    suggested_business_domain: str,
+    suggested_document_type: str,
+) -> tuple[Path, Path]:
+    project_root = tmp_path / project_id
+    project_root.mkdir(parents=True, exist_ok=True)
+
+    profile = create_default_profile(
+        project_root=project_root,
+        project_id=project_id,
+        project_label=project_id,
+    )
+    profile.naming.canonical_pattern = naming_pattern
+    save_profile(project_root=project_root, profile=profile, updated_by="tests")
+
+    pending_dir = project_root / "_TRIAGE_REVIEW" / "pending"
+    pending_dir.mkdir(parents=True, exist_ok=True)
+    source_path = pending_dir / f"{doc_id[:8]}__{original_filename}"
+    source_path.write_text("conteudo de teste", encoding="utf-8")
+
+    metadata_path = pending_dir / f"{doc_id}.json"
+    metadata = {
+        "doc_id": doc_id,
+        "filename": source_path.name,
+        "project_id": project_id,
+        "suggested_business_domain": suggested_business_domain,
+        "suggested_document_type": suggested_document_type,
+        "suggested_path": f"02_AREAS/{suggested_business_domain}/{suggested_document_type}",
+        "confidence_score": 0.72,
+        "reason": "triage_pending",
+        "top_candidates": [{"business_domain": suggested_business_domain, "score": 0.72}],
+        "top_document_type_candidates": [{"document_type": suggested_document_type, "score": 0.72}],
+        "source_path": str(source_path),
+        "metadata_path": str(metadata_path),
+        "original_filename": original_filename,
+        "canonical_filename": canonical_filename,
+        "document_type": suggested_document_type,
+        "topics": [],
+        "entities": [],
+        "sha256": "triage_sha",
+        "ingested_at": "2026-03-19T12:00:00+00:00",
+        "naming_pattern": naming_pattern,
+    }
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    _append_index_md(
+        project_root,
+        {
+            "doc_id": doc_id,
+            "project_id": project_id,
+            "business_domain": suggested_business_domain,
+            "original_filename": original_filename,
+            "canonical_filename": canonical_filename,
+            "decision": "triage_pending",
+            "confidence_score": 0.72,
+            "path": str(source_path),
+            "naming_pattern": naming_pattern,
+            "sha256": "triage_sha",
+        },
+    )
+    return project_root, source_path
+
+
+def _patch_triage_dependencies(monkeypatch, tmp_path: Path) -> tuple[MagicMock, MagicMock]:
+    monkeypatch.setattr(main_module.settings, "projects_root", str(tmp_path), raising=False)
+    index_mock = MagicMock()
+    training_pool_mock = MagicMock()
+    monkeypatch.setattr(main_module, "index_document", index_mock)
+    monkeypatch.setattr(main_module, "append_training_pool_record", training_pool_mock)
+    return index_mock, training_pool_mock
+
+
+def test_decide_triage_correct_recomputes_canonical_filename_and_upserts_index(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    project_id = "triage_project_a"
+    doc_id = "doc-correct-a"
+    naming_pattern = "{date}__{project}__{business_domain}__{original_name}"
+    original_filename = "E2E080_Relatorio_Fiscal_Beta.txt"
+    initial_canonical = "20260319__triage_project_a__operacoes__E2E080_Relatorio_Fiscal_Beta__v03.txt"
+    expected_canonical = "20260319__triage_project_a__fiscal__E2E080_Relatorio_Fiscal_Beta__v03.txt"
+
+    project_root, source_path = _prepare_pending_triage_item(
+        tmp_path=tmp_path,
+        project_id=project_id,
+        doc_id=doc_id,
+        naming_pattern=naming_pattern,
+        original_filename=original_filename,
+        canonical_filename=initial_canonical,
+        suggested_business_domain="operacoes",
+        suggested_document_type="relatorio",
+    )
+    index_mock, training_pool_mock = _patch_triage_dependencies(monkeypatch, tmp_path)
+
+    result = main_module.decide_triage(
+        project_id,
+        doc_id,
+        TriageDecisionRequest(
+            action="correct",
+            target_business_domain="fiscal",
+            target_document_type="relatorio",
+        ),
+    )
+
+    assert result == {"status": "ok", "action": "corrected", "doc_id": doc_id}
+    final_path = project_root / "02_AREAS" / "fiscal" / "relatorio" / expected_canonical
+    assert final_path.exists()
+    assert not source_path.exists()
+
+    index_mock.assert_called_once()
+    indexed_payload = index_mock.call_args.args[1]
+    assert indexed_payload["canonical_filename"] == expected_canonical
+    assert indexed_payload["path"] == str(final_path)
+    assert indexed_payload["naming_pattern"] == naming_pattern
+    training_pool_mock.assert_called_once()
+
+    resolved_meta = json.loads(
+        (project_root / "_TRIAGE_REVIEW" / "resolved" / f"{doc_id}.json").read_text(encoding="utf-8")
+    )
+    assert resolved_meta["canonical_filename"] == expected_canonical
+    assert resolved_meta["filename"] == expected_canonical
+    assert resolved_meta["source_path"] == str(final_path)
+    assert resolved_meta["path"] == str(final_path)
+    assert resolved_meta["final_path"] == str(final_path)
+    assert resolved_meta["business_domain"] == "fiscal"
+    assert resolved_meta["document_type"] == "relatorio"
+
+    index_text = (project_root / "_INDEX.md").read_text(encoding="utf-8")
+    assert expected_canonical in index_text
+    assert initial_canonical not in index_text
+    assert " | corrected | " in index_text
+    assert " | triage_pending | " not in index_text
+
+
+def test_decide_triage_correct_updates_document_type_token_and_preserves_ingest_date(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    project_id = "triage_project_b"
+    doc_id = "doc-correct-b"
+    naming_pattern = "{date}__{project}__{business_domain}__{document_type}__{original_name}"
+    original_filename = "E2E080_Status_Executivo_Twist.txt"
+    initial_canonical = "20260319__triage_project_b__operacoes__apresentacao__E2E080_Status_Executivo_Twist__v02.txt"
+    expected_canonical = "20260319__triage_project_b__fiscal__relatorio__E2E080_Status_Executivo_Twist__v02.txt"
+
+    project_root, _source_path = _prepare_pending_triage_item(
+        tmp_path=tmp_path,
+        project_id=project_id,
+        doc_id=doc_id,
+        naming_pattern=naming_pattern,
+        original_filename=original_filename,
+        canonical_filename=initial_canonical,
+        suggested_business_domain="operacoes",
+        suggested_document_type="apresentacao",
+    )
+    index_mock, _training_pool_mock = _patch_triage_dependencies(monkeypatch, tmp_path)
+
+    main_module.decide_triage(
+        project_id,
+        doc_id,
+        TriageDecisionRequest(
+            action="correct",
+            target_business_domain="fiscal",
+            target_document_type="relatorio",
+        ),
+    )
+
+    final_path = project_root / "02_AREAS" / "fiscal" / "relatorio" / expected_canonical
+    assert final_path.exists()
+
+    indexed_payload = index_mock.call_args.args[1]
+    assert indexed_payload["canonical_filename"] == expected_canonical
+    assert indexed_payload["canonical_filename"].startswith("20260319__")
+    assert indexed_payload["canonical_filename"].endswith("__v02.txt")
+
+    resolved_meta = json.loads(
+        (project_root / "_TRIAGE_REVIEW" / "resolved" / f"{doc_id}.json").read_text(encoding="utf-8")
+    )
+    assert resolved_meta["canonical_filename"] == expected_canonical
+    assert resolved_meta["document_type"] == "relatorio"
+
+    index_text = (project_root / "_INDEX.md").read_text(encoding="utf-8")
+    assert expected_canonical in index_text
+    assert initial_canonical not in index_text

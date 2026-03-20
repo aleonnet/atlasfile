@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+import string
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -23,6 +24,12 @@ class LLMMode(str, Enum):
     full_override = "full_override"
 
 
+class OperationalClassifierMode(str, Enum):
+    bootstrap = "bootstrap"
+    sparse_logreg = "sparse_logreg"
+    sparse_linear_svc = "sparse_linear_svc"
+
+
 class ProjectPathsTriage(BaseModel):
     pending: str = Field(default="_TRIAGE_REVIEW/pending")
     resolved: str = Field(default="_TRIAGE_REVIEW/resolved")
@@ -41,11 +48,6 @@ class LayoutRoots(BaseModel):
     archive: str = Field(default="04_ARCHIVE")
 
 
-class AreaFolder(BaseModel):
-    area_key: str
-    folder: str
-
-
 class BusinessDomainFolder(BaseModel):
     business_domain: str
     folder: str
@@ -55,31 +57,10 @@ class LayoutConfig(BaseModel):
     mode: LayoutMode = Field(default=LayoutMode.para_jd)
     roots: LayoutRoots = Field(default_factory=LayoutRoots)
     areas_root: str = Field(default="02_AREAS")
-    area_folders: list[AreaFolder] = Field(default_factory=list)
     business_domain_folders: list[BusinessDomainFolder] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_area_folders_unique(self) -> "LayoutConfig":
-        if not self.business_domain_folders and self.area_folders:
-            self.business_domain_folders = [
-                BusinessDomainFolder(business_domain=af.area_key, folder=af.folder)
-                for af in self.area_folders
-            ]
-        if not self.area_folders and self.business_domain_folders:
-            self.area_folders = [
-                AreaFolder(area_key=bf.business_domain, folder=bf.folder)
-                for bf in self.business_domain_folders
-            ]
-
-        keys = [a.area_key for a in self.area_folders]
-        if len(keys) != len(set(keys)):
-            dup = sorted({k for k in keys if keys.count(k) > 1})
-            raise ValueError(f"layout.area_folders has duplicate area_key(s): {dup}")
-        folders = [a.folder for a in self.area_folders]
-        if len(folders) != len(set(folders)):
-            dup = sorted({f for f in folders if folders.count(f) > 1})
-            raise ValueError(f"layout.area_folders has duplicate folder(s): {dup}")
-
+    def _validate_business_domain_folders_unique(self) -> "LayoutConfig":
         domain_keys = [row.business_domain for row in self.business_domain_folders]
         if len(domain_keys) != len(set(domain_keys)):
             dup = sorted({k for k in domain_keys if domain_keys.count(k) > 1})
@@ -90,23 +71,11 @@ class LayoutConfig(BaseModel):
             raise ValueError(f"layout.business_domain_folders has duplicate folder(s): {dup}")
         return self
 
-    def folder_for_area(self, area_key: str) -> Optional[str]:
-        for af in self.area_folders:
-            if af.area_key == area_key:
-                return af.folder
-        return None
-
     def folder_for_business_domain(self, business_domain: str) -> Optional[str]:
         for row in self.business_domain_folders:
             if row.business_domain == business_domain:
                 return row.folder
         return None
-
-
-class WorkArea(BaseModel):
-    key: str
-    jd_number: int | None = None
-    aliases: list[str] = Field(default_factory=list)
 
 
 class BusinessDomain(BaseModel):
@@ -194,16 +163,16 @@ class ConfidenceThresholds(BaseModel):
 
 
 class LLMOverrideGuardrails(BaseModel):
-    area_override_only_if_rule_confidence_below: float = 0.65
+    business_domain_override_only_if_rule_confidence_below: float = 0.65
     require_explanation: bool = True
-    max_area_changes: int = 1
+    max_business_domain_changes: int = 1
 
     @model_validator(mode="after")
     def _validate(self) -> "LLMOverrideGuardrails":
-        if not (0.0 <= self.area_override_only_if_rule_confidence_below <= 1.0):
-            raise ValueError("area_override_only_if_rule_confidence_below must be between 0 and 1")
-        if self.max_area_changes < 0:
-            raise ValueError("max_area_changes must be >= 0")
+        if not (0.0 <= self.business_domain_override_only_if_rule_confidence_below <= 1.0):
+            raise ValueError("business_domain_override_only_if_rule_confidence_below must be between 0 and 1")
+        if self.max_business_domain_changes < 0:
+            raise ValueError("max_business_domain_changes must be >= 0")
         return self
 
 
@@ -218,33 +187,21 @@ class LLMPolicy(BaseModel):
     override_guardrails: LLMOverrideGuardrails = Field(default_factory=LLMOverrideGuardrails)
 
 
+class ClassificationOperationalConfig(BaseModel):
+    override_mode: OperationalClassifierMode | None = None
+
+
 class ClassificationConfig(BaseModel):
-    work_areas: list[WorkArea] = Field(default_factory=list)
     business_domains: list[BusinessDomain] = Field(default_factory=list)
     document_types: list[DocumentType] = Field(default_factory=list)
     entity_catalog: list[KnownEntity] = Field(default_factory=list)
     routing_rules: list[RoutingRule] = Field(default_factory=list)
     confidence_thresholds: ConfidenceThresholds = Field(default_factory=ConfidenceThresholds)
     llm_policy: LLMPolicy = Field(default_factory=LLMPolicy)
+    operational: ClassificationOperationalConfig = Field(default_factory=ClassificationOperationalConfig)
 
     @model_validator(mode="after")
     def _validate_areas(self) -> "ClassificationConfig":
-        if not self.business_domains and self.work_areas:
-            self.business_domains = [
-                BusinessDomain(key=area.key, aliases=list(area.aliases))
-                for area in self.work_areas
-            ]
-        if not self.work_areas and self.business_domains:
-            self.work_areas = [
-                WorkArea(key=domain.key, aliases=list(domain.aliases))
-                for domain in self.business_domains
-            ]
-
-        keys = [a.key for a in self.work_areas]
-        if len(keys) != len(set(keys)):
-            dup = sorted({k for k in keys if keys.count(k) > 1})
-            raise ValueError(f"classification.work_areas has duplicate key(s): {dup}")
-
         domain_keys = [d.key for d in self.business_domains]
         if len(domain_keys) != len(set(domain_keys)):
             dup = sorted({k for k in domain_keys if domain_keys.count(k) > 1})
@@ -269,9 +226,6 @@ class ClassificationConfig(BaseModel):
     def business_domain_keys(self) -> list[str]:
         return [d.key for d in self.business_domains]
 
-    def area_keys(self) -> list[str]:
-        return self.business_domain_keys()
-
 
 class NamingConfig(BaseModel):
     canonical_pattern: str = Field(
@@ -284,6 +238,17 @@ class NamingConfig(BaseModel):
     def _validate_pattern(self) -> "NamingConfig":
         if "{original_name}" not in self.canonical_pattern:
             raise ValueError("canonical_pattern must contain {original_name}")
+        fields = {
+            field_name
+            for _, field_name, _, _ in string.Formatter().parse(self.canonical_pattern)
+            if field_name
+        }
+        allowed = {"date", "project", "business_domain", "original_name", "document_type"}
+        if "area" in fields:
+            raise ValueError("canonical_pattern must use {business_domain} instead of {area}")
+        unknown = sorted(fields - allowed)
+        if unknown:
+            raise ValueError(f"canonical_pattern contains unsupported placeholder(s): {unknown}")
         return self
 
 

@@ -22,11 +22,19 @@ from .api.layout import router as layout_router
 from .api.profile import router as profile_router
 from .area_resolver import resolve_classification_path
 from .bootstrap import ensure_project_structure
+from .classifier_cycle import run_classifier_cycle
+from .classifier_registry import (
+    SUPPORTED_CLASSIFIER_MODES,
+    list_classifier_reports,
+    load_classifier_registry,
+    load_classifier_report,
+)
+from .classifier_runtime import resolve_classifier_mode
 from .config import settings
 from .evaluation_dataset import TrainingPoolRecord, append_training_pool_record
 from .indexer import backfill_search_fields, index_document, read_text_excerpt
 from .ingest_history import append_ingest_entry, load_ingest_history
-from .ingestion import process_inbox_file
+from .ingestion import _append_index_md, process_inbox_file
 from .models import (
     ChatRequest,
     ChatResponse,
@@ -62,6 +70,7 @@ from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from .opensearch_client import ensure_chat_sessions_index, ensure_classification_usage_index, ensure_index, get_client
 from .project_profile import list_project_roots, load_project_profile
 from .profile_runtime import inbox_rel
+from .profile_schema_v2 import OperationalClassifierMode
 from .profile_store import ensure_profile, load_profile, save_profile
 from .template_store import (
     create_profile_from_template,
@@ -300,6 +309,62 @@ _reconcile_status: dict[str, Any] = {
     "progress_project": None,
     "progress_skipped": 0,
     "progress_file_pct": 0,
+}
+
+_ingest_status: dict[str, Any] = {
+    "last_run_started_at": None,
+    "last_run_finished_at": None,
+    "duration_seconds": None,
+    "project_id": None,
+    "running": False,
+    "phase": "idle",
+    "progress_current": 0,
+    "progress_total": 0,
+    "progress_file": None,
+    "processed_count": 0,
+    "failed_count": 0,
+    "last_error": None,
+}
+
+_classifier_cycle_status: dict[str, Any] = {
+    "last_run_started_at": None,
+    "last_run_finished_at": None,
+    "duration_seconds": None,
+    "running": False,
+    "phase": "idle",
+    "progress_current": 0,
+    "progress_total": 0,
+    "report_id": None,
+    "champion_mode": None,
+    "last_error": None,
+}
+
+_ingest_status: dict[str, Any] = {
+    "last_run_started_at": None,
+    "last_run_finished_at": None,
+    "duration_seconds": None,
+    "project_id": None,
+    "running": False,
+    "phase": "idle",
+    "progress_current": 0,
+    "progress_total": 0,
+    "progress_file": None,
+    "processed_count": 0,
+    "failed_count": 0,
+    "last_error": None,
+}
+
+_classifier_cycle_status: dict[str, Any] = {
+    "last_run_started_at": None,
+    "last_run_finished_at": None,
+    "duration_seconds": None,
+    "running": False,
+    "phase": "idle",
+    "progress_current": 0,
+    "progress_total": 0,
+    "report_id": None,
+    "champion_mode": None,
+    "last_error": None,
 }
 
 
@@ -1021,24 +1086,6 @@ def api_delete_template(slug: str) -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/projects/{project_ref}/areas")
-def get_project_areas(project_ref: str) -> dict[str, Any]:
-    project_root = _resolve_project_root(project_ref)
-    profile, _ = _initialize_project_if_needed(project_root)
-    areas: list[dict[str, str]] = []
-    business_domains = profile.get("business_domains") or []
-    for area in business_domains:
-        key = str(area.get("key", "")).strip()
-        if not key:
-            continue
-        label = str(area.get("label") or key.replace("_", " ").strip().title())
-        areas.append({"key": key, "label": label})
-    return {
-        "project_id": profile.get("project_id", project_root.name),
-        "areas": areas,
-    }
-
-
 @app.get("/api/reconcile/status")
 def get_reconcile_status() -> dict[str, Any]:
     return dict(_reconcile_status)
@@ -1062,6 +1109,215 @@ async def stream_reconcile_status() -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/ingest/status")
+def get_ingest_status() -> dict[str, Any]:
+    return dict(_ingest_status)
+
+
+async def _stream_ingest_status() -> Any:
+    while True:
+        data = dict(_ingest_status)
+        yield f"data: {json.dumps(data)}\n\n"
+        if not data.get("running"):
+            break
+        await asyncio.sleep(0.25)
+
+
+@app.get("/api/ingest/status/stream")
+async def stream_ingest_status() -> StreamingResponse:
+    return StreamingResponse(
+        _stream_ingest_status(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _extract_classifier_report_summary(report: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not report:
+        return None
+    champion = report.get("champion") or {}
+    summary = champion.get("summary")
+    if isinstance(summary, dict):
+        return summary
+    operational_mode = str(report.get("operational_classifier_mode") or "").strip()
+    if not operational_mode:
+        return None
+    return ((report.get("benchmarks") or {}).get(operational_mode) or {}).get("summary")
+
+
+def _classifier_status_payload(project_id: str | None = None) -> dict[str, Any]:
+    if project_id and project_id.strip():
+        project_root = _resolve_project_root(project_id.strip())
+        resolved = resolve_classifier_mode(load_project_profile(project_root))
+        registry = resolved["registry"]
+        override_mode = resolved["override_mode"]
+        effective_mode = resolved["effective_mode"]
+        latest_report = resolved["latest_report"]
+    else:
+        registry = load_classifier_registry()
+        override_mode = None
+        effective_mode = registry.champion_mode
+        latest_report = load_classifier_report(registry.latest_report_id)
+
+    return {
+        "project_id": project_id,
+        "available_modes": list(SUPPORTED_CLASSIFIER_MODES),
+        "champion_mode": registry.champion_mode,
+        "fallback_mode": registry.fallback_mode,
+        "effective_mode": effective_mode,
+        "override_mode": override_mode,
+        "promotion_policy": registry.promotion_policy,
+        "project_override_allowed": registry.project_override_allowed,
+        "promotion_gates": registry.promotion_gates.model_dump(mode="json"),
+        "latest_report_id": registry.latest_report_id,
+        "champion_report_id": registry.champion_report_id,
+        "champion_summary": registry.champion_summary.model_dump(mode="json") if registry.champion_summary else None,
+        "latest_report_summary": _extract_classifier_report_summary(latest_report),
+        "latest_cycle_status": registry.latest_cycle_status,
+        "latest_cycle_started_at": registry.latest_cycle_started_at,
+        "latest_cycle_finished_at": registry.latest_cycle_finished_at,
+        "latest_cycle_error": registry.latest_cycle_error,
+    }
+
+
+def _run_classifier_cycle_background(min_training_docs: int, min_docs_per_class: int) -> None:
+    started_at = time.time()
+    try:
+        report = run_classifier_cycle(
+            min_training_docs=min_training_docs,
+            min_docs_per_class=min_docs_per_class,
+            progress_callback=lambda update: _classifier_cycle_status.update(update),
+        )
+        champion = (report.get("champion") or {}).get("mode")
+        _classifier_cycle_status.update(
+            {
+                "last_run_finished_at": utc_now_iso(),
+                "duration_seconds": round(time.time() - started_at, 3),
+                "running": False,
+                "phase": "completed",
+                "progress_current": 1,
+                "progress_total": 1,
+                "report_id": report.get("report_id"),
+                "champion_mode": champion,
+                "last_error": None,
+            }
+        )
+    except Exception as exc:
+        _classifier_cycle_status.update(
+            {
+                "last_run_finished_at": utc_now_iso(),
+                "duration_seconds": round(time.time() - started_at, 3),
+                "running": False,
+                "phase": "failed",
+                "last_error": str(exc),
+            }
+        )
+
+
+@app.get("/api/classifier/status")
+def get_classifier_status(project_id: str | None = Query(None, description="Projeto para calcular override efetivo")) -> dict[str, Any]:
+    return _classifier_status_payload(project_id)
+
+
+@app.get("/api/classifier/report/latest")
+def get_latest_classifier_report() -> dict[str, Any]:
+    registry = load_classifier_registry()
+    report = load_classifier_report(registry.latest_report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Nenhum relatório de benchmark disponível")
+    return report
+
+
+@app.get("/api/classifier/reports")
+def get_classifier_reports(limit: int = Query(10, ge=1, le=50)) -> list[dict[str, Any]]:
+    reports = []
+    for report in list_classifier_reports(limit=limit):
+        reports.append(
+            {
+                "report_id": report.get("report_id"),
+                "generated_at": report.get("generated_at") or report.get("saved_at"),
+                "operational_classifier_mode": report.get("operational_classifier_mode"),
+                "champion_mode": (report.get("champion") or {}).get("mode"),
+                "champion_summary": _extract_classifier_report_summary(report),
+            }
+        )
+    return reports
+
+
+@app.put("/api/classifier/override/{project_id}")
+def set_classifier_override(project_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    override_raw = str(body.get("override_mode") or "").strip()
+    try:
+        override_mode = OperationalClassifierMode(override_raw) if override_raw else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    project_root = _resolve_project_root(project_id)
+    profile, _ = ensure_profile(project_root=project_root, project_id=project_id, project_label=project_root.name)
+    profile.classification.operational.override_mode = override_mode
+    save_profile(
+        project_root=project_root,
+        profile=profile,
+        if_match_version=profile.version,
+        updated_by="system:classifier_override",
+    )
+    return _classifier_status_payload(project_id)
+
+
+@app.get("/api/classifier/cycle/status")
+def get_classifier_cycle_status() -> dict[str, Any]:
+    return dict(_classifier_cycle_status)
+
+
+async def _stream_classifier_cycle_status() -> Any:
+    while True:
+        data = dict(_classifier_cycle_status)
+        yield f"data: {json.dumps(data)}\n\n"
+        if not data.get("running"):
+            break
+        await asyncio.sleep(0.25)
+
+
+@app.get("/api/classifier/cycle/status/stream")
+async def stream_classifier_cycle_status() -> StreamingResponse:
+    return StreamingResponse(
+        _stream_classifier_cycle_status(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/classifier/cycle")
+def start_classifier_cycle(
+    min_training_docs: int = Query(100, ge=0),
+    min_docs_per_class: int = Query(5, ge=1),
+) -> JSONResponse:
+    if _classifier_cycle_status.get("running"):
+        raise HTTPException(status_code=409, detail="Classifier cycle already in progress")
+    _classifier_cycle_status.update(
+        {
+            "last_run_started_at": utc_now_iso(),
+            "last_run_finished_at": None,
+            "duration_seconds": None,
+            "running": True,
+            "phase": "training_benchmark",
+            "progress_current": 0,
+            "progress_total": 1,
+            "report_id": None,
+            "champion_mode": None,
+            "last_error": None,
+        }
+    )
+    thread = threading.Thread(
+        target=_run_classifier_cycle_background,
+        args=(min_training_docs, min_docs_per_class),
+        name="atlasfile-classifier-cycle",
+        daemon=True,
+    )
+    thread.start()
+    return JSONResponse(status_code=202, content={"status": "started", "message": "Classifier cycle started"})
 
 
 async def _stream_session_events(session_id: str) -> Any:
@@ -1138,27 +1394,67 @@ def reconcile_all_projects(reindex_search: bool = True):
 
 @app.post("/api/ingest/scan/{project_id}")
 def scan_project_inbox(project_id: str) -> dict[str, Any]:
+    if _ingest_status.get("running"):
+        raise HTTPException(status_code=409, detail="Ingest already in progress")
     project_root = _resolve_project_root(project_id)
     profile, _ = _initialize_project_if_needed(project_root)
     inbox = project_root / inbox_rel(profile)
     inbox.mkdir(parents=True, exist_ok=True)
 
+    files = [
+        f
+        for f in sorted(inbox.iterdir(), key=lambda p: p.name.lower())
+        if f.is_file() and not f.name.startswith(".")
+    ]
+    started_at = time.time()
+    _ingest_status.update(
+        {
+            "last_run_started_at": utc_now_iso(),
+            "last_run_finished_at": None,
+            "duration_seconds": None,
+            "project_id": project_id,
+            "running": True,
+            "phase": "processing",
+            "progress_current": 0,
+            "progress_total": len(files),
+            "progress_file": None,
+            "processed_count": 0,
+            "failed_count": 0,
+            "last_error": None,
+        }
+    )
+
     processed: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
-    for f in sorted(inbox.iterdir(), key=lambda p: p.name.lower()):
-        if not f.is_file() or f.name.startswith("."):
-            continue
-        try:
-            processed.append(
-                process_inbox_file(
-                    client=os_client,
-                    project_root=project_root,
-                    profile=profile,
-                    inbox_file=f,
+    try:
+        for idx, f in enumerate(files, start=1):
+            _ingest_status["progress_file"] = f.name
+            try:
+                processed.append(
+                    process_inbox_file(
+                        client=os_client,
+                        project_root=project_root,
+                        profile=profile,
+                        inbox_file=f,
+                    )
                 )
-            )
-        except Exception as exc:
-            failed.append({"filename": f.name, "path": str(f), "error": str(exc)})
+            except Exception as exc:
+                failed.append({"filename": f.name, "path": str(f), "error": str(exc)})
+            finally:
+                _ingest_status["progress_current"] = idx
+                _ingest_status["processed_count"] = len(processed)
+                _ingest_status["failed_count"] = len(failed)
+    except Exception as exc:
+        _ingest_status["phase"] = "failed"
+        _ingest_status["last_error"] = str(exc)
+        raise
+    finally:
+        _ingest_status["running"] = False
+        _ingest_status["progress_file"] = None
+        _ingest_status["last_run_finished_at"] = utc_now_iso()
+        _ingest_status["duration_seconds"] = round(time.time() - started_at, 3)
+        if _ingest_status["phase"] != "failed":
+            _ingest_status["phase"] = "completed"
 
     result = {
         "project_id": project_id,
@@ -1253,8 +1549,7 @@ def get_document(doc_id: str) -> dict[str, Any]:
     data = {
         "doc_id": src.get("doc_id"),
         "project_id": src.get("project_id"),
-        "area_key": src.get("area_key"),
-        "business_domain": src.get("business_domain") or src.get("area_key"),
+        "business_domain": src.get("business_domain"),
         "title": src.get("title"),
         "original_filename": src.get("original_filename"),
         "canonical_filename": src.get("canonical_filename"),
@@ -1288,8 +1583,7 @@ def get_document_chunks(doc_id: str, locations: list[str] = Query(..., min_lengt
     return {
         "doc_id": src.get("doc_id"),
         "project_id": src.get("project_id"),
-        "area_key": src.get("area_key"),
-        "business_domain": src.get("business_domain") or src.get("area_key"),
+        "business_domain": src.get("business_domain"),
         "title": src.get("title"),
         "original_filename": src.get("original_filename"),
         "canonical_filename": src.get("canonical_filename"),
@@ -1329,7 +1623,7 @@ def update_document_tags(doc_id: str, payload: DocumentTagsUpdate) -> dict[str, 
 
 @app.patch("/api/documents/{doc_id}")
 def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate) -> dict[str, Any]:
-    """Partial update: document_type, correspondent, business_domain/area_key, review_status."""
+    """Partial update: document_type, correspondent, business_domain, review_status."""
     try:
         os_client.get(index=settings.opensearch_index, id=doc_id)
     except Exception:
@@ -1339,12 +1633,8 @@ def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate) -> di
         doc_updates["document_type"] = payload.document_type
     if payload.correspondent is not None:
         doc_updates["correspondent"] = payload.correspondent
-    if payload.area_key is not None:
-        doc_updates["area_key"] = payload.area_key
-        doc_updates["business_domain"] = payload.area_key
     if payload.business_domain is not None:
         doc_updates["business_domain"] = payload.business_domain
-        doc_updates["area_key"] = payload.business_domain
     if payload.review_status is not None:
         doc_updates["review_status"] = payload.review_status
     if not doc_updates:
@@ -1376,14 +1666,13 @@ def list_tags(project_id: str | None = Query(None, description="Filter by projec
 
 @app.get("/api/stats", response_model=StatsResponse)
 def get_stats(project_id: str | None = Query(None, description="Filter by project")) -> StatsResponse:
-    """Aggregate document statistics: total count and breakdowns by doc_kind, business_domain, area_key, document_type, extension, tags."""
+    """Aggregate document statistics: total count and breakdowns by doc_kind, business_domain, document_type, extension, tags."""
     query: dict[str, Any] = {"match_all": {}}
     if project_id:
         query = {"bool": {"filter": [_project_scope_filter(project_id)]}}
     aggs: dict[str, Any] = {
         "by_doc_kind": {"terms": {"field": "doc_kind", "size": 20}},
         "by_business_domain": {"terms": {"field": "business_domain", "size": 50}},
-        "by_area_key": {"terms": {"field": "area_key", "size": 50}},
         "by_document_type": {"terms": {"field": "document_type", "size": 50}},
         "by_extension": {"terms": {"field": "extension", "size": 30}},
         "by_tags": {"terms": {"field": "tags", "size": 100}},
@@ -1395,7 +1684,6 @@ def get_stats(project_id: str | None = Query(None, description="Filter by projec
         total_documents=0,
         by_doc_kind=[],
         by_business_domain=[],
-        by_area_key=[],
         by_document_type=[],
         by_extension=[],
         by_tags=[],
@@ -1417,7 +1705,6 @@ def get_stats(project_id: str | None = Query(None, description="Filter by projec
         total_documents=total_documents,
         by_doc_kind=_buckets("by_doc_kind"),
         by_business_domain=_buckets("by_business_domain"),
-        by_area_key=_buckets("by_area_key"),
         by_document_type=_buckets("by_document_type"),
         by_extension=_buckets("by_extension"),
         by_tags=_buckets("by_tags"),
@@ -2015,16 +2302,20 @@ def get_triage(project_id: str) -> list[dict[str, Any]]:
     return [item.model_dump() for item in list_pending(project_root)]
 
 
-def _ensure_area_in_profile(project_root: Path, profile: dict[str, Any], area_key: str) -> dict[str, Any]:
+def _ensure_business_domain_in_profile(
+    project_root: Path,
+    profile: dict[str, Any],
+    business_domain: str,
+) -> dict[str, Any]:
     """Validate that a business domain exists in the profile."""
     del project_root
-    work_areas = profile.get("classification", {}).get("work_areas", [])
     business_domains = profile.get("classification", {}).get("business_domains", [])
-    existing_keys = {str(a.get("key", "")).strip() for a in work_areas} | {
-        str(a.get("key", "")).strip() for a in business_domains
+    existing_keys = {
+        str(domain.get("key", "")).strip()
+        for domain in business_domains
     }
-    if area_key not in existing_keys:
-        raise ValueError(f"business_domain not configured in profile: {area_key}")
+    if business_domain not in existing_keys:
+        raise ValueError(f"business_domain not configured in profile: {business_domain}")
     return profile
 
 
@@ -2035,6 +2326,21 @@ def _ensure_document_type_in_profile(project_root: Path, profile: dict[str, Any]
     if document_type not in existing_keys:
         raise ValueError(f"document_type not configured in profile: {document_type}")
     return profile
+
+
+def _extract_canonical_version(canonical_filename: str) -> int:
+    match = re.search(r"__v(\d+)(?:\.[^.]+)$", str(canonical_filename or "").strip())
+    return int(match.group(1)) if match else 1
+
+
+def _ingested_date_token(ingested_at: Any, date_format: str) -> str | None:
+    raw = str(ingested_at or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).strftime(date_format)
+    except ValueError:
+        return None
 
 
 @app.post("/api/triage/{project_id}/{doc_id}/decision")
@@ -2075,55 +2381,86 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
         data["decision_note"] = request.note or ""
         data["processed_at"] = utc_now_iso()
         data["filename"] = dest.name
+        data["canonical_filename"] = dest.name
         data["source_path"] = str(dest)
+        data["path"] = str(dest)
         pending_meta.unlink(missing_ok=True)
         (rejected_dir / f"{doc_id}.json").write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        _append_index_md(
+            project_root,
+            {
+                "doc_id": doc_id,
+                "project_id": project_id,
+                "business_domain": str(
+                    data.get("business_domain")
+                    or data.get("suggested_business_domain")
+                    or ""
+                ),
+                "original_filename": original_filename,
+                "canonical_filename": dest.name,
+                "decision": "rejected",
+                "confidence_score": float(data.get("confidence_score", 0.0)),
+                "path": str(dest),
+                "naming_pattern": data.get("naming_pattern", ""),
+                "sha256": data.get("sha256", ""),
+            },
+        )
         return {"status": "ok", "action": "rejected", "doc_id": doc_id}
 
     # approve or correct
-    target_area = data.get("suggested_business_domain") or data.get("suggested_area")
+    target_business_domain = data.get("suggested_business_domain")
     target_document_type = data.get("suggested_document_type") or data.get("document_type")
     if action == "correct":
-        target_area = request.target_business_domain or request.target_area
+        target_business_domain = request.target_business_domain
         target_document_type = request.target_document_type or target_document_type
-        if not target_area:
+        if not target_business_domain:
             raise HTTPException(status_code=400, detail="target_business_domain obrigatorio para correct")
 
-    if not target_area:
-        raise HTTPException(status_code=400, detail="Area alvo nao definida para aprovacao/correcao")
+    if not target_business_domain:
+        raise HTTPException(status_code=400, detail="business_domain alvo nao definido para aprovacao/correcao")
     if not target_document_type:
         raise HTTPException(status_code=400, detail="document_type alvo nao definido para aprovacao/correcao")
 
     try:
-        profile = _ensure_area_in_profile(project_root, profile, target_area)
+        profile = _ensure_business_domain_in_profile(project_root, profile, target_business_domain)
         profile = _ensure_document_type_in_profile(project_root, profile, target_document_type)
-        area_path = resolve_classification_path(
+        classification_path = resolve_classification_path(
             project_root=project_root,
             profile=profile,
-            business_domain=target_area,
+            business_domain=target_business_domain,
             document_type=target_document_type,
             create_if_missing=True,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    canonical_filename = data.get("canonical_filename") or ""
-    if not canonical_filename:
-        naming = profile.get("naming") or {}
+    naming = profile.get("naming") or {}
+    canonical_pattern = str(
+        data.get("naming_pattern") or naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN)
+    )
+    date_format = str(naming.get("date_format", "%Y%m%d"))
+    original_filename = str(data.get("original_filename") or source_path.name)
+    original_path = Path(original_filename)
+    canonical_filename = str(data.get("canonical_filename") or "").strip()
+    preserved_version = _extract_canonical_version(canonical_filename)
+    preserved_date = _ingested_date_token(data.get("ingested_at"), date_format)
+    if action == "correct" or not canonical_filename:
         canonical_filename = build_canonical_filename(
-            pattern=naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN),
-            date_format=naming.get("date_format", "%Y%m%d"),
+            pattern=canonical_pattern,
+            date_format=date_format,
             fields={
                 "project": project_id,
-                "area": target_area,
-                "original_name": data.get("original_filename", source_path.stem),
+                "business_domain": target_business_domain,
+                "original_name": original_path.stem,
                 "document_type": target_document_type,
             },
-            original_suffix=source_path.suffix or ".bin",
+            original_suffix=original_path.suffix or source_path.suffix or ".bin",
+            version=preserved_version,
+            date_override=preserved_date,
         )
-    dest_dir = project_root / area_path
+    dest_dir = project_root / classification_path
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_path = dest_dir / canonical_filename
     shutil.move(str(source_path), str(dest_path))
@@ -2131,11 +2468,10 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
     indexed_payload = {
         "doc_id": doc_id,
         "project_id": project_id,
-        "area_key": target_area,
-        "business_domain": target_area,
+        "business_domain": target_business_domain,
         "title": source_path.stem,
         "content": read_text_excerpt(dest_path),
-        "original_filename": data.get("original_filename", source_path.name),
+        "original_filename": original_filename,
         "canonical_filename": canonical_filename,
         "path": str(dest_path),
         "source_channel": data.get("source_channel", ""),
@@ -2147,18 +2483,20 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
         "decision": "approved" if action == "approve" else "corrected",
         "confidence_score": float(data.get("confidence_score", 0.0)),
         "sha256": data.get("sha256", ""),
-        "tags": [target_area, target_document_type],
+        "tags": [target_business_domain, target_document_type],
         "document_type": target_document_type,
         "entities": data.get("entities", []),
+        "naming_pattern": canonical_pattern,
     }
     index_document(os_client, indexed_payload, profile=profile)
+    _append_index_md(project_root, indexed_payload)
     append_training_pool_record(
         TrainingPoolRecord(
             doc_id=doc_id,
             project_id=project_id,
             original_filename=str(indexed_payload.get("original_filename") or source_path.name),
             path=str(dest_path),
-            business_domain=target_area,
+            business_domain=target_business_domain,
             document_type=target_document_type,
             decision=str(indexed_payload["decision"]),
             topics=list(data.get("topics", []) or []),
@@ -2169,10 +2507,14 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
 
     data["decision"] = indexed_payload["decision"]
     data["processed_at"] = indexed_payload["processed_at"]
+    data["filename"] = canonical_filename
+    data["canonical_filename"] = canonical_filename
+    data["source_path"] = str(dest_path)
+    data["path"] = str(dest_path)
     data["final_path"] = str(dest_path)
-    data["area_key"] = target_area
-    data["business_domain"] = target_area
+    data["business_domain"] = target_business_domain
     data["document_type"] = target_document_type
+    data["naming_pattern"] = canonical_pattern
 
     pending_meta.unlink(missing_ok=True)
     (triage_resolved_dir(project_root) / f"{doc_id}.json").write_text(
@@ -2187,7 +2529,6 @@ def list_documents(
     doc_kind: str | None = None,
     document_type: str | None = None,
     business_domain: str | None = None,
-    area_key: str | None = None,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
 ) -> ListDocumentsResponse:
@@ -2201,8 +2542,6 @@ def list_documents(
         filters.append({"term": {"document_type": document_type}})
     if business_domain:
         filters.append({"term": {"business_domain": business_domain}})
-    if area_key:
-        filters.append({"term": {"area_key": area_key}})
 
     body: dict[str, Any] = {
         "query": {"bool": {"filter": filters}} if filters else {"match_all": {}},
@@ -2211,7 +2550,7 @@ def list_documents(
         "size": size,
         "_source": [
             "project_id", "title", "original_filename", "path",
-            "doc_kind", "document_type", "business_domain", "area_key", "tags", "ingested_at",
+            "doc_kind", "document_type", "business_domain", "tags", "ingested_at",
         ],
     }
     try:
@@ -2231,8 +2570,7 @@ def list_documents(
             path=src.get("path", ""),
             doc_kind=src.get("doc_kind"),
             document_type=src.get("document_type"),
-            area_key=src.get("area_key"),
-            business_domain=src.get("business_domain") or src.get("area_key"),
+            business_domain=src.get("business_domain"),
             tags=src.get("tags") or [],
             ingested_at=src.get("ingested_at"),
         ))
@@ -2244,7 +2582,6 @@ def search(
     q: str = Query(..., min_length=2),
     project_id: str | None = None,
     business_domain: str | None = None,
-    area_key: str | None = None,
     tags: list[str] | None = Query(None, description="Filter by tags (any match)"),
     document_type: str | None = Query(None, description="Filter by document_type"),
     doc_kind: str | None = Query(None, description="Filter by doc_kind (pdf, docx, xlsx, pptx, plain_text, html, msg...)"),
@@ -2372,8 +2709,6 @@ def search(
         filters.append(_project_scope_filter(project_id))
     if business_domain:
         filters.append({"term": {"business_domain": business_domain}})
-    if area_key:
-        filters.append({"term": {"area_key": area_key}})
     if tags:
         filters.append({"terms": {"tags": tags}})
     if document_type:
@@ -2470,8 +2805,7 @@ def search(
                 SearchHit(
                     doc_id=src["doc_id"],
                     project_id=src["project_id"],
-                    area_key=src["area_key"],
-                    business_domain=src.get("business_domain") or src.get("area_key"),
+                    business_domain=src.get("business_domain"),
                     document_type=src.get("document_type"),
                     original_filename=src["original_filename"],
                     canonical_filename=src["canonical_filename"],
@@ -2672,7 +3006,7 @@ def benchmark_search(
 
     for term in q:
         started = time.perf_counter()
-        response = search(q=term, project_id=project_id, area_key=None, size=size)
+        response = search(q=term, project_id=project_id, size=size)
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
         durations_ms.append(elapsed_ms)
         results.append(

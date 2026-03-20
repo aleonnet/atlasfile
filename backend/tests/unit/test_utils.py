@@ -102,12 +102,12 @@ def test_build_canonical_filename_default_pattern() -> None:
     assert "Contrato Original" in out
 
 
-def test_build_canonical_filename_with_area_pattern() -> None:
+def test_build_canonical_filename_with_business_domain_pattern() -> None:
     out = build_canonical_filename(
-        pattern="{date}__{project}__{area}__{original_name}",
+        pattern="{date}__{project}__{business_domain}__{original_name}",
         fields={
             "project": "Kaidô",
-            "area": "financeiro",
+            "business_domain": "financeiro",
             "original_name": "DRE_2026",
         },
         original_suffix=".xlsx",
@@ -143,6 +143,14 @@ def test_extract_original_name_default_pattern() -> None:
     canonical = "20260302__kaido__DocuSign_Project_Neptune___SPA__Anexos_v_A__v01.pdf"
     result = extract_original_name_from_canonical(canonical)
     assert result == "DocuSign_Project_Neptune___SPA__Anexos_v_A.pdf"
+
+
+def test_extract_original_name_with_business_domain_pattern() -> None:
+    canonical = "20260302__kaido__financeiro__DRE_2026__v03.xlsx"
+    result = extract_original_name_from_canonical(
+        canonical, "{date}__{project}__{business_domain}__{original_name}"
+    )
+    assert result == "DRE_2026.xlsx"
 
 
 def test_extract_original_name_with_area_pattern() -> None:

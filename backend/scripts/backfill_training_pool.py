@@ -35,7 +35,7 @@ def _validation_sha_index() -> dict[str, list[str]]:
 
 def _fallback_project_file_path(project_root: Path, data: dict[str, Any]) -> Path | None:
     canonical_filename = str(data.get("canonical_filename") or "").strip()
-    business_domain = str(data.get("business_domain") or data.get("area_key") or "").strip()
+    business_domain = str(data.get("business_domain") or "").strip()
     document_type = str(data.get("document_type") or "").strip()
     if not canonical_filename or not business_domain or not document_type:
         return None
@@ -86,7 +86,7 @@ def collect_training_pool_records_from_resolved(project_root: Path) -> tuple[lis
             )
             continue
 
-        business_domain = str(data.get("business_domain") or data.get("area_key") or "").strip()
+        business_domain = str(data.get("business_domain") or "").strip()
         document_type = str(data.get("document_type") or "").strip()
         if not business_domain or not document_type:
             skipped.append({"metadata": str(meta_path), "reason": "missing_business_domain_or_document_type"})

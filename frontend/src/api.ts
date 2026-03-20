@@ -1,4 +1,8 @@
 import type {
+  ClassifierCycleStatus,
+  ClassifierReport,
+  ClassifierReportSummary,
+  ClassifierStatusResponse,
   ChannelConfig,
   ChannelStatusResponse,
   ChatMessage,
@@ -6,10 +10,11 @@ import type {
   ChatSession,
   ClassificationUsageSummary,
   IngestHistoryResponse,
+  IngestOperationStatus,
   ModelOption,
+  OperationalClassifierMode,
   LayoutPlanResponse,
   Project,
-  ProjectArea,
   ProjectProfileResponse,
   ProjectProfileV2,
   ReconcileStatus,
@@ -106,13 +111,6 @@ export async function deleteTemplate(slug: string): Promise<void> {
   if (!res.ok) throw new Error("Falha ao excluir template");
 }
 
-export async function fetchProjectAreas(projectRef: string): Promise<ProjectArea[]> {
-  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/areas`);
-  if (!res.ok) throw new Error("Falha ao carregar areas do projeto");
-  const data = await res.json();
-  return (data.areas || []) as ProjectArea[];
-}
-
 export async function fetchProjectProfile(projectRef: string): Promise<ProjectProfileResponse> {
   const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile`);
   if (!res.ok) throw new Error("Falha ao carregar profile do projeto");
@@ -204,6 +202,74 @@ export async function fetchIngestHistory(projectId: string): Promise<IngestHisto
   return res.json();
 }
 
+export async function fetchIngestStatus(): Promise<IngestOperationStatus> {
+  const res = await fetch(`${API_URL}/api/ingest/status`);
+  if (!res.ok) throw new Error("Falha ao carregar status da ingestão");
+  return res.json();
+}
+
+export function getIngestStatusStreamUrl(): string {
+  return `${API_URL}/api/ingest/status/stream`;
+}
+
+export async function fetchClassifierStatus(projectId?: string): Promise<ClassifierStatusResponse> {
+  const url = new URL(`${API_URL}/api/classifier/status`);
+  if (projectId) url.searchParams.set("project_id", projectId);
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Falha ao carregar status do classificador");
+  return res.json();
+}
+
+export async function fetchClassifierReportLatest(): Promise<ClassifierReport> {
+  const res = await fetch(`${API_URL}/api/classifier/report/latest`);
+  if (!res.ok) throw new Error("Falha ao carregar benchmark atual");
+  return res.json();
+}
+
+export async function fetchClassifierReports(limit = 10): Promise<ClassifierReportSummary[]> {
+  const url = new URL(`${API_URL}/api/classifier/reports`);
+  url.searchParams.set("limit", String(limit));
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Falha ao carregar histórico do classificador");
+  return res.json();
+}
+
+export async function updateClassifierOverride(
+  projectId: string,
+  overrideMode: OperationalClassifierMode | null
+): Promise<ClassifierStatusResponse> {
+  const res = await fetch(`${API_URL}/api/classifier/override/${encodeURIComponent(projectId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ override_mode: overrideMode })
+  });
+  if (!res.ok) throw new Error("Falha ao salvar override do classificador");
+  return res.json();
+}
+
+export async function startClassifierCycle(params?: {
+  min_training_docs?: number;
+  min_docs_per_class?: number;
+}): Promise<{ status: string; message?: string }> {
+  const url = new URL(`${API_URL}/api/classifier/cycle`);
+  if (params?.min_training_docs != null) url.searchParams.set("min_training_docs", String(params.min_training_docs));
+  if (params?.min_docs_per_class != null) url.searchParams.set("min_docs_per_class", String(params.min_docs_per_class));
+  const res = await fetch(url.toString(), { method: "POST" });
+  if (res.status === 409) throw new Error("Ciclo do classificador já em andamento");
+  if (!res.ok) throw new Error("Falha ao iniciar ciclo do classificador");
+  return res.json();
+}
+
+export async function fetchClassifierCycleStatus(): Promise<ClassifierCycleStatus> {
+  const res = await fetch(`${API_URL}/api/classifier/cycle/status`);
+  if (!res.ok) throw new Error("Falha ao carregar status do ciclo do classificador");
+  return res.json();
+}
+
+export function getClassifierCycleStatusStreamUrl(): string {
+  return `${API_URL}/api/classifier/cycle/status/stream`;
+}
+
 export async function searchDocuments(
   query: string,
   projectId?: string,
@@ -219,7 +285,6 @@ export async function searchDocuments(
   if (filters?.doc_kind) url.searchParams.set("doc_kind", filters.doc_kind);
   if (filters?.document_type) url.searchParams.set("document_type", filters.document_type);
   if (filters?.business_domain) url.searchParams.set("business_domain", filters.business_domain);
-  else if (filters?.area_key) url.searchParams.set("area_key", filters.area_key);
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Falha na busca");
   return res.json();

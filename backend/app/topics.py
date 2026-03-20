@@ -92,7 +92,12 @@ def get_topic_keys(profile: Any | None = None) -> list[str]:
     return [t["key"] for t in (cfg.get("_topics_norm") or []) if t.get("key")]
 
 
-def match_topics(*, text: str, area_key: str | None, profile: Any | None = None) -> tuple[list[str], str]:
+def match_topics(
+    *,
+    text: str,
+    business_domain: str | None,
+    profile: Any | None = None,
+) -> tuple[list[str], str]:
     cfg = _load_topics_config(profile)
     topics_norm = cfg.get("_topics_norm") or []
     if not topics_norm:

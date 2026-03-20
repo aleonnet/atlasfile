@@ -32,9 +32,9 @@ export function CorrectDecisionModal({
 
   const existingDomains = new Set(businessDomainOptions.map((a) => a.key));
   const existingDocumentTypes = new Set(documentTypeOptions.map((a) => a.key));
-  const suggestedBusinessDomain = (item.suggested_business_domain || item.suggested_area || "").trim();
+  const suggestedBusinessDomain = (item.suggested_business_domain || "").trim();
   const suggestedDocumentType = (item.suggested_document_type || "").trim();
-  const llmProposedBusinessDomain = (item.llm_proposed_area || "").trim();
+  const llmProposedBusinessDomain = (item.llm_proposed_business_domain || "").trim();
   const suggestedBusinessDomainMissing = !!suggestedBusinessDomain && !existingDomains.has(suggestedBusinessDomain);
   const suggestedDocumentTypeMissing = !!suggestedDocumentType && !existingDocumentTypes.has(suggestedDocumentType);
   const llmProposedBusinessDomainMissing =
@@ -56,12 +56,12 @@ export function CorrectDecisionModal({
 
         {item.llm_explanation && (
           <div className="modal-llm-context">
-            {item.rule_area_key && (
-              <p>Regra: <code>{item.rule_area_key}</code> (conf {(item.rule_confidence ?? 0).toFixed(2)})</p>
+            {item.rule_business_domain && (
+              <p>Regra: <code>{item.rule_business_domain}</code> (conf {(item.rule_confidence ?? 0).toFixed(2)})</p>
             )}
             <p>LLM: <em>{item.llm_explanation}</em></p>
-            {item.llm_proposed_area && (
-              <p>Domínio proposto: <code>{item.llm_proposed_area}</code></p>
+            {item.llm_proposed_business_domain && (
+              <p>Domínio proposto: <code>{item.llm_proposed_business_domain}</code></p>
             )}
           </div>
         )}

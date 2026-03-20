@@ -2,16 +2,17 @@
 
 O profile de cada projeto fica em `_PROFILE/profile.json` e segue o schema `ProjectProfileV2` em `backend/app/profile_schema_v2.py`.
 
-## Contrato operacional da 0.7.0
+## Contrato operacional da 0.8.0
 
 - O eixo funcional canonico e `classification.business_domains`.
 - O eixo formal canonico e `classification.document_types`.
 - O layout fisico final em `02_AREAS/` e derivado como `02_AREAS/<business_domain>/<document_type>/`.
 - `layout.business_domain_folders` mapeia o primeiro nivel fisico.
-- `area_key` continua existindo no runtime e no indice como espelho de `business_domain`, nao como taxonomia separada.
-- `work_areas` e `layout.area_folders` ainda existem no schema para leitura/espelhamento, mas novos templates e novos perfis devem usar `business_domains` e `business_domain_folders` como fonte de verdade.
+- `business_domain` e o unico eixo funcional persistido no runtime, na API e no indice.
+- O schema atual usa apenas `classification.business_domains` e `layout.business_domain_folders` para o eixo funcional.
+- `classification.operational.override_mode` permite fixar o modo efetivo do classificador por projeto quando houver necessidade de override manual.
 
-## Exemplo minimo alinhado a 0.7.0
+## Exemplo minimo alinhado a 0.8.0
 
 ```json
 {
@@ -123,14 +124,17 @@ O profile de cada projeto fica em `_PROFILE/profile.json` e segue o schema `Proj
       "mode": "tag_only",
       "allow_override_fields": ["document_type", "tags", "confidence", "topics"],
       "override_guardrails": {
-        "area_override_only_if_rule_confidence_below": 0.65,
+        "business_domain_override_only_if_rule_confidence_below": 0.65,
         "require_explanation": true,
-        "max_area_changes": 1
+        "max_business_domain_changes": 1
       }
+    },
+    "operational": {
+      "override_mode": null
     }
   },
   "naming": {
-    "canonical_pattern": "{date}__{project}__{original_name}",
+    "canonical_pattern": "{date}__{project}__{business_domain}__{original_name}",
     "date_format": "%Y%m%d"
   },
   "indexing": {
@@ -153,7 +157,8 @@ O profile de cada projeto fica em `_PROFILE/profile.json` e segue o schema `Proj
 | `classification.entity_catalog` | Entidades conhecidas adicionais para extracao deterministica |
 | `classification.routing_rules` | Atalhos deterministas opcionais por path ou filename |
 | `classification.confidence_thresholds` | Gates de auto-route e triagem |
-| `classification.llm_policy` | Configuracao do LLM; no template default da 0.7.0 fica desabilitado |
+| `classification.llm_policy` | Configuracao do LLM; no template default da 0.8.0 fica desabilitado |
+| `classification.operational` | Override opcional do modo efetivo do classificador por projeto |
 | `naming` | Pattern canonico do nome do arquivo |
 | `indexing` | Topics, limite de extracao e modo (`excerpt` ou `all`) |
 
@@ -164,13 +169,15 @@ O profile de cada projeto fica em `_PROFILE/profile.json` e segue o schema `Proj
 - Cada `document_type.folder` deve ser unico.
 - Cada `layout.business_domain_folders.business_domain` deve existir em `classification.business_domains`.
 - `naming.canonical_pattern` precisa conter `{original_name}`.
+- `classification.operational.override_mode`, quando preenchido, deve ser `bootstrap`, `sparse_logreg` ou `sparse_linear_svc`.
 - `routing_rules` sao opcionais; o bootstrap atual nao depende delas para funcionar.
 - `entity_catalog` pode ficar vazio; regexes basicas continuam ativas para CNPJ, email, contrato e valores.
 
 ## LLM no profile
 
-O schema ainda suporta `tag_only`, `review` e `full_override`, mas o contrato operacional da 0.7.0 e:
+O schema ainda suporta `tag_only`, `review` e `full_override`, mas o contrato operacional da 0.8.0 e:
 
 - LLM desabilitado por padrao em `config/templates/default.json`.
 - LLM nao e classificador primario.
 - Quando habilitado, atua como enriquecedor ou revisor, nunca como pre-requisito para o fluxo.
+- O override manual do classificador pertence a `classification.operational` e e independente da politica de LLM.

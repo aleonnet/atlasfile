@@ -19,7 +19,7 @@ def _mock_stats_response(total: int = 5) -> dict:
         "hits": {"total": {"value": total, "relation": "eq"}, "hits": []},
         "aggregations": {
             "by_doc_kind": {"buckets": [{"key": "pdf", "doc_count": 3}, {"key": "docx", "doc_count": 2}]},
-            "by_area_key": {"buckets": [{"key": "juridica", "doc_count": 4}, {"key": "financeiro", "doc_count": 1}]},
+            "by_business_domain": {"buckets": [{"key": "juridica", "doc_count": 4}, {"key": "financeiro", "doc_count": 1}]},
             "by_document_type": {"buckets": [{"key": "contrato", "doc_count": 3}]},
             "by_extension": {"buckets": [{"key": ".pdf", "doc_count": 3}, {"key": ".docx", "doc_count": 2}]},
             "by_tags": {"buckets": [{"key": "juridica", "doc_count": 4}]},
@@ -39,7 +39,7 @@ def test_stats_returns_aggregations(client):
     assert len(data["by_doc_kind"]) == 2
     assert data["by_doc_kind"][0]["key"] == "pdf"
     assert data["by_doc_kind"][0]["count"] == 3
-    assert len(data["by_area_key"]) == 2
+    assert len(data["by_business_domain"]) == 2
     assert len(data["by_document_type"]) == 1
     assert len(data["by_extension"]) == 2
     assert len(data["by_tags"]) == 1
@@ -70,7 +70,7 @@ def test_stats_empty_index(client):
             "hits": {"total": {"value": 0, "relation": "eq"}, "hits": []},
             "aggregations": {
                 "by_doc_kind": {"buckets": []},
-                "by_area_key": {"buckets": []},
+                "by_business_domain": {"buckets": []},
                 "by_document_type": {"buckets": []},
                 "by_extension": {"buckets": []},
                 "by_tags": {"buckets": []},
@@ -82,5 +82,5 @@ def test_stats_empty_index(client):
     data = resp.json()
     assert data["total_documents"] == 0
     assert data["by_doc_kind"] == []
-    assert data["by_area_key"] == []
+    assert data["by_business_domain"] == []
     assert data["by_project_id"] == []

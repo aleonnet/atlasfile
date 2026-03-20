@@ -400,7 +400,7 @@ def classify_business_domain(
         "business_domain_confidence": _domain_confidence(best_score, second_score),
         "business_domain_reason": "bootstrap_aliases",
         "top_business_domain_candidates": [
-            {"business_domain": key, "score": score, "area_key": key}
+            {"business_domain": key, "score": score}
             for key, score, _, _, _, _, _ in candidates[:3]
         ],
     }
@@ -424,7 +424,7 @@ def classify_bootstrap(
     topics_input = "\n".join(part for part in [source_path.name, text_excerpt] if part)
     topics, topics_source = match_topics(
         text=topics_input,
-        area_key=str(domain_result.get("business_domain") or "").strip() or None,
+        business_domain=str(domain_result.get("business_domain") or "").strip() or None,
         profile=profile,
     )
     confidence = round(
@@ -437,14 +437,13 @@ def classify_bootstrap(
     business_domain = str(domain_result["business_domain"])
     return {
         "business_domain": business_domain,
-        "area_key": business_domain,
         "document_type": str(doc_type_result["document_type"]),
         "document_type_confidence": float(doc_type_result.get("document_type_confidence") or 0.0),
         "business_domain_confidence": float(domain_result.get("business_domain_confidence") or 0.0),
         "confidence": confidence,
         "reason": f"{domain_result.get('business_domain_reason')}|{doc_type_result.get('document_type_reason')}",
         "top_candidates": [
-            {"business_domain": row["business_domain"], "area_key": row["business_domain"], "score": row["score"]}
+            {"business_domain": row["business_domain"], "score": row["score"]}
             for row in domain_result.get("top_business_domain_candidates", [])
         ],
         "top_document_type_candidates": doc_type_result.get("top_document_type_candidates", []),

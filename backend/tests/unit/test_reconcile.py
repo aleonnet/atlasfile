@@ -24,10 +24,14 @@ from app.utils import sha256_file
 def _minimal_profile(project_root: Path | None = None) -> dict[str, Any]:
     return {
         "project_id": "test_proj",
+        "business_domains": [
+            {"key": "financeiro", "folder": "04_financeiro"},
+            {"key": "juridica", "folder": "02_juridica"},
+        ],
         "classification": {
-            "work_areas": [
-                {"key": "financeiro", "jd_number": 4, "aliases": []},
-                {"key": "juridica", "jd_number": 2, "aliases": []},
+            "business_domains": [
+                {"key": "financeiro", "aliases": []},
+                {"key": "juridica", "aliases": []},
             ],
         },
         "layout": {
@@ -39,9 +43,9 @@ def _minimal_profile(project_root: Path | None = None) -> dict[str, Any]:
                 "archive": "04_ARCHIVE",
             },
             "areas_root": "02_AREAS",
-            "area_folders": [
-                {"area_key": "financeiro", "folder": "04_financeiro"},
-                {"area_key": "juridica", "folder": "02_juridica"},
+            "business_domain_folders": [
+                {"business_domain": "financeiro", "folder": "04_financeiro"},
+                {"business_domain": "juridica", "folder": "02_juridica"},
             ],
         },
         "paths": {
@@ -108,7 +112,7 @@ def test_parse_index_rows_missing_file() -> None:
 
 def test_parse_index_rows_empty() -> None:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as f:
-        f.write("| doc_id | project_id | area | ...\n")
+        f.write("| doc_id | project_id | business_domain | ...\n")
         f.write("|---|\n")
         path = Path(f.name)
     try:
@@ -120,7 +124,7 @@ def test_parse_index_rows_empty() -> None:
 
 def test_parse_index_rows_valid_row() -> None:
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as f:
-        f.write("| doc_id | project_id | area | orig | canon | decision | conf | path | naming_pattern |\n")
+        f.write("| doc_id | project_id | business_domain | orig | canon | decision | conf | path | naming_pattern |\n")
         f.write("|---|\n")
         f.write("| id1 | proj1 | ativos | f.pdf | 20260101__proj1__f__v01.pdf | auto | 0.95 | proj1/02_AREAS/03_ativos/f.pdf | {date}__{project}__{original_name} |\n")
         path = Path(f.name)
@@ -138,7 +142,7 @@ def test_parse_index_rows_valid_row() -> None:
 def test_parse_index_rows_legacy_without_naming_pattern() -> None:
     """Legacy _INDEX.md rows without naming_pattern column get empty string fallback."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as f:
-        f.write("| doc_id | project_id | area | orig | canon | decision | conf | path |\n")
+        f.write("| doc_id | project_id | business_domain | orig | canon | decision | conf | path |\n")
         f.write("|---|\n")
         f.write("| id1 | proj1 | ativos | f.pdf | 20260101__proj1__f__v01.pdf | auto | 0.95 | some/path |\n")
         path = Path(f.name)
@@ -271,8 +275,8 @@ def test_reconcile_scans_all_para_roots(tmp_path: Path) -> None:
     assert len(data_lines) == 4
 
 
-def test_reconcile_para_roots_area_key(tmp_path: Path) -> None:
-    """Non-areas roots use their PARA category as area_key; areas root infers from subfolder."""
+def test_reconcile_para_roots_business_domain(tmp_path: Path) -> None:
+    """Non-areas roots use their PARA category as business_domain; areas root infers from subfolder."""
     profile = _minimal_profile()
 
     for folder in ("01_PROJECTS", "02_AREAS/04_financeiro", "03_RESOURCES", "04_ARCHIVE"):
@@ -428,7 +432,7 @@ def test_sync_search_reindexes_same_sha_when_document_type_missing(tmp_path: Pat
             [
                 "# _INDEX",
                 "",
-                "| doc_id | project_id | area | original_filename | canonical_filename | decision | confidence | path | naming_pattern |",
+                "| doc_id | project_id | business_domain | original_filename | canonical_filename | decision | confidence | path | naming_pattern |",
                 "|---|---|---|---|---|---|---:|---|---|",
                 f"| doc-1 | test_proj | financeiro | Contrato TI.pdf | {file_path.name} | auto | 0.90 | {file_path} | {{date}}__{{project}}__{{original_name}} |",
                 "",

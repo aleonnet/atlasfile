@@ -57,26 +57,6 @@ def _normalize_folder_rows(rows: list[dict] | None, *, key_field: str) -> list[t
     return normalized
 
 
-def _sync_layout_mirrors(payload: dict, current: ProjectProfileV2) -> dict:
-    layout = dict(payload.get("layout") or {})
-    current_area = [(row.area_key, row.folder) for row in current.layout.area_folders]
-    current_domain = [(row.business_domain, row.folder) for row in current.layout.business_domain_folders]
-    new_area = _normalize_folder_rows(layout.get("area_folders"), key_field="area_key")
-    new_domain = _normalize_folder_rows(layout.get("business_domain_folders"), key_field="business_domain")
-
-    if new_area and (not new_domain or (new_area != current_area and new_domain == current_domain)):
-        layout["business_domain_folders"] = [
-            {"business_domain": area_key, "folder": folder} for area_key, folder in new_area
-        ]
-    elif new_domain and (not new_area or (new_domain != current_domain and new_area == current_area)):
-        layout["area_folders"] = [
-            {"area_key": business_domain, "folder": folder} for business_domain, folder in new_domain
-        ]
-
-    payload["layout"] = layout
-    return payload
-
-
 def _normalize_new_profile(
     raw: dict | ProjectProfileV2,
     *,
@@ -88,32 +68,25 @@ def _normalize_new_profile(
     payload["project_id"] = current.project_id
     payload["project_label"] = payload.get("project_label") or current.project_label
     payload["project_root"] = str(project_root)
-    payload = _sync_layout_mirrors(payload, current)
     try:
         return ProjectProfileV2.model_validate(payload)
     except Exception:
         if not relax_cross_validate:
             raise
-        # Auto-sync: remove work_areas/routing_rules that reference area_keys
-        # no longer present in area_folders, keeping the rest intact.
+        # Auto-sync: remove routing rules and domains that no longer exist in
+        # layout.business_domain_folders so folder-removal simulations stay valid.
         relaxed = dict(payload)
-        area_folder_keys = {
-            af.get("area_key") for af in (relaxed.get("layout") or {}).get("area_folders", [])
+        business_domain_folder_keys = {
+            bf.get("business_domain")
+            for bf in (relaxed.get("layout") or {}).get("business_domain_folders", [])
         }
-        if not area_folder_keys:
-            area_folder_keys = {
-                bf.get("business_domain") for bf in (relaxed.get("layout") or {}).get("business_domain_folders", [])
-            }
         cls = dict(relaxed.get("classification") or {})
-        cls["work_areas"] = [
-            wa for wa in cls.get("work_areas", []) if wa.get("key") in area_folder_keys
-        ]
         cls["business_domains"] = [
-            bd for bd in cls.get("business_domains", []) if bd.get("key") in area_folder_keys
+            bd for bd in cls.get("business_domains", []) if bd.get("key") in business_domain_folder_keys
         ]
         cls["routing_rules"] = [
             rr for rr in cls.get("routing_rules", [])
-            if not rr.get("route_to") or rr.get("route_to") in area_folder_keys
+            if not rr.get("route_to") or rr.get("route_to") in business_domain_folder_keys
         ]
         relaxed["classification"] = cls
         return ProjectProfileV2.model_validate(relaxed)
@@ -129,7 +102,6 @@ def _layout_only_target_profile(
     payload["project_id"] = current.project_id
     payload["project_label"] = payload.get("project_label") or current.project_label
     payload["project_root"] = str(project_root)
-    payload = _sync_layout_mirrors(payload, current)
     layout_payload = dict(payload.get("layout") or current.layout.model_dump(mode="json"))
     layout = type(current.layout).model_validate(layout_payload)
     return current.model_copy(

@@ -17,20 +17,9 @@ def _routing_rule_to_dict(rule: Any) -> dict[str, Any]:
 
 
 def profile_v2_to_runtime(profile: ProjectProfileV2, project_root: Path) -> dict[str, Any]:
-    area_folder_map = {af.area_key: af.folder for af in profile.layout.area_folders}
     business_domain_folder_map = {
         row.business_domain: row.folder for row in profile.layout.business_domain_folders
     }
-    work_areas: list[dict[str, Any]] = []
-    for area in profile.classification.work_areas:
-        work_areas.append(
-            {
-                "key": area.key,
-                "jd_number": area.jd_number,
-                "aliases": list(area.aliases),
-                "folder": area_folder_map.get(area.key),
-            }
-        )
     business_domains: list[dict[str, Any]] = []
     for domain in profile.classification.business_domains:
         business_domains.append(
@@ -51,8 +40,7 @@ def profile_v2_to_runtime(profile: ProjectProfileV2, project_root: Path) -> dict
         "inbox_path": profile.paths.inbox,
         "triage_path": profile.paths.triage.pending,
         "triage_paths": profile.paths.triage.model_dump(mode="json"),
-        "work_root": profile.layout.areas_root,
-        "work_areas": work_areas,
+        "areas_root": profile.layout.areas_root,
         "business_domains": business_domains,
         "routing_rules": [_routing_rule_to_dict(r) for r in profile.classification.routing_rules],
         "confidence_thresholds": profile.classification.confidence_thresholds.model_dump(mode="json"),
@@ -60,6 +48,7 @@ def profile_v2_to_runtime(profile: ProjectProfileV2, project_root: Path) -> dict
         "layout": profile.layout.model_dump(mode="json"),
         "paths": profile.paths.model_dump(mode="json"),
         "classification": profile.classification.model_dump(mode="json"),
+        "naming": profile.naming.model_dump(mode="json"),
         "indexing": profile.indexing.model_dump(mode="json"),
         "version": profile.version,
         "_profile_path": str(project_root / PROFILE_DIR / PROFILE_FILE),

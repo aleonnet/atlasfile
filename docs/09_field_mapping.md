@@ -1,6 +1,6 @@
 # Mapeamento de campos -- origem, derivacao e uso
 
-Este documento reflete o estado atual da 0.7.0. O eixo operacional do AtlasFile e `business_domain`; o campo `area_key` continua existindo como espelho do mesmo valor para compatibilidade de API e indice.
+Este documento reflete o estado atual da 0.8.0. O eixo operacional do AtlasFile e `business_domain`.
 
 ## 1) Indice principal: `atlasfile_documents`
 
@@ -10,8 +10,7 @@ Este documento reflete o estado atual da 0.7.0. O eixo operacional do AtlasFile 
 |-------|---------|---------------|---------------|
 | `doc_id` | keyword | UUID gerado na ingestao | Chave primaria do documento |
 | `project_id` | keyword | `profile.project_id` | Escopo por projeto |
-| `business_domain` | keyword | Bootstrap ou decisao humana | Eixo funcional operacional |
-| `area_key` | keyword | Mesmo valor de `business_domain` | Compatibilidade de payload e filtros antigos |
+| `business_domain` | keyword | Classificador operacional ou decisao humana | Eixo funcional operacional |
 | `original_filename` | keyword | Nome original do arquivo | Exibicao e auditoria |
 | `original_filename_text` | text | Enriquecimento de busca | Busca lexical por nome |
 | `original_filename_normalized` | text | Enriquecimento de busca | Busca sem acentos |
@@ -50,13 +49,13 @@ Todo o texto indexado fica em `content_chunks`. Campos flat de conteudo nao exis
 |-------|---------|---------------|---------------|
 | `decision` | keyword | Ingestao | `auto`, `triage_pending`, `duplicate` |
 | `confidence_score` | float | Ingestao | Gate geral de auto-route |
-| `business_domain_confidence` | float | Bootstrap | Confianca do eixo funcional |
-| `document_type_confidence` | float | Bootstrap | Confianca do eixo formal |
-| `document_type` | keyword | Bootstrap ou decisao humana | Eixo formal operacional |
+| `business_domain_confidence` | float | Classificador operacional | Confianca do eixo funcional |
+| `document_type_confidence` | float | Classificador operacional | Confianca do eixo formal |
+| `document_type` | keyword | Classificador operacional ou decisao humana | Eixo formal operacional |
 | `tags` | keyword | Ingestao e LLM opcional | Facetas leves e sinalizacao |
 | `topics` | keyword | `match_topics()` ou LLM opcional | Contexto transversal |
 | `topics_source` | keyword | Ingestao | `synonym_match`, `llm_policy` ou equivalente |
-| `entities` | object disabled | Bootstrap | Entidades extraidas para auditoria e uso futuro |
+| `entities` | object disabled | Classificador operacional | Entidades extraidas para auditoria e uso futuro |
 | `review_status` | keyword | Ingestao | `needs_review` quando cai em triagem |
 | `correspondent` | keyword | Metadado opcional | Filtro/exibicao |
 | `sha256` | keyword | Ingestao | Dedup e integridade |
@@ -79,10 +78,10 @@ Esses campos aparecem em payloads, historico ou UI, mas nao fazem parte do mappi
 | Campo | Onde nasce | Finalidade |
 |-------|------------|------------|
 | `content` | Ingestao / resposta de leitura | Excerpt temporario ou conteudo recomposto; nao e campo indexado |
-| `rule_area_key` | Fluxo de classificacao com LLM | Mostrar a classificacao deterministica original antes de eventual revisao |
+| `rule_business_domain` | Fluxo de classificacao com LLM | Mostrar a classificacao deterministica original antes de eventual revisao |
 | `rule_confidence` | Fluxo de classificacao com LLM | Mostrar confianca anterior |
 | `llm_explanation` | LLM opcional | Auditoria da revisao |
-| `llm_proposed_area` | LLM opcional | Rastrear sugestao fora do catalogo |
+| `llm_proposed_business_domain` | LLM opcional | Rastrear sugestao fora do catalogo |
 | `classification_reason` | Bootstrap/ingestao | Motivo resumido da decisao |
 
 ## 3) Outros indices
@@ -124,7 +123,7 @@ Indice separado para custo/uso do LLM na classificacao documental quando o LLM e
 
 ```mermaid
 flowchart TD
-    A[_INBOX_DROP] --> B[Bootstrap: document_type + entities + business_domain]
+    A[_INBOX_DROP] --> B[Classificador operacional: document_type + entities + business_domain]
     B --> C[Thresholds: auto ou triage]
     C --> D[_INDEX.md]
     C --> E[atlasfile_documents]
@@ -135,7 +134,6 @@ flowchart TD
 
 ## 5) Observacoes importantes
 
-- `business_domain` e `document_type` sao os dois eixos canonicos da 0.7.0.
-- `area_key` nao representa uma segunda taxonomia; hoje ele espelha `business_domain`.
+- `business_domain` e `document_type` sao os dois eixos canonicos da 0.8.0.
 - Os campos `*_ocr_folded` existem para mitigar ruido de OCR em nomes e conteudo.
 - O indice continua em arquitetura `pure nested`: highlight e busca full-text operam sobre `content_chunks`.

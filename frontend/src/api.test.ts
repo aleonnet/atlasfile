@@ -120,10 +120,10 @@ describe("searchDocuments", () => {
         json: () => Promise.resolve({ total: 0, page: 1, page_size: 20, total_pages: 0, hits: [] })
       } as Response);
     });
-    await searchDocuments("contrato", "p1", 1, 20, { doc_kind: "pdf", document_type: "contrato", area_key: "juridica" });
+    await searchDocuments("contrato", "p1", 1, 20, { doc_kind: "pdf", document_type: "contrato", business_domain: "juridica" });
     expect(capturedUrl).toContain("doc_kind=pdf");
     expect(capturedUrl).toContain("document_type=contrato");
-    expect(capturedUrl).toContain("area_key=juridica");
+    expect(capturedUrl).toContain("business_domain=juridica");
   });
 
   it("omits filter params when undefined", async () => {
@@ -138,7 +138,7 @@ describe("searchDocuments", () => {
     await searchDocuments("test", undefined, 1, 20, {});
     expect(capturedUrl).not.toContain("doc_kind");
     expect(capturedUrl).not.toContain("document_type");
-    expect(capturedUrl).not.toContain("area_key");
+    expect(capturedUrl).not.toContain("business_domain");
   });
 });
 
@@ -148,7 +148,7 @@ describe("fetchStats", () => {
   });
 
   it("returns stats on 200", async () => {
-    const mockStats = { project_id: null, total_documents: 5, by_doc_kind: [], by_area_key: [], by_document_type: [], by_extension: [], by_tags: [] };
+    const mockStats = { project_id: null, total_documents: 5, by_doc_kind: [], by_business_domain: [], by_document_type: [], by_extension: [], by_tags: [] };
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(mockStats)
@@ -163,7 +163,7 @@ describe("fetchStats", () => {
       capturedUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ project_id: "p1", total_documents: 0, by_doc_kind: [], by_area_key: [], by_document_type: [], by_extension: [], by_tags: [] })
+        json: () => Promise.resolve({ project_id: "p1", total_documents: 0, by_doc_kind: [], by_business_domain: [], by_document_type: [], by_extension: [], by_tags: [] })
       } as Response);
     });
     await fetchStats("p1");

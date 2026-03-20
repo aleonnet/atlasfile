@@ -88,9 +88,9 @@
         "topics"
       ],
       "override_guardrails": {
-        "area_override_only_if_rule_confidence_below": 0.65,
+        "business_domain_override_only_if_rule_confidence_below": 0.65,
         "require_explanation": true,
-        "max_area_changes": 1
+        "max_business_domain_changes": 1
       }
     }
   },
@@ -98,7 +98,7 @@
     "_available_fields": {
       "date": "Data de ingestão (formato definido em date_format)",
       "project": "ID do projeto (normalizado, lowercase, sem acentos)",
-      "area": "Domínio classificado (ex: financeiro, juridico)",
+      "business_domain": "Domínio classificado (ex: financeiro, juridico)",
       "original_name": "Nome original do arquivo sem extensão (preservado intacto)",
       "document_type": "Tipo classificado (ex: contrato, relatorio, ata)"
     },

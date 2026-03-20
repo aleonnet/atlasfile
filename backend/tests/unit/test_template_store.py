@@ -27,11 +27,9 @@ SAMPLE_TEMPLATE_DATA = {
         "mode": "para_jd",
         "roots": {"projects": "01", "areas": "02", "resources": "03", "archive": "04"},
         "areas_root": "02",
-        "area_folders": [{"area_key": "test_area", "folder": "01_test"}],
         "business_domain_folders": [{"business_domain": "test_area", "folder": "01_test"}],
     },
     "classification": {
-        "work_areas": [{"key": "test_area", "jd_number": 1, "aliases": ["test"]}],
         "business_domains": [
             {
                 "key": "test_area",
@@ -73,8 +71,8 @@ SAMPLE_TEMPLATE_DATA = {
         "llm_policy": {
             "enabled": False, "provider": "openai", "model": "gpt-4o-mini", "mode": "tag_only",
             "allow_override_fields": [], "override_guardrails": {
-                "area_override_only_if_rule_confidence_below": 0.65,
-                "require_explanation": True, "max_area_changes": 1,
+                "business_domain_override_only_if_rule_confidence_below": 0.65,
+                "require_explanation": True, "max_business_domain_changes": 1,
             },
         },
     },
@@ -143,7 +141,9 @@ def test_delete_builtin_not_allowed(tmp_path: Path, monkeypatch):
     """Non-default builtin templates cannot be deleted via user dir."""
     builtin = tmp_path / "builtin"
     builtin.mkdir()
-    (builtin / "shipped.json").write_text(json.dumps({"template_meta": {"slug": "shipped"}, "classification": {"work_areas": []}}))
+    (builtin / "shipped.json").write_text(
+        json.dumps({"template_meta": {"slug": "shipped"}, "classification": {"business_domains": []}})
+    )
     monkeypatch.setattr("app.template_store.BUILTIN_DIR", builtin)
     user = tmp_path / "user"
     user.mkdir()
@@ -175,7 +175,7 @@ def test_create_profile_from_template():
     )
     assert profile.project_id == "TestProject"
     assert profile.project_label == "Test Project"
-    assert len(profile.classification.work_areas) > 0
+    assert len(profile.classification.business_domains) > 0
 
 
 def test_create_profile_from_user_template(tmp_path: Path, monkeypatch):
@@ -188,7 +188,7 @@ def test_create_profile_from_user_template(tmp_path: Path, monkeypatch):
         project_label="Custom Project",
     )
     assert profile.project_id == "CustomProject"
-    assert len(profile.classification.work_areas) == 1
+    assert len(profile.classification.business_domains) == 1
 
 
 def test_save_template_persists_minimal_bootstrap_contract(tmp_path: Path, monkeypatch):
@@ -210,13 +210,15 @@ def test_save_template_persists_minimal_bootstrap_contract(tmp_path: Path, monke
 
     stored = json.loads((tmp_path / "minimal_bootstrap.json").read_text(encoding="utf-8"))
     classification = stored["classification"]
-    assert "work_areas" in classification
-    assert "document_type_priors" not in classification
-    assert "entity_domain_affinity" not in classification
-    assert "context_boosts" not in classification
-    assert "thresholds" not in classification
-    assert "confidence_thresholds" in classification
-    assert "llm_policy" in classification
+    assert sorted(classification.keys()) == [
+        "business_domains",
+        "confidence_thresholds",
+        "document_types",
+        "entity_catalog",
+        "llm_policy",
+        "operational",
+        "routing_rules",
+    ]
 
 
 def test_default_template_business_domains_include_scope_metadata():
@@ -226,3 +228,11 @@ def test_default_template_business_domains_include_scope_metadata():
     assert domains
     assert all(str(domain.get("primary_scope") or "").strip() for domain in domains)
     assert all(isinstance(domain.get("subfunction_topics"), list) and domain.get("subfunction_topics") for domain in domains)
+
+
+def test_save_template_rejects_legacy_area_placeholder_in_naming(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("app.template_store._user_dir", lambda: tmp_path)
+    invalid = {**SAMPLE_TEMPLATE_DATA, "naming": {"canonical_pattern": "{date}__{project}__{area}__{original_name}", "date_format": "%Y%m%d"}}
+
+    with pytest.raises(ValueError, match=r"\{business_domain\} instead of \{area\}"):
+        save_template("legacy_area_placeholder", invalid)

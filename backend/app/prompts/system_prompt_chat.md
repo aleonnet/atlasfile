@@ -9,20 +9,20 @@ Responda com base em evidências (cite trechos e doc_id quando relevante). Seja 
   - `query`: texto de busca (obrigatório, mínimo 2 caracteres)
   - `doc_kind`: tipo de arquivo (pdf, docx, xlsx, pptx, plain_text, html, msg, archive_listing)
   - `document_type`: tipo classificado (contrato, nota_fiscal, apresentacao, relatorio, ata, parecer, proposta...)
-  - `area_key`: área do projeto (ex: societario_fiscal, juridica, contratos_comunicacao...)
+  - `business_domain`: domínio de negócio do projeto (ex: societario, juridico, financeiro, operacoes...)
   - `tags`: lista de tags (qualquer match)
   - `date_from` / `date_to`: datas ISO para filtrar por ingested_at
   - Combine filtros com query para buscas precisas. Ex: "liste contratos com vício crítico" → search_documents(query="vício crítico", document_type="contrato")
-- **list_documents**: lista/enumera documentos com filtros opcionais (sem busca textual). Use para listar documentos de um projeto, filtrar por tipo ou área sem precisar de uma query de texto. Ex: "quais documentos existem no projeto X?" → list_documents(project_id="x")
+- **list_documents**: lista/enumera documentos com filtros opcionais (sem busca textual). Use para listar documentos de um projeto, filtrar por tipo ou domínio sem precisar de uma query de texto. Ex: "quais documentos existem no projeto X?" → list_documents(project_id="x")
 - **get_document**: metadados + conteúdo completo (pode ser truncado para documentos grandes)
 - **get_document_chunks**: chunks específicos por location (prefira ao get_document para documentos grandes)
 
 ### Estatísticas e contagens
-- **get_stats**: retorna total_documents e distribuições por doc_kind, area_key, document_type, extension, tags. Use para perguntas quantitativas ("quantos PDFs?", "distribuição por área", "quais tipos de documento existem?").
+- **get_stats**: retorna total_documents e distribuições por doc_kind, business_domain, document_type, extension, tags. Use para perguntas quantitativas ("quantos PDFs?", "distribuição por domínio", "quais tipos de documento existem?").
 
 ### Tags e metadados
 - **apply_tags**: adicionar/remover tags
-- **set_metadata**: atualizar document_type, correspondent, area_key, review_status
+- **set_metadata**: atualizar document_type, correspondent, business_domain, review_status
 - **list_tags**: listar tags únicas
 - **create_review_marker**: marcar para revisão
 

@@ -90,15 +90,19 @@ def test_layout_plan_and_apply_moves_files(client: TestClient, tmp_path: Path) -
         profile = data["profile"]
         version = int(data["version"])
 
-        area_key = profile["classification"]["work_areas"][0]["key"]
-        old_folder = next(item["folder"] for item in profile["layout"]["area_folders"] if item["area_key"] == area_key)
+        business_domain = profile["classification"]["business_domains"][0]["key"]
+        old_folder = next(
+            item["folder"]
+            for item in profile["layout"]["business_domain_folders"]
+            if item["business_domain"] == business_domain
+        )
         old_file = project_root / profile["layout"]["areas_root"] / old_folder / "doc.txt"
         old_file.parent.mkdir(parents=True, exist_ok=True)
         old_file.write_text("conteudo", encoding="utf-8")
 
         target_folder = f"99_{old_folder}"
-        for area in profile["layout"]["area_folders"]:
-            if area["area_key"] == area_key:
+        for area in profile["layout"]["business_domain_folders"]:
+            if area["business_domain"] == business_domain:
                 area["folder"] = target_folder
                 break
 
@@ -109,7 +113,7 @@ def test_layout_plan_and_apply_moves_files(client: TestClient, tmp_path: Path) -
         assert plan_resp.status_code == 200
         plan_data = plan_resp.json()
         assert plan_data["summary"]["ops"] > 0
-        # Same area_key with different folder → rename_dir (not moves)
+        # Same business_domain with different folder → rename_dir (not moves)
         assert plan_data["summary"]["renames"] >= 1
 
         no_confirm_resp = client.post(
@@ -149,13 +153,17 @@ def test_layout_plan_and_apply_moves_files(client: TestClient, tmp_path: Path) -
 
 
 def test_plan_rename_folder_uses_rename_dir(client: TestClient, tmp_path: Path) -> None:
-    """Renaming an area_folder should produce a rename_dir op (not moves)."""
+    """Renaming a business_domain folder should produce a rename_dir op (not moves)."""
     project_root = _setup_project(tmp_path, "proj_rename")
     with _both_patches(tmp_path):
         profile = client.get(f"/api/projects/{project_root.name}/profile").json()["profile"]
 
-        area_key = profile["classification"]["work_areas"][0]["key"]
-        old_folder = next(a["folder"] for a in profile["layout"]["area_folders"] if a["area_key"] == area_key)
+        business_domain = profile["classification"]["business_domains"][0]["key"]
+        old_folder = next(
+            a["folder"]
+            for a in profile["layout"]["business_domain_folders"]
+            if a["business_domain"] == business_domain
+        )
         area_dir = project_root / profile["layout"]["areas_root"] / old_folder
         area_dir.mkdir(parents=True, exist_ok=True)
         (area_dir / "a.pdf").write_bytes(b"pdf")
@@ -165,8 +173,8 @@ def test_plan_rename_folder_uses_rename_dir(client: TestClient, tmp_path: Path) 
         (sub / "c.txt").write_text("hi")
 
         new_folder = "renamed_folder"
-        for a in profile["layout"]["area_folders"]:
-            if a["area_key"] == area_key:
+        for a in profile["layout"]["business_domain_folders"]:
+            if a["business_domain"] == business_domain:
                 a["folder"] = new_folder
 
         resp = client.post(
@@ -184,19 +192,25 @@ def test_plan_rename_folder_uses_rename_dir(client: TestClient, tmp_path: Path) 
 
 
 def test_plan_remove_folder_with_content_shows_conflicts(client: TestClient, tmp_path: Path) -> None:
-    """Removing an area_folder that has files should show conflicts (no new folder for area_key)."""
+    """Removing a business_domain folder that has files should show conflicts."""
     project_root = _setup_project(tmp_path, "proj_del_content")
     with _both_patches(tmp_path):
         profile = client.get(f"/api/projects/{project_root.name}/profile").json()["profile"]
 
-        area_key = profile["classification"]["work_areas"][0]["key"]
-        old_folder = next(a["folder"] for a in profile["layout"]["area_folders"] if a["area_key"] == area_key)
+        business_domain = profile["classification"]["business_domains"][0]["key"]
+        old_folder = next(
+            a["folder"]
+            for a in profile["layout"]["business_domain_folders"]
+            if a["business_domain"] == business_domain
+        )
         area_dir = project_root / profile["layout"]["areas_root"] / old_folder
         area_dir.mkdir(parents=True, exist_ok=True)
         (area_dir / "important.pdf").write_bytes(b"data")
 
-        profile["layout"]["area_folders"] = [
-            a for a in profile["layout"]["area_folders"] if a["area_key"] != area_key
+        profile["layout"]["business_domain_folders"] = [
+            a
+            for a in profile["layout"]["business_domain_folders"]
+            if a["business_domain"] != business_domain
         ]
 
         resp = client.post(
@@ -212,18 +226,24 @@ def test_plan_remove_folder_with_content_shows_conflicts(client: TestClient, tmp
 
 
 def test_plan_remove_empty_folder_with_cleanup(client: TestClient, tmp_path: Path) -> None:
-    """Removing an area_folder that is empty + cleanup_empty_dirs should produce rmdir_empty ops."""
+    """Removing a business_domain folder that is empty + cleanup_empty_dirs should produce rmdir_empty ops."""
     project_root = _setup_project(tmp_path, "proj_del_empty")
     with _both_patches(tmp_path):
         profile = client.get(f"/api/projects/{project_root.name}/profile").json()["profile"]
 
-        area_key = profile["classification"]["work_areas"][0]["key"]
-        old_folder = next(a["folder"] for a in profile["layout"]["area_folders"] if a["area_key"] == area_key)
+        business_domain = profile["classification"]["business_domains"][0]["key"]
+        old_folder = next(
+            a["folder"]
+            for a in profile["layout"]["business_domain_folders"]
+            if a["business_domain"] == business_domain
+        )
         area_dir = project_root / profile["layout"]["areas_root"] / old_folder
         area_dir.mkdir(parents=True, exist_ok=True)
 
-        profile["layout"]["area_folders"] = [
-            a for a in profile["layout"]["area_folders"] if a["area_key"] != area_key
+        profile["layout"]["business_domain_folders"] = [
+            a
+            for a in profile["layout"]["business_domain_folders"]
+            if a["business_domain"] != business_domain
         ]
 
         resp = client.post(
@@ -243,7 +263,6 @@ def test_validate_returns_errors_for_invalid_profile(client: TestClient, tmp_pat
     with _patch_projects_root(tmp_path):
         profile = client.get(f"/api/projects/{project_root.name}/profile").json()["profile"]
 
-        profile["layout"]["area_folders"] = []
         profile["layout"]["business_domain_folders"] = []
 
         resp = client.post(

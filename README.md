@@ -1,11 +1,12 @@
 # AtlasFile
 
-Sistema local de organização documental por projeto, com classificação por `business_domain` + `document_type`, triagem humana, indexação full-text, benchmark supervisionado e assistente conversacional.
+Sistema local de organização documental por projeto, com ciclo operacional de classificador, classificação por `business_domain` + `document_type`, triagem humana, indexação full-text, benchmark supervisionado e assistente conversacional.
 
 ## Visão geral
 
 - **Ingestão automática** via pasta `_INBOX_DROP` por projeto
-- **Classificação operacional** via `bootstrap`, produzindo `business_domain` + `document_type`
+- **Classificação operacional** via modo efetivo do runtime (`bootstrap`, `sparse_logreg` ou `sparse_linear_svc`)
+- **Ciclo do classificador** com benchmark + retreino, campeão global, override por projeto e reports persistidos
 - **Triagem humana** no frontend para documentos pendentes (`Aprovar`, `Corrigir`, `Rejeitar`)
 - **Dedup precoce** por SHA256 antes do fluxo completo
 - **Indexação** de conteúdo e metadados em OpenSearch com busca, suggest e highlight
@@ -14,6 +15,7 @@ Sistema local de organização documental por projeto, com classificação por `
 - **Canais** com Telegram opcional e comando `/projeto` para fixar escopo do chat
 - **Templates, profiles e layout** editáveis pela UI
 - **Benchmark supervisionado** com `validation_set` e `training_pool` disjuntos
+- **Status em tempo real** para reconcile, INBOX e ciclo do classificador
 - **Rastreabilidade** completa: nome original → nome canônico → triagem → índice → benchmark
 
 ## Stack
@@ -92,7 +94,14 @@ config/
 
 - `validation_set`: conjunto humano-curado para benchmark e aceite
 - `training_pool`: documentos revisados via triagem que alimentam os candidatos supervisionados
-- `backend/scripts/benchmark_classification.py`: compara `baseline`, `bootstrap`, `sparse_logreg` e `sparse_linear_svc`
+- `backend/scripts/benchmark_classification.py`: compara `bootstrap`, `sparse_logreg` e `sparse_linear_svc`
+
+## Ciclo operacional do classificador
+
+- O registry global em `_ATLASFILE/classifier` persiste `champion_mode`, gates de promocao, ultimo ciclo e ultimo report.
+- Cada projeto pode fixar `classification.operational.override_mode`; sem override, a ingestao usa o campeao atual.
+- O runtime serve `bootstrap`, `sparse_logreg` ou `sparse_linear_svc` e faz fallback explicito para `bootstrap` se o artefato supervisionado estiver ausente ou falhar.
+- A UI expoe benchmark + retreino, scorecards por documento, campeao atual e override manual sem reintroduzir `baseline` como modo publico.
 
 ## Execução local
 
@@ -144,10 +153,16 @@ Arquivo entra em _INBOX_DROP
    Dedup por SHA256
          │
          ▼
-   Extração de texto + metadados
+  Extração de texto + metadados
          │
-         ├─ detect_document_type(...)
-         └─ classify_bootstrap(...)
+         ▼
+  Resolver modo operacional
+         │
+         ├─ champion do registry
+         └─ override do projeto (opcional)
+                 │
+                 ▼
+  Classificar `document_type` + `business_domain`
                  │
                  ▼
    Confiança alta?
@@ -160,8 +175,8 @@ Arquivo entra em _INBOX_DROP
                   └─ Aprovar/Corrigir → grava em config/training_pool/records.jsonl
 ```
 
-- `bootstrap` é o classificador operacional atual
-- `sparse_*` são candidatos medidos em benchmark, não promovidos automaticamente
+- `bootstrap` continua como fallback seguro do runtime
+- `sparse_*` sao candidatos supervisionados e podem virar modo efetivo apos o ciclo oficial
 - o LLM de ingestão é opcional e não é o classificador principal
 
 ## Convenção de nomes (canonical)
@@ -174,7 +189,7 @@ Formato configurável via `naming.canonical_pattern` no template/profile. Defaul
 
 Exemplo: `20260301__kaido__Contrato_Migracao_Clientes__v01.xlsx`
 
-O nome original do arquivo é preservado intacto (case, acentos, underscores). Veja `docs/04_naming_convention.md` para detalhes.
+Os placeholders suportados no contrato ativo sao `date`, `project`, `business_domain`, `document_type` e `original_name`; `{area}` e rejeitado no schema. Em triagem `correct`, o sistema recompõe o nome canonico preservando a data de ingestao e a versao ja emitida. Veja `docs/04_naming_convention.md` para detalhes.
 
 ## Variáveis de ambiente
 
@@ -211,7 +226,7 @@ make test-backend      # Apenas backend
 make test-frontend     # Apenas frontend
 ```
 
-As suítes cobrem bootstrap, benchmark, datasets, ingestão, triagem, busca, templates, profile/layout, channels, usage/custo, API e frontend.
+As suites cobrem lifecycle do classificador, benchmark, datasets, ingestao, triagem, busca, templates, profile/layout, channels, usage/custo, API e frontend.
 
 ## Documentação
 
@@ -231,8 +246,9 @@ As suítes cobrem bootstrap, benchmark, datasets, ingestão, triagem, busca, tem
 | `07_rollout_kpis.md` | Fases de rollout e KPIs |
 | `08_project_profile_template.md` | Template de profile V2 (JSON) com exemplo completo |
 | `09_field_mapping.md` | Mapeamento completo de campos: origem, derivação, uso pelo LLM |
-| `10_classifier_design.md` | Design do classificador: benchmarks, fundamentação, comparativos |
-| `plano_teste_e2e_v0.7.0.md` | Roteiro E2E atual, orientado a teste pelo frontend |
+| `10_classifier_design.md` | Design do classificador: runtime operacional, benchmark, promocao e fallback |
+| `plano_teste_e2e_v0.8.0.md` | Roteiro E2E delta da 0.8.0, orientado a teste pelo frontend |
+| `plano_teste_e2e_v0.7.0.md` | Baseline E2E registrada e reutilizada como referencia do lote real |
 | `agent-tools-flow.md` | Fluxo MCP → LLM → tools (como o agente recebe e usa ferramentas) |
 
 Planos de implementação concluídos ficam em `docs/planos_concluidos/` como registro de decisões.

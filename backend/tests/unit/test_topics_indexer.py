@@ -26,7 +26,7 @@ topics:
 
     topics, source = match_topics(
         text="Existe contingencia relevante no processo judicial.",
-        area_key="juridica",
+        business_domain="juridica",
         profile=profile,
     )
     assert source == "surface_form_match"
@@ -44,7 +44,7 @@ def test_enrich_search_fields_preserves_llm_topics_source(tmp_path: Path) -> Non
         "original_filename": "memo.txt",
         "canonical_filename": "memo.txt",
         "path": str(f),
-        "area_key": "juridica",
+        "business_domain": "juridica",
         "topics": ["tema_llm"],
         "topics_source": "llm_policy",
     }
@@ -70,7 +70,7 @@ def test_enrich_search_fields_derives_doc_kind_for_new_formats(tmp_path: Path) -
             "original_filename": "doc.html",
             "canonical_filename": "doc.html",
             "path": str(html_path),
-            "area_key": "juridica",
+            "business_domain": "juridica",
         },
         profile=None,
     )
@@ -82,7 +82,7 @@ def test_enrich_search_fields_derives_doc_kind_for_new_formats(tmp_path: Path) -
             "original_filename": "mail.msg",
             "canonical_filename": "mail.msg",
             "path": str(msg_path),
-            "area_key": "juridica",
+            "business_domain": "juridica",
         },
         profile=None,
     )
@@ -94,7 +94,7 @@ def test_enrich_search_fields_derives_doc_kind_for_new_formats(tmp_path: Path) -
             "original_filename": "bundle.zip",
             "canonical_filename": "bundle.zip",
             "path": str(zip_path),
-            "area_key": "juridica",
+            "business_domain": "juridica",
         },
         profile=None,
     )
@@ -115,7 +115,7 @@ def test_enrich_search_fields_adds_ocr_folded_variants(tmp_path: Path) -> None:
             "original_filename": "C O N T R A T O.pdf",
             "canonical_filename": "C O N T R A T O.pdf",
             "path": str(f),
-            "area_key": "juridica",
+            "business_domain": "juridica",
         },
         profile=None,
     )
@@ -158,8 +158,8 @@ def test_semantic_topics_regression_with_official_dictionary() -> None:
         ("Organograma com headcount e diretoria executiva.", "pessoas", "estrutura_organizacional"),
         ("Processo de recuperação judicial com assembleia de credores.", "juridica", "falencia_rj"),
     ]
-    for text, area_key, expected in cases:
-        topics, source = match_topics(text=text, area_key=area_key, profile=profile)
+    for text, business_domain, expected in cases:
+        topics, source = match_topics(text=text, business_domain=business_domain, profile=profile)
         assert source == "surface_form_match"
         assert expected in topics
 

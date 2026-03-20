@@ -42,15 +42,15 @@ Ferramentas expostas hoje (e só essas):
 
 | Ferramenta              | Descrição (resumo do docstring) |
 |-------------------------|----------------------------------|
-| `search_documents`      | Busca full-text com filtros (project_id, area_key, document_type, doc_kind, tags, datas, page, size) |
-| `get_stats`             | Estatísticas e contagens: total_documents + breakdowns por doc_kind, area_key, document_type, extension, tags |
+| `search_documents`      | Busca full-text com filtros (project_id, business_domain, document_type, doc_kind, tags, datas, page, size) |
+| `get_stats`             | Estatísticas e contagens: total_documents + breakdowns por doc_kind, business_domain, document_type, extension, tags |
 | `get_document`          | Obtém documento por doc_id (metadata, excerpt, content_chunks; trunca docs longos) |
 | `get_document_chunks`   | Retorna chunks específicos por localização (page:N, sheet:Name), sem carregar o documento inteiro |
 | `apply_tags`            | Adiciona/remove tags de um documento |
-| `set_metadata`          | Atualiza document_type, correspondent, area_key, review_status |
+| `set_metadata`          | Atualiza document_type, correspondent, business_domain, review_status |
 | `list_tags`             | Lista tags únicas (opcionalmente por project_id) |
 | `create_review_marker`  | Marca documento para revisão (legal_review, finance_review, needs_review) |
-| `submit_classification` | Usado pelo fluxo de classificação: document_type, tags, confidence, area_key, topics, explanation |
+| `submit_classification` | Usado pelo fluxo de classificação: document_type, tags, confidence, business_domain, topics, explanation |
 
 Não existe no nosso código nenhuma ferramenta `multi_tool_use.parallel` nem “functions.search_documents” como namespace; o nome enviado ao LLM é exatamente o nome da função (ex.: `search_documents`).
 
@@ -115,13 +115,13 @@ O `inputSchema` vem direto do MCP; se estiver vazio, usamos `{"type": "object", 
       "type": "function",
       "function": {
         "name": "search_documents",
-        "description": "Search documents by full-text query with optional filters: project_id, area_key, document_type, tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights).",
+        "description": "Search documents by full-text query with optional filters: project_id, business_domain, document_type, tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights).",
         "parameters": {
           "type": "object",
           "properties": {
             "query": { "type": "string" },
             "project_id": { "type": "string" },
-            "area_key": { "type": "string" },
+            "business_domain": { "type": "string" },
             "document_type": { "type": "string" },
             "tags": { "type": "array", "items": { "type": "string" } },
             "date_from": { "type": "string" },
@@ -175,13 +175,13 @@ Cada ferramenta vira um item no array `tools` da API Anthropic:
 ```json
 {
   "name": "search_documents",
-  "description": "Search documents by full-text query with optional filters: project_id, area_key, document_type, tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights).",
+  "description": "Search documents by full-text query with optional filters: project_id, business_domain, document_type, tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights).",
   "input_schema": {
     "type": "object",
     "properties": {
       "query": { "type": "string" },
       "project_id": { "type": "string" },
-      "area_key": { "type": "string" },
+      "business_domain": { "type": "string" },
       "document_type": { "type": "string" },
       "tags": { "type": "array", "items": { "type": "string" } },
       "date_from": { "type": "string" },
@@ -266,7 +266,7 @@ Ou seja: o agente recebe **uma única string** (texto concatenado ou JSON do str
 **Exemplo de string retornada para `search_documents`** (o que a função em `server.py` faz é `return json.dumps(data, ensure_ascii=False)` com o JSON da API de busca):
 
 ```json
-{"total": 4, "page": 1, "page_size": 20, "hits": [{"doc_id": "abc123", "project_id": "p1", "area_key": "contratos", "original_filename": "Contrato.pdf", "canonical_filename": "Contrato.pdf", "path": "/contratos/Contrato.pdf", "score": 0.94, "highlights": ["...trecho..."]}]}
+{"total": 4, "page": 1, "page_size": 20, "hits": [{"doc_id": "abc123", "project_id": "p1", "business_domain": "juridico", "original_filename": "Contrato.pdf", "canonical_filename": "Contrato.pdf", "path": "/contratos/Contrato.pdf", "score": 0.94, "highlights": ["...trecho..."]}]}
 ```
 
 **Exemplo para `get_document`:**

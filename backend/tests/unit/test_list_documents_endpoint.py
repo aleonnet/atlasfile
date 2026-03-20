@@ -24,7 +24,7 @@ def _os_hit(doc_id: str, project_id: str = "proj_a", doc_kind: str = "pdf") -> d
             "path": f"/data/{project_id}/{doc_id}.pdf",
             "doc_kind": doc_kind,
             "document_type": "contrato",
-            "area_key": "juridica",
+            "business_domain": "juridica",
             "tags": ["important"],
             "ingested_at": "2026-03-01T00:00:00Z",
         },

@@ -206,8 +206,6 @@ def _enrich_search_fields(payload: dict[str, Any], *, profile: dict[str, Any] | 
     title = str(enriched.get("title", ""))
     original_filename = str(enriched.get("original_filename", ""))
     canonical_filename = str(enriched.get("canonical_filename", ""))
-    if not enriched.get("business_domain") and enriched.get("area_key"):
-        enriched["business_domain"] = enriched.get("area_key")
 
     enriched["title_normalized"] = normalize_text(title)
     enriched["title_ocr_folded"] = fold_ocr_spacing(title)
@@ -232,7 +230,7 @@ def _enrich_search_fields(payload: dict[str, Any], *, profile: dict[str, Any] | 
         )
         topics, topics_source = match_topics(
             text=topics_input,
-            area_key=str(enriched.get("area_key", "") or "").strip() or None,
+            business_domain=str(enriched.get("business_domain", "") or "").strip() or None,
             profile=profile,
         )
         enriched["topics"] = topics

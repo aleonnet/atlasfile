@@ -34,7 +34,18 @@ const baseProfile = {
     document_types: [{ key: "relatorio", label: "Relatório", folder: "relatorio", aliases: ["relatorio"], extensions: [".pdf"] }],
     routing_rules: [],
     confidence_thresholds: { auto_route_min: 0.85, triage_min: 0.5 },
-    llm_policy: { enabled: false, provider: "openai", model: "gpt-4o-mini", mode: "tag_only", allow_override_fields: ["document_type", "tags", "confidence", "topics"], override_guardrails: { area_override_only_if_rule_confidence_below: 0.65, require_explanation: true, max_area_changes: 1 } }
+    llm_policy: {
+      enabled: false,
+      provider: "openai",
+      model: "gpt-4o-mini",
+      mode: "tag_only",
+      allow_override_fields: ["document_type", "tags", "confidence", "topics"],
+      override_guardrails: {
+        business_domain_override_only_if_rule_confidence_below: 0.65,
+        require_explanation: true,
+        max_business_domain_changes: 1
+      }
+    }
   },
   indexing: {
     topics_path: "config/topics_v1.yaml",
@@ -82,6 +93,8 @@ describe("ProfileLayoutWorkspace", () => {
     await waitFor(() => {
       expect(screen.getByText(/Estrutura de Layout/i)).toBeInTheDocument();
     });
+    expect(screen.getByText((content) => content.includes("{business_domain}") && content.includes("{document_type}"))).toBeInTheDocument();
+    expect(screen.queryByText((content) => content.includes("{area}"))).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Validar/i }));
     await waitFor(() => {

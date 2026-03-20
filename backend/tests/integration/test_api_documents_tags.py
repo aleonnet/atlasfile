@@ -28,7 +28,7 @@ def test_get_document_200(client: TestClient) -> None:
             "_source": {
                 "doc_id": "doc1",
                 "project_id": "p1",
-                "area_key": "ativos",
+                "business_domain": "ativos",
                 "title": "Doc title",
                 "original_filename": "file.pdf",
                 "path": "p1/_WORK/03_ativos/file.pdf",
@@ -42,7 +42,7 @@ def test_get_document_200(client: TestClient) -> None:
     assert r.status_code == 200
     data = r.json()
     assert data["doc_id"] == "doc1"
-    assert data["area_key"] == "ativos"
+    assert data["business_domain"] == "ativos"
     assert data["content"] == "chunk1"
     assert data["content_chunks"] == [{"location": "page:1", "text": "chunk1"}]
     assert data["tags"] == ["TAG1"]
@@ -66,7 +66,7 @@ def test_get_document_chunks_200(client: TestClient) -> None:
             "_source": {
                 "doc_id": "doc1",
                 "project_id": "p1",
-                "area_key": "ativos",
+                "business_domain": "ativos",
                 "title": "Doc title",
                 "original_filename": "file.pdf",
                 "canonical_filename": "file.pdf",

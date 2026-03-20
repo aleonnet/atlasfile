@@ -1,10 +1,31 @@
 import { ChevronDown, ChevronRight, RefreshCw, Settings } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchIngestHistory, fetchModels, fetchProjectProfile, triggerScan, updateProjectProfile } from "../../api";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  fetchClassifierCycleStatus,
+  fetchClassifierReportLatest,
+  fetchClassifierReports,
+  fetchClassifierStatus,
+  fetchIngestHistory,
+  fetchIngestStatus,
+  fetchModels,
+  fetchProjectProfile,
+  getClassifierCycleStatusStreamUrl,
+  getIngestStatusStreamUrl,
+  startClassifierCycle,
+  triggerScan,
+  updateClassifierOverride,
+  updateProjectProfile
+} from "../../api";
 import type {
+  ClassifierCycleStatus,
+  ClassifierReport,
+  ClassifierReportSummary,
+  ClassifierStatusResponse,
   IngestHistoryEntry,
+  IngestOperationStatus,
   LLMPolicy,
   ModelOption,
+  OperationalClassifierMode,
   Project,
   ProjectProfileV2,
   ScanResult,
@@ -14,6 +35,7 @@ import "./ingestTriageCard.css";
 
 const ALL_PROJECTS = "__all__";
 const PAGE_SIZE = 10;
+const AUTO_CLASSIFIER_OVERRIDE = "__auto__";
 
 const DEFAULT_LLM_POLICY: LLMPolicy = {
   enabled: false,
@@ -22,9 +44,9 @@ const DEFAULT_LLM_POLICY: LLMPolicy = {
   mode: "tag_only",
   allow_override_fields: ["document_type", "tags", "confidence", "topics"],
   override_guardrails: {
-    area_override_only_if_rule_confidence_below: 0.65,
+    business_domain_override_only_if_rule_confidence_below: 0.65,
     require_explanation: true,
-    max_area_changes: 1
+    max_business_domain_changes: 1
   }
 };
 
@@ -36,13 +58,101 @@ type FlatRow = {
   document_type?: string;
   decision: "auto" | "triage_pending" | "duplicate" | "error";
   confidence: number | null;
+  business_domain_confidence?: number;
+  document_type_confidence?: number;
   llm: boolean;
-  rule_area_key?: string;
+  rule_business_domain?: string;
   rule_confidence?: number;
   llm_explanation?: string;
-  llm_proposed_area?: string;
+  llm_proposed_business_domain?: string;
   classification_reason?: string;
+  classifier_mode?: string;
+  classifier_requested_mode?: string;
+  classifier_fallback_reason?: string;
 };
+
+function formatPct(value?: number | null): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatClassifierModeLabel(mode?: string | null): string {
+  switch (mode) {
+    case "bootstrap":
+      return "bootstrap";
+    case "sparse_logreg":
+      return "sparse_logreg";
+    case "sparse_linear_svc":
+      return "sparse_linear_svc";
+    default:
+      return mode || "—";
+  }
+}
+
+function formatPhaseLabel(phase?: string | null): string {
+  switch (phase) {
+    case "starting":
+      return "Iniciando";
+    case "loading_datasets":
+      return "Carregando datasets";
+    case "benchmark_bootstrap":
+      return "Benchmark bootstrap";
+    case "benchmark_supervised":
+      return "Benchmark supervisionado";
+    case "persisting_artifacts":
+      return "Persistindo artefatos";
+    case "promoting_champion":
+      return "Promovendo campeão";
+    case "training_benchmark":
+      return "Treino e benchmark";
+    case "processing":
+      return "Processando arquivos";
+    case "completed":
+      return "Concluído";
+    case "failed":
+      return "Falhou";
+    default:
+      return phase || "idle";
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function buildPendingIngestStatus(projectId: string | null): IngestOperationStatus {
+  return {
+    last_run_started_at: null,
+    last_run_finished_at: null,
+    duration_seconds: null,
+    project_id: projectId,
+    running: true,
+    phase: "starting",
+    progress_current: 0,
+    progress_total: 0,
+    progress_file: null,
+    processed_count: 0,
+    failed_count: 0,
+    last_error: null,
+  };
+}
+
+function buildPendingClassifierCycleStatus(previous: ClassifierCycleStatus | null): ClassifierCycleStatus {
+  return {
+    last_run_started_at: previous?.last_run_started_at ?? null,
+    last_run_finished_at: null,
+    duration_seconds: null,
+    running: true,
+    phase: "starting",
+    progress_current: 0,
+    progress_total: previous?.progress_total ?? 0,
+    report_id: null,
+    champion_mode: previous?.champion_mode ?? null,
+    last_error: null,
+  };
+}
 
 function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
   const rows: FlatRow[] = [];
@@ -53,16 +163,21 @@ function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
         key: `${ts}-${item.doc_id}`,
         timestamp: ts,
         filename: item.original_filename,
-        business_domain: item.business_domain || item.area_key,
+        business_domain: item.business_domain || "",
         document_type: item.document_type,
         decision: item.decision,
         confidence: item.confidence_score,
-        llm: item.topics_source === "llm_policy" || !!item.llm_explanation || !!item.rule_area_key,
-        rule_area_key: item.rule_area_key,
+        business_domain_confidence: item.business_domain_confidence,
+        document_type_confidence: item.document_type_confidence,
+        llm: item.topics_source === "llm_policy" || !!item.llm_explanation || !!item.rule_business_domain,
+        rule_business_domain: item.rule_business_domain,
         rule_confidence: item.rule_confidence,
         llm_explanation: item.llm_explanation,
-        llm_proposed_area: item.llm_proposed_area,
+        llm_proposed_business_domain: item.llm_proposed_business_domain,
         classification_reason: item.classification_reason,
+        classifier_mode: item.classifier_mode,
+        classifier_requested_mode: item.classifier_requested_mode,
+        classifier_fallback_reason: item.classifier_fallback_reason,
       });
     }
     for (let i = 0; i < entry.errors.length; i++) {
@@ -118,6 +233,14 @@ export function IngestTriageCard({
   const [llmSaving, setLlmSaving] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [fullProfile, setFullProfile] = useState<ProjectProfileV2 | null>(null);
+  const [classifierStatus, setClassifierStatus] = useState<ClassifierStatusResponse | null>(null);
+  const [classifierReport, setClassifierReport] = useState<ClassifierReport | null>(null);
+  const [classifierReports, setClassifierReports] = useState<ClassifierReportSummary[]>([]);
+  const [classifierSaving, setClassifierSaving] = useState(false);
+  const [classifierCycleStatus, setClassifierCycleStatus] = useState<ClassifierCycleStatus | null>(null);
+  const [ingestStatus, setIngestStatus] = useState<IngestOperationStatus | null>(null);
+  const ingestMonitorStopRef = useRef<(() => void) | null>(null);
+  const classifierCycleMonitorStopRef = useRef<(() => void) | null>(null);
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
 
@@ -159,6 +282,45 @@ export function IngestTriageCard({
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  const loadClassifierState = useCallback(async () => {
+    try {
+      const [cycle, ingest] = await Promise.all([
+        fetchClassifierCycleStatus(),
+        fetchIngestStatus()
+      ]);
+      setClassifierCycleStatus(cycle);
+      setIngestStatus(ingest);
+    } catch {
+      /* ignore */
+    }
+
+    if (!isSingleProject) {
+      setClassifierStatus(null);
+      setClassifierReport(null);
+      setClassifierReports([]);
+      return;
+    }
+
+    try {
+      const [status, reports, latest] = await Promise.all([
+        fetchClassifierStatus(selectedProject),
+        fetchClassifierReports(8),
+        fetchClassifierReportLatest().catch(() => null)
+      ]);
+      setClassifierStatus(status);
+      setClassifierReports(reports);
+      setClassifierReport(latest);
+    } catch {
+      setClassifierStatus(null);
+      setClassifierReports([]);
+      setClassifierReport(null);
+    }
+  }, [isSingleProject, selectedProject]);
+
+  useEffect(() => {
+    void loadClassifierState();
+  }, [loadClassifierState]);
 
   useEffect(() => {
     if (models.length === 0) {
@@ -224,18 +386,214 @@ export function IngestTriageCard({
     void persistLlmPolicy(nextPolicy);
   }
 
+  const stopIngestMonitor = useCallback(() => {
+    ingestMonitorStopRef.current?.();
+    ingestMonitorStopRef.current = null;
+  }, []);
+
+  const stopClassifierCycleMonitor = useCallback(() => {
+    classifierCycleMonitorStopRef.current?.();
+    classifierCycleMonitorStopRef.current = null;
+  }, []);
+
+  const startIngestMonitor = useCallback(
+    (requestPromise: Promise<unknown>) => {
+      stopIngestMonitor();
+      let cancelled = false;
+      let requestSettled = false;
+      let stream: EventSource | null = null;
+
+      void requestPromise.finally(() => {
+        requestSettled = true;
+      });
+
+      const closeStream = () => {
+        stream?.close();
+        stream = null;
+      };
+
+      const applyStatus = (data: IngestOperationStatus) => {
+        if (!cancelled) {
+          setIngestStatus(data);
+        }
+      };
+
+      const pollUntilFinished = async (): Promise<void> => {
+        while (!cancelled) {
+          try {
+            const latest = await fetchIngestStatus();
+            if (cancelled) return;
+            applyStatus(latest);
+            if (latest.running && typeof window !== "undefined" && typeof window.EventSource !== "undefined") {
+              closeStream();
+              stream = new window.EventSource(getIngestStatusStreamUrl());
+              stream.onmessage = (event) => {
+                try {
+                  const data = JSON.parse(event.data) as IngestOperationStatus;
+                  applyStatus(data);
+                  if (!data.running) {
+                    closeStream();
+                  }
+                } catch {
+                  /* ignore */
+                }
+              };
+              stream.onerror = () => {
+                closeStream();
+                if (!cancelled) {
+                  void pollUntilFinished();
+                }
+              };
+              return;
+            }
+            if (!latest.running && requestSettled) {
+              return;
+            }
+          } catch {
+            if (requestSettled) {
+              return;
+            }
+          }
+          await sleep(250);
+        }
+      };
+
+      void pollUntilFinished();
+
+      const stop = () => {
+        cancelled = true;
+        closeStream();
+      };
+      ingestMonitorStopRef.current = stop;
+      return stop;
+    },
+    [stopIngestMonitor]
+  );
+
+  const startClassifierCycleMonitor = useCallback(() => {
+    stopClassifierCycleMonitor();
+    let cancelled = false;
+    let stream: EventSource | null = null;
+
+    const closeStream = () => {
+      stream?.close();
+      stream = null;
+    };
+
+    const applyStatus = (data: ClassifierCycleStatus) => {
+      if (!cancelled) {
+        setClassifierCycleStatus(data);
+      }
+    };
+
+    const finish = () => {
+      if (!cancelled) {
+        void loadClassifierState();
+      }
+    };
+
+    const pollUntilFinished = async (): Promise<void> => {
+      while (!cancelled) {
+        try {
+          const latest = await fetchClassifierCycleStatus();
+          if (cancelled) return;
+          applyStatus(latest);
+          if (latest.running && typeof window !== "undefined" && typeof window.EventSource !== "undefined") {
+            closeStream();
+            stream = new window.EventSource(getClassifierCycleStatusStreamUrl());
+            stream.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data) as ClassifierCycleStatus;
+                applyStatus(data);
+                if (!data.running) {
+                  closeStream();
+                  finish();
+                }
+              } catch {
+                /* ignore */
+              }
+            };
+            stream.onerror = () => {
+              closeStream();
+              if (!cancelled) {
+                void pollUntilFinished();
+              }
+            };
+            return;
+          }
+          if (!latest.running) {
+            finish();
+            return;
+          }
+        } catch {
+          /* ignore */
+        }
+        await sleep(250);
+      }
+    };
+
+    void pollUntilFinished();
+
+    const stop = () => {
+      cancelled = true;
+      closeStream();
+    };
+    classifierCycleMonitorStopRef.current = stop;
+    return stop;
+  }, [loadClassifierState, stopClassifierCycleMonitor]);
+
+  useEffect(() => {
+    return () => {
+      stopIngestMonitor();
+      stopClassifierCycleMonitor();
+    };
+  }, [stopClassifierCycleMonitor, stopIngestMonitor]);
+
+  async function handleClassifierOverrideChange(value: string) {
+    if (!isSingleProject) return;
+    const nextValue = value === AUTO_CLASSIFIER_OVERRIDE ? null : (value as OperationalClassifierMode);
+    setClassifierSaving(true);
+    try {
+      const status = await updateClassifierOverride(selectedProject, nextValue);
+      setClassifierStatus(status);
+      onStatus(nextValue ? `Override do classificador salvo: ${nextValue}` : "Override do classificador limpo");
+    } catch {
+      onStatus("Falha ao salvar override do classificador");
+    } finally {
+      setClassifierSaving(false);
+    }
+  }
+
+  async function handleStartClassifierCycle() {
+    setClassifierCycleStatus((previous) => buildPendingClassifierCycleStatus(previous));
+    try {
+      await startClassifierCycle();
+      startClassifierCycleMonitor();
+      onStatus("Ciclo do classificador iniciado");
+    } catch {
+      stopClassifierCycleMonitor();
+      void fetchClassifierCycleStatus().then(setClassifierCycleStatus).catch(() => {});
+      onStatus("Falha ao iniciar ciclo do classificador");
+    }
+  }
+
   async function handleScan() {
     if (!selectedProject) return;
     setLoading(true);
+    setIngestStatus(buildPendingIngestStatus(selectedProject === ALL_PROJECTS ? null : selectedProject));
     onStatus("Processando inbox...");
     try {
       const results: ScanResult[] = [];
       if (selectedProject === ALL_PROJECTS) {
         for (const project of projects) {
-          results.push(await triggerScan(project.project_id));
+          const scanPromise = triggerScan(project.project_id);
+          startIngestMonitor(scanPromise);
+          results.push(await scanPromise);
         }
       } else {
-        results.push(await triggerScan(selectedProject));
+        const scanPromise = triggerScan(selectedProject);
+        startIngestMonitor(scanPromise);
+        results.push(await scanPromise);
       }
 
       await loadHistory();
@@ -253,6 +611,8 @@ export function IngestTriageCard({
     } catch {
       onStatus("Falha ao processar inbox");
     } finally {
+      stopIngestMonitor();
+      void fetchIngestStatus().then(setIngestStatus).catch(() => {});
       setLoading(false);
     }
   }
@@ -292,6 +652,155 @@ export function IngestTriageCard({
         </button>
       </div>
 
+      {(loading ||
+        ingestStatus?.running ||
+        ingestStatus?.phase === "starting" ||
+        ingestStatus?.phase === "completed" ||
+        ingestStatus?.phase === "failed") && (
+        <div className="itc-run-status">
+          <strong>Processar INBOX:</strong>
+          <span>{formatPhaseLabel(ingestStatus?.phase)}</span>
+          <span>
+            {ingestStatus?.progress_current ?? 0}/{ingestStatus?.progress_total ?? 0}
+          </span>
+          {ingestStatus?.progress_file && <code>{ingestStatus.progress_file}</code>}
+        </div>
+      )}
+
+      {isSingleProject && (
+        <details className="itc-collapsible" open>
+          <summary className="itc-collapsible-header">
+            Classificador operacional
+            <span className="itc-badge-count">
+              {classifierStatus ? formatClassifierModeLabel(classifierStatus.effective_mode) : "carregando"}
+            </span>
+          </summary>
+          <div className="itc-collapsible-body">
+            {classifierStatus && (
+              <>
+                <div className="itc-classifier-stats">
+                  <div className="itc-classifier-stat">
+                    <span className="itc-classifier-stat-label">Campeão</span>
+                    <strong>{formatClassifierModeLabel(classifierStatus.champion_mode)}</strong>
+                  </div>
+                  <div className="itc-classifier-stat">
+                    <span className="itc-classifier-stat-label">Efetivo neste projeto</span>
+                    <strong>{formatClassifierModeLabel(classifierStatus.effective_mode)}</strong>
+                  </div>
+                  <div className="itc-classifier-stat">
+                    <span className="itc-classifier-stat-label">Override</span>
+                    <strong>{classifierStatus.override_mode ? formatClassifierModeLabel(classifierStatus.override_mode) : "auto"}</strong>
+                  </div>
+                  <div className="itc-classifier-stat">
+                    <span className="itc-classifier-stat-label">Último ciclo</span>
+                    <strong>{classifierStatus.latest_cycle_status}</strong>
+                  </div>
+                </div>
+
+                <div className="itc-classifier-controls">
+                  <div className="itc-llm-field">
+                    <label htmlFor="itc-classifier-override">Override manual do projeto</label>
+                    <select
+                      id="itc-classifier-override"
+                      value={classifierStatus.override_mode || AUTO_CLASSIFIER_OVERRIDE}
+                      onChange={(e) => void handleClassifierOverrideChange(e.target.value)}
+                      disabled={classifierSaving || !!classifierCycleStatus?.running}
+                    >
+                      <option value={AUTO_CLASSIFIER_OVERRIDE}>auto (usar campeão)</option>
+                      {classifierStatus.available_modes.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {formatClassifierModeLabel(mode)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => void handleStartClassifierCycle()}
+                    disabled={!!classifierCycleStatus?.running}
+                  >
+                    {classifierCycleStatus?.running ? "Ciclo em andamento..." : "Rodar benchmark + retreino"}
+                  </button>
+                </div>
+
+                <p className="itc-classifier-policy">
+                  Promoção: {classifierStatus.promotion_policy} | gates: exact &ge; {formatPct(classifierStatus.promotion_gates.min_exact_match_accuracy)},
+                  domínio &ge; {formatPct(classifierStatus.promotion_gates.min_business_domain_accuracy)},
+                  tipo &ge; {formatPct(classifierStatus.promotion_gates.min_document_type_accuracy)}
+                </p>
+              </>
+            )}
+
+            {classifierCycleStatus && (
+              <div className={`itc-classifier-cycle${classifierCycleStatus.running ? " active" : ""}`}>
+                <strong>Ciclo:</strong> {formatPhaseLabel(classifierCycleStatus.phase)}
+                <span>
+                  {classifierCycleStatus.progress_current}/{classifierCycleStatus.progress_total}
+                </span>
+                {classifierCycleStatus.last_error && <span className="itc-classifier-cycle-error">{classifierCycleStatus.last_error}</span>}
+              </div>
+            )}
+
+            {classifierReport && (
+              <div className="itc-classifier-benchmark">
+                <div className="itc-classifier-benchmark-head">
+                  <strong>Benchmark oficial</strong>
+                  {classifierReport.report_id && <span className="itc-scan-timestamp">{classifierReport.report_id}</span>}
+                </div>
+                <table className="itc-scan-table itc-classifier-table">
+                  <thead>
+                    <tr>
+                      <th>Modo</th>
+                      <th>Domínio</th>
+                      <th>Tipo</th>
+                      <th>Exact match</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {["bootstrap", "sparse_logreg", "sparse_linear_svc"].map((mode) => {
+                      const benchmark = classifierReport.benchmarks[mode];
+                      if (!benchmark) return null;
+                      const summary = benchmark.summary;
+                      const isChampion = classifierReport.champion?.mode === mode;
+                      return (
+                        <tr key={mode}>
+                          <td>
+                            {formatClassifierModeLabel(mode)}
+                            {isChampion && <span className="itc-classifier-champion">campeão</span>}
+                          </td>
+                          <td>{formatPct(summary.business_domain_accuracy)}</td>
+                          <td>{formatPct(summary.document_type_accuracy)}</td>
+                          <td>{formatPct(summary.exact_match_accuracy)}</td>
+                          <td>{summary.skipped ? "skip" : "ok"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {classifierReports.length > 0 && (
+              <div className="itc-classifier-history">
+                <strong>Evolução recente</strong>
+                <ul className="list">
+                  {classifierReports.slice(0, 5).map((report) => (
+                    <li key={report.report_id} className="list-item">
+                      <span className="list-title">{report.report_id}</span>
+                      <div className="sub list-meta">
+                        campeão: {formatClassifierModeLabel(report.champion_mode)} | exact: {formatPct(report.champion_summary?.exact_match_accuracy)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </details>
+      )}
+
       {/* ── Classificação LLM ── */}
       {isSingleProject && (
         <details className="itc-collapsible">
@@ -328,7 +837,7 @@ export function IngestTriageCard({
                     >
                       <option value="tag_only">tag_only — enriquece tags/tipo</option>
                       <option value="review">review — revisa e pode ir p/ triagem</option>
-                      <option value="full_override">full_override — pode mudar área</option>
+                      <option value="full_override">full_override — pode mudar domínio</option>
                     </select>
                   </div>
                   <div className="itc-llm-field">
@@ -404,9 +913,18 @@ export function IngestTriageCard({
                 </thead>
                 <tbody>
                   {pageRows.map((row) => {
-                    const hasLlmDetail = row.llm && (row.llm_explanation || row.rule_area_key || row.llm_proposed_area);
+                    const hasLlmDetail = !!(
+                      row.classifier_mode ||
+                      row.llm_explanation ||
+                      row.rule_business_domain ||
+                      row.llm_proposed_business_domain ||
+                      row.business_domain_confidence != null ||
+                      row.document_type_confidence != null ||
+                      row.classifier_fallback_reason
+                    );
                     const isExpanded = expandedLlm.has(row.key);
-                    const areaOverridden = row.rule_area_key && row.rule_area_key !== row.business_domain;
+                    const businessDomainOverridden =
+                      row.rule_business_domain && row.rule_business_domain !== row.business_domain;
                     return (
                       <React.Fragment key={row.key}>
                         <tr className={`itc-scan-row${hasLlmDetail ? " itc-row-clickable" : ""}`} onClick={hasLlmDetail ? () => toggleLlmRow(row.key) : undefined}>
@@ -428,9 +946,9 @@ export function IngestTriageCard({
                           <td className="itc-scan-area" title={row.business_domain}>
                             {row.business_domain}
                             {row.document_type ? ` / ${row.document_type}` : ""}
-                            {areaOverridden && (
-                              <span className="itc-area-override" title={`Regra: ${row.rule_area_key}`}>
-                                ← {row.rule_area_key}
+                            {businessDomainOverridden && (
+                              <span className="itc-area-override" title={`Regra: ${row.rule_business_domain}`}>
+                                ← {row.rule_business_domain}
                               </span>
                             )}
                           </td>
@@ -449,13 +967,25 @@ export function IngestTriageCard({
                             <td colSpan={6}>
                               <div className="itc-llm-detail-card">
                                 <strong>Detalhes da classificação LLM</strong>
-                                {row.rule_area_key && (
-                                  <p>Regra: <code>{row.rule_area_key}</code> (conf {(row.rule_confidence ?? 0).toFixed(2)})</p>
+                                <p>
+                                  Classificador: <code>{formatClassifierModeLabel(row.classifier_mode)}</code>
+                                  {row.classifier_requested_mode && row.classifier_requested_mode !== row.classifier_mode
+                                    ? ` (solicitado: ${formatClassifierModeLabel(row.classifier_requested_mode)})`
+                                    : ""}
+                                </p>
+                                <p>
+                                  Scores: domínio {formatPct(row.business_domain_confidence)} | tipo {formatPct(row.document_type_confidence)} | final {row.confidence !== null ? row.confidence.toFixed(2) : "—"}
+                                </p>
+                                {row.classifier_fallback_reason && (
+                                  <p>Fallback: <code>{row.classifier_fallback_reason}</code></p>
+                                )}
+                                {row.rule_business_domain && (
+                                  <p>Regra: <code>{row.rule_business_domain}</code> (conf {(row.rule_confidence ?? 0).toFixed(2)})</p>
                                 )}
                                 <p>LLM: <code>{row.business_domain}</code> (conf {(row.confidence ?? 0).toFixed(2)})</p>
                                 {row.llm_explanation && <p>Motivo: <em>{row.llm_explanation}</em></p>}
-                                {row.llm_proposed_area && (
-                                  <p className="itc-proposed-area">Domínio proposto: <code>{row.llm_proposed_area}</code></p>
+                                {row.llm_proposed_business_domain && (
+                                  <p className="itc-proposed-area">Domínio proposto: <code>{row.llm_proposed_business_domain}</code></p>
                                 )}
                               </div>
                             </td>
@@ -495,8 +1025,15 @@ export function IngestTriageCard({
           <div className="itc-collapsible-body">
             <ul className="list">
               {triageItems.map((item) => {
-                const hasLlmContext = item.llm_explanation || item.rule_area_key || item.llm_proposed_area;
-                const suggestedBusinessDomain = item.suggested_business_domain || item.suggested_area;
+                const hasLlmContext =
+                  item.classifier_mode ||
+                  item.llm_explanation ||
+                  item.rule_business_domain ||
+                  item.llm_proposed_business_domain ||
+                  item.business_domain_confidence != null ||
+                  item.document_type_confidence != null ||
+                  item.classifier_fallback_reason;
+                const suggestedBusinessDomain = item.suggested_business_domain;
                 return (
                   <li key={item.doc_id} className="list-item">
                     <strong className="list-title">{item.filename}</strong>
@@ -509,12 +1046,24 @@ export function IngestTriageCard({
 
                     {hasLlmContext && (
                       <div className="itc-triage-llm-context">
-                        {item.rule_area_key && (
-                          <p>Regra: <code>{item.rule_area_key}</code> (conf {(item.rule_confidence ?? 0).toFixed(2)})</p>
+                        <p>
+                          Classificador: <code>{formatClassifierModeLabel(item.classifier_mode)}</code>
+                          {item.classifier_requested_mode && item.classifier_requested_mode !== item.classifier_mode
+                            ? ` (solicitado: ${formatClassifierModeLabel(item.classifier_requested_mode)})`
+                            : ""}
+                        </p>
+                        <p>
+                          Scores: domínio {formatPct(item.business_domain_confidence)} | tipo {formatPct(item.document_type_confidence)} | final {item.confidence_score.toFixed(2)}
+                        </p>
+                        {item.classifier_fallback_reason && (
+                          <p>Fallback: <code>{item.classifier_fallback_reason}</code></p>
+                        )}
+                        {item.rule_business_domain && (
+                          <p>Regra: <code>{item.rule_business_domain}</code> (conf {(item.rule_confidence ?? 0).toFixed(2)})</p>
                         )}
                         {item.llm_explanation && <p>LLM: <em>{item.llm_explanation}</em></p>}
-                        {item.llm_proposed_area && (
-                          <p className="itc-proposed-area">Domínio proposto: <code>{item.llm_proposed_area}</code></p>
+                        {item.llm_proposed_business_domain && (
+                          <p className="itc-proposed-area">Domínio proposto: <code>{item.llm_proposed_business_domain}</code></p>
                         )}
                       </div>
                     )}

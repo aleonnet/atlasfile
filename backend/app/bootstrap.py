@@ -3,8 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .area_resolver import resolve_area_path
-from .profile_runtime import areas_root_rel, inbox_rel, triage_paths
+from .profile_runtime import areas_root_rel, business_domain_folder_map, inbox_rel, triage_paths
 
 
 def ensure_project_structure(project_root: Path, profile: dict[str, Any]) -> None:
@@ -21,16 +20,14 @@ def ensure_project_structure(project_root: Path, profile: dict[str, Any]) -> Non
         if root_dir:
             (project_root / root_dir).mkdir(parents=True, exist_ok=True)
 
-    for area in profile.get("work_areas", []):
-        area_key = area.get("key")
-        if area_key:
-            resolve_area_path(project_root=project_root, profile=profile, area_key=area_key, create_if_missing=True)
+    for folder_name in business_domain_folder_map(profile).values():
+        (project_root / areas_root_rel(profile) / folder_name).mkdir(parents=True, exist_ok=True)
 
     index_path = project_root / "_INDEX.md"
     if not index_path.exists():
         index_path.write_text(
             "# _INDEX\n\n"
-            "| doc_id | project_id | area | original_filename | canonical_filename | decision | confidence | path |\n"
+            "| doc_id | project_id | business_domain | original_filename | canonical_filename | decision | confidence | path |\n"
             "|---|---|---|---|---|---|---:|---|\n",
             encoding="utf-8",
         )

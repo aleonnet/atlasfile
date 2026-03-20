@@ -21,7 +21,7 @@ def test_reconcile_normalizes_accented_project_id(tmp_path):
     """reconcile_project_index normalizes project_id from profile."""
     from app.reconcile import reconcile_project_index
 
-    profile = {"project_id": "kaidô_teste", "work_areas": [], "version": 2}
+    profile = {"project_id": "kaidô_teste", "classification": {"business_domains": []}, "version": 2}
     (tmp_path / "_INDEX.md").write_text("")
 
     with patch("app.reconcile.settings") as mock_settings:

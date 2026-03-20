@@ -30,8 +30,58 @@ vi.mock("./api", () => ({
       progress_total: 0
     })
   ),
-  fetchProjectAreas: vi.fn(() => Promise.resolve([])),
   fetchTriage: vi.fn(() => Promise.resolve([])),
+  fetchClassifierStatus: vi.fn(() =>
+    Promise.resolve({
+      available_modes: ["bootstrap", "sparse_logreg", "sparse_linear_svc"],
+      champion_mode: "bootstrap",
+      fallback_mode: "bootstrap",
+      effective_mode: "bootstrap",
+      override_mode: null,
+      promotion_policy: "auto_best_with_ui_override",
+      project_override_allowed: true,
+      promotion_gates: {
+        primary_metric: "exact_match_accuracy",
+        min_business_domain_accuracy: 0,
+        min_document_type_accuracy: 0,
+        min_exact_match_accuracy: 0,
+        prefer_current_champion_on_tie: true
+      },
+      latest_report_id: "cycle_001",
+      champion_report_id: "cycle_001",
+      champion_summary: { mode: "bootstrap", total_labeled: 10, business_domain_accuracy: 0.5, document_type_accuracy: 0.8, exact_match_accuracy: 0.4 },
+      latest_report_summary: { mode: "bootstrap", total_labeled: 10, business_domain_accuracy: 0.5, document_type_accuracy: 0.8, exact_match_accuracy: 0.4 },
+      latest_cycle_status: "succeeded",
+      latest_cycle_started_at: null,
+      latest_cycle_finished_at: null,
+      latest_cycle_error: null
+    })
+  ),
+  fetchClassifierReportLatest: vi.fn(() =>
+    Promise.resolve({
+      report_id: "cycle_001",
+      operational_classifier_mode: "bootstrap",
+      dataset_integrity: { status: "ok" },
+      gates: {},
+      training_pool_records: 10,
+      benchmarks: {
+        bootstrap: {
+          summary: { mode: "bootstrap", total_labeled: 10, business_domain_accuracy: 0.5, document_type_accuracy: 0.8, exact_match_accuracy: 0.4 },
+          results: []
+        }
+      },
+      champion: {
+        mode: "bootstrap",
+        summary: { mode: "bootstrap", total_labeled: 10, business_domain_accuracy: 0.5, document_type_accuracy: 0.8, exact_match_accuracy: 0.4 },
+        promotion_policy: "auto_best_with_ui_override"
+      }
+    })
+  ),
+  fetchClassifierReports: vi.fn(() => Promise.resolve([])),
+  updateClassifierOverride: vi.fn(() => Promise.resolve({ override_mode: null, effective_mode: "bootstrap", champion_mode: "bootstrap", fallback_mode: "bootstrap", available_modes: ["bootstrap", "sparse_logreg", "sparse_linear_svc"], promotion_policy: "auto_best_with_ui_override", project_override_allowed: true, promotion_gates: { primary_metric: "exact_match_accuracy", min_business_domain_accuracy: 0, min_document_type_accuracy: 0, min_exact_match_accuracy: 0, prefer_current_champion_on_tie: true }, latest_cycle_status: "succeeded" })),
+  startClassifierCycle: vi.fn(() => Promise.resolve({ status: "started" })),
+  fetchClassifierCycleStatus: vi.fn(() => Promise.resolve({ last_run_started_at: null, last_run_finished_at: null, duration_seconds: null, running: false, phase: "idle", progress_current: 0, progress_total: 0, report_id: null, champion_mode: null, last_error: null })),
+  getClassifierCycleStatusStreamUrl: vi.fn(() => "http://localhost/api/classifier/cycle/status/stream"),
   fetchSuggestions: vi.fn(() => Promise.resolve({ total: 0, items: [] })),
   searchDocuments: vi.fn(() =>
     Promise.resolve({ total: 0, page: 1, page_size: 20, total_pages: 0, hits: [] })
@@ -42,6 +92,8 @@ vi.mock("./api", () => ({
   runReconcile: vi.fn(() => Promise.resolve({ status: "started" })),
   triggerScan: vi.fn(() => Promise.resolve({ project_id: "p1", processed_count: 0, failed_count: 0, items: [], errors: [] })),
   fetchIngestHistory: vi.fn(() => Promise.resolve({ project_id: "p1", entries: [] })),
+  fetchIngestStatus: vi.fn(() => Promise.resolve({ last_run_started_at: null, last_run_finished_at: null, duration_seconds: null, project_id: null, running: false, phase: "idle", progress_current: 0, progress_total: 0, progress_file: null, processed_count: 0, failed_count: 0, last_error: null })),
+  getIngestStatusStreamUrl: vi.fn(() => "http://localhost/api/ingest/status/stream"),
   fetchProjectProfile: vi.fn(() =>
     Promise.resolve({
       profile: {
@@ -56,7 +108,18 @@ vi.mock("./api", () => ({
           document_types: [],
           routing_rules: [],
           confidence_thresholds: { auto_route_min: 0.85, triage_min: 0.5 },
-          llm_policy: { enabled: false, provider: "openai", model: "gpt-4o-mini", mode: "tag_only", allow_override_fields: ["document_type", "tags", "confidence", "topics"], override_guardrails: { area_override_only_if_rule_confidence_below: 0.65, require_explanation: true, max_area_changes: 1 } }
+          llm_policy: {
+            enabled: false,
+            provider: "openai",
+            model: "gpt-4o-mini",
+            mode: "tag_only",
+            allow_override_fields: ["document_type", "tags", "confidence", "topics"],
+            override_guardrails: {
+              business_domain_override_only_if_rule_confidence_below: 0.65,
+              require_explanation: true,
+              max_business_domain_changes: 1
+            }
+          }
         },
         indexing: { topics_path: "config/topics_v1.yaml", extraction_max_chars: 50000, extraction_mode: "all" },
         version: 1
@@ -78,7 +141,7 @@ vi.mock("./api", () => ({
       project_id: null,
       total_documents: 5,
       by_doc_kind: [{ key: "pdf", count: 3 }, { key: "docx", count: 2 }],
-      by_area_key: [{ key: "juridica", count: 4 }],
+      by_business_domain: [{ key: "juridico", count: 4 }],
       by_document_type: [{ key: "contrato", count: 3 }],
       by_extension: [{ key: ".pdf", count: 3 }],
       by_tags: [{ key: "juridica", count: 4 }],
@@ -200,7 +263,7 @@ describe("App", () => {
         {
           doc_id: "docx-1",
           project_id: "p1",
-          area_key: "02_juridica",
+          business_domain: "juridico",
           original_filename: "contrato.docx",
           canonical_filename: "contrato.docx",
           path: "/p1/_WORK/02_juridica/contrato.docx",

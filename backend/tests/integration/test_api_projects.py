@@ -85,7 +85,7 @@ def test_initialize_project_uses_same_template_store_resolution(client: TestClie
                 ],
                 "entity_catalog": [],
             },
-            "naming": {"canonical_pattern": "{date}__{project}__{original_name}", "date_format": "%Y%m%d"},
+            "naming": {"canonical_pattern": "{date}__{project}__{business_domain}__{original_name}", "date_format": "%Y%m%d"},
             "indexing": {
                 "topics_path": "config/topics_v1.yaml",
                 "extraction_max_chars": 50000,
@@ -101,6 +101,7 @@ def test_initialize_project_uses_same_template_store_resolution(client: TestClie
     assert response.status_code == 200
     profile = load_profile(tmp_path / "proj_custom")
     assert profile.layout.folder_for_business_domain("juridico") == "juridico_custom"
+    assert profile.naming.canonical_pattern == "{date}__{project}__{business_domain}__{original_name}"
 
 
 def test_initialize_project_default_template_persists_current_contract(
@@ -114,6 +115,7 @@ def test_initialize_project_default_template_persists_current_contract(
     profile = load_profile(tmp_path / "proj_default")
     assert profile.paths.inbox == "_INBOX_DROP"
     assert profile.layout.areas_root == "02_AREAS"
+    assert profile.naming.canonical_pattern == "{date}__{project}__{original_name}"
     assert {item.key for item in profile.classification.business_domains} >= {
         "societario",
         "juridico",

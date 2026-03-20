@@ -28,11 +28,11 @@ def list_documents(
     project_id: str | None = None,
     doc_kind: str | None = None,
     document_type: str | None = None,
-    area_key: str | None = None,
+    business_domain: str | None = None,
     page: int = 1,
     size: int = 20,
 ) -> str:
-    """List/browse documents with optional filters (no text search required). Returns doc_id, title, filename, project_id, doc_kind, document_type, area_key, tags, ingested_at for each document. Use to enumerate documents in a project or browse by type/area. For text search use search_documents instead."""
+    """List/browse documents with optional filters (no text search required). Returns doc_id, title, filename, project_id, doc_kind, document_type, business_domain, tags, ingested_at for each document. Use to enumerate documents in a project or browse by type/domain. For text search use search_documents instead."""
     params: dict[str, Any] = {"page": page, "size": size}
     if project_id:
         params["project_id"] = project_id
@@ -40,8 +40,8 @@ def list_documents(
         params["doc_kind"] = doc_kind
     if document_type:
         params["document_type"] = document_type
-    if area_key:
-        params["area_key"] = area_key
+    if business_domain:
+        params["business_domain"] = business_domain
     data = get("/api/documents", params=params)
     return json.dumps(data, ensure_ascii=False)
 
@@ -50,7 +50,7 @@ def list_documents(
 def search_documents(
     query: str,
     project_id: str | None = None,
-    area_key: str | None = None,
+    business_domain: str | None = None,
     document_type: str | None = None,
     doc_kind: str | None = None,
     tags: list[str] | None = None,
@@ -59,7 +59,7 @@ def search_documents(
     page: int = 1,
     size: int = 20,
 ) -> str:
-    """Search documents by full-text query with optional filters: project_id, area_key, document_type, doc_kind (pdf, docx, xlsx, pptx, plain_text, html, msg, archive_listing), tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights, evidences)."""
+    """Search documents by full-text query with optional filters: project_id, business_domain, document_type, doc_kind (pdf, docx, xlsx, pptx, plain_text, html, msg, archive_listing), tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights, evidences)."""
     if len(query.strip()) < 2:
         return json.dumps(
             {"error": "query must have at least 2 characters. Use list_documents to browse without a text query."},
@@ -68,8 +68,8 @@ def search_documents(
     params: dict[str, Any] = {"q": query, "page": page, "size": size}
     if project_id:
         params["project_id"] = project_id
-    if area_key:
-        params["area_key"] = area_key
+    if business_domain:
+        params["business_domain"] = business_domain
     if document_type:
         params["document_type"] = document_type
     if doc_kind:
@@ -86,7 +86,7 @@ def search_documents(
 
 @mcp.tool()
 def get_stats(project_id: str | None = None) -> str:
-    """Get document statistics and counts. Returns total_documents and breakdowns by doc_kind (pdf, docx, xlsx, pptx, plain_text...), area_key, document_type, extension, and tags. Each breakdown has key and count. Use this to answer quantity questions like 'how many PDFs?' or 'document distribution by area'."""
+    """Get document statistics and counts. Returns total_documents and breakdowns by doc_kind (pdf, docx, xlsx, pptx, plain_text...), business_domain, document_type, extension, and tags. Each breakdown has key and count. Use this to answer quantity questions like 'how many PDFs?' or 'document distribution by domain'."""
     params: dict[str, Any] = {}
     if project_id:
         params["project_id"] = project_id
@@ -133,17 +133,17 @@ def set_metadata(
     doc_id: str,
     document_type: str | None = None,
     correspondent: str | None = None,
-    area_key: str | None = None,
+    business_domain: str | None = None,
     review_status: str | None = None,
 ) -> str:
-    """Update document metadata: document_type, correspondent, area_key, review_status. Pass only fields to update."""
+    """Update document metadata: document_type, correspondent, business_domain, review_status. Pass only fields to update."""
     payload: dict[str, Any] = {}
     if document_type is not None:
         payload["document_type"] = document_type
     if correspondent is not None:
         payload["correspondent"] = correspondent
-    if area_key is not None:
-        payload["area_key"] = area_key
+    if business_domain is not None:
+        payload["business_domain"] = business_domain
     if review_status is not None:
         payload["review_status"] = review_status
     if not payload:
@@ -181,7 +181,7 @@ def submit_classification(
     document_type: str | None = None,
     tags: list[str] | None = None,
     confidence: float = 0.0,
-    area_key: str | None = None,
+    business_domain: str | None = None,
     topics: list[str] | None = None,
     explanation: str | None = None,
 ) -> str:
@@ -191,7 +191,7 @@ def submit_classification(
         "document_type": document_type,
         "tags": tags or [],
         "confidence": confidence,
-        "area_key": area_key,
+        "business_domain": business_domain,
         "topics": topics or [],
         "explanation": explanation,
     })

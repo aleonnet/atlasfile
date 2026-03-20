@@ -19,7 +19,7 @@ describe("CorrectDecisionModal", () => {
           top_candidates: [],
           source_path: "/tmp/arquivo.pdf",
           metadata_path: "/tmp/doc-1.json",
-          llm_proposed_area: "sustentabilidade",
+          llm_proposed_business_domain: "sustentabilidade",
         }}
         submitting={false}
         businessDomainValue="juridico"

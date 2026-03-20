@@ -1,4 +1,4 @@
-"""Tests for classify_with_llm receiving project context (work_areas + topics)."""
+"""Tests for classify_with_llm receiving project context (business_domains + topics)."""
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
@@ -9,7 +9,7 @@ from app.orchestrator import _build_project_context
 def _sample_profile() -> dict:
     return {
         "classification": {
-            "work_areas": [
+            "business_domains": [
                 {"key": "societario_fiscal", "aliases": ["societario", "fiscal", "cnpj"]},
                 {"key": "juridica", "aliases": ["juridico", "passivo", "contingencia"]},
                 {"key": "marketing_produtos", "aliases": ["marketing", "produtos"]},
@@ -21,8 +21,9 @@ def _sample_profile() -> dict:
     }
 
 
-def test_build_project_context_includes_areas():
+def test_build_project_context_includes_business_domains():
     ctx = _build_project_context(_sample_profile())
+    assert "Domínios de negócio disponíveis neste projeto" in ctx
     assert "societario_fiscal" in ctx
     assert "juridica" in ctx
     assert "marketing_produtos" in ctx
@@ -36,7 +37,7 @@ def test_build_project_context_includes_topics():
 
 def test_build_project_context_includes_instructions():
     ctx = _build_project_context(_sample_profile())
-    assert "nenhuma área existente" in ctx
+    assert "Escolha sempre um dos business_domains" in ctx
     assert "confidence < 0.6" in ctx
 
 
@@ -51,7 +52,7 @@ def test_build_project_context_empty_profile():
 
 
 def test_classify_with_llm_passes_profile_context():
-    """Verify that classify_with_llm builds user_content including project areas."""
+    """Verify that classify_with_llm builds user_content including project business domains."""
     import asyncio
 
     profile = _sample_profile()
@@ -63,7 +64,7 @@ def test_classify_with_llm_passes_profile_context():
         class FakeTC:
             class function:
                 name = "submit_classification"
-                arguments = '{"document_type": "contrato", "tags": ["juridica"], "confidence": 0.85, "area_key": "juridica"}'
+                arguments = '{"document_type": "contrato", "tags": ["juridica"], "confidence": 0.85, "business_domain": "juridica"}'
 
             id = "tc1"
 
@@ -102,7 +103,7 @@ def test_classify_with_llm_passes_profile_context():
                 profile=profile,
             )
 
-            assert result["area_key"] == "juridica"
+            assert result["business_domain"] == "juridica"
             assert result["confidence"] == 0.85
 
             assert len(captured_calls) == 1

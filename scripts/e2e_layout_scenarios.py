@@ -102,15 +102,15 @@ check("conflicts == 0", r["summary"]["conflicts"] == 0)
 print("\n═══ CENÁRIO 2: Renomear folder com arquivos → moves ═══")
 proj = init_project(f"e2e_rename_{RUN_ID}")
 p, v = get_profile(proj)
-area_key = p["layout"]["area_folders"][0]["area_key"]
-old_folder = p["layout"]["area_folders"][0]["folder"]
+business_domain = p["layout"]["business_domain_folders"][0]["business_domain"]
+old_folder = p["layout"]["business_domain_folders"][0]["folder"]
 root = f"/projects/{proj}/02_AREAS/{old_folder}"
 create_file_in_container(f"{root}/doc1.pdf", "pdf-content")
 create_file_in_container(f"{root}/sub/doc2.txt", "text")
 
 new_folder = "renamed_area"
-for af in p["layout"]["area_folders"]:
-    if af["area_key"] == area_key:
+for af in p["layout"]["business_domain_folders"]:
+    if af["business_domain"] == business_domain:
         af["folder"] = new_folder
 
 r = plan(proj, p, cleanup=True)
@@ -132,12 +132,16 @@ check("old folder removed", not path_exists_in_container(f"{root}/doc1.pdf"))
 print("\n═══ CENÁRIO 3: Remover folder COM conteúdo → conflicts ═══")
 proj = init_project(f"e2e_del_content_{RUN_ID}")
 p, v = get_profile(proj)
-area_key = p["layout"]["area_folders"][0]["area_key"]
-old_folder = p["layout"]["area_folders"][0]["folder"]
+business_domain = p["layout"]["business_domain_folders"][0]["business_domain"]
+old_folder = p["layout"]["business_domain_folders"][0]["folder"]
 root = f"/projects/{proj}/02_AREAS/{old_folder}"
 create_file_in_container(f"{root}/important.pdf", "critical")
 
-p["layout"]["area_folders"] = [af for af in p["layout"]["area_folders"] if af["area_key"] != area_key]
+p["layout"]["business_domain_folders"] = [
+    af
+    for af in p["layout"]["business_domain_folders"]
+    if af["business_domain"] != business_domain
+]
 
 r = plan(proj, p, cleanup=True)
 check("status 200", "_error" not in r)
@@ -152,11 +156,15 @@ check("rmdir_empty for old folder", any(old_folder in (op.get("src") or "") for 
 print("\n═══ CENÁRIO 4: Remover folder VAZIO + cleanup → rmdir_empty ═══")
 proj = init_project(f"e2e_del_empty_{RUN_ID}")
 p, v = get_profile(proj)
-area_key = p["layout"]["area_folders"][-1]["area_key"]
-old_folder = p["layout"]["area_folders"][-1]["folder"]
-remaining_count = len(p["layout"]["area_folders"]) - 1
+business_domain = p["layout"]["business_domain_folders"][-1]["business_domain"]
+old_folder = p["layout"]["business_domain_folders"][-1]["folder"]
+remaining_count = len(p["layout"]["business_domain_folders"]) - 1
 
-p["layout"]["area_folders"] = [af for af in p["layout"]["area_folders"] if af["area_key"] != area_key]
+p["layout"]["business_domain_folders"] = [
+    af
+    for af in p["layout"]["business_domain_folders"]
+    if af["business_domain"] != business_domain
+]
 
 r = plan(proj, p, cleanup=True)
 check("status 200", "_error" not in r)
@@ -174,10 +182,10 @@ check("apply errors == 0", ar.get("apply", {}).get("errors") == 0, str(ar.get("a
 check("old folder removed", not path_exists_in_container(f"/projects/{proj}/02_AREAS/{old_folder}"))
 
 # ═══════════════════════════════════════════════════
-print("\n═══ CENÁRIO 5: Adicionar novo area_folder → mkdir ═══")
+print("\n═══ CENÁRIO 5: Adicionar novo business_domain folder → mkdir ═══")
 proj = init_project(f"e2e_add_{RUN_ID}")
 p, v = get_profile(proj)
-p["layout"]["area_folders"].append({"area_key": "novissima", "folder": "99_novissima"})
+p["layout"]["business_domain_folders"].append({"business_domain": "novissima", "folder": "99_novissima"})
 
 r = plan(proj, p)
 check("status 200", "_error" not in r, str(r.get("_detail", "")))
@@ -198,8 +206,7 @@ else:
 print("\n═══ CENÁRIO 6: Mudar areas_root → migração completa ═══")
 proj = init_project(f"e2e_root_change_{RUN_ID}")
 p, v = get_profile(proj)
-area_key = p["layout"]["area_folders"][0]["area_key"]
-old_folder = p["layout"]["area_folders"][0]["folder"]
+old_folder = p["layout"]["business_domain_folders"][0]["folder"]
 create_file_in_container(f"/projects/{proj}/02_AREAS/{old_folder}/migrar.pdf", "data")
 
 p["layout"]["areas_root"] = "NEW_AREAS"
