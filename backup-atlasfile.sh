@@ -52,6 +52,8 @@ cd "$BASE_DIR"
 # Excludes padrão: pastas/arquivos regeneráveis ou que não fazem sentido no backup
 # (vide backup-projects.sh). São sempre aplicados; extras podem ser passados ao chamar backup_project.
 DEFAULT_EXCLUDES=(
+  "${PROJECT_DIR}/.git"
+  "${PROJECT_DIR}/.git/**"
   "${PROJECT_DIR}/__pycache__"
   "${PROJECT_DIR}/**/__pycache__"
   "${PROJECT_DIR}/**/*.pyc"
