@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import math
 import re
+import warnings
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=DeprecationWarning, message="builtin type [Ss]wig")
+    import pymupdf
 
 
 @dataclass
@@ -197,12 +203,71 @@ def _ocr_pdf_page(pdf_path: Path, page_number_1based: int, min_chars: int) -> st
         return ""
 
 
-def _extract_pdf(path: Path, max_chars: int) -> ExtractionResult:
-    from pypdf import PdfReader
+def _spatial_extract_page(page: Any) -> str:
+    """Extrai texto de uma pagina PDF preservando layout espacial via bounding boxes.
 
-    reader = PdfReader(str(path))
+    Usa pymupdf para obter spans com coordenadas, agrupa por linha (proximidade Y)
+    e reconstroi alinhamento de colunas via padding com espacos.
+    """
+    data = page.get_text("dict", flags=pymupdf.TEXT_PRESERVE_WHITESPACE)
+    spans: list[dict] = []
+
+    for block in data.get("blocks", []):
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                text = (span.get("text") or "").strip()
+                if not text:
+                    continue
+                bbox = span.get("bbox", (0, 0, 0, 0))
+                spans.append({"text": text, "x0": bbox[0], "y0": bbox[1], "x1": bbox[2], "y1": bbox[3]})
+
+    if not spans:
+        return ""
+
+    line_tolerance_pt = 3.0
+    char_width_pt = 6.0
+
+    spans.sort(key=lambda s: (s["y0"], s["x0"]))
+    lines: list[list[dict]] = []
+    current_line: list[dict] = []
+    current_y = -999.0
+
+    for span in spans:
+        center_y = (span["y0"] + span["y1"]) / 2
+        if current_line and abs(center_y - current_y) > line_tolerance_pt:
+            lines.append(current_line)
+            current_line = []
+        current_line.append(span)
+        current_y = sum((s["y0"] + s["y1"]) / 2 for s in current_line) / len(current_line)
+
+    if current_line:
+        lines.append(current_line)
+
+    output_lines: list[str] = []
+    for line_spans in lines:
+        line_spans.sort(key=lambda s: s["x0"])
+        chars: list[str] = []
+        cursor_x = 0.0
+        for span in line_spans:
+            gap_pts = span["x0"] - cursor_x
+            if gap_pts > char_width_pt * 1.5:
+                num_spaces = max(1, math.floor(gap_pts / char_width_pt))
+                chars.append(" " * num_spaces)
+            elif chars:
+                chars.append(" ")
+            chars.append(span["text"])
+            cursor_x = span["x1"]
+        output_lines.append("".join(chars))
+
+    return "\n".join(output_lines)
+
+
+def _extract_pdf(path: Path, max_chars: int) -> ExtractionResult:
+    doc = pymupdf.open(str(path))
     chunk_rows: list[tuple[str, str]] = []
-    pages = len(reader.pages)
+    pages = len(doc)
     use_ocr = True
     ocr_min_chars = 50
     try:
@@ -213,18 +278,20 @@ def _extract_pdf(path: Path, max_chars: int) -> ExtractionResult:
     except Exception:
         pass
 
-    for idx, page in enumerate(reader.pages, start=1):
-        page_text = (page.extract_text() or "").strip()
+    for idx in range(pages):
+        page = doc[idx]
+        page_text = _spatial_extract_page(page).strip()
         if len(page_text) < ocr_min_chars and use_ocr:
-            ocr_text = _ocr_pdf_page(path, idx, ocr_min_chars)
+            ocr_text = _ocr_pdf_page(path, idx + 1, ocr_min_chars)
             if ocr_text:
                 page_text = ocr_text
         if not page_text:
             continue
-        chunk_rows.extend(_format_chunks("page", idx, page_text, overlap=0))
+        chunk_rows.extend(_format_chunks("page", idx + 1, page_text, overlap=0))
         if max_chars and sum(len(v) for _, v in chunk_rows) >= max_chars * 2:
             break
 
+    doc.close()
     chunk_text = "\n".join(value for _, value in chunk_rows)
     excerpt = _safe_excerpt(chunk_text, max_chars)
     return ExtractionResult(

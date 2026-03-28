@@ -252,6 +252,105 @@ def test_extract_pdf_from_generated_real_file() -> None:
         path.unlink(missing_ok=True)
 
 
+def _write_multipage_pdf(path: Path, texts: list[str]) -> None:
+    """Cria PDF com N paginas usando pymupdf, cada uma com o texto correspondente."""
+    import pymupdf
+
+    doc = pymupdf.open()
+    for text in texts:
+        page = doc.new_page(width=300, height=200)
+        if text:
+            page.insert_text((50, 100), text, fontsize=14)
+    doc.save(str(path))
+    doc.close()
+
+
+def test_extract_pdf_multipage() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        path = Path(f.name)
+    try:
+        _write_multipage_pdf(path, ["Pagina um", "Pagina dois", "Pagina tres"])
+        result = extract_document_content(path, max_chars=10000)
+        assert result.content_type == "pdf"
+        assert result.extraction_status == "ok"
+        assert any("page:1" in loc for loc in result.chunk_locations)
+        assert any("page:2" in loc for loc in result.chunk_locations)
+        assert any("page:3" in loc for loc in result.chunk_locations)
+        assert "Pagina um" in result.text_excerpt
+        assert "Pagina dois" in result.text_excerpt
+        assert "Pagina tres" in result.text_excerpt
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_pdf_metadata_pages() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        path = Path(f.name)
+    try:
+        _write_multipage_pdf(path, ["A", "B", "C"])
+        result = extract_document_content(path, max_chars=10000)
+        assert result.metadata["pages"] == 3
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_pdf_max_chars_early_stop() -> None:
+    import pymupdf
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        path = Path(f.name)
+    try:
+        # Criar PDF com 10 paginas, cada uma com ~4000 chars de texto real.
+        doc = pymupdf.open()
+        long_text = "Contrato de prestacao de servicos numero " * 100  # ~4100 chars
+        for _ in range(10):
+            page = doc.new_page(width=612, height=792)
+            # Inserir texto em varias linhas para garantir volume.
+            y = 50
+            for line_start in range(0, len(long_text), 80):
+                chunk = long_text[line_start : line_start + 80]
+                page.insert_text((50, y), chunk, fontsize=10)
+                y += 14
+                if y > 750:
+                    break
+            doc.save(str(path))
+        doc.close()
+
+        result = extract_document_content(path, max_chars=2000)
+        page_nums = {loc.split(":")[1] for loc in result.chunk_locations if loc.startswith("page:")}
+        assert len(page_nums) < 10, "Deveria parar antes de processar todas as 10 paginas"
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_pdf_empty_page_skipped() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        path = Path(f.name)
+    try:
+        _write_multipage_pdf(path, ["Texto pagina um", "", "Texto pagina tres"])
+        result = extract_document_content(path, max_chars=10000)
+        assert any("page:1" in loc for loc in result.chunk_locations)
+        assert not any(loc.startswith("page:2") for loc in result.chunk_locations)
+        assert any("page:3" in loc for loc in result.chunk_locations)
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def test_extract_pdf_ocr_fallback_called(monkeypatch) -> None:
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        path = Path(f.name)
+    try:
+        _write_multipage_pdf(path, ["Hi"])  # < 50 chars -> triggers OCR
+        monkeypatch.setattr(
+            "app.document_extractor._ocr_pdf_page",
+            lambda *_args, **_kwargs: "Texto recuperado via OCR",
+        )
+        result = extract_document_content(path, max_chars=10000)
+        assert "Texto recuperado via OCR" in result.text_excerpt
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def test_extract_pptx_from_generated_real_file() -> None:
     with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as f:
         path = Path(f.name)

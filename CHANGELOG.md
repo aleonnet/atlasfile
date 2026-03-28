@@ -4,6 +4,29 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.8.1] -- 2026-03-28
+
+### Extração de PDF
+
+- Migração do motor de extração PDF de `pypdf` para `pymupdf` com parsing espacial via bounding boxes
+- Nova função `_spatial_extract_page`: agrupa spans por proximidade vertical (Y), ordena por X dentro de cada linha e reconstrói colunas com padding espacial
+- Benchmark em 10 PDFs reais (216 QA pairs): qualidade equivalente (~76%), 3.5x mais rápido, 4.2x menos memória; em PDFs grandes (244p) pymupdf foi 64x mais rápido
+- OCR fallback (pdf2image + Tesseract) inalterado — acionado quando texto nativo < 50 chars
+- Interface `ExtractionResult` inalterada — zero impacto em consumidores (indexer, classifier)
+
+### Testes
+
+- 5 testes novos de PDF: multipage, metadata pages, max_chars early stop, empty page skipped, OCR fallback
+- **Total: 365 backend + 71 frontend = 436 testes**
+
+### Docs
+
+- Projeto de benchmark independente em `extractor-benchmark/` com corpus, providers, ground truth e scripts de avaliação
+- Sessão de decisão registrada em `docs/claude_chats/`
+- Planos concluídos renomeados com nomes descritivos em `docs/planos_concluidos/`
+
+---
+
 ## [0.8.0] -- 2026-03-20
 
 ### Ciclo operacional do classificador
