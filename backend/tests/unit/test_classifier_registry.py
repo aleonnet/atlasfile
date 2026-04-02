@@ -47,6 +47,42 @@ def test_save_classifier_report_is_listed_from_runtime_state(tmp_path, monkeypat
     assert reports[0]["champion"]["mode"] == "bootstrap"
 
 
+def test_registry_accepts_setfit_champion_mode(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PROJECTS_HOST_ROOT", str(tmp_path))
+
+    registry = load_classifier_registry()
+    registry.champion_mode = "setfit"
+    save_classifier_registry(registry)
+
+    reloaded = load_classifier_registry()
+
+    assert reloaded.champion_mode == "setfit"
+
+
+def test_benchmark_enabled_modes_default_and_persistence(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PROJECTS_HOST_ROOT", str(tmp_path))
+
+    registry = load_classifier_registry()
+
+    assert registry.benchmark_enabled_modes == ["bootstrap", "sparse_logreg"]
+
+    registry.benchmark_enabled_modes = ["bootstrap", "sparse_logreg", "setfit"]
+    save_classifier_registry(registry)
+
+    reloaded = load_classifier_registry()
+
+    assert reloaded.benchmark_enabled_modes == ["bootstrap", "sparse_logreg", "setfit"]
+
+
+def test_benchmark_enabled_modes_rejects_unsupported_mode() -> None:
+    import pytest
+
+    from app.classifier_registry import ClassifierRegistry
+
+    with pytest.raises(ValueError, match="unsupported benchmark mode"):
+        ClassifierRegistry(benchmark_enabled_modes=["bootstrap", "invalid_mode"])
+
+
 def test_load_classifier_registry_persists_dataset_manifest_fields(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("PROJECTS_HOST_ROOT", str(tmp_path))
 

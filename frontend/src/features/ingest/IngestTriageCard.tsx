@@ -1,6 +1,8 @@
 import { ChevronDown, ChevronRight, RefreshCw, Settings } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  cancelClassifierCycle,
+  deleteClassifierReport,
   fetchClassifierCycleStatus,
   fetchClassifierReportLatest,
   fetchClassifierReports,
@@ -13,6 +15,7 @@ import {
   getIngestStatusStreamUrl,
   startClassifierCycle,
   triggerScan,
+  updateBenchmarkEnabledModes,
   updateClassifierOverride,
   updateProjectProfile
 } from "../../api";
@@ -82,37 +85,40 @@ function formatClassifierModeLabel(mode?: string | null): string {
       return "bootstrap";
     case "sparse_logreg":
       return "sparse_logreg";
-    case "sparse_linear_svc":
-      return "sparse_linear_svc";
+    case "setfit":
+      return "setfit";
+    case "llm":
+      return "llm";
     default:
       return mode || "—";
   }
 }
 
 function formatPhaseLabel(phase?: string | null): string {
+  if (!phase) return "";
+  if (phase.startsWith("baseline:")) {
+    const model = phase.slice("baseline:".length);
+    return `Baseline ${model}`;
+  }
+  if (phase.startsWith("benchmark:")) {
+    const model = phase.slice("benchmark:".length);
+    return `Benchmark ${model}`;
+  }
   switch (phase) {
     case "starting":
       return "Iniciando";
-    case "loading_datasets":
-      return "Carregando datasets";
-    case "benchmark_bootstrap":
-      return "Benchmark bootstrap";
-    case "benchmark_supervised":
-      return "Benchmark supervisionado";
-    case "persisting_artifacts":
-      return "Persistindo artefatos";
-    case "promoting_champion":
-      return "Promovendo campeão";
-    case "training_benchmark":
-      return "Treino e benchmark";
+    case "extracting":
+      return "Extraindo conteúdos";
     case "processing":
       return "Processando arquivos";
     case "completed":
       return "Concluído";
+    case "cancelled":
+      return "Cancelado";
     case "failed":
       return "Falhou";
     default:
-      return phase || "idle";
+      return phase;
   }
 }
 
@@ -209,6 +215,8 @@ type Props = {
   openaiApiKey: string;
   anthropicApiKey: string;
   onOpenSettings: () => void;
+  selectedModelTriage?: string;
+  onChangeModelTriage?: (providerModel: string) => void;
 };
 
 export function IngestTriageCard({
@@ -223,7 +231,9 @@ export function IngestTriageCard({
   onStatus,
   openaiApiKey,
   anthropicApiKey,
-  onOpenSettings
+  onOpenSettings,
+  selectedModelTriage,
+  onChangeModelTriage
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<IngestHistoryEntry[]>([]);
@@ -236,7 +246,11 @@ export function IngestTriageCard({
   const [classifierStatus, setClassifierStatus] = useState<ClassifierStatusResponse | null>(null);
   const [classifierReport, setClassifierReport] = useState<ClassifierReport | null>(null);
   const [classifierReports, setClassifierReports] = useState<ClassifierReportSummary[]>([]);
+  const [confirmDeleteReportId, setConfirmDeleteReportId] = useState<string | null>(null);
+  const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
   const [classifierSaving, setClassifierSaving] = useState(false);
+  const [confirmCancelCycle, setConfirmCancelCycle] = useState(false);
+  const [cancellingCycle, setCancellingCycle] = useState(false);
   const [classifierCycleStatus, setClassifierCycleStatus] = useState<ClassifierCycleStatus | null>(null);
   const [ingestStatus, setIngestStatus] = useState<IngestOperationStatus | null>(null);
   const ingestMonitorStopRef = useRef<(() => void) | null>(null);
@@ -269,19 +283,34 @@ export function IngestTriageCard({
       setFullProfile(resp.profile);
       setProfileVersion(resp.version);
       const policy = resp.profile.classification?.llm_policy;
-      if (policy) {
-        setLlmPolicy({ ...DEFAULT_LLM_POLICY, ...policy });
-      } else {
-        setLlmPolicy(DEFAULT_LLM_POLICY);
-      }
+      const resolved = policy ? { ...DEFAULT_LLM_POLICY, ...policy } : DEFAULT_LLM_POLICY;
+      setLlmPolicy(resolved);
+      onChangeModelTriage?.(`${resolved.provider}/${resolved.model}`);
     } catch {
       /* profile not available yet */
     }
-  }, [selectedProject, isSingleProject]);
+  }, [selectedProject, isSingleProject, onChangeModelTriage]);
 
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  // Sync: modal changed selectedModelTriage → update project profile
+  useEffect(() => {
+    if (!selectedModelTriage || !fullProfile || !isSingleProject) return;
+    const currentProviderModelSync = `${llmPolicy.provider}/${llmPolicy.model}`;
+    if (selectedModelTriage === currentProviderModelSync) return;
+    const [provider, model] = selectedModelTriage.split("/");
+    if (!provider || !model) return;
+    const nextPolicy: LLMPolicy = {
+      ...llmPolicy,
+      provider: provider as LLMPolicy["provider"],
+      model
+    };
+    setLlmPolicy(nextPolicy);
+    void persistLlmPolicy(nextPolicy);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedModelTriage]);
 
   const loadClassifierState = useCallback(async () => {
     try {
@@ -383,6 +412,7 @@ export function IngestTriageCard({
       model: model || llmPolicy.model
     };
     setLlmPolicy(nextPolicy);
+    onChangeModelTriage?.(providerModel);
     void persistLlmPolicy(nextPolicy);
   }
 
@@ -549,6 +579,12 @@ export function IngestTriageCard({
     };
   }, [stopClassifierCycleMonitor, stopIngestMonitor]);
 
+  useEffect(() => {
+    if (!classifierCycleStatus?.running) {
+      setCancellingCycle(false);
+    }
+  }, [classifierCycleStatus?.running]);
+
   async function handleClassifierOverrideChange(value: string) {
     if (!isSingleProject) return;
     const nextValue = value === AUTO_CLASSIFIER_OVERRIDE ? null : (value as OperationalClassifierMode);
@@ -564,6 +600,36 @@ export function IngestTriageCard({
     }
   }
 
+  async function handleDeleteReport() {
+    const reportId = confirmDeleteReportId;
+    if (!reportId) return;
+    setConfirmDeleteReportId(null);
+    setDeletingReportId(reportId);
+    try {
+      await deleteClassifierReport(reportId);
+      setClassifierReports(prev => prev.filter(r => r.report_id !== reportId));
+    } catch {
+      // falha silenciosa — o relatório permanece na lista
+    } finally {
+      setDeletingReportId(null);
+    }
+  }
+
+  async function handleToggleBenchmarkMode(mode: string) {
+    if (!classifierStatus) return;
+    const current = classifierStatus.benchmark_enabled_modes || [];
+    const next = current.includes(mode) ? current.filter((m) => m !== mode) : [...current, mode];
+    setClassifierSaving(true);
+    try {
+      const status = await updateBenchmarkEnabledModes(next);
+      setClassifierStatus(status);
+    } catch {
+      onStatus("Falha ao salvar modos de benchmark");
+    } finally {
+      setClassifierSaving(false);
+    }
+  }
+
   async function handleStartClassifierCycle() {
     setClassifierCycleStatus((previous) => buildPendingClassifierCycleStatus(previous));
     try {
@@ -574,6 +640,18 @@ export function IngestTriageCard({
       stopClassifierCycleMonitor();
       void fetchClassifierCycleStatus().then(setClassifierCycleStatus).catch(() => {});
       onStatus("Falha ao iniciar ciclo do classificador");
+    }
+  }
+
+  async function handleCancelCycle() {
+    setConfirmCancelCycle(false);
+    setCancellingCycle(true);
+    try {
+      await cancelClassifierCycle();
+      onStatus("Sinal de cancelamento enviado");
+    } catch {
+      setCancellingCycle(false);
+      onStatus("Falha ao cancelar ciclo");
     }
   }
 
@@ -607,7 +685,7 @@ export function IngestTriageCard({
         }),
         { processed: 0, failed: 0 }
       );
-      onStatus(`Inbox processado: ${totals.processed} arquivo(s), ${totals.failed} falha(s)`);
+      onStatus(`Inbox processado: ${totals.processed} arquivo${totals.processed !== 1 ? "s" : ""}, ${totals.failed} falha${totals.failed !== 1 ? "s" : ""}`);
     } catch {
       onStatus("Falha ao processar inbox");
     } finally {
@@ -652,26 +730,54 @@ export function IngestTriageCard({
         </button>
       </div>
 
-      {(loading ||
-        ingestStatus?.running ||
+      {isSingleProject && selectedProjectLabel && (
+        <div className="itc-project-header">
+          <span className="itc-project-label">{selectedProjectLabel}</span>
+          {triageItems.length > 0 && (
+            <span className="itc-project-pending">
+              · {triageItems.length} pendente{triageItems.length !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+      )}
+
+      {(loading || ingestStatus?.running ||
         ingestStatus?.phase === "starting" ||
-        ingestStatus?.phase === "completed" ||
-        ingestStatus?.phase === "failed") && (
-        <div className="itc-run-status">
-          <strong>Processar INBOX:</strong>
-          <span>{formatPhaseLabel(ingestStatus?.phase)}</span>
-          <span>
-            {ingestStatus?.progress_current ?? 0}/{ingestStatus?.progress_total ?? 0}
-          </span>
-          {ingestStatus?.progress_file && <code>{ingestStatus.progress_file}</code>}
+        ingestStatus?.phase === "extracting" ||
+        ingestStatus?.phase === "processing") && (
+        <div className="itc-op-progress">
+          <p className="itc-op-phase">{formatPhaseLabel(ingestStatus?.phase) || "Iniciando..."}</p>
+          <div className="itc-op-bar-wrap">
+            <div
+              className="itc-op-bar-fill"
+              style={{
+                width: (ingestStatus?.progress_total ?? 0) > 0
+                  ? `${Math.min(100, (100 * (ingestStatus?.progress_current ?? 0)) / ingestStatus!.progress_total!)}%`
+                  : "0%"
+              }}
+            />
+          </div>
+          <p className="itc-op-stats">
+            {ingestStatus?.progress_current ?? 0} / {ingestStatus?.progress_total ?? 0} arquivo{(ingestStatus?.progress_total ?? 0) !== 1 ? "s" : ""}
+          </p>
+          {ingestStatus?.progress_file && (
+            <p className="itc-op-file">{ingestStatus.progress_file}</p>
+          )}
+        </div>
+      )}
+
+      {ingestStatus?.phase === "failed" && !loading && !ingestStatus?.running && (
+        <div className="itc-op-progress itc-op-error">
+          <p className="itc-op-phase">Falhou</p>
+          {ingestStatus.last_error && <p className="itc-op-file">{ingestStatus.last_error}</p>}
         </div>
       )}
 
       {isSingleProject && (
-        <details className="itc-collapsible" open>
+        <details className="itc-collapsible">
           <summary className="itc-collapsible-header">
             Classificador operacional
-            <span className="itc-badge-count">
+            <span className="itc-badge itc-badge-accent">
               {classifierStatus ? formatClassifierModeLabel(classifierStatus.effective_mode) : "carregando"}
             </span>
           </summary>
@@ -699,9 +805,9 @@ export function IngestTriageCard({
 
                 <div className="itc-classifier-controls">
                   <div className="itc-llm-field">
-                    <label htmlFor="itc-classifier-override">Override manual do projeto</label>
                     <select
                       id="itc-classifier-override"
+                      aria-label="Override do classificador"
                       value={classifierStatus.override_mode || AUTO_CLASSIFIER_OVERRIDE}
                       onChange={(e) => void handleClassifierOverrideChange(e.target.value)}
                       disabled={classifierSaving || !!classifierCycleStatus?.running}
@@ -714,66 +820,186 @@ export function IngestTriageCard({
                       ))}
                     </select>
                   </div>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => void handleStartClassifierCycle()}
-                    disabled={!!classifierCycleStatus?.running}
-                  >
-                    {classifierCycleStatus?.running ? "Ciclo em andamento..." : "Rodar benchmark + retreino"}
-                  </button>
+                  <div className="itc-cycle-btn-wrap">
+                    <button
+                      type="button"
+                      className={`btn${classifierCycleStatus?.running && !cancellingCycle ? " danger" : ""}`}
+                      disabled={cancellingCycle}
+                      onClick={() => {
+                        if (classifierCycleStatus?.running) {
+                          setConfirmCancelCycle(true);
+                        } else {
+                          void handleStartClassifierCycle();
+                        }
+                      }}
+                    >
+                      {cancellingCycle ? "Cancelando..." : classifierCycleStatus?.running ? "Cancelar ciclo" : "Rodar ciclo"}
+                    </button>
+                    {confirmCancelCycle && classifierCycleStatus?.running && (
+                      <div className="itc-confirm-popover">
+                        <p>Cancelar o ciclo em andamento?</p>
+                        <div className="itc-confirm-actions">
+                          <button type="button" className="btn danger" onClick={() => void handleCancelCycle()}>Confirmar</button>
+                          <button type="button" className="btn" onClick={() => setConfirmCancelCycle(false)}>Não</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="itc-benchmark-modes">
+                  {(["bootstrap", "sparse_logreg", "setfit", "llm"] as const).map((mode) => {
+                    const enabled = classifierStatus.benchmark_enabled_modes?.includes(mode) ?? (mode !== "setfit" && mode !== "llm");
+                    return (
+                      <label key={mode} className="checkbox-inline">
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          disabled={classifierSaving || !!classifierCycleStatus?.running}
+                          onChange={() => void handleToggleBenchmarkMode(mode)}
+                        />
+                        {formatClassifierModeLabel(mode)}
+                      </label>
+                    );
+                  })}
                 </div>
 
                 <p className="itc-classifier-policy">
-                  Promoção: {classifierStatus.promotion_policy} | gates: exact &ge; {formatPct(classifierStatus.promotion_gates.min_exact_match_accuracy)},
-                  domínio &ge; {formatPct(classifierStatus.promotion_gates.min_business_domain_accuracy)},
-                  tipo &ge; {formatPct(classifierStatus.promotion_gates.min_document_type_accuracy)}
+                  Promoção: {classifierStatus.promotion_policy === "auto_best_with_ui_override" ? "Automático — melhor score" : classifierStatus.promotion_policy} | gate: exact &ge; {formatPct(classifierStatus.promotion_gates.min_exact_match_accuracy)}
                 </p>
               </>
             )}
 
-            {classifierCycleStatus && (
-              <div className={`itc-classifier-cycle${classifierCycleStatus.running ? " active" : ""}`}>
-                <strong>Ciclo:</strong> {formatPhaseLabel(classifierCycleStatus.phase)}
-                <span>
-                  {classifierCycleStatus.progress_current}/{classifierCycleStatus.progress_total}
-                </span>
-                {classifierCycleStatus.last_error && <span className="itc-classifier-cycle-error">{classifierCycleStatus.last_error}</span>}
+            {classifierCycleStatus && (classifierCycleStatus.running || classifierCycleStatus.phase === "failed" || classifierCycleStatus.phase === "cancelled") && (
+              <div className={`itc-op-progress${classifierCycleStatus.phase === "failed" ? " itc-op-error" : classifierCycleStatus.phase === "cancelled" ? " itc-op-cancelled" : ""}`}>
+                <p className="itc-op-phase">{cancellingCycle && classifierCycleStatus.running ? "Aguardando cancelamento..." : formatPhaseLabel(classifierCycleStatus.phase)}</p>
+                {classifierCycleStatus.running && (
+                  <>
+                    <div className="itc-op-bar-wrap">
+                      <div
+                        className="itc-op-bar-fill"
+                        style={{
+                          width: (classifierCycleStatus.progress_total ?? 0) > 0
+                            ? `${Math.min(100, (100 * (classifierCycleStatus.progress_current ?? 0)) / classifierCycleStatus.progress_total!)}%`
+                            : "0%"
+                        }}
+                      />
+                    </div>
+                    <p className="itc-op-stats">
+                      {classifierCycleStatus.progress_current} / {classifierCycleStatus.progress_total}
+                    </p>
+                  </>
+                )}
+                {classifierCycleStatus.last_error && (
+                  <p className="itc-op-file">{classifierCycleStatus.last_error}</p>
+                )}
               </div>
             )}
 
-            {classifierReport && (
-              <div className="itc-classifier-benchmark">
-                <div className="itc-classifier-benchmark-head">
-                  <strong>Benchmark oficial</strong>
-                  {classifierReport.report_id && <span className="itc-scan-timestamp">{classifierReport.report_id}</span>}
+            {(classifierReport || classifierCycleStatus?.benchmarks) && (() => {
+              const liveBenchmarks = classifierCycleStatus?.running ? classifierCycleStatus.benchmarks : undefined;
+              const reportBenchmarks = classifierReport?.benchmarks;
+              const source = liveBenchmarks || reportBenchmarks;
+              if (!source && !liveBenchmarks) return null;
+              return (
+                <div className="itc-classifier-benchmark">
+                  <div className="itc-classifier-benchmark-head">
+                    <strong>Benchmark oficial</strong>
+                  </div>
+                  <table className="itc-scan-table itc-classifier-table">
+                    <thead>
+                      <tr>
+                        <th>Modo</th>
+                        <th>Domínio</th>
+                        <th>Tipo</th>
+                        <th>Exact match</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(["bootstrap", "sparse_logreg", "setfit", "llm"] as const).map((mode) => {
+                        const liveSummary = liveBenchmarks?.[mode]?.summary;
+                        const reportSummary = reportBenchmarks?.[mode]?.summary;
+                        const liveIsSkipped = liveSummary?.skipped === true;
+                        // Saved report: mode was skipped but may have inherited metrics from previous cycle
+                        const reportIsSkipped = !liveBenchmarks && reportSummary?.skipped === true;
+                        const isSkipped = liveIsSkipped || reportIsSkipped;
+                        // Live: fall back to reportSummary (previous report) for inherited values
+                        const displaySummary = (liveIsSkipped && reportSummary) ? reportSummary : (liveSummary || reportSummary);
+                        if (!displaySummary) return null;
+                        const isChampion = !liveBenchmarks && classifierReport?.champion?.mode === mode;
+                        const isLive = !!liveSummary && !liveIsSkipped;
+                        return (
+                          <tr key={mode} style={{ opacity: isSkipped ? 0.45 : 1, color: isLive ? "var(--text)" : undefined }}>
+                            <td>
+                              {formatClassifierModeLabel(mode)}
+                              {isChampion && <span className="itc-classifier-champion">campeão</span>}
+                              {isSkipped && <span style={{ color: "var(--muted)", fontSize: "0.72rem", marginLeft: 4 }}>skip</span>}
+                            </td>
+                            <td>{formatPct(displaySummary.business_domain_accuracy)}</td>
+                            <td>{formatPct(displaySummary.document_type_accuracy)}</td>
+                            <td>{formatPct(displaySummary.exact_match_accuracy)}</td>
+                            <td>{isSkipped ? "skip" : "ok"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                <table className="itc-scan-table itc-classifier-table">
+              );
+            })()}
+
+            {classifierReport?.gates && (() => {
+              const gateEntries = Object.entries(classifierReport.gates) as [string, Record<string, unknown>][];
+              const allWarnings = gateEntries.flatMap(([name, gate]) => {
+                const warnings = (gate?.warnings ?? []) as string[];
+                return warnings.map((w) => `${name}: ${w}`);
+              });
+              if (!allWarnings.length) return null;
+              return (
+                <div className="itc-gate-warnings">
+                  <strong>Gate warnings</strong>
+                  <ul className="list">
+                    {allWarnings.map((w, i) => <li key={i}><code>{w}</code></li>)}
+                  </ul>
+                </div>
+              );
+            })()}
+
+            {classifierReports.length > 0 && (
+              <div className="itc-classifier-history">
+                <strong>Evolução recente</strong>
+                <table className="itc-history-table">
                   <thead>
                     <tr>
-                      <th>Modo</th>
-                      <th>Domínio</th>
-                      <th>Tipo</th>
-                      <th>Exact match</th>
-                      <th>Status</th>
+                      <th>Ciclo</th>
+                      <th>Campeão</th>
+                      <th>exact</th>
+                      <th>bd F1</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {["bootstrap", "sparse_logreg", "sparse_linear_svc"].map((mode) => {
-                      const benchmark = classifierReport.benchmarks[mode];
-                      if (!benchmark) return null;
-                      const summary = benchmark.summary;
-                      const isChampion = classifierReport.champion?.mode === mode;
+                    {classifierReports.slice(0, 8).map((report) => {
+                      const isChampion = report.report_id === classifierStatus?.champion_report_id;
+                      const ts = report.generated_at
+                        ? new Date(report.generated_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })
+                        : report.report_id;
                       return (
-                        <tr key={mode}>
+                        <tr key={report.report_id} className={isChampion ? "itc-history-champion" : ""}>
+                          <td className="itc-history-ts">{ts}</td>
+                          <td>{formatClassifierModeLabel(report.champion_mode)}</td>
+                          <td>{formatPct(report.champion_summary?.exact_match_accuracy)}</td>
+                          <td>{formatPct(report.champion_summary?.business_domain_macro_f1)}</td>
                           <td>
-                            {formatClassifierModeLabel(mode)}
-                            {isChampion && <span className="itc-classifier-champion">campeão</span>}
+                            <button
+                              className="btn danger"
+                              style={{ padding: "2px 6px", fontSize: "0.75rem" }}
+                              disabled={isChampion || deletingReportId === report.report_id}
+                              onClick={() => setConfirmDeleteReportId(report.report_id)}
+                              title={isChampion ? "Campeão ativo — não pode ser deletado" : "Deletar relatório"}
+                            >×</button>
                           </td>
-                          <td>{formatPct(summary.business_domain_accuracy)}</td>
-                          <td>{formatPct(summary.document_type_accuracy)}</td>
-                          <td>{formatPct(summary.exact_match_accuracy)}</td>
-                          <td>{summary.skipped ? "skip" : "ok"}</td>
                         </tr>
                       );
                     })}
@@ -781,24 +1007,25 @@ export function IngestTriageCard({
                 </table>
               </div>
             )}
-
-            {classifierReports.length > 0 && (
-              <div className="itc-classifier-history">
-                <strong>Evolução recente</strong>
-                <ul className="list">
-                  {classifierReports.slice(0, 5).map((report) => (
-                    <li key={report.report_id} className="list-item">
-                      <span className="list-title">{report.report_id}</span>
-                      <div className="sub list-meta">
-                        campeão: {formatClassifierModeLabel(report.champion_mode)} | exact: {formatPct(report.champion_summary?.exact_match_accuracy)}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
           </div>
         </details>
+      )}
+
+      {confirmDeleteReportId && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Confirmar exclusão">
+          <div className="modal tmpl-confirm-modal">
+            <div className="modal-header">
+              <h3>Excluir relatório</h3>
+            </div>
+            <p style={{ margin: "12px 0 18px", fontSize: "0.88rem", color: "var(--text)" }}>
+              Tem certeza que deseja excluir o relatório <strong>{confirmDeleteReportId}</strong>? Esta ação não pode ser desfeita.
+            </p>
+            <div className="modal-actions">
+              <button className="btn" onClick={() => setConfirmDeleteReportId(null)}>Cancelar</button>
+              <button className="btn danger" onClick={handleDeleteReport}>Excluir</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Classificação LLM ── */}
@@ -806,20 +1033,20 @@ export function IngestTriageCard({
         <details className="itc-collapsible">
           <summary className="itc-collapsible-header">
             Classificação LLM
-            <span className="itc-badge-count">{llmPolicy.enabled ? "ativado" : "desativado"}</span>
+            <span className={`itc-badge ${llmPolicy.enabled ? "itc-badge-on" : "itc-badge-off"}`}>
+              {llmPolicy.enabled ? "● ativado" : "○ desativado"}
+            </span>
           </summary>
           <div className="itc-collapsible-body">
             <div className="itc-llm-row">
-              <label>
-                LLM ativado
-                <button
-                  type="button"
-                  className={`itc-toggle ${llmPolicy.enabled ? "active" : ""}`}
-                  onClick={handleToggleLlm}
-                  aria-pressed={llmPolicy.enabled}
-                  aria-label="Ativar classificação LLM"
+              <label className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={llmPolicy.enabled}
+                  onChange={() => handleToggleLlm()}
                   disabled={llmSaving}
                 />
+                LLM ativado
               </label>
               {llmSaving && <span className="itc-llm-saving">salvando...</span>}
             </div>
@@ -886,17 +1113,12 @@ export function IngestTriageCard({
         </details>
       )}
 
-      <div className="card-intro">
-        <p>Projeto selecionado: {selectedProjectLabel || "-"}</p>
-        <p>Itens pendentes: {triageItems.length}</p>
-      </div>
-
       {/* ── Processamentos (tabela plana, paginada) ── */}
       {allRows.length > 0 && (
-        <details className="itc-collapsible" open>
+        <details className="itc-collapsible">
           <summary className="itc-collapsible-header">
             Processamentos
-            <span className="itc-badge-count">{allRows.length} arquivo(s)</span>
+            <span className="itc-badge itc-badge-accent">{allRows.length} arquivo{allRows.length !== 1 ? "s" : ""}</span>
           </summary>
           <div className="itc-collapsible-body itc-proc-body">
             <div className="itc-proc-table-wrap">
@@ -1017,10 +1239,10 @@ export function IngestTriageCard({
 
       {/* ── Itens pendentes de triagem ── */}
       {triageItems.length > 0 && (
-        <details className="itc-collapsible" open>
+        <details className="itc-collapsible">
           <summary className="itc-collapsible-header">
             Itens pendentes de triagem
-            <span className="itc-badge-count">{triageItems.length}</span>
+            <span className="itc-badge itc-badge-pending">{triageItems.length}</span>
           </summary>
           <div className="itc-collapsible-body">
             <ul className="list">

@@ -100,9 +100,7 @@
 
 /* === Seções colapsáveis === */
 .pl-collapsible {
-  margin-top: 10px;
   border-top: 1px solid var(--border);
-  padding-top: 10px;
 }
 
 .pl-collapsible-header {
@@ -118,7 +116,7 @@
   align-items: center;
   gap: 8px;
   user-select: none;
-  padding: 2px 0;
+  padding: 9px 0;
 }
 
 .pl-collapsible-header::-webkit-details-marker {
@@ -139,6 +137,13 @@
 
 .pl-collapsible-body {
   padding-top: 10px;
+}
+
+.pl-empty {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding: 6px 0;
+  margin: 0;
 }
 
 .pl-sub-label {

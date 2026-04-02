@@ -75,6 +75,7 @@ class TrainingPoolRecord(BaseModel):
     topics: list[str] = Field(default_factory=list)
     entities: list[ValidationEntity] = Field(default_factory=list)
     notes: str = ""
+    synthetic_text: str = ""
 
 
 def _normalize_training_pool_record(record: TrainingPoolRecord) -> TrainingPoolRecord:
@@ -204,6 +205,65 @@ def stage_validation_files(source_paths: Iterable[Path]) -> list[Path]:
         staged.append(candidate)
     sync_validation_entries_from_files()
     return staged
+
+
+def corpus_splits_dir() -> Path:
+    return classifier_datasets_root() / "splits"
+
+
+def corpus_files_dir() -> Path:
+    return classifier_datasets_root() / "corpus_files"
+
+
+def splits_available() -> bool:
+    """Return True if the new corpus-based splits exist."""
+    splits = corpus_splits_dir()
+    return (splits / "train.jsonl").exists() and (splits / "validation.jsonl").exists()
+
+
+def _load_split_jsonl(split_name: str) -> list[dict]:
+    path = corpus_splits_dir() / f"{split_name}.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def _resolve_corpus_file(corpus_file: str) -> Path:
+    return corpus_files_dir() / corpus_file
+
+
+def load_split_as_validation_entries(split_name: str = "validation") -> list[ValidationSetEntry]:
+    """Load a split JSONL and return as ValidationSetEntry list (for benchmark compatibility)."""
+    entries = []
+    for record in _load_split_jsonl(split_name):
+        entries.append(ValidationSetEntry(
+            file=record.get("corpus_file", ""),
+            document_type=record.get("document_type", ""),
+            business_domain=record.get("business_domain", ""),
+        ))
+    return entries
+
+
+def resolve_corpus_validation_file(file_name: str) -> Path:
+    """Resolve a corpus_file name to its physical path in corpus_files/."""
+    return _resolve_corpus_file(file_name)
+
+
+def load_split_as_training_records(split_name: str = "train") -> list[TrainingPoolRecord]:
+    """Load a split JSONL and return as TrainingPoolRecord list (for benchmark compatibility)."""
+    records = []
+    for entry in _load_split_jsonl(split_name):
+        records.append(TrainingPoolRecord(
+            doc_id=entry.get("doc_id", ""),
+            project_id="corpus",
+            original_filename=entry.get("original_filename", ""),
+            path=str(Path("corpus_files") / entry.get("corpus_file", "")),
+            business_domain=entry.get("business_domain", ""),
+            document_type=entry.get("document_type", ""),
+            decision="corpus",
+            sha256=entry.get("sha256", ""),
+        ))
+    return records
 
 
 def _training_pool_snapshot_name(doc_id: str, original_filename: str, fallback_name: str) -> str:

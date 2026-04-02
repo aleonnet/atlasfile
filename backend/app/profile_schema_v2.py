@@ -27,7 +27,6 @@ class LLMMode(str, Enum):
 class OperationalClassifierMode(str, Enum):
     bootstrap = "bootstrap"
     sparse_logreg = "sparse_logreg"
-    sparse_linear_svc = "sparse_linear_svc"
 
 
 class ProjectPathsTriage(BaseModel):
@@ -191,6 +190,13 @@ class ClassificationOperationalConfig(BaseModel):
     override_mode: OperationalClassifierMode | None = None
 
 
+class AugmentationConfig(BaseModel):
+    enabled: bool = False
+    min_synthetic_per_class: int = 8
+    max_synthetic_per_class: int = 20
+    target_balance_ratio: float = 0.5
+
+
 class ClassificationConfig(BaseModel):
     business_domains: list[BusinessDomain] = Field(default_factory=list)
     document_types: list[DocumentType] = Field(default_factory=list)
@@ -199,6 +205,7 @@ class ClassificationConfig(BaseModel):
     confidence_thresholds: ConfidenceThresholds = Field(default_factory=ConfidenceThresholds)
     llm_policy: LLMPolicy = Field(default_factory=LLMPolicy)
     operational: ClassificationOperationalConfig = Field(default_factory=ClassificationOperationalConfig)
+    augmentation: AugmentationConfig = Field(default_factory=AugmentationConfig)
 
     @model_validator(mode="after")
     def _validate_areas(self) -> "ClassificationConfig":

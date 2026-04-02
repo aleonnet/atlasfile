@@ -181,9 +181,9 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
     return (
       <section className="panel card">
         <div className="panel-head card-header">
-          <h2>Profile & Layout por projeto</h2>
+          <h2>Perfil e Organização</h2>
         </div>
-        <p className="card-intro">Selecione um projeto específico para editar profile/layout.</p>
+        <p className="pl-empty">Selecione um projeto específico para editar perfil e organização.</p>
       </section>
     );
   }

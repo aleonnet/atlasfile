@@ -10,9 +10,10 @@ from pydantic import BaseModel, Field, model_validator
 
 from .config import settings
 
-SUPPORTED_CLASSIFIER_MODES = ("bootstrap", "sparse_logreg", "sparse_linear_svc")
+SUPPORTED_CLASSIFIER_MODES = ("bootstrap", "sparse_logreg", "setfit", "llm")
 DEFAULT_CLASSIFIER_MODE = "bootstrap"
 DEFAULT_PROMOTION_POLICY = "auto_best_with_ui_override"
+DEFAULT_BENCHMARK_ENABLED_MODES = ["bootstrap", "sparse_logreg"]
 _DEFAULT_PROJECTS_ROOT = "/projects"
 
 
@@ -136,6 +137,7 @@ class ClassifierRegistry(BaseModel):
     latest_cycle_started_at: str | None = None
     latest_cycle_finished_at: str | None = None
     latest_cycle_error: str | None = None
+    benchmark_enabled_modes: list[str] = Field(default_factory=lambda: list(DEFAULT_BENCHMARK_ENABLED_MODES))
     updated_at: str = Field(default_factory=_utc_now_iso)
 
     @model_validator(mode="after")
@@ -146,6 +148,9 @@ class ClassifierRegistry(BaseModel):
             raise ValueError(f"unsupported fallback_mode: {self.fallback_mode}")
         if self.champion_summary and self.champion_summary.mode != self.champion_mode:
             raise ValueError("champion_summary.mode must match champion_mode")
+        for mode in self.benchmark_enabled_modes:
+            if mode not in SUPPORTED_CLASSIFIER_MODES:
+                raise ValueError(f"unsupported benchmark mode: {mode}")
         return self
 
 
@@ -176,6 +181,8 @@ def save_classifier_registry(registry: ClassifierRegistry) -> ClassifierRegistry
 def classifier_model_path(mode: str) -> Path:
     if mode not in SUPPORTED_CLASSIFIER_MODES:
         raise ValueError(f"unsupported classifier mode: {mode}")
+    if mode == "setfit":
+        return classifier_models_dir() / "setfit"
     return classifier_models_dir() / f"{mode}.pkl"
 
 

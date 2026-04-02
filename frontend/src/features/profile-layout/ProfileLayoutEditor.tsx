@@ -142,7 +142,7 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
                       <input className="pl-input pl-input-table" value={row.folder} onChange={(e) => updateFolder(idx, e.target.value)} />
                     </td>
                     <td>
-                      <button type="button" className="pl-btn-icon" title="Remover" onClick={() => removeAreaFolder(row.business_domain)}>✕</button>
+                      <button type="button" className="btn danger" style={{ padding: "2px 6px", fontSize: "0.75rem" }} title="Remover" onClick={() => removeAreaFolder(row.business_domain)}>×</button>
                     </td>
                   </tr>
                 ))}

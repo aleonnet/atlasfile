@@ -354,6 +354,18 @@ function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [searchModalOpen, query]);
 
+  useEffect(() => {
+    const content = document.querySelector(".content");
+    if (!content) return;
+    const onScroll = () => {
+      const topbar = document.querySelector(".topbar");
+      if (topbar) topbar.classList.toggle("is-opaque", content.scrollTop > 0);
+    };
+    content.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => content.removeEventListener("scroll", onScroll);
+  }, []);
+
   async function refreshProjects() {
     const data = await fetchProjects();
     setProjects(data);
@@ -1143,6 +1155,7 @@ function App() {
   return (
     <div className="shell">
       <header className="topbar">
+        <div className="topbar-inner">
         <div className="topbar-left">
           <div className="brand">
             <span className="brand-dot" />
@@ -1239,6 +1252,7 @@ function App() {
               <Moon size={18} />
             </button>
           </div>
+        </div>
         </div>
       </header>
 
@@ -1369,6 +1383,8 @@ function App() {
         openaiApiKey={openaiApiKey}
         anthropicApiKey={anthropicApiKey}
         onOpenSettings={() => setSettingsOpen(true)}
+        selectedModelTriage={selectedModelTriage}
+        onChangeModelTriage={setSelectedModelTriage}
       />
 
       <ProfileLayoutWorkspace
@@ -1625,8 +1641,8 @@ function App() {
       )}
 
       {searchModalOpen && (
-        <div className="search-modal-overlay" role="dialog" aria-modal="true" aria-label="Busca global">
-          <div className="search-modal">
+        <div className="search-modal-overlay" role="dialog" aria-modal="true" aria-label="Busca global" onClick={() => setSearchModalOpen(false)}>
+          <div className="search-modal" onClick={(e) => e.stopPropagation()}>
             <div className="search-modal-input-wrap">
               <Search size={18} className="search-modal-input-icon" />
               <input
@@ -1646,12 +1662,10 @@ function App() {
                 placeholder="Search..."
                 autoFocus
               />
-              {query.trim().length > 0 ? (
+              {query.trim().length > 0 && (
                 <button type="button" className="search-modal-kbd esc-btn" onClick={clearSearch} title="Limpar (ESC)">
                   ESC
                 </button>
-              ) : (
-                <span className="search-modal-kbd" aria-hidden>⌘K</span>
               )}
             </div>
 

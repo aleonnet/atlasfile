@@ -40,7 +40,7 @@ def test_runtime_falls_back_to_bootstrap_when_supervised_artifact_is_missing(tmp
     save_classifier_registry(registry)
 
     profile = _load_runtime_profile()
-    profile["classification"]["operational"] = {"override_mode": "sparse_linear_svc"}
+    profile["classification"]["operational"] = {"override_mode": "sparse_logreg"}
 
     result = classify_with_operational_mode(
         profile=profile,
@@ -48,7 +48,28 @@ def test_runtime_falls_back_to_bootstrap_when_supervised_artifact_is_missing(tmp
         text_excerpt="CONTRATO de serviços SAP Business One para implantação e suporte.",
     )
 
-    assert result["classifier_requested_mode"] == "sparse_linear_svc"
+    assert result["classifier_requested_mode"] == "sparse_logreg"
+    assert result["classifier_mode"] == "bootstrap"
+    assert result["classifier_fallback_reason"] == "artifact_missing"
+    assert result["business_domain"]
+    assert result["document_type"]
+
+
+def test_runtime_falls_back_to_bootstrap_when_setfit_artifact_is_missing(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PROJECTS_HOST_ROOT", str(tmp_path))
+    registry = load_classifier_registry()
+    registry.champion_mode = "setfit"
+    save_classifier_registry(registry)
+
+    profile = _load_runtime_profile()
+
+    result = classify_with_operational_mode(
+        profile=profile,
+        source_path=Path("Contrato_Servicos_TI.pdf"),
+        text_excerpt="CONTRATO de serviços SAP Business One para implantação e suporte.",
+    )
+
+    assert result["classifier_requested_mode"] == "setfit"
     assert result["classifier_mode"] == "bootstrap"
     assert result["classifier_fallback_reason"] == "artifact_missing"
     assert result["business_domain"]

@@ -4,6 +4,81 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.9.0] -- 2026-04-02
+
+### Pipeline de dados
+
+- Corpus unificado com dedup SHA256: ~363 documentos únicos (de 401 arquivos), 14 tipos, 11 domínios
+- Splits estratificados 70/15/15 (`build_corpus.py`, `build_splits.py`, `label_corpus_llm.py`, `inject_training_records.py`)
+- Data leakage eliminado: 24 SHA256 duplicados entre treino e validação removidos
+- `evaluation_dataset.py`: `splits_available()`, `load_split_as_training_records()`, `load_split_as_validation_entries()`
+
+### Classificação — expansão para 4 modos
+
+- **SetFit/ModernBERT** (`classifier_setfit.py`, 489 linhas): two-phase training em subprocesses isolados (spawn), OOM fix com truncagem em 2000 chars para encode/predict
+- **LLM Classifier** integrado ao ciclo via `benchmark_llm_candidate()` (OpenAI/Anthropic, texto integral 20k chars)
+- **sparse_logreg** melhorado: FeatureUnion char n-grams (3-5) + word n-grams (1-2), gate graduado (≥2 amostras com warning), `LinearSVC` removido
+- **Bootstrap** como campeão: 87.1% domain / 93.5% type / 82.3% exact match
+- Modos de benchmark configuráveis e persistidos via `benchmark_enabled_modes` no registry
+- Bootstrap pode ser desmarcado — cada modo é opcional
+- Herança de métricas: modos pulados preservam valores do ciclo anterior no relatório (`inherited_from_report_id`)
+
+### Ciclo ML
+
+- `_MAX_EXTRACT_CHARS`: 50.000 → 20.000 (alinhado ao "Lost in the Middle" ACL 2024)
+- `extract_feature_text`: truncamento arbitrário `[:4000]` removido — texto completo ao modelo
+- `_cross_validate_sparse()` com `StratifiedKFold(n_splits=5)`
+- Progresso dinâmico por modo habilitado com phases granulares (`extracting`, `baseline:{mode}`, `benchmark:{mode}`)
+- Cancelamento de ciclo: `DELETE /api/classifier/cycle` com `threading.Event` e `InterruptedError`
+
+### API
+
+- `PUT /api/classifier/benchmark-modes` — configurar modos habilitados
+- `DELETE /api/classifier/cycle` — cancelar ciclo em andamento (202)
+- `DELETE /api/classifier/reports/{report_id}` — excluir relatório (protege campeão ativo, 409)
+- `GET /api/classifier/status` inclui `benchmark_enabled_modes`
+
+### Frontend
+
+- Barras de progresso SSE para scan INBOX e ciclo do classificador (mesmo padrão visual de Reconciliar INDEX)
+- "Evolução recente" em tabela compacta com data formatada, campeão, exact, bd F1 e botão de delete por relatório
+- Cancelar ciclo: botão com popover de confirmação e estado "Cancelando..."
+- Modos pulados esmaecidos (opacity 0.45) com métricas reais do ciclo anterior
+- Sync bidirecional do combobox "Modelo triagem" entre card Ingestão e modal Configurações
+- Cabeçalho simplificado: removidos campos técnicos (Versão/Última), adicionado contador de pendentes
+- Badges accent pill em "Classificador operacional" e "Processamentos"
+- Card renomeado para "Perfil e Organização" com empty state alinhado ao estilo ITC
+- Espaçamentos dos colapsáveis alinhados entre cards ITC e Perfil e Organização
+
+### Augmentation (feature flag desabilitada)
+
+- `classifier_augmentation.py` (453 linhas): augmentação sintética via LLM para classes sub-representadas
+- `AugmentationConfig` no profile schema e template default
+
+### System prompt de classificação
+
+- Instrução explícita para analisar conteúdo (não apenas nome do arquivo)
+- `document_types` do projeto injetados no contexto do LLM
+- `explanation` obrigatória em todos os casos
+
+### Testes
+
+- 4 novos arquivos: `test_classifier_augmentation.py`, `test_classifier_setfit.py`, `test_corpus_splits.py`, `test_inject_training_records.py`
+- **Total: 403 backend + 71 frontend = 474 testes**
+
+### Docs
+
+- Benchmark card completo com dados do ciclo `cycle_20260401_194500_343482` (4 modos, accuracy + F1-macro por eixo)
+- Fundamentação SOTA: F1-macro vs accuracy, exact_match como critério de promoção, StratifiedKFold
+- Justificativa sparse_logreg vs LinearSVC, XGBoost, BERT, SetFit
+
+### Removido
+
+- `frontend/mockup-chat-ui.html` (protótipo HTML não usado)
+- `sparse_linear_svc` dos modos suportados
+
+---
+
 ## [0.8.1] -- 2026-03-28
 
 ### Extração de PDF

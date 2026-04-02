@@ -434,17 +434,20 @@ export interface IngestOperationStatus {
   last_error: string | null;
 }
 
-export type OperationalClassifierMode = "bootstrap" | "sparse_logreg" | "sparse_linear_svc";
+export type OperationalClassifierMode = "bootstrap" | "sparse_logreg" | "setfit" | "llm";
 
 export interface ClassifierBenchmarkSummary {
   mode: string;
   role?: string;
   total_labeled: number;
   business_domain_accuracy: number;
+  business_domain_macro_f1?: number;
   document_type_accuracy: number;
+  document_type_macro_f1?: number;
   exact_match_accuracy: number;
   skipped?: boolean;
   skip_reason?: string[];
+  inherited_from_report_id?: string | null;
   training_pool_records?: number;
   validation_records?: number;
   vectorizer?: string | null;
@@ -474,6 +477,7 @@ export interface ClassifierStatusResponse {
   latest_cycle_started_at?: string | null;
   latest_cycle_finished_at?: string | null;
   latest_cycle_error?: string | null;
+  benchmark_enabled_modes?: string[];
 }
 
 export interface ClassifierReportSummary {
@@ -523,6 +527,7 @@ export interface ClassifierCycleStatus {
   report_id: string | null;
   champion_mode: string | null;
   last_error: string | null;
+  benchmarks?: Record<string, { summary: ClassifierBenchmarkSummary }>;
 }
 
 /* ── Search Filters & Stats ── */

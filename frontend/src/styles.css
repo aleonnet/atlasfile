@@ -28,6 +28,10 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.25);
   --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.35);
+  --bg-translucent: rgba(14, 13, 16, 0.6);
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --search-ring: rgba(75, 85, 99, 0.3);
+  --search-ring-hover: rgba(107, 114, 128, 0.3);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-normal: 200ms;
   --font-body: "Fragment Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
@@ -55,6 +59,10 @@
   --ok: #16a34a;
   --ok-subtle: rgba(22, 163, 74, 0.12);
   --ring: #ff5a36;
+  --bg-translucent: rgba(247, 245, 249, 0.6);
+  --border-subtle: rgba(0, 0, 0, 0.10);
+  --search-ring: rgba(156, 163, 175, 0.3);
+  --search-ring-hover: rgba(75, 85, 99, 0.3);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.12);
@@ -87,7 +95,7 @@ h1, h2, h3, .card-header, .page-title, .brand h1 {
 .shell {
   height: 100vh;
   display: grid;
-  grid-template-rows: 56px 1fr;
+  grid-template-rows: 64px 1fr;
   grid-template-areas: "topbar" "content";
   overflow: hidden;
   max-width: 100vw;
@@ -105,13 +113,27 @@ h1, h2, h3, .card-header, .page-title, .brand h1 {
   top: 0;
   z-index: 40;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 0 20px;
-  height: 56px;
+  justify-content: center;
+  height: 64px;
   border-bottom: 1px solid var(--border);
+  background: var(--bg-translucent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background 500ms ease;
+  padding: 0 20px;
+}
+
+.topbar.is-opaque {
   background: var(--bg);
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  max-width: 1200px;
 }
 
 .topbar-left {
@@ -169,17 +191,30 @@ h1, h2, h3, .card-header, .page-title, .brand h1 {
   padding: 0 12px;
 }
 
+/* Header search trigger — replica code.claude.com/docs: rounded-xl, h-9, ring-gray-400/30 */
 .header-search-card {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 10px;
-  background: var(--card);
-  border: 1px solid var(--border);
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 14px;
+  background: var(--bg-elevated);
+  border: none;
   border-radius: var(--radius-lg);
-  padding: 0 14px 0 0;
-  height: 44px;
-  min-width: 200px;
-  max-width: 100%;
+  box-shadow: inset 0 0 0 1px var(--search-ring);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: box-shadow var(--duration-normal) ease;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.header-search-card:hover {
+  box-shadow: inset 0 0 0 1px var(--search-ring-hover);
 }
 
 .header-search-card .header-search-btn,
@@ -190,17 +225,20 @@ h1, h2, h3, .card-header, .page-title, .brand h1 {
   border: none !important;
   background: transparent !important;
   border-radius: 0;
-  padding: 0 0 0 14px;
-  color: var(--muted);
+  padding: 0;
+  color: inherit;
   box-shadow: none !important;
   outline: none !important;
   justify-content: flex-start;
-  gap: 10px;
+  gap: 8px;
   height: 100%;
+  font-weight: 400;
+  font-size: inherit;
 }
 
-.header-search-card:hover {
-  border-color: var(--border-strong);
+.header-search-card:focus-within {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--search-ring-hover);
 }
 
 .topbar-status {
@@ -299,12 +337,18 @@ h1, h2, h3, .card-header, .page-title, .brand h1 {
 
 .header-search-btn .kbd {
   margin-left: auto;
-  background: var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--muted);
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  border: none;
+  white-space: nowrap;
 }
 
 .panel,
@@ -589,7 +633,7 @@ button {
   gap: 8px;
 }
 
-button:hover {
+button:hover:not(.header-search-btn):not(.topbar-search-icon):not(.search-modal-kbd):not(.theme-toggle__button) {
   border-color: var(--accent);
 }
 
@@ -769,13 +813,22 @@ button.danger:hover,
 }
 
 .search-list {
-  margin-top: 10px;
+  margin-top: 0;
+  list-style: none;
+  padding: 0;
 }
 
 .search-item {
-  background: var(--card);
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  padding: 8px 18px;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background var(--duration-normal) ease;
+}
+
+.search-item:hover {
+  background: var(--card-highlight);
 }
 
 .suggestion-item {
@@ -807,14 +860,14 @@ button.danger:hover,
 }
 
 .result-title {
-  font-size: 1.08rem;
+  font-size: 0.9rem;
   min-width: 0;
   word-break: break-word;
   overflow-wrap: break-word;
 }
 
 .breadcrumb-line {
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   letter-spacing: 0.01em;
   text-transform: none;
   word-break: break-word;
@@ -841,7 +894,7 @@ button.danger:hover,
 .snippet {
   margin-top: 2px;
   color: var(--text);
-  font-size: 0.93rem;
+  font-size: 0.82rem;
   line-height: 1.35;
 }
 
@@ -932,61 +985,74 @@ button.danger:hover,
   min-width: 120px;
 }
 
-/* Modal de busca — estilo openclaw/docs, sensível ao tema */
+/* Modal de busca — estilo code.claude.com/docs */
 .search-modal-overlay {
   position: fixed;
   inset: 0;
-  background: color-mix(in oklab, var(--bg) 60%, transparent 40%);
-  backdrop-filter: blur(6px);
+  z-index: 1000;
   display: flex;
-  justify-content: center;
   align-items: flex-start;
-  z-index: 100;
-  padding: 24px 20px 20px;
-  overflow-y: auto;
+  justify-content: center;
+  padding-top: min(20vh, 160px);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fade-in 0.12s ease-out;
 }
 
-/* Modal externo — docs: cantos bem arredondados (16–24px) */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .search-modal {
-  width: min(920px, 100%);
-  max-height: min(85vh, 860px);
-  border: 1px solid var(--border);
-  background: var(--panel);
-  border-radius: 20px;
+  width: min(640px, 90vw);
+  max-height: 70vh;
+  overflow: hidden;
+  background: var(--card);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 14px;
   box-shadow: var(--shadow-lg);
   display: grid;
   grid-template-rows: auto 1fr auto;
-  flex-shrink: 0;
+  animation: scale-in 0.15s ease-out;
 }
 
-/* Barra de busca dentro do modal — docs: curvatura menor (8–12px), borda fina cinza escura, sem ring */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Input wrapper com borda arredondada interna */
 .search-modal-input-wrap {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 16px 16px 12px;
-  padding: 0 14px 0 16px;
-  height: 44px;
-  background: var(--card);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  margin: 6px 8px;
+  padding: 0 14px;
+  height: 48px;
+  background: var(--bg-elevated);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 12px;
   transition: border-color 0.15s ease;
 }
 
 .search-modal-input-wrap:focus-within {
-  border-color: var(--border-strong);
+  border-color: var(--muted);
 }
 
 .search-modal-input-wrap input {
   flex: 1;
   min-width: 0;
+  width: 100%;
   height: 100%;
-  padding: 0 8px 0 4px;
+  padding: 0;
   background: transparent !important;
   border: none !important;
   border-radius: 0;
-  font-size: 0.9375rem;
+  font-size: 15px;
   color: var(--text);
+  outline: none;
 }
 
 .search-modal-input-wrap input::placeholder {
@@ -1001,7 +1067,6 @@ button.danger:hover,
 .search-modal-input-icon {
   flex-shrink: 0;
   color: var(--muted);
-  opacity: 0.85;
 }
 
 .search-modal-kbd {
@@ -1009,15 +1074,15 @@ button.danger:hover,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  height: 28px;
-  padding: 0 10px;
-  background: var(--border);
-  color: var(--muted);
-  font-size: 0.75rem;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: var(--font-body);
+  font-size: 13px;
   font-weight: 600;
-  border-radius: 6px;
-  border: none;
+  line-height: 1.4;
+  color: var(--muted);
   cursor: default;
 }
 
@@ -1064,8 +1129,7 @@ button.danger:hover,
 
 .search-results-scroll {
   overflow-y: auto;
-  padding: 12px 14px;
-  min-height: 120px;
+  padding: 8px 10px;
 }
 
 .search-item-grid {
@@ -1101,11 +1165,13 @@ button.danger:hover,
 
 .search-modal-footer {
   border-top: 1px solid var(--border);
-  padding: 10px 12px;
+  padding: 8px 18px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .empty-search {
@@ -1423,7 +1489,6 @@ a {
 @media (max-width: 1280px) {
   .topbar { gap: 10px; }
   .topbar-nav button { padding: 8px 10px; font-size: 13px; }
-  .header-search-card { min-width: 160px; }
 }
 
 /* ── Breakpoint intermediario (tablets landscape / janelas medias) ── */
@@ -1594,23 +1659,21 @@ a {
   /* Search modal */
   .search-modal {
     width: 100%;
-    max-height: 90vh;
-    border-radius: 16px;
   }
 
   .search-modal-overlay {
-    padding: 12px 8px;
+    padding-top: 40px;
+    padding-left: 8px;
+    padding-right: 8px;
   }
 
   .search-modal-input-wrap {
-    margin: 12px 12px 8px;
-    height: 42px;
-    padding: 0 10px 0 12px;
-    border-radius: 8px;
+    margin: 12px;
+    padding: 0 12px;
   }
 
   .search-results-scroll {
-    padding: 8px 10px;
+    padding: 4px 0;
   }
 }
 

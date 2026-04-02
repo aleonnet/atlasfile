@@ -4,6 +4,22 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.9.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [classificacao_4_modos_pipeline_dados_v090](classificacao_4_modos_pipeline_dados_v090.plan.md) | Reestruturação pipeline de dados (corpus unificado, splits estratificados, fim data leakage). Expansão para 4 modos (bootstrap, sparse_logreg, setfit/ModernBERT, LLM). Benchmark card definitivo. Ciclo ML com modos configuráveis, cancelamento, herança de métricas. Frontend: barras progresso SSE, evolução recente com delete, sync modelo triagem. Augmentation preparada (feature flag off). |
+
+---
+
+## 0.8.1
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [migracao_pypdf_para_pymupdf](migracao_pypdf_para_pymupdf_e5f6g7h8.plan.md) | Migração do motor de extração PDF de pypdf para pymupdf com parsing espacial via bounding boxes |
+
+---
+
 ## 0.8.0
 
 | # | Plano | Escopo |

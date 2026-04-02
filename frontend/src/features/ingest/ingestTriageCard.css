@@ -1,22 +1,21 @@
 /* ── IngestTriageCard ── */
 
 .itc-collapsible {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  margin-bottom: 12px;
-  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
 }
 
 .itc-collapsible-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 9px 0;
   cursor: pointer;
   user-select: none;
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text);
   list-style: none;
   background: transparent;
@@ -33,7 +32,7 @@
   content: "▸";
   display: inline-block;
   transition: transform var(--duration-normal) var(--ease-out);
-  font-size: 16px;
+  font-size: 18px;
   color: var(--muted);
 }
 
@@ -42,35 +41,164 @@ details.itc-collapsible[open] > .itc-collapsible-header::before {
 }
 
 .itc-collapsible-body {
-  padding: 4px 14px 14px;
+  padding: 0 0 12px;
 }
 
-.itc-collapsible-header .itc-badge-count {
+/* ── Badge system ── */
+
+.itc-badge {
   margin-left: auto;
-  font-size: 0.78rem;
-  color: var(--muted);
-  font-weight: 400;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.70rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  flex-shrink: 0;
 }
 
-.itc-run-status {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+.itc-badge-on {
+  background: var(--ok-subtle);
+  color: var(--ok);
+}
+
+.itc-badge-off {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+
+.itc-badge-count {
   background: var(--bg-elevated);
-  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.itc-badge-pending {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.itc-badge-mode {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   color: var(--text);
 }
 
-.itc-run-status code {
-  max-width: 340px;
+.itc-badge-accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.itc-project-header {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.itc-project-label {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.itc-project-pending {
+  color: var(--accent);
+}
+
+.itc-op-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+.itc-op-phase {
+  margin: 0;
+  font-size: 0.80rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.itc-op-bar-wrap {
+  height: 6px;
+  background: var(--border);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin: 2px 0;
+}
+
+.itc-op-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-full);
+  transition: width 0.3s var(--ease-out);
+}
+
+.itc-op-stats {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.itc-op-file {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.itc-op-error .itc-op-phase {
+  color: var(--danger);
+}
+
+.itc-op-cancelled .itc-op-phase {
+  color: var(--warning, var(--accent));
+}
+
+.itc-cycle-btn-wrap {
+  position: relative;
+}
+
+.itc-confirm-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.itc-confirm-popover p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.itc-confirm-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .itc-classifier-stats {
@@ -102,10 +230,30 @@ details.itc-collapsible[open] > .itc-collapsible-header::before {
   align-items: end;
   gap: 10px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .itc-classifier-controls .itc-llm-field {
-  flex: 1 1 280px;
+  flex: 1 1 200px;
+  max-width: 320px;
+}
+
+.itc-classifier-controls .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.itc-benchmark-modes {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.itc-benchmark-modes .checkbox-inline {
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .itc-classifier-policy {
@@ -114,30 +262,12 @@ details.itc-collapsible[open] > .itc-collapsible-header::before {
   color: var(--muted);
 }
 
-.itc-classifier-cycle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  background: rgba(80, 120, 255, 0.08);
-  border: 1px solid rgba(80, 120, 255, 0.16);
-  font-size: 0.8rem;
-}
-
-.itc-classifier-cycle.active {
-  color: var(--text);
-}
-
-.itc-classifier-cycle-error {
-  color: var(--danger);
-}
 
 .itc-classifier-benchmark-head {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-top: 14px;
   margin-bottom: 6px;
 }
 
@@ -157,18 +287,66 @@ details.itc-collapsible[open] > .itc-collapsible-header::before {
   text-transform: uppercase;
 }
 
+.itc-gate-warnings {
+  margin-top: 12px;
+}
+
 .itc-classifier-history {
   margin-top: 10px;
 }
+
+.itc-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.80rem;
+  margin-top: 6px;
+}
+
+.itc-history-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.itc-history-table td {
+  padding: 4px 6px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.itc-history-table tr:last-child td {
+  border-bottom: none;
+}
+
+.itc-history-champion td {
+  font-weight: 600;
+}
+
+.itc-history-ts {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 
 @media (max-width: 900px) {
   .itc-classifier-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .itc-classifier-controls {
-    flex-direction: column;
-    align-items: stretch;
+  .itc-classifier-controls .itc-llm-field {
+    max-width: none;
+  }
+
+  .itc-benchmark-modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 14px;
   }
 }
 
@@ -191,39 +369,6 @@ details.itc-collapsible[open] > .itc-collapsible-header::before {
   cursor: pointer;
 }
 
-.itc-toggle {
-  position: relative;
-  width: 40px;
-  height: 22px;
-  border-radius: 11px;
-  background: var(--border-strong);
-  cursor: pointer;
-  transition: background var(--duration-normal) var(--ease-out);
-  border: none;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.itc-toggle::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--text);
-  transition: transform var(--duration-normal) var(--ease-out);
-}
-
-.itc-toggle.active {
-  background: var(--ok);
-}
-
-.itc-toggle.active::after {
-  transform: translateX(18px);
-  background: #fff;
-}
 
 /* ── LLM fields ── */
 

@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     chat_llm_model: str | None = None
     # Habilitar classificação por LLM no ingest (usa submit_classification via MCP).
     classification_llm_enabled: bool = False
+    # Habilitar augmentation de training pool via LLM (gera dados sintéticos para classes sub-representadas).
+    classification_augmentation_enabled: bool = False
     # CORS: origens permitidas separadas por vírgula. Ex.: http://localhost:5173,http://192.168.1.5:5173
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 

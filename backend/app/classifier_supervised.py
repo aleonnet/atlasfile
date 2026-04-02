@@ -13,22 +13,24 @@ from .utils import fold_ocr_spacing, utc_now_iso
 try:
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.linear_model import LogisticRegression
-    from sklearn.pipeline import Pipeline
+    from sklearn.pipeline import FeatureUnion, Pipeline
     from sklearn.svm import LinearSVC
 
     _SKLEARN_IMPORT_ERROR: str | None = None
 except ImportError as exc:  # pragma: no cover - covered indirectly in integration flows
     TfidfVectorizer = None  # type: ignore[assignment]
     LogisticRegression = None  # type: ignore[assignment]
+    FeatureUnion = None  # type: ignore[assignment]
     Pipeline = None  # type: ignore[assignment]
     LinearSVC = None  # type: ignore[assignment]
     _SKLEARN_IMPORT_ERROR = str(exc)
 
 
-SPARSE_MODEL_FAMILIES = ("sparse_logreg", "sparse_linear_svc")
+SPARSE_MODEL_FAMILIES = ("sparse_logreg",)
 SPARSE_MIN_TRAINING_DOCS = 100
-SPARSE_MIN_DOCS_PER_CLASS = 5
+SPARSE_MIN_DOCS_PER_CLASS = 2
 _TOP_K = 3
+_ARTIFACT_SCHEMA_VERSION = 3
 
 
 def sklearn_import_error() -> str | None:
@@ -41,6 +43,14 @@ def compute_supervised_gate(
     min_training_docs: int = SPARSE_MIN_TRAINING_DOCS,
     min_docs_per_class: int = SPARSE_MIN_DOCS_PER_CLASS,
 ) -> dict[str, Any]:
+    """Graduated gate: classes with <2 samples are excluded (warned), not blocking.
+
+    - <2 samples per class → excluded from training, warned in report
+    - 2..min_docs_per_class → included with warning (class_weight="balanced" compensates)
+    - >=min_docs_per_class → normal
+
+    Training is only blocked if total records < min_training_docs or <2 eligible classes remain.
+    """
     business_domain_counts = Counter(
         str(record.business_domain).strip()
         for record in records
@@ -51,33 +61,51 @@ def compute_supervised_gate(
         for record in records
         if str(getattr(record, "document_type", "")).strip()
     )
+
+    # Graduated: classes with >=2 samples are eligible; <2 are warned but don't block
+    bd_eligible = {k: v for k, v in business_domain_counts.items() if v >= 2}
+    dt_eligible = {k: v for k, v in document_type_counts.items() if v >= 2}
+    bd_excluded = {k: v for k, v in business_domain_counts.items() if v < 2}
+    dt_excluded = {k: v for k, v in document_type_counts.items() if v < 2}
+    bd_low = {k: v for k, v in bd_eligible.items() if v < min_docs_per_class}
+    dt_low = {k: v for k, v in dt_eligible.items() if v < min_docs_per_class}
+
     reasons: list[str] = []
+    warnings: list[str] = []
+
     if _SKLEARN_IMPORT_ERROR:
         reasons.append(f"sklearn_unavailable:{_SKLEARN_IMPORT_ERROR}")
     if not records:
         reasons.append("training_pool_empty")
     if len(records) < min_training_docs:
         reasons.append(f"training_pool_total_below_min:{len(records)}<{min_training_docs}")
-    if len(business_domain_counts) < 2:
-        reasons.append("business_domain_classes_below_min:2")
-    if len(document_type_counts) < 2:
-        reasons.append("document_type_classes_below_min:2")
-    if business_domain_counts and min(business_domain_counts.values()) < min_docs_per_class:
-        reasons.append(
-            f"business_domain_min_support_below_min:{min(business_domain_counts.values())}<{min_docs_per_class}"
-        )
-    if document_type_counts and min(document_type_counts.values()) < min_docs_per_class:
-        reasons.append(
-            f"document_type_min_support_below_min:{min(document_type_counts.values())}<{min_docs_per_class}"
-        )
+    if len(bd_eligible) < 2:
+        reasons.append(f"business_domain_eligible_classes_below_min:{len(bd_eligible)}<2")
+    if len(dt_eligible) < 2:
+        reasons.append(f"document_type_eligible_classes_below_min:{len(dt_eligible)}<2")
+
+    if bd_excluded:
+        warnings.append(f"business_domain_excluded_low_support:{dict(sorted(bd_excluded.items()))}")
+    if dt_excluded:
+        warnings.append(f"document_type_excluded_low_support:{dict(sorted(dt_excluded.items()))}")
+    if bd_low:
+        warnings.append(f"business_domain_low_support:{dict(sorted(bd_low.items()))}")
+    if dt_low:
+        warnings.append(f"document_type_low_support:{dict(sorted(dt_low.items()))}")
+
     return {
         "eligible": not reasons,
         "reasons": reasons,
+        "warnings": warnings,
         "min_training_docs": min_training_docs,
         "min_docs_per_class": min_docs_per_class,
         "total_records": len(records),
         "business_domain_counts": dict(sorted(business_domain_counts.items())),
         "document_type_counts": dict(sorted(document_type_counts.items())),
+        "excluded_classes": {
+            "business_domain": dict(sorted(bd_excluded.items())),
+            "document_type": dict(sorted(dt_excluded.items())),
+        },
     }
 
 
@@ -87,22 +115,29 @@ def _sparse_pipeline(family: str) -> Pipeline:
     classifier: Any
     if family == "sparse_logreg":
         classifier = LogisticRegression(max_iter=3000, class_weight="balanced")
-    elif family == "sparse_linear_svc":
-        classifier = LinearSVC(class_weight="balanced")
     else:  # pragma: no cover - protected by callers/tests
         raise ValueError(f"unsupported supervised family: {family}")
+    vectorizer = FeatureUnion([
+        ("char", TfidfVectorizer(
+            analyzer="char_wb",
+            ngram_range=(3, 5),
+            lowercase=True,
+            strip_accents="unicode",
+            sublinear_tf=True,
+            max_features=50000,
+        )),
+        ("word", TfidfVectorizer(
+            analyzer="word",
+            ngram_range=(1, 2),
+            lowercase=True,
+            strip_accents="unicode",
+            sublinear_tf=True,
+            max_features=20000,
+        )),
+    ])
     return Pipeline(
         steps=[
-            (
-                "tfidf",
-                TfidfVectorizer(
-                    analyzer="char_wb",
-                    ngram_range=(3, 5),
-                    lowercase=True,
-                    strip_accents="unicode",
-                    sublinear_tf=True,
-                ),
-            ),
+            ("features", vectorizer),
             ("classifier", classifier),
         ]
     )
@@ -123,10 +158,10 @@ def fit_sparse_artifact(
     domain_model.fit(train_texts, train_business_domains)
     document_type_model.fit(train_texts, train_document_types)
     return {
-        "schema_version": 1,
+        "schema_version": _ARTIFACT_SCHEMA_VERSION,
         "family": family,
         "trained_at": utc_now_iso(),
-        "vectorizer": "tfidf_char_wb_3_5",
+        "vectorizer": "tfidf_char_wb_3_5__word_1_2",
         "training_pool_records": int(training_pool_records),
         "business_domain_model": domain_model,
         "document_type_model": document_type_model,
@@ -144,6 +179,12 @@ def load_sparse_artifact(path: Path) -> dict[str, Any]:
         payload = pickle.load(handle)
     if not isinstance(payload, dict):
         raise ValueError("invalid supervised artifact payload")
+    schema_version = int(payload.get("schema_version") or 0)
+    if schema_version != _ARTIFACT_SCHEMA_VERSION:
+        raise ValueError(
+            f"incompatible artifact schema_version: {schema_version} "
+            f"(expected {_ARTIFACT_SCHEMA_VERSION})"
+        )
     family = str(payload.get("family") or "").strip()
     if family not in SPARSE_MODEL_FAMILIES:
         raise ValueError(f"unsupported supervised artifact family: {family}")
@@ -166,7 +207,7 @@ def _classifier_classes(model: Pipeline) -> list[str]:
 
 def _raw_class_scores(model: Pipeline, text: str) -> list[float]:
     classifier = model.named_steps["classifier"]
-    scores = classifier.decision_function(model.named_steps["tfidf"].transform([text]))
+    scores = classifier.decision_function(model.named_steps["features"].transform([text]))
     raw = scores[0] if getattr(scores, "ndim", 1) > 1 else scores
     if isinstance(raw, (int, float)):
         margin = float(raw)
@@ -187,7 +228,7 @@ def _predict_with_scores(model: Pipeline, text: str) -> dict[str, Any]:
 
     classifier = model.named_steps["classifier"]
     if hasattr(classifier, "predict_proba"):
-        probabilities = classifier.predict_proba(model.named_steps["tfidf"].transform([text]))[0]
+        probabilities = classifier.predict_proba(model.named_steps["features"].transform([text]))[0]
         scores = [float(value) for value in probabilities]
     else:
         raw_scores = _raw_class_scores(model, text)
@@ -222,7 +263,7 @@ def classify_with_supervised_artifact(
     if family not in SPARSE_MODEL_FAMILIES:
         raise ValueError(f"unsupported supervised artifact family: {family}")
 
-    feature_text = fold_ocr_spacing(f"{source_path.name}\n{text_excerpt[:4000]}".strip())
+    feature_text = fold_ocr_spacing(f"{source_path.name}\n{text_excerpt}".strip())
     domain_prediction = _predict_with_scores(artifact["business_domain_model"], feature_text)
     document_type_prediction = _predict_with_scores(artifact["document_type_model"], feature_text)
     entities = extract_entities(profile=profile, source_path=source_path, text_excerpt=text_excerpt)

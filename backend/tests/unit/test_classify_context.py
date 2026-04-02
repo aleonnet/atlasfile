@@ -14,6 +14,10 @@ def _sample_profile() -> dict:
                 {"key": "juridica", "aliases": ["juridico", "passivo", "contingencia"]},
                 {"key": "marketing_produtos", "aliases": ["marketing", "produtos"]},
             ],
+            "document_types": [
+                {"key": "contrato", "label": "Contrato", "aliases": ["contrato", "agreement", "acordo"]},
+                {"key": "parecer", "label": "Parecer", "aliases": ["parecer", "opiniao"]},
+            ],
         },
         "indexing": {
             "topics_path": "config/topics_v1.yaml",
@@ -35,9 +39,17 @@ def test_build_project_context_includes_topics():
     assert "Topics válidos:" in ctx
 
 
+def test_build_project_context_includes_document_types():
+    ctx = _build_project_context(_sample_profile())
+    assert "Tipos documentais disponíveis neste projeto" in ctx
+    assert "contrato (Contrato)" in ctx
+    assert "parecer (Parecer)" in ctx
+    assert "aliases: contrato, agreement, acordo" in ctx
+
+
 def test_build_project_context_includes_instructions():
     ctx = _build_project_context(_sample_profile())
-    assert "Escolha sempre um dos business_domains" in ctx
+    assert "Escolha sempre um dos business_domains e document_types" in ctx
     assert "confidence < 0.6" in ctx
 
 

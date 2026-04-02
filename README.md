@@ -5,7 +5,7 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 ## Visão geral
 
 - **Ingestão automática** via pasta `_INBOX_DROP` por projeto
-- **Classificação operacional** via modo efetivo do runtime (`bootstrap`, `sparse_logreg` ou `sparse_linear_svc`)
+- **Classificação operacional** via modo efetivo do runtime (`bootstrap`, `sparse_logreg`, `setfit` ou `llm`)
 - **Ciclo do classificador** com benchmark + retreino, campeão global, override por projeto e reports persistidos
 - **Triagem humana** no frontend para documentos pendentes (`Aprovar`, `Corrigir`, `Rejeitar`)
 - **Dedup precoce** por SHA256 antes do fluxo completo
@@ -14,7 +14,7 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 - **Assistente LLM** com escopo por projeto, sessões persistentes e rastreamento de uso/custo
 - **Canais** com Telegram opcional e comando `/projeto` para fixar escopo do chat
 - **Templates, profiles e layout** editáveis pela UI
-- **Benchmark supervisionado** com `validation_set` e `training_pool` disjuntos
+- **Benchmark supervisionado** com 4 modos (bootstrap, sparse_logreg, setfit, llm), corpus unificado e splits estratificados
 - **Status em tempo real** para reconcile, INBOX e ciclo do classificador
 - **Rastreabilidade** completa: nome original → nome canônico → triagem → índice → benchmark
 
@@ -86,6 +86,12 @@ AtlasFile/
 _ATLASFILE/
   classifier/
     datasets/
+      corpus.jsonl                 ← fonte única de verdade
+      corpus_files/                ← arquivos com nomes normalizados
+      splits/
+        train.jsonl                ← 70%
+        validation.jsonl           ← 15%
+        test.jsonl                 ← 15%
       validation_set/
         files/
         expected.json
@@ -94,21 +100,23 @@ _ATLASFILE/
         records.jsonl
 ```
 
+- `corpus.jsonl` + `splits/`: corpus consolidado (~363 docs, dedup SHA256) com splits estratificados 70/15/15
 - `validation_set`: conjunto humano-curado para benchmark e aceite, persistido apenas no volume operacional
 - `training_pool`: snapshots e `records.jsonl` vivos do classificador, persistidos apenas no volume operacional
 - `backend/tests/fixtures/classifier_datasets/validation_set`: fixture mínima versionada usada por um teste de integração; não representa dataset operacional nem cópia completa dos datasets reais
-- `backend/scripts/benchmark_classification.py`: compara `bootstrap`, `sparse_logreg` e `sparse_linear_svc`
-- `backend/scripts/bootstrap_validation_set.py <origem>`: popula o `validation_set` operacional a partir de arquivos reais
+- `backend/scripts/build_corpus.py`: consolida training_pool + validation_set, dedup SHA256, gera `corpus.jsonl`
+- `backend/scripts/build_splits.py`: particionamento estratificado 70/15/15
 
 ## Ciclo operacional do classificador
 
-- O registry global em `_ATLASFILE/classifier` persiste `champion_mode`, gates de promocao, ultimo ciclo e ultimo report.
-- O root operacional dos datasets fica em `_ATLASFILE/classifier/datasets`, fora da imagem Docker, com `validation_set` e `training_pool` persistidos no volume de projetos.
+- O registry global em `_ATLASFILE/classifier` persiste `champion_mode`, `benchmark_enabled_modes`, gates de promocao, ultimo ciclo e ultimo report.
+- O root operacional dos datasets fica em `_ATLASFILE/classifier/datasets`, fora da imagem Docker, com corpus, splits, `validation_set` e `training_pool` persistidos no volume de projetos.
 - O runtime nao faz bootstrap silencioso a partir do repo: se o dataset operacional estiver vazio, benchmark/ciclo refletem esse estado explicitamente.
 - Cada projeto pode fixar `classification.operational.override_mode`; sem override, a ingestao usa o campeao atual.
-- O runtime serve `bootstrap`, `sparse_logreg` ou `sparse_linear_svc` e faz fallback explicito para `bootstrap` se o artefato supervisionado estiver ausente ou falhar.
+- O runtime serve `bootstrap`, `sparse_logreg`, `setfit` ou `llm` e faz fallback explicito para `bootstrap` se o artefato supervisionado estiver ausente ou falhar.
+- Modos de benchmark sao configuraveis pela UI; cada modo pode ser habilitado/desabilitado independentemente. Modos pulados herdam metricas do ciclo anterior.
 - A triagem grava snapshots estaveis do training pool e pula documentos que colidam por SHA com o validation set.
-- A UI expoe benchmark + retreino, scorecards por documento, campeao atual e override manual sem reintroduzir `baseline` como modo publico.
+- A UI expoe benchmark + retreino, scorecards por documento, campeao atual, cancelamento de ciclo e override manual sem reintroduzir `baseline` como modo publico.
 
 ## Execução local
 
@@ -184,8 +192,8 @@ Arquivo entra em _INBOX_DROP
                  └─ Aprovar/Corrigir → grava em _ATLASFILE/classifier/datasets/training_pool/records.jsonl
 ```
 
-- `bootstrap` continua como fallback seguro do runtime
-- `sparse_*` sao candidatos supervisionados e podem virar modo efetivo apos o ciclo oficial
+- `bootstrap` continua como fallback seguro do runtime (campeao atual: 87.1% domain, 82.3% exact match)
+- `sparse_logreg`, `setfit` e `llm` sao candidatos de benchmark e podem virar modo efetivo apos o ciclo oficial
 - o LLM de ingestão é opcional e não é o classificador principal
 
 ## Convenção de nomes (canonical)

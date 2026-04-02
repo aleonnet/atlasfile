@@ -33,7 +33,7 @@ vi.mock("./api", () => ({
   fetchTriage: vi.fn(() => Promise.resolve([])),
   fetchClassifierStatus: vi.fn(() =>
     Promise.resolve({
-      available_modes: ["bootstrap", "sparse_logreg", "sparse_linear_svc"],
+      available_modes: ["bootstrap", "sparse_logreg"],
       champion_mode: "bootstrap",
       fallback_mode: "bootstrap",
       effective_mode: "bootstrap",
@@ -78,7 +78,7 @@ vi.mock("./api", () => ({
     })
   ),
   fetchClassifierReports: vi.fn(() => Promise.resolve([])),
-  updateClassifierOverride: vi.fn(() => Promise.resolve({ override_mode: null, effective_mode: "bootstrap", champion_mode: "bootstrap", fallback_mode: "bootstrap", available_modes: ["bootstrap", "sparse_logreg", "sparse_linear_svc"], promotion_policy: "auto_best_with_ui_override", project_override_allowed: true, promotion_gates: { primary_metric: "exact_match_accuracy", min_business_domain_accuracy: 0, min_document_type_accuracy: 0, min_exact_match_accuracy: 0, prefer_current_champion_on_tie: true }, latest_cycle_status: "succeeded" })),
+  updateClassifierOverride: vi.fn(() => Promise.resolve({ override_mode: null, effective_mode: "bootstrap", champion_mode: "bootstrap", fallback_mode: "bootstrap", available_modes: ["bootstrap", "sparse_logreg"], promotion_policy: "auto_best_with_ui_override", project_override_allowed: true, promotion_gates: { primary_metric: "exact_match_accuracy", min_business_domain_accuracy: 0, min_document_type_accuracy: 0, min_exact_match_accuracy: 0, prefer_current_champion_on_tie: true }, latest_cycle_status: "succeeded" })),
   startClassifierCycle: vi.fn(() => Promise.resolve({ status: "started" })),
   fetchClassifierCycleStatus: vi.fn(() => Promise.resolve({ last_run_started_at: null, last_run_finished_at: null, duration_seconds: null, running: false, phase: "idle", progress_current: 0, progress_total: 0, report_id: null, champion_mode: null, last_error: null })),
   getClassifierCycleStatusStreamUrl: vi.fn(() => "http://localhost/api/classifier/cycle/status/stream"),

@@ -234,6 +234,16 @@ export async function fetchClassifierReports(limit = 10): Promise<ClassifierRepo
   return res.json();
 }
 
+export async function deleteClassifierReport(reportId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/classifier/reports/${encodeURIComponent(reportId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail ?? `HTTP ${res.status}`);
+  }
+}
+
 export async function updateClassifierOverride(
   projectId: string,
   overrideMode: OperationalClassifierMode | null
@@ -244,6 +254,16 @@ export async function updateClassifierOverride(
     body: JSON.stringify({ override_mode: overrideMode })
   });
   if (!res.ok) throw new Error("Falha ao salvar override do classificador");
+  return res.json();
+}
+
+export async function updateBenchmarkEnabledModes(modes: string[]): Promise<ClassifierStatusResponse> {
+  const res = await fetch(`${API_URL}/api/classifier/benchmark-modes`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ benchmark_enabled_modes: modes }),
+  });
+  if (!res.ok) throw new Error("Falha ao salvar modos de benchmark");
   return res.json();
 }
 
@@ -264,6 +284,12 @@ export async function fetchClassifierCycleStatus(): Promise<ClassifierCycleStatu
   const res = await fetch(`${API_URL}/api/classifier/cycle/status`);
   if (!res.ok) throw new Error("Falha ao carregar status do ciclo do classificador");
   return res.json();
+}
+
+export async function cancelClassifierCycle(): Promise<void> {
+  const res = await fetch(`${API_URL}/api/classifier/cycle`, { method: "DELETE" });
+  if (res.status === 409) throw new Error("Nenhum ciclo em andamento");
+  if (!res.ok) throw new Error("Falha ao cancelar ciclo do classificador");
 }
 
 export function getClassifierCycleStatusStreamUrl(): string {

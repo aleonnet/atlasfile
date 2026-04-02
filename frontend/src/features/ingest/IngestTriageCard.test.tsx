@@ -72,7 +72,7 @@ function deferred<T>() {
 }
 
 const mockClassifierStatus = {
-  available_modes: ["bootstrap", "sparse_logreg", "sparse_linear_svc"],
+  available_modes: ["bootstrap", "sparse_logreg"],
   champion_mode: "bootstrap",
   fallback_mode: "bootstrap",
   effective_mode: "bootstrap",
@@ -254,7 +254,7 @@ describe("IngestTriageCard", () => {
     });
 
     fireEvent.click(screen.getByText(/Classificação LLM/i));
-    const toggle = screen.getByRole("button", { name: /Ativar classificação LLM/i });
+    const toggle = screen.getByLabelText(/LLM ativado/i);
     fireEvent.click(toggle);
 
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
@@ -268,7 +268,7 @@ describe("IngestTriageCard", () => {
 
     await act(async () => {
       fireEvent.click(screen.getByText(/Classificação LLM/i));
-      const toggle = screen.getByRole("button", { name: /Ativar classificação LLM/i });
+      const toggle = screen.getByLabelText(/LLM ativado/i);
       fireEvent.click(toggle);
     });
 
@@ -283,11 +283,11 @@ describe("IngestTriageCard", () => {
   it("saves manual classifier override", async () => {
     render(<IngestTriageCard {...defaultProps()} />);
     await waitFor(() => {
-      expect(screen.getByLabelText(/Override manual do projeto/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Override do classificador/i)).toBeInTheDocument();
     });
 
     await act(async () => {
-      fireEvent.change(screen.getByLabelText(/Override manual do projeto/i), {
+      fireEvent.change(screen.getByLabelText(/Override do classificador/i), {
         target: { value: "sparse_logreg" }
       });
     });
@@ -386,7 +386,7 @@ describe("IngestTriageCard", () => {
       await waitFor(() => {
         expect(screen.getByText(/Processando arquivos/i)).toBeInTheDocument();
       }, { timeout: 3000 });
-      expect(screen.getByText("2/6")).toBeInTheDocument();
+      expect(screen.getByText(/2 \/ 6 arquivo/i)).toBeInTheDocument();
       expect(screen.getByText(/arquivo\.pdf/i)).toBeInTheDocument();
 
       await act(async () => {
@@ -399,9 +399,8 @@ describe("IngestTriageCard", () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/Concluído/i)).toBeInTheDocument();
+        expect(screen.queryByText(/Processando arquivos/i)).not.toBeInTheDocument();
       }, { timeout: 3000 });
-      expect(screen.getByText("6/6")).toBeInTheDocument();
     } finally {
       const { triggerScan, fetchIngestStatus, fetchIngestHistory } = await import("../../api");
       vi.mocked(triggerScan).mockResolvedValue(mockScanResult);
@@ -444,15 +443,15 @@ describe("IngestTriageCard", () => {
       const runningCycle = {
         ...idleCycle,
         running: true,
-        phase: "benchmark_bootstrap",
-        progress_current: 2,
-        progress_total: 5
+        phase: "baseline:bootstrap",
+        progress_current: 1,
+        progress_total: 3
       };
       const completedCycle = {
         ...idleCycle,
         phase: "completed",
-        progress_current: 5,
-        progress_total: 5,
+        progress_current: 3,
+        progress_total: 3,
         report_id: "cycle_20260320_010000",
         champion_mode: "bootstrap"
       };
@@ -465,26 +464,24 @@ describe("IngestTriageCard", () => {
 
       render(<IngestTriageCard {...defaultProps()} />);
       await waitFor(() => {
-        expect(screen.getByText(/Rodar benchmark \+ retreino/i)).toBeInTheDocument();
+        expect(screen.getByText(/Rodar ciclo/i)).toBeInTheDocument();
       });
 
       await act(async () => {
-        fireEvent.click(screen.getByText(/Rodar benchmark \+ retreino/i));
+        fireEvent.click(screen.getByText(/Rodar ciclo/i));
       });
 
       expect(vi.mocked(startClassifierCycle)).toHaveBeenCalledTimes(1);
 
       await waitFor(() => {
-        expect(screen.getByText(/Benchmark bootstrap/i)).toBeInTheDocument();
+        expect(screen.getByText(/Baseline bootstrap/i)).toBeInTheDocument();
       }, { timeout: 3000 });
-      expect(screen.getByText("2/5")).toBeInTheDocument();
+      expect(screen.getByText(/1 \/ 3/)).toBeInTheDocument();
 
       await waitFor(() => {
-        expect(screen.getByText(/Concluído/i)).toBeInTheDocument();
+        expect(screen.queryByText(/Baseline bootstrap/i)).not.toBeInTheDocument();
       }, { timeout: 3000 });
-      expect(document.querySelector(".itc-classifier-cycle")?.textContent).toContain("Concluído");
-      expect(document.querySelector(".itc-classifier-cycle")?.textContent).toContain("5/5");
-      expect(screen.getByText(/Rodar benchmark \+ retreino/i)).toBeInTheDocument();
+      expect(screen.getByText(/Rodar ciclo/i)).toBeInTheDocument();
     } finally {
       const { fetchClassifierCycleStatus, fetchIngestStatus } = await import("../../api");
       vi.mocked(fetchClassifierCycleStatus).mockResolvedValue(idleCycle);

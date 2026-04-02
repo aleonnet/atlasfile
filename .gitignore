@@ -12,3 +12,5 @@ config/validation_set/files/
 config/training_pool/files/
 config/training_pool/records.jsonl
 .atlasfile_eval/
+backend/checkpoints/
+backend/runs/

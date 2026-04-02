@@ -441,13 +441,34 @@ def _build_project_context(profile: dict[str, Any] | None) -> str:
         if len(lines) > 1:
             parts.append("\n".join(lines))
 
+    document_types = (
+        (profile.get("classification") or {}).get("document_types")
+        or []
+    )
+    if document_types:
+        lines = ["Tipos documentais disponíveis neste projeto:"]
+        for dtype in document_types:
+            key = str(dtype.get("key", "")).strip()
+            if not key:
+                continue
+            label = dtype.get("label", key)
+            aliases = dtype.get("aliases") or []
+            alias_str = ", ".join(str(a) for a in aliases if str(a).strip())
+            line = f"- {key} ({label})"
+            if alias_str:
+                line += f" — aliases: {alias_str}"
+            lines.append(line)
+        if len(lines) > 1:
+            parts.append("\n".join(lines))
+
     from app.topics import get_topic_keys
     topic_keys = get_topic_keys(profile)
     if topic_keys:
         parts.append(f"Topics válidos: {', '.join(topic_keys[:40])}")
 
     parts.append(
-        "Escolha sempre um dos business_domains configurados no projeto.\n"
+        "Escolha sempre um dos business_domains e document_types configurados no projeto.\n"
+        "Se nenhum se encaixar, use 'outro' e explique na justificativa.\n"
         "Se a classificação for ambígua entre domínios, use confidence < 0.6."
     )
     return "\n\n".join(parts)
@@ -520,7 +541,9 @@ async def _classify_openai(
 
     client = AsyncOpenAI(api_key=api_key or None)
     context_block = f"\n\n{project_context}\n\n" if project_context else "\n\n"
-    user_content = f"Documento: {filename}\nDoc ID: {doc_id}{context_block}Trecho:\n{text_excerpt[:8000]}"
+    # LLM receives full text_excerpt (up to 20000 chars from read_text_excerpt).
+    # Source: https://aclanthology.org/2024.tacl-1.9/ (Lost in the Middle — no artificial truncation)
+    user_content = f"Documento: {filename}\nDoc ID: {doc_id}{context_block}Trecho:\n{text_excerpt}"
     resp = await client.chat.completions.create(
         model=model,
         messages=[
@@ -563,7 +586,7 @@ async def _classify_anthropic(
 
     client = AsyncAnthropic(api_key=api_key or None)
     context_block = f"\n\n{project_context}\n\n" if project_context else "\n\n"
-    user_content = f"Documento: {filename}\nDoc ID: {doc_id}{context_block}Trecho:\n{text_excerpt[:8000]}"
+    user_content = f"Documento: {filename}\nDoc ID: {doc_id}{context_block}Trecho:\n{text_excerpt}"
     resp = await client.messages.create(
         model=model,
         max_tokens=1024,

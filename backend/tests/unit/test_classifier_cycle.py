@@ -60,19 +60,50 @@ def test_choose_champion_mode_keeps_current_on_full_tie() -> None:
                     "exact_match_accuracy": 0.48,
                 }
             },
-            "sparse_linear_svc": {
+        },
+    )
+
+    assert mode == "bootstrap"
+
+
+def test_choose_champion_mode_considers_setfit() -> None:
+    registry = ClassifierRegistry(champion_mode="bootstrap")
+    mode, summary = choose_champion_mode(
+        registry=registry,
+        training_pool_records=50,
+        benchmarks={
+            "bootstrap": {
                 "summary": {
-                    "mode": "sparse_linear_svc",
+                    "mode": "bootstrap",
                     "total_labeled": 50,
                     "business_domain_accuracy": 0.52,
                     "document_type_accuracy": 0.80,
                     "exact_match_accuracy": 0.48,
                 }
             },
+            "sparse_logreg": {
+                "summary": {
+                    "mode": "sparse_logreg",
+                    "total_labeled": 50,
+                    "business_domain_accuracy": 0.58,
+                    "document_type_accuracy": 0.82,
+                    "exact_match_accuracy": 0.50,
+                }
+            },
+            "setfit": {
+                "summary": {
+                    "mode": "setfit",
+                    "total_labeled": 50,
+                    "business_domain_accuracy": 0.70,
+                    "document_type_accuracy": 0.88,
+                    "exact_match_accuracy": 0.65,
+                }
+            },
         },
     )
 
-    assert mode == "bootstrap"
+    assert mode == "setfit"
+    assert summary.exact_match_accuracy == 0.65
 
 
 def test_run_classifier_cycle_cli_resolves_default_template_alias() -> None:

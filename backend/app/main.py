@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
@@ -25,9 +25,11 @@ from .bootstrap import ensure_project_structure
 from .classifier_cycle import run_classifier_cycle
 from .classifier_registry import (
     SUPPORTED_CLASSIFIER_MODES,
+    classifier_report_path,
     list_classifier_reports,
     load_classifier_registry,
     load_classifier_report,
+    save_classifier_registry,
 )
 from .classifier_runtime import resolve_classifier_mode
 from .config import settings
@@ -372,6 +374,7 @@ _classifier_cycle_status: dict[str, Any] = {
     "champion_mode": None,
     "last_error": None,
 }
+_cycle_cancel_event = threading.Event()
 
 
 def _backfill_channel_web(client) -> None:
@@ -1185,29 +1188,53 @@ def _classifier_status_payload(project_id: str | None = None) -> dict[str, Any]:
         "latest_cycle_started_at": registry.latest_cycle_started_at,
         "latest_cycle_finished_at": registry.latest_cycle_finished_at,
         "latest_cycle_error": registry.latest_cycle_error,
+        "benchmark_enabled_modes": registry.benchmark_enabled_modes,
     }
 
 
-def _run_classifier_cycle_background(min_training_docs: int, min_docs_per_class: int) -> None:
+def _run_classifier_cycle_background(
+    min_training_docs: int,
+    min_docs_per_class: int,
+    benchmark_enabled_modes: list[str] | None = None,
+) -> None:
+    _cycle_cancel_event.clear()
     started_at = time.time()
+
+    def _progress(update: dict) -> None:
+        if _cycle_cancel_event.is_set():
+            raise InterruptedError("Cancelado pelo usuário")
+        _classifier_cycle_status.update(update)
+
     try:
         report = run_classifier_cycle(
             min_training_docs=min_training_docs,
             min_docs_per_class=min_docs_per_class,
-            progress_callback=lambda update: _classifier_cycle_status.update(update),
+            benchmark_enabled_modes=benchmark_enabled_modes,
+            progress_callback=_progress,
         )
         champion = (report.get("champion") or {}).get("mode")
+        total = _classifier_cycle_status.get("progress_total") or 1
         _classifier_cycle_status.update(
             {
                 "last_run_finished_at": utc_now_iso(),
                 "duration_seconds": round(time.time() - started_at, 3),
                 "running": False,
                 "phase": "completed",
-                "progress_current": 1,
-                "progress_total": 1,
+                "progress_current": total,
+                "progress_total": total,
                 "report_id": report.get("report_id"),
                 "champion_mode": champion,
                 "last_error": None,
+            }
+        )
+    except InterruptedError:
+        _classifier_cycle_status.update(
+            {
+                "last_run_finished_at": utc_now_iso(),
+                "duration_seconds": round(time.time() - started_at, 3),
+                "running": False,
+                "phase": "cancelled",
+                "last_error": "Cancelado pelo usuário",
             }
         )
     except Exception as exc:
@@ -1252,6 +1279,18 @@ def get_classifier_reports(limit: int = Query(10, ge=1, le=50)) -> list[dict[str
     return reports
 
 
+@app.delete("/api/classifier/reports/{report_id}")
+def delete_classifier_report(report_id: str) -> Response:
+    registry = load_classifier_registry()
+    if report_id == registry.champion_report_id:
+        raise HTTPException(status_code=409, detail="Não é possível deletar o relatório campeão ativo")
+    path = classifier_report_path(report_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Report {report_id!r} não encontrado")
+    path.unlink()
+    return Response(status_code=204)
+
+
 @app.put("/api/classifier/override/{project_id}")
 def set_classifier_override(project_id: str, body: dict[str, Any]) -> dict[str, Any]:
     override_raw = str(body.get("override_mode") or "").strip()
@@ -1270,6 +1309,23 @@ def set_classifier_override(project_id: str, body: dict[str, Any]) -> dict[str, 
         updated_by="system:classifier_override",
     )
     return _classifier_status_payload(project_id)
+
+
+@app.put("/api/classifier/benchmark-modes")
+def set_benchmark_enabled_modes(body: dict[str, Any]) -> dict[str, Any]:
+    modes_raw = body.get("benchmark_enabled_modes")
+    if not isinstance(modes_raw, list):
+        raise HTTPException(status_code=400, detail="benchmark_enabled_modes must be a list")
+    modes = [str(m).strip() for m in modes_raw if str(m).strip()]
+    for mode in modes:
+        if mode not in SUPPORTED_CLASSIFIER_MODES:
+            raise HTTPException(status_code=400, detail=f"unsupported mode: {mode}")
+    if not modes:
+        raise HTTPException(status_code=400, detail="Pelo menos um modo deve estar habilitado")
+    registry = load_classifier_registry()
+    registry.benchmark_enabled_modes = modes
+    save_classifier_registry(registry)
+    return _classifier_status_payload()
 
 
 @app.get("/api/classifier/cycle/status")
@@ -1302,15 +1358,17 @@ def start_classifier_cycle(
 ) -> JSONResponse:
     if _classifier_cycle_status.get("running"):
         raise HTTPException(status_code=409, detail="Classifier cycle already in progress")
+    registry = load_classifier_registry()
+    enabled_modes = registry.benchmark_enabled_modes or ["bootstrap"]
     _classifier_cycle_status.update(
         {
             "last_run_started_at": utc_now_iso(),
             "last_run_finished_at": None,
             "duration_seconds": None,
             "running": True,
-            "phase": "training_benchmark",
+            "phase": "extracting",
             "progress_current": 0,
-            "progress_total": 1,
+            "progress_total": len(enabled_modes),
             "report_id": None,
             "champion_mode": None,
             "last_error": None,
@@ -1318,12 +1376,20 @@ def start_classifier_cycle(
     )
     thread = threading.Thread(
         target=_run_classifier_cycle_background,
-        args=(min_training_docs, min_docs_per_class),
+        args=(min_training_docs, min_docs_per_class, registry.benchmark_enabled_modes),
         name="atlasfile-classifier-cycle",
         daemon=True,
     )
     thread.start()
     return JSONResponse(status_code=202, content={"status": "started", "message": "Classifier cycle started"})
+
+
+@app.delete("/api/classifier/cycle")
+def cancel_classifier_cycle() -> Response:
+    if not _classifier_cycle_status.get("running"):
+        raise HTTPException(status_code=409, detail="Nenhum ciclo em andamento")
+    _cycle_cancel_event.set()
+    return Response(status_code=202)
 
 
 async def _stream_session_events(session_id: str) -> Any:
