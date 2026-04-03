@@ -1,6 +1,7 @@
 import { Check, ChevronLeft, ChevronRight, FolderOpen, Info, Plus, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { fetchProjects, fetchSetupStatus, initializeProject, listTemplates } from "../../api";
+import { CompanionOrb } from "../../components/CompanionOrb";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import type { Project, TemplateMeta } from "../../types";
 import type { SetupStatus } from "../../api";
@@ -134,7 +135,7 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
         {step === "welcome" && (
           <div className="onboarding-step">
             <div className="onboarding-logo">
-              <span className="brand-dot" />
+              <CompanionOrb state="idle" size={28} />
               <h1>AtlasFile</h1>
             </div>
             <h2>Bem-vindo ao AtlasFile</h2>

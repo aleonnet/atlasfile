@@ -279,6 +279,31 @@ export interface ClassificationUsageSummary {
   by_model: ClassificationUsageByModel[];
 }
 
+export interface TrainingUsageByModel {
+  model: string;
+  call_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+}
+
+export interface TrainingUsageByScript {
+  script_name: string;
+  call_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+}
+
+export interface TrainingUsageSummary {
+  total_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  estimated_cost_usd: number;
+  by_model: TrainingUsageByModel[];
+  by_script: TrainingUsageByScript[];
+}
+
 export interface ProfileBusinessDomainFolder {
   business_domain: string;
   folder: string;

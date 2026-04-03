@@ -36,6 +36,7 @@ from app.evaluation_dataset import (  # noqa: E402
     load_validation_set,
 )
 from app.orchestrator import get_llm_config  # noqa: E402
+from app.training_usage import generate_run_id, persist_training_usage  # noqa: E402
 from scripts.run_classifier_cycle import resolve_profile_arg  # noqa: E402
 
 
@@ -139,7 +140,7 @@ def main() -> int:
         total = payload.get("progress_total", 0)
         print(f"  [{current}/{total}] saved={saved_count}", end="\r", flush=True)
 
-    records = asyncio.run(generate_synthetic_records(
+    records, usage_totals = asyncio.run(generate_synthetic_records(
         plan=plan,
         provider=provider,
         model=model,
@@ -147,7 +148,19 @@ def main() -> int:
         on_record=_on_record,
     ))
 
+    # Persist accumulated usage
+    run_id = generate_run_id()
+    persist_training_usage(
+        script_name="run_augmentation",
+        run_id=run_id,
+        provider=provider,
+        model=model,
+        usage=usage_totals,
+        records_processed=saved_count,
+    )
+
     print(f"\n\nGerados e salvos {saved_count} records sintéticos (incrementalmente).")
+    print(f"Tokens: {usage_totals.get('input_tokens', 0):,} input + {usage_totals.get('output_tokens', 0):,} output")
     print(json.dumps(
         {"generated": saved_count, "plan_items": len(plan), "total_planned": total_to_generate},
         ensure_ascii=False,

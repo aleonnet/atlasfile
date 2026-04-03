@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchClassificationUsage, fetchUsageSessions, fetchUsageSummary } from "../../api";
-import type { ClassificationUsageSummary, UsageByDayEntry, UsageByModelEntry, UsageSessionItem, UsageSummaryResponse } from "../../types";
+import { fetchClassificationUsage, fetchTrainingUsage, fetchUsageSessions, fetchUsageSummary } from "../../api";
+import type { ClassificationUsageSummary, TrainingUsageSummary, UsageByDayEntry, UsageByModelEntry, UsageSessionItem, UsageSummaryResponse } from "../../types";
 const ALL_CHANNELS = "__all__";
 const CHANNEL_LABELS: Record<string, string> = { web: "Web", telegram: "TG" };
 const PAGE_SIZE = 10;
@@ -167,6 +167,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
   const [summary, setSummary] = useState<UsageSummaryResponse | null>(null);
   const [sessions, setSessions] = useState<UsageSessionItem[]>([]);
   const [classifUsage, setClassifUsage] = useState<ClassificationUsageSummary | null>(null);
+  const [trainingUsage, setTrainingUsage] = useState<TrainingUsageSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionsPage, setSessionsPage] = useState(0);
@@ -184,11 +185,13 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
       fetchUsageSummary({ ...baseParams, channel: channelParam }),
       fetchUsageSessions({ ...baseParams, channel: channelParam, limit: 100 }),
       fetchClassificationUsage(baseParams),
+      fetchTrainingUsage(baseParams).catch(() => null),
     ])
-      .then(([s, list, classif]) => {
+      .then(([s, list, classif, training]) => {
         setSummary(s);
         setSessions(list);
         setClassifUsage(classif);
+        setTrainingUsage(training);
         setSessionsPage(0);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar"))
@@ -225,11 +228,15 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
           <div className="usage-summary-cards">
             <div className="usage-stat-card">
               <span className="usage-stat-label">Total tokens</span>
-              <span className="usage-stat-value">{formatTokens(summary.total_tokens)}</span>
+              <span className="usage-stat-value">{formatTokens(
+                summary.total_tokens
+                + (classifUsage ? classifUsage.total_input_tokens + classifUsage.total_output_tokens : 0)
+                + (trainingUsage ? trainingUsage.total_input_tokens + trainingUsage.total_output_tokens : 0)
+              )}</span>
             </div>
             <div className="usage-stat-card">
               <span className="usage-stat-label">Custo est.</span>
-              <span className="usage-stat-value">{formatUsd(summary.estimated_cost_usd + (classifUsage?.estimated_cost_usd ?? 0))}</span>
+              <span className="usage-stat-value">{formatUsd(summary.estimated_cost_usd + (classifUsage?.estimated_cost_usd ?? 0) + (trainingUsage?.estimated_cost_usd ?? 0))}</span>
             </div>
             <div className="usage-stat-card">
               <span className="usage-stat-label">Sessões</span>
@@ -239,6 +246,12 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
               <div className="usage-stat-card">
                 <span className="usage-stat-label">Classificações</span>
                 <span className="usage-stat-value">{classifUsage.total_calls}</span>
+              </div>
+            )}
+            {trainingUsage && trainingUsage.total_calls > 0 && (
+              <div className="usage-stat-card">
+                <span className="usage-stat-label">Treinamento</span>
+                <span className="usage-stat-value">{trainingUsage.total_calls}</span>
               </div>
             )}
           </div>
@@ -299,7 +312,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
             <>
               <h3 className="usage-section-title">Classificação (uso LLM na ingestão)</h3>
               <div className="usage-table-wrap">
-                <table className="usage-table">
+                <table className="usage-table usage-table--5col">
                   <thead>
                     <tr>
                       <th className="left">Modelo</th>
@@ -328,6 +341,47 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                         <td>{formatTokens(classifUsage.total_input_tokens)}</td>
                         <td>{formatTokens(classifUsage.total_output_tokens)}</td>
                         <td>{formatUsd(classifUsage.estimated_cost_usd)}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </>
+          )}
+
+          {trainingUsage && trainingUsage.total_calls > 0 && (
+            <>
+              <h3 className="usage-section-title">Treinamento / Pipeline</h3>
+              <div className="usage-table-wrap">
+                <table className="usage-table usage-table--5col">
+                  <thead>
+                    <tr>
+                      <th className="left">Script</th>
+                      <th>Chamadas</th>
+                      <th>Input (tokens)</th>
+                      <th>Output (tokens)</th>
+                      <th>Custo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trainingUsage.by_script.map((row) => (
+                      <tr key={row.script_name}>
+                        <td className="left">{row.script_name}</td>
+                        <td>{row.call_count}</td>
+                        <td>{formatTokens(row.input_tokens)}</td>
+                        <td>{formatTokens(row.output_tokens)}</td>
+                        <td>{formatUsd(row.estimated_cost_usd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {trainingUsage.by_script.length > 0 && (
+                    <tfoot>
+                      <tr className="usage-table-total">
+                        <td className="left">Total</td>
+                        <td>{trainingUsage.total_calls}</td>
+                        <td>{formatTokens(trainingUsage.total_input_tokens)}</td>
+                        <td>{formatTokens(trainingUsage.total_output_tokens)}</td>
+                        <td>{formatUsd(trainingUsage.estimated_cost_usd)}</td>
                       </tr>
                     </tfoot>
                   )}

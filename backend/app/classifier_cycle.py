@@ -416,12 +416,17 @@ def benchmark_llm_candidate(
             "results": [],
         }
 
+    from .training_usage import generate_run_id, persist_training_usage
+
     client = OpenAI(api_key=api_key)
     system_prompt = get_system_prompt_classify()
     project_context = _build_project_context(profile)
     context_block = f"\n\n{project_context}\n\n" if project_context else "\n\n"
 
     provider, model = "openai", os.environ.get("DEFAULT_LLM_MODEL", "gpt-4o-mini")
+    run_id = generate_run_id()
+    total_input_tokens = 0
+    total_output_tokens = 0
 
     results: list[dict[str, Any]] = []
     for example in validation_examples:
@@ -456,6 +461,9 @@ def benchmark_llm_candidate(
             parsed = json.loads(raw)
             predicted_domain = str(parsed.get("business_domain", "")).strip()
             predicted_type = str(parsed.get("document_type", "")).strip()
+            if resp.usage:
+                total_input_tokens += getattr(resp.usage, "prompt_tokens", 0)
+                total_output_tokens += getattr(resp.usage, "completion_tokens", 0)
         except Exception:
             pass
 
@@ -472,6 +480,16 @@ def benchmark_llm_candidate(
                 "document_type_ok": predicted_type == entry.document_type,
                 "exact_ok": predicted_domain == entry.business_domain and predicted_type == entry.document_type,
             }
+        )
+
+    if total_input_tokens or total_output_tokens:
+        persist_training_usage(
+            script_name="benchmark_llm",
+            run_id=run_id,
+            provider=provider,
+            model=model,
+            usage={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens},
+            records_processed=len(results),
         )
 
     return {

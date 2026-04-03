@@ -1,0 +1,137 @@
+/* CompanionOrb — SVG orb animado com aurora halo para o chat assistant */
+
+/* ── Wrapper ── */
+
+.companion-orb-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.companion-orb-wrap.thinking {
+  margin: 14px;
+  animation: orb-glow-pulse 2.5s ease-in-out infinite;
+}
+
+.companion-orb-wrap.alive {
+  animation: orb-glow-pulse-subtle 3s ease-in-out infinite;
+}
+
+/* ── SVG ── */
+
+.companion-orb-svg {
+  display: block;
+  overflow: visible;
+}
+
+/* ── Core ── */
+
+.orb-core {
+  transition: opacity 0.3s ease;
+}
+
+.idle .orb-core {
+  animation: orb-breathe 3s ease-in-out infinite, orb-hue-shift 6s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.thinking .orb-core {
+  animation: orb-pulse 1.5s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.alive .orb-core {
+  animation: orb-breathe 4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.success .orb-core {
+  animation: orb-flash 0.6s ease-out;
+  transform-origin: center;
+}
+
+.error .orb-core {
+  opacity: 0.5;
+}
+
+/* ── Moons (positioned via Keplerian RAF, CSS only for success/error) ── */
+
+.orb-moon {
+  transition: none;
+}
+
+.success .orb-moon {
+  animation: orb-burst 0.6s ease-out forwards;
+}
+
+.error .orb-moon {
+  opacity: 0.2;
+}
+
+/* ── Error shake ── */
+
+.companion-orb-wrap.error {
+  animation: orb-shake 0.3s ease-out;
+}
+
+/* ── Keyframes ── */
+
+@keyframes orb-glow-pulse {
+  0%, 100% { filter: drop-shadow(0 0 8px var(--accent-soft)); }
+  50%      { filter: drop-shadow(0 0 18px var(--accent-soft)) drop-shadow(0 0 6px var(--accent-soft)); }
+}
+
+@keyframes orb-glow-pulse-subtle {
+  0%, 100% { filter: drop-shadow(0 0 4px var(--accent-soft)); }
+  50%      { filter: drop-shadow(0 0 10px var(--accent-soft)); }
+}
+
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(0.85); opacity: 0.7; }
+  50%      { transform: scale(1.05); opacity: 1; }
+}
+
+@keyframes orb-hue-shift {
+  0%, 100% { filter: hue-rotate(0deg); }
+  50%      { filter: hue-rotate(40deg); }
+}
+
+@keyframes orb-pulse {
+  0%, 100% { transform: scale(0.92); opacity: 0.8; }
+  50%      { transform: scale(1.08); opacity: 1; }
+}
+
+@keyframes orb-flash {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+@keyframes orb-burst {
+  0%   { transform: translate(0, 0); opacity: 1; }
+  100% { transform: translate(var(--burst-x, 4px), var(--burst-y, -4px)); opacity: 0; }
+}
+
+@keyframes orb-shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-3px); }
+  40%      { transform: translateX(3px); }
+  60%      { transform: translateX(-2px); }
+  80%      { transform: translateX(2px); }
+}
+
+/* ── Accessibility: reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .companion-orb-wrap,
+  .companion-orb-wrap *,
+  .orb-core,
+  .orb-moon {
+    animation: none !important;
+    transition: none !important;
+  }
+  .companion-orb-svg .orb-aurora-ellipse * {
+    animation: none !important;
+  }
+}

@@ -23,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.document_extractor import extract_document_content
 from app.evaluation_dataset import classifier_datasets_root
+from app.training_usage import generate_run_id, persist_training_usage
+from app.usage_costs import estimate_usage_cost
 from app.utils import utc_now_iso
 
 _PROFILE_PATH = Path(__file__).resolve().parents[2] / "config" / "templates" / "default.json"
@@ -174,6 +176,7 @@ def main() -> None:
         todo = todo[:args.limit]
     print(f"To classify: {len(todo)}")
 
+    run_id = generate_run_id()
     total_input = 0
     total_output = 0
     errors = 0
@@ -238,6 +241,15 @@ def main() -> None:
         total_input += usage.get("input_tokens", 0)
         total_output += usage.get("output_tokens", 0)
 
+        persist_training_usage(
+            script_name="label_corpus_llm",
+            run_id=run_id,
+            provider="openai",
+            model=args.model,
+            usage=usage,
+            records_processed=1,
+        )
+
         # Compare with existing label
         existing_bd = entry.get("business_domain", "")
         existing_dt = entry.get("document_type", "")
@@ -274,11 +286,14 @@ def main() -> None:
         time.sleep(0.2)
 
     # Summary
-    cost_in = total_input * 0.15 / 1_000_000
-    cost_out = total_output * 0.60 / 1_000_000
+    total_cost = estimate_usage_cost(
+        {"input_tokens": total_input, "output_tokens": total_output},
+        "openai",
+        args.model,
+    )
     print(f"\nDone: {len(todo) - errors} classified, {errors} errors")
     print(f"Tokens: {total_input:,} input + {total_output:,} output")
-    print(f"Cost: ${cost_in + cost_out:.4f}")
+    print(f"Cost: ${total_cost:.4f}")
 
     # Load all labels and generate divergence report
     all_labels = []

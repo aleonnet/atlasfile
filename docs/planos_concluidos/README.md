@@ -4,6 +4,15 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.10.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [graficos_chat_custos_treinamento](graficos_chat_custos_treinamento.plan.md) | Gráficos inline no chat (Recharts + matplotlib/Telegram). Custos de treinamento/pipeline com índice OpenSearch, instrumentação de benchmark_llm/label/augmentation, endpoint API e UsageView. CompanionOrb. Preços LLM atualizados. |
+| 2 | [companion_orb_aurora_thinking](companion_orb_aurora_thinking.plan.md) | CompanionOrb com mecânica orbital Kepleriana, aurora borealis e estados visuais (idle, thinking, responding) |
+
+---
+
 ## 0.9.0
 
 | # | Plano | Escopo |

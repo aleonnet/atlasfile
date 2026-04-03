@@ -90,14 +90,44 @@ Monorepo com 5 serviços Docker: API (FastAPI :8000), MCP Server (FastMCP :8001)
 - **`app/main.py`** — arquivo monolítico (~2000+ linhas) com todos os endpoints REST e SSE. Entry point do uvicorn.
 - **`app/ingestion.py`** — pipeline de ingestão: extração de texto, dedup SHA256, classificação, roteamento para filesystem, indexação no OpenSearch.
 - **`app/document_extractor.py`** — extração de PDF, DOCX, XLSX, PPTX, MSG com OCR (tesseract).
-- **`app/classifier_*.py`** — sistema de classificação com 3 modos: `bootstrap` (regras), `sparse_logreg`, `sparse_linear_svc` (supervisionados via scikit-learn). Registry global em `_ATLASFILE/classifier/`.
+- **`app/classifier_*.py`** — sistema de classificação com 4 modos: `bootstrap` (regras + aliases), `sparse_logreg` (TF-IDF + LogReg), `setfit` (ModernBERT contrastivo, subprocess para evitar OOM), `llm` (GPT-4o-mini). Registry global em `_ATLASFILE/classifier/`. Decisões de design: `docs/planos_concluidos/classificacao_4_modos_pipeline_dados_v090.plan.md`.
 - **`app/orchestrator.py`** — loop de chat LLM com MCP tools, suporta OpenAI e Anthropic.
 - **`app/mcp/server.py`** — MCP server (FastMCP) que expõe tools de busca, tags e stats.
 - **`app/mcp_client/`** — cliente MCP para o orchestrator chamar tools.
 - **`app/api/`** — routers adicionais: `profile.py`, `layout.py`, `channels.py`.
 - **`app/config.py`** — settings via pydantic-settings (OpenSearch, LLM, busca, channels).
 - **`app/reconcile.py`** — sincronização filesystem ↔ OpenSearch.
+- **`app/watcher.py`** — filesystem watcher para auto-ingest.
+- **`app/area_resolver.py`** — resolução de business domain a partir da classificação.
+- **`app/triage.py`** — workflow de triagem manual de documentos em `_TRIAGE_REVIEW/pending`.
+- **`app/ingest_history.py`** — trilha de auditoria de eventos de ingestão.
+- **`app/usage_costs.py`** — rastreamento de custo de chamadas LLM (tabela em `config/usage_costs.json`).
 - **Testes**: `tests/unit/` (51 arquivos) e `tests/integration/` (15 arquivos). Config em `pytest.ini` com `asyncio_mode = auto`.
+
+### Scripts de Data Pipeline (`backend/scripts/`)
+
+Executar dentro do venv do backend (`cd backend && .venv/bin/python scripts/<script>.py`):
+
+| Script | Função |
+|--------|--------|
+| `build_corpus.py` | Consolida training_pool + validation_set → `corpus.jsonl` (dedup SHA256) |
+| `build_splits.py` | Split estratificado 70/15/15 via StratifiedShuffleSplit |
+| `label_corpus_llm.py` | Rotulagem automática via GPT-4o-mini |
+| `inject_training_records.py` | Injeção manual de registros com anti-leakage SHA256 |
+| `run_classifier_cycle.py` | Entrypoint CLI para benchmark completo |
+| `run_augmentation.py` | Geração de exemplos sintéticos de treino |
+
+Estrutura de dados do classifier:
+```
+_ATLASFILE/classifier/datasets/
+├── corpus.jsonl                        # fonte unificada
+└── splits/{train,validation,test}.jsonl  # 70/15/15
+```
+
+### Configuração e extras
+
+- **`config/`** — `topics_v1.yaml` (74 tópicos pt-BR com área-bias), `usage_costs.json` (preços LLM por modelo), `templates/default.json` (template de projeto padrão).
+- **`extractor-benchmark/`** — suite de benchmark de extração PDF separada da stack principal (corpus, ground_truth, results, providers).
 
 ### Frontend (`frontend/`)
 

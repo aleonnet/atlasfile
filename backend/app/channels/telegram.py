@@ -169,6 +169,17 @@ class TelegramChannel:
         for chunk in self._chunk_text(html_text):
             await self._bot.send_message(chat_id=int(chat_id), text=chunk)
 
+    async def send_photo(self, chat_id: str, photo_bytes: bytes, caption: str = "") -> None:
+        """Send a photo (PNG bytes) to a Telegram chat."""
+        if not self._bot:
+            raise RuntimeError("Telegram bot is not running")
+        from aiogram.types import BufferedInputFile
+        await self._bot.send_photo(
+            chat_id=int(chat_id),
+            photo=BufferedInputFile(photo_bytes, filename="chart.png"),
+            caption=caption[:1024] if caption else None,
+        )
+
     def is_running(self) -> bool:
         return self._running
 
@@ -286,9 +297,25 @@ class TelegramChannel:
                 await message.answer("Desculpe, ocorreu um erro ao processar sua mensagem.")
                 return
 
-            html_reply = _md_to_tg_html(reply)
-            for chunk in self._chunk_text(html_reply):
-                await message.answer(chunk)
+            # Render chart blocks as images for Telegram
+            text_reply = reply
+            try:
+                from app.chart_renderer import extract_chart_blocks, render_chart_png
+                chart_blocks = extract_chart_blocks(reply)
+                for chart_spec, original_block in chart_blocks:
+                    png_bytes = render_chart_png(chart_spec)
+                    if png_bytes:
+                        chart_title = chart_spec.get("title", "")
+                        await self.send_photo(str(chat_id), png_bytes, caption=chart_title)
+                        text_reply = text_reply.replace(original_block, "")
+            except Exception:
+                logger.debug("Chart rendering skipped for Telegram", exc_info=True)
+
+            text_reply = text_reply.strip()
+            if text_reply:
+                html_reply = _md_to_tg_html(text_reply)
+                for chunk in self._chunk_text(html_reply):
+                    await message.answer(chunk)
 
     @staticmethod
     def _chunk_text(text: str) -> list[str]:

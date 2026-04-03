@@ -157,6 +157,31 @@ class ClassificationUsageSummary(BaseModel):
     by_model: list[ClassificationUsageByModel] = Field(default_factory=list)
 
 
+class TrainingUsageByModel(BaseModel):
+    model: str
+    call_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+
+
+class TrainingUsageByScript(BaseModel):
+    script_name: str
+    call_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+
+
+class TrainingUsageSummary(BaseModel):
+    total_calls: int = 0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    by_model: list[TrainingUsageByModel] = Field(default_factory=list)
+    by_script: list[TrainingUsageByScript] = Field(default_factory=list)
+
+
 class ModelOption(BaseModel):
     provider: str
     model: str

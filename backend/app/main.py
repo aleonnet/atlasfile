@@ -73,9 +73,12 @@ from .models import (
     UsageSessionItem,
     UsageSummaryResponse,
     UsageTotals,
+    TrainingUsageByModel,
+    TrainingUsageByScript,
+    TrainingUsageSummary,
 )
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
-from .opensearch_client import ensure_chat_sessions_index, ensure_classification_usage_index, ensure_index, get_client
+from .opensearch_client import ensure_chat_sessions_index, ensure_classification_usage_index, ensure_index, ensure_training_usage_index, get_client
 from .project_profile import list_project_roots, load_project_profile
 from .profile_runtime import inbox_rel
 from .profile_schema_v2 import OperationalClassifierMode
@@ -404,6 +407,7 @@ async def lifespan(app: FastAPI):
             ensure_index(os_client)
             ensure_chat_sessions_index(os_client)
             ensure_classification_usage_index(os_client)
+            ensure_training_usage_index(os_client)
             _backfill_channel_web(os_client)
             backfill_search_fields(os_client)
             _start_auto_reconcile_if_enabled()
@@ -1992,8 +1996,20 @@ async def _maybe_mirror_to_channel(
     if not messages_to_send:
         return
     try:
+        from app.chart_renderer import extract_chart_blocks, render_chart_png
+
         for text in messages_to_send:
-            await channel_obj.send_message(chat_id, text)
+            # Render chart blocks as images before sending
+            chart_blocks = extract_chart_blocks(text)
+            clean_text = text
+            for chart_spec, original_block in chart_blocks:
+                png_bytes = render_chart_png(chart_spec)
+                if png_bytes and hasattr(channel_obj, "send_photo"):
+                    await channel_obj.send_photo(chat_id, png_bytes, caption=chart_spec.get("title", ""))
+                    clean_text = clean_text.replace(original_block, "")
+            clean_text = clean_text.strip()
+            if clean_text:
+                await channel_obj.send_message(chat_id, clean_text)
     except Exception:
         _logger.warning("Mirror to %s/%s failed", ch, chat_id, exc_info=True)
 
@@ -2364,6 +2380,87 @@ def get_classification_usage(
         total_output_tokens=int(aggs.get("total_output", {}).get("value") or 0),
         estimated_cost_usd=round(float(aggs.get("total_cost", {}).get("value") or 0), 6),
         by_model=by_model_list,
+    )
+
+
+_TRAINING_USAGE_INDEX = settings.opensearch_training_usage_index
+
+
+@app.get("/api/usage/training", response_model=TrainingUsageSummary)
+def get_training_usage(
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
+) -> TrainingUsageSummary:
+    """Aggregate training/pipeline LLM usage in the given date range."""
+    try:
+        start_ts = int(datetime.strptime(start_date.strip(), "%Y-%m-%d").timestamp() * 1000)
+        end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d")
+        end_ts = int((end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)).timestamp() * 1000)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Datas devem ser YYYY-MM-DD")
+
+    filters: list[dict[str, Any]] = [{"range": {"timestamp": {"gte": start_ts, "lte": end_ts}}}]
+
+    body: dict[str, Any] = {
+        "size": 0,
+        "query": {"bool": {"must": filters}},
+        "aggs": {
+            "total_calls": {"value_count": {"field": "timestamp"}},
+            "total_input": {"sum": {"field": "input_tokens"}},
+            "total_output": {"sum": {"field": "output_tokens"}},
+            "total_cost": {"sum": {"field": "estimated_cost_usd"}},
+            "by_model": {
+                "terms": {"field": "model", "size": 50},
+                "aggs": {
+                    "input_tokens": {"sum": {"field": "input_tokens"}},
+                    "output_tokens": {"sum": {"field": "output_tokens"}},
+                    "cost": {"sum": {"field": "estimated_cost_usd"}},
+                },
+            },
+            "by_script": {
+                "terms": {"field": "script_name", "size": 50},
+                "aggs": {
+                    "input_tokens": {"sum": {"field": "input_tokens"}},
+                    "output_tokens": {"sum": {"field": "output_tokens"}},
+                    "cost": {"sum": {"field": "estimated_cost_usd"}},
+                },
+            },
+        },
+    }
+    try:
+        result = os_client.search(index=_TRAINING_USAGE_INDEX, body=body)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Erro ao agregar usage de treinamento: {e!s}") from e
+
+    aggs = result.get("aggregations") or {}
+    by_model_list: list[TrainingUsageByModel] = []
+    for bucket in (aggs.get("by_model", {}).get("buckets") or []):
+        by_model_list.append(TrainingUsageByModel(
+            model=bucket["key"],
+            call_count=bucket["doc_count"],
+            input_tokens=int(bucket.get("input_tokens", {}).get("value") or 0),
+            output_tokens=int(bucket.get("output_tokens", {}).get("value") or 0),
+            estimated_cost_usd=round(float(bucket.get("cost", {}).get("value") or 0), 6),
+        ))
+
+    by_script_list: list[TrainingUsageByScript] = []
+    for bucket in (aggs.get("by_script", {}).get("buckets") or []):
+        by_script_list.append(TrainingUsageByScript(
+            script_name=bucket["key"],
+            call_count=bucket["doc_count"],
+            input_tokens=int(bucket.get("input_tokens", {}).get("value") or 0),
+            output_tokens=int(bucket.get("output_tokens", {}).get("value") or 0),
+            estimated_cost_usd=round(float(bucket.get("cost", {}).get("value") or 0), 6),
+        ))
+
+    return TrainingUsageSummary(
+        total_calls=int(aggs.get("total_calls", {}).get("value") or 0),
+        total_input_tokens=int(aggs.get("total_input", {}).get("value") or 0),
+        total_output_tokens=int(aggs.get("total_output", {}).get("value") or 0),
+        estimated_cost_usd=round(float(aggs.get("total_cost", {}).get("value") or 0), 6),
+        by_model=by_model_list,
+        by_script=by_script_list,
     )
 
 

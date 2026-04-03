@@ -28,6 +28,8 @@ import {
 } from "./api";
 import { ChatPanel } from "./components/ChatPanel";
 import type { ChatAttachment } from "./components/ChatPanel";
+import { CompanionOrb } from "./components/CompanionOrb";
+import type { CompanionState } from "./components/CompanionOrb";
 import { IngestTriageCard } from "./features/ingest/IngestTriageCard";
 import { ProfileLayoutWorkspace } from "./features/profile-layout/ProfileLayoutWorkspace";
 import { buildEvidenceGroups, formatLocationLabel, topLocations } from "./features/search/searchFormatters";
@@ -1157,8 +1159,8 @@ function App() {
       <header className="topbar">
         <div className="topbar-inner">
         <div className="topbar-left">
-          <div className="brand">
-            <span className="brand-dot" />
+          <div className="brand" title={healthOk === true ? "API OK" : healthOk === false ? "API offline" : "A verificar..."}>
+            <CompanionOrb state={(healthOk === true ? "alive" : healthOk === false ? "error" : "idle") as CompanionState} size={40} />
             <h1>AtlasFile</h1>
           </div>
           <select className="project-select" value={selectedProject} onChange={(e: InputLikeEvent) => void handleSelectProject(e.target.value)}>
@@ -1216,10 +1218,6 @@ function App() {
           <button className="topbar-search-icon" onClick={() => setSearchModalOpen(true)} title="Buscar" aria-label="Buscar">
             <Search size={18} />
           </button>
-          <div className="pill health-pill" title={healthOk === true ? "API OK" : healthOk === false ? "API offline" : "A verificar..."}>
-            <span className={`status-dot ${healthOk === true ? "ok" : ""}`} />
-            <span>{healthOk === true ? "Health OK" : healthOk === false ? "Health Offline" : "Health …"}</span>
-          </div>
           <div className="theme-toggle" role="group" aria-label="Tema">
             <button
               type="button"

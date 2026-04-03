@@ -24,3 +24,4 @@ setfit>=1.1.0
 sentence-transformers>=3.0.0
 transformers>=4.40,<5
 aiogram>=3.26.0
+matplotlib>=3.9

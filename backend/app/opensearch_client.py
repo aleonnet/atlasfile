@@ -155,3 +155,30 @@ def ensure_classification_usage_index(client: OpenSearch) -> None:
         "mappings": {"properties": properties},
     }
     client.indices.create(index=index_name, body=mapping)
+
+
+def ensure_training_usage_index(client: OpenSearch) -> None:
+    """Create or update the training/pipeline usage index for LLM cost tracking."""
+    index_name = settings.opensearch_training_usage_index
+    properties: dict[str, Any] = {
+        "script_name": {"type": "keyword"},
+        "run_id": {"type": "keyword"},
+        "provider": {"type": "keyword"},
+        "model": {"type": "keyword"},
+        "timestamp": {"type": "date"},
+        "input_tokens": {"type": "integer"},
+        "output_tokens": {"type": "integer"},
+        "cache_read_input_tokens": {"type": "integer"},
+        "cache_creation_input_tokens": {"type": "integer"},
+        "estimated_cost_usd": {"type": "float"},
+        "records_processed": {"type": "integer"},
+        "error_count": {"type": "integer"},
+    }
+    if client.indices.exists(index=index_name):
+        client.indices.put_mapping(index=index_name, body={"properties": properties})
+        return
+    mapping: dict[str, Any] = {
+        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0}},
+        "mappings": {"properties": properties},
+    }
+    client.indices.create(index=index_name, body=mapping)

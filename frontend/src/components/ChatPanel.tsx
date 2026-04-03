@@ -7,7 +7,35 @@
 import React, { useRef, useEffect } from "react";
 import { Brain, Clock, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { ChartBlock } from "./ChartBlock";
+import { CompanionOrb } from "./CompanionOrb";
+import type { CompanionState } from "./CompanionOrb";
+import { useCompanionState } from "../hooks/useCompanionState";
 import "./ChatPanel.css";
+
+const _safeImgSrc = (src: string | undefined): boolean =>
+  Boolean(src && /^(https?:|\/|data:image)/i.test(src));
+
+/** Stable reference — avoids ReactMarkdown full re-render on parent state changes. */
+const MARKDOWN_COMPONENTS = {
+  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={href} target="_blank" rel="noreferrer noopener" {...props}>
+      {children}
+    </a>
+  ),
+  img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) =>
+    _safeImgSrc(src) ? <img src={src} alt={alt ?? ""} {...props} /> : null,
+  code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) => {
+    if (className === "language-chart" && typeof children === "string") {
+      return <ChartBlock jsonString={children} />;
+    }
+    const childStr = Array.isArray(children) ? children.join("") : children;
+    if (className === "language-chart" && typeof childStr === "string") {
+      return <ChartBlock jsonString={childStr} />;
+    }
+    return <code className={className} {...props}>{children}</code>;
+  },
+};
 
 /** Part for multimodal display (text or image in bubble). */
 export type ChatContentPartDisplay =
@@ -146,6 +174,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const reasoningSupported =
     selectedModel && (models.find((m) => `${m.provider}/${m.model}` === selectedModel)?.supports_reasoning_effort ?? false);
+  const companionState = useCompanionState(sending, error);
   const [draft, setDraft] = React.useState("");
   const [attachments, setAttachments] = React.useState<ChatAttachment[]>([]);
   const [historySearch, setHistorySearch] = React.useState("");
@@ -448,7 +477,7 @@ export function ChatPanel({
           />
         ))}
         {sending && (
-          <ChatReadingIndicator agentName={agentName} agentAvatarUrl={agentAvatarUrl} />
+          <ChatReadingIndicator agentName={agentName} companionState={companionState} />
         )}
       </div>
 
@@ -544,7 +573,6 @@ function ChatMessageBubble({
     : "";
   const modelShort = model ? model.replace(/^[^/]+\//, "") : "";
   const who = role === "user" ? "Você" : (modelShort ? `${agentName} (${modelShort})` : agentName);
-  const initial = role === "user" ? "U" : (agentName.charAt(0) || "A").toUpperCase();
   const isUser = role === "user";
   const hasImageParts = isUser && contentParts?.some((p) => p.type === "image_url");
 
@@ -554,21 +582,9 @@ function ChatMessageBubble({
     ) : agentAvatarUrl && /^(https?:|\/|data:image)/i.test(agentAvatarUrl) ? (
       <img src={agentAvatarUrl} alt={agentName} className="chat-avatar assistant" />
     ) : (
-      <div className="chat-avatar assistant">{initial}</div>
+      <CompanionOrb state="idle" size={40} />
     );
 
-  const safeImgSrc = (src: string | undefined): boolean =>
-    Boolean(src && /^(https?:|\/|data:image)/i.test(src));
-
-  const markdownComponents = {
-    a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-      <a href={href} target="_blank" rel="noreferrer noopener" {...props}>
-        {children}
-      </a>
-    ),
-    img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) =>
-      safeImgSrc(src) ? <img src={src} alt={alt ?? ""} {...props} /> : null
-  };
 
   const userContentEl = isUser && hasImageParts && contentParts ? (
     <div className="chat-bubble-user-content">
@@ -601,7 +617,7 @@ function ChatMessageBubble({
             {isUser ? (
               userContentEl
             ) : (
-              <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
+              <ReactMarkdown components={MARKDOWN_COMPONENTS}>{content}</ReactMarkdown>
             )}
           </div>
         </div>
@@ -696,27 +712,17 @@ function ContextRing({ ratio, onNewSession }: { ratio: number; onNewSession: () 
 
 function ChatReadingIndicator({
   agentName,
-  agentAvatarUrl
+  companionState
 }: {
   agentName: string;
-  agentAvatarUrl?: string | null;
+  companionState: CompanionState;
 }) {
-  const initial = (agentName.charAt(0) || "A").toUpperCase();
   return (
-    <div className="chat-group assistant">
-      {agentAvatarUrl && /^(https?:|\/|data:image)/i.test(agentAvatarUrl) ? (
-        <img src={agentAvatarUrl} alt={agentName} className="chat-avatar assistant" />
-      ) : (
-        <div className="chat-avatar assistant">{initial}</div>
-      )}
+    <div className="chat-group assistant chat-group--thinking">
+      <CompanionOrb state={companionState} size={40} />
       <div className="chat-group-messages">
-        <div className="chat-bubble chat-reading-indicator" aria-hidden="true">
-          <span className="chat-reading-indicator__dots">
-            <span /><span /><span />
-          </span>
-        </div>
-        <div className="chat-group-footer">
-          <span className="chat-sender-name">{agentName}</span>
+        <div className="chat-thinking-indicator" role="status" aria-label="Pensando">
+          <span className="chat-thinking-label">Pensando...</span>
         </div>
       </div>
     </div>

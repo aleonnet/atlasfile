@@ -11,7 +11,7 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 - **Dedup precoce** por SHA256 antes do fluxo completo
 - **Indexação** de conteúdo e metadados em OpenSearch com busca, suggest e highlight
 - **Busca por nome exato** priorizada para `original_filename` e `title`
-- **Assistente LLM** com escopo por projeto, sessões persistentes e rastreamento de uso/custo
+- **Assistente LLM** com escopo por projeto, sessões persistentes, gráficos inline (8 tipos) e rastreamento de uso/custo
 - **Canais** com Telegram opcional e comando `/projeto` para fixar escopo do chat
 - **Templates, profiles e layout** editáveis pela UI
 - **Benchmark supervisionado** com 4 modos (bootstrap, sparse_logreg, setfit, llm), corpus unificado e splits estratificados
@@ -44,9 +44,9 @@ AtlasFile/
 │   └── tests/               # Unit + integration (pytest)
 ├── frontend/                # SPA React + TypeScript
 │   └── src/
-│       ├── components/      # ChatPanel
+│       ├── components/      # ChatPanel, ChartBlock, CompanionOrb
 │       ├── features/        # ingest, profile-layout, search, settings, templates, triage, usage
-│       └── hooks/           # useEscapeKey
+│       └── hooks/           # useEscapeKey, useCompanionState
 ├── config/
 │   ├── templates/           # Templates de projeto (default.json, user templates)
 │   ├── topics_v1.yaml       # Catálogo de topics derivado no runtime

@@ -292,8 +292,11 @@ async def generate_synthetic_text(
     provider: str = "openai",
     model: str = "gpt-4.1",
     api_key: str | None = None,
-) -> str:
-    """Call LLM to generate a single synthetic document excerpt."""
+) -> tuple[str, dict[str, int]]:
+    """Call LLM to generate a single synthetic document excerpt.
+
+    Returns (text, usage_dict) where usage_dict has input_tokens/output_tokens.
+    """
     prompt = build_synthetic_prompt(
         business_domain=business_domain,
         document_type=document_type,
@@ -318,7 +321,12 @@ async def generate_synthetic_text(
             temperature=0.9,
             max_tokens=1000,
         )
-        return str(resp.choices[0].message.content or "").strip()
+        text = str(resp.choices[0].message.content or "").strip()
+        usage = {
+            "input_tokens": getattr(resp.usage, "prompt_tokens", 0) if resp.usage else 0,
+            "output_tokens": getattr(resp.usage, "completion_tokens", 0) if resp.usage else 0,
+        }
+        return text, usage
 
     elif provider == "anthropic":
         from anthropic import AsyncAnthropic
@@ -331,7 +339,12 @@ async def generate_synthetic_text(
             system="Você é um gerador de dados de treinamento para classificação de documentos corporativos. Gere textos realistas e variados.",
             temperature=0.9,
         )
-        return str(resp.content[0].text if resp.content else "").strip()
+        text = str(resp.content[0].text if resp.content else "").strip()
+        usage = {
+            "input_tokens": getattr(resp.usage, "input_tokens", 0) if resp.usage else 0,
+            "output_tokens": getattr(resp.usage, "output_tokens", 0) if resp.usage else 0,
+        }
+        return text, usage
 
     else:
         raise ValueError(f"unsupported provider: {provider}")
@@ -388,7 +401,7 @@ async def generate_synthetic_records(
     progress_callback: Any | None = None,
     on_record: Any | None = None,
     concurrency: int = 10,
-) -> list[TrainingPoolRecord]:
+) -> tuple[list[TrainingPoolRecord], dict[str, int]]:
     """Execute an augmentation plan, generating synthetic records via LLM.
 
     *on_record*: optional ``Callable[[TrainingPoolRecord], None]`` invoked
@@ -396,10 +409,13 @@ async def generate_synthetic_records(
     persistence so progress is never lost on timeout/crash.
 
     *concurrency*: max parallel LLM calls (default 10).
+
+    Returns (records, usage_totals) where usage_totals has accumulated tokens.
     """
     import asyncio as _asyncio
 
     records: list[TrainingPoolRecord] = []
+    usage_totals: dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
     total_items = sum(item["count"] for item in plan)
     generated = 0
     lock = _asyncio.Lock()
@@ -411,7 +427,7 @@ async def generate_synthetic_records(
         doc_type = item["document_type"]
         async with sem:
             try:
-                text = await generate_synthetic_text(
+                text, usage = await generate_synthetic_text(
                     business_domain=domain,
                     document_type=doc_type,
                     domain_aliases=item.get("domain_aliases"),
@@ -430,6 +446,8 @@ async def generate_synthetic_records(
                     )
                     async with lock:
                         records.append(record)
+                        usage_totals["input_tokens"] += usage.get("input_tokens", 0)
+                        usage_totals["output_tokens"] += usage.get("output_tokens", 0)
                     if on_record:
                         on_record(record)
             except Exception:
@@ -450,4 +468,4 @@ async def generate_synthetic_records(
             tasks.append(_asyncio.create_task(_generate_one(item)))
 
     await _asyncio.gather(*tasks)
-    return records
+    return records, usage_totals

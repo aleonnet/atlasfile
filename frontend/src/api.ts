@@ -9,6 +9,7 @@ import type {
   ChatResponse,
   ChatSession,
   ClassificationUsageSummary,
+  TrainingUsageSummary,
   IngestHistoryResponse,
   IngestOperationStatus,
   ModelOption,
@@ -545,6 +546,20 @@ export async function fetchClassificationUsage(params: {
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar uso de classificação");
+  return res.json();
+}
+
+export async function fetchTrainingUsage(params: {
+  start_date: string;
+  end_date: string;
+  project_id?: string | null;
+}): Promise<TrainingUsageSummary> {
+  const url = new URL(`${API_URL}/api/usage/training`);
+  url.searchParams.set("start_date", params.start_date);
+  url.searchParams.set("end_date", params.end_date);
+  if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Falha ao carregar uso de treinamento");
   return res.json();
 }
 

@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     # --- Classification usage ---
     opensearch_classification_usage_index: str = "atlasfile_classification_usage"
 
+    # --- Training / pipeline usage ---
+    opensearch_training_usage_index: str = "atlasfile_training_usage"
+
     # --- Usage / cost estimation (assistente) ---
     # Path to JSON config with $/1M tokens per provider/model (input, output, cache_read, cache_write).
     # Relative to process cwd (e.g. backend/) or absolute. Example: config/usage_costs.json

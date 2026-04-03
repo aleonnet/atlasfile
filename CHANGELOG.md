@@ -4,6 +4,34 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.10.0] -- 2026-04-02
+
+### Gráficos no chat
+
+- **ChartBlock** (Recharts): 8 tipos de gráfico renderizados inline no chat — bar, stacked_bar, horizontal_bar, pie, line, area, composed, treemap
+- **Renderer server-side** (matplotlib): gráficos enviados como PNG via `send_photo` no Telegram e no mirror web→Telegram
+- **System prompt** com instruções de geração de gráficos e guia para cruzamento de dimensões (stacked_bar)
+- Fix flicker: `MARKDOWN_COMPONENTS` como constante de módulo + `React.memo` + `isAnimationActive={false}`
+
+### Custos de treinamento / pipeline
+
+- Novo índice OpenSearch `atlasfile_training_usage` com helper `persist_training_usage()`
+- Instrumentação de custos em: `benchmark_llm_candidate` (ciclo via UI), `label_corpus_llm.py`, `classifier_augmentation.py`, `run_augmentation.py`
+- Endpoint `GET /api/usage/training` com agregação por modelo e por script
+- UsageView: card "Treinamento", tabelas de 5 colunas alinhadas, total tokens consolidado (assistente + classificação + treinamento)
+
+### CompanionOrb
+
+- Orb animado com mecânica orbital Kepleriana substituindo avatar estático do assistente no chat
+
+### Correções
+
+- `config/usage_costs.json` atualizado com preços corretos de abril/2026 (OpenAI e Anthropic)
+- Opus 4.6: $15/$75 → $5/$25; gpt-4.1: $2.50/$10 → $2/$8; gpt-5.1: $5/$15 → $1.25/$10; Haiku 4.5: $0.80/$4 → $1/$5
+- Cache read/write adicionados para OpenAI; cache write Anthropic ajustado para tier 5min (1.25x input)
+
+---
+
 ## [0.9.0] -- 2026-04-02
 
 ### Pipeline de dados
