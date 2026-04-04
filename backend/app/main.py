@@ -206,8 +206,8 @@ def _build_history_from_session(session: dict[str, Any]) -> list[dict[str, Any]]
 
 def _merge_usage(existing: dict[str, Any] | None, new_usage: dict[str, Any], provider_model_key: str) -> tuple[dict[str, Any], dict[str, Any]]:
     """Merge new turn usage into existing usage_totals and usage_by_model."""
-    totals = dict(existing) if existing else {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_usd": 0.0}
-    for k in ("input_tokens", "output_tokens", "total_tokens"):
+    totals = dict(existing) if existing else {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_usd": 0.0, "api_call_count": 0}
+    for k in ("input_tokens", "output_tokens", "total_tokens", "api_call_count"):
         totals[k] = int(totals.get(k) or 0) + int(new_usage.get(k) or 0)
     totals["estimated_cost_usd"] = float(totals.get("estimated_cost_usd") or 0) + float(new_usage.get("estimated_cost_usd") or 0)
     for k in ("cache_read_input_tokens", "cache_creation_input_tokens", "cache_write_input_tokens"):
@@ -2131,6 +2131,7 @@ def get_usage_summary(
     total_cache_read = 0
     total_cache_write = 0
     total_cost = 0.0
+    total_api_calls = 0
     by_model_raw: dict[str, dict[str, Any]] = {}
     by_day_raw: dict[str, dict[str, Any]] = {}
     def _accum_model(model_key: str, inp: int, out: int, cost: float) -> None:
@@ -2157,6 +2158,7 @@ def get_usage_summary(
         total_cache_read += cr
         total_cache_write += cw
         total_cost += cost
+        total_api_calls += int(ut.get("api_call_count") or 0)
         ubm = src.get("usage_by_model")
         if isinstance(ubm, dict) and ubm:
             for model_key, model_ut in ubm.items():
@@ -2233,6 +2235,7 @@ def get_usage_summary(
         total_cache_write_tokens=total_cache_write,
         estimated_cost_usd=round(total_cost, 6),
         session_count=len(hits),
+        total_api_calls=total_api_calls,
         by_model=by_model_list,
         by_day=by_day_list,
     )
@@ -2356,6 +2359,16 @@ def get_classification_usage(
                     "cost": {"sum": {"field": "estimated_cost_usd"}},
                 },
             },
+            "by_day": {
+                "date_histogram": {"field": "timestamp", "calendar_interval": "day", "format": "yyyy-MM-dd"},
+                "aggs": {
+                    "input_tokens": {"sum": {"field": "input_tokens"}},
+                    "output_tokens": {"sum": {"field": "output_tokens"}},
+                    "cache_read": {"sum": {"field": "cache_read_input_tokens"}},
+                    "cache_write": {"sum": {"field": "cache_creation_input_tokens"}},
+                    "cost": {"sum": {"field": "estimated_cost_usd"}},
+                },
+            },
         },
     }
     try:
@@ -2374,12 +2387,29 @@ def get_classification_usage(
             estimated_cost_usd=round(float(bucket.get("cost", {}).get("value") or 0), 6),
         ))
 
+    by_day_list: list[UsageByDayEntry] = []
+    for bucket in (aggs.get("by_day", {}).get("buckets") or []):
+        inp = int(bucket.get("input_tokens", {}).get("value") or 0)
+        outp = int(bucket.get("output_tokens", {}).get("value") or 0)
+        cr = int(bucket.get("cache_read", {}).get("value") or 0)
+        cw = int(bucket.get("cache_write", {}).get("value") or 0)
+        by_day_list.append(UsageByDayEntry(
+            date=bucket.get("key_as_string", ""),
+            input_tokens=inp,
+            output_tokens=outp,
+            cache_read_tokens=cr,
+            cache_write_tokens=cw,
+            total_tokens=inp + outp,
+            estimated_cost_usd=round(float(bucket.get("cost", {}).get("value") or 0), 6),
+        ))
+
     return ClassificationUsageSummary(
         total_calls=int(aggs.get("total_calls", {}).get("value") or 0),
         total_input_tokens=int(aggs.get("total_input", {}).get("value") or 0),
         total_output_tokens=int(aggs.get("total_output", {}).get("value") or 0),
         estimated_cost_usd=round(float(aggs.get("total_cost", {}).get("value") or 0), 6),
         by_model=by_model_list,
+        by_day=by_day_list,
     )
 
 
@@ -2407,6 +2437,7 @@ def get_training_usage(
         "query": {"bool": {"must": filters}},
         "aggs": {
             "total_calls": {"value_count": {"field": "timestamp"}},
+            "total_api_calls": {"sum": {"field": "records_processed"}},
             "total_input": {"sum": {"field": "input_tokens"}},
             "total_output": {"sum": {"field": "output_tokens"}},
             "total_cost": {"sum": {"field": "estimated_cost_usd"}},
@@ -2416,6 +2447,7 @@ def get_training_usage(
                     "input_tokens": {"sum": {"field": "input_tokens"}},
                     "output_tokens": {"sum": {"field": "output_tokens"}},
                     "cost": {"sum": {"field": "estimated_cost_usd"}},
+                    "api_calls": {"sum": {"field": "records_processed"}},
                 },
             },
             "by_script": {
@@ -2423,6 +2455,17 @@ def get_training_usage(
                 "aggs": {
                     "input_tokens": {"sum": {"field": "input_tokens"}},
                     "output_tokens": {"sum": {"field": "output_tokens"}},
+                    "cost": {"sum": {"field": "estimated_cost_usd"}},
+                    "api_calls": {"sum": {"field": "records_processed"}},
+                },
+            },
+            "by_day": {
+                "date_histogram": {"field": "timestamp", "calendar_interval": "day", "format": "yyyy-MM-dd"},
+                "aggs": {
+                    "input_tokens": {"sum": {"field": "input_tokens"}},
+                    "output_tokens": {"sum": {"field": "output_tokens"}},
+                    "cache_read": {"sum": {"field": "cache_read_input_tokens"}},
+                    "cache_write": {"sum": {"field": "cache_creation_input_tokens"}},
                     "cost": {"sum": {"field": "estimated_cost_usd"}},
                 },
             },
@@ -2439,6 +2482,7 @@ def get_training_usage(
         by_model_list.append(TrainingUsageByModel(
             model=bucket["key"],
             call_count=bucket["doc_count"],
+            api_call_count=int(bucket.get("api_calls", {}).get("value") or 0),
             input_tokens=int(bucket.get("input_tokens", {}).get("value") or 0),
             output_tokens=int(bucket.get("output_tokens", {}).get("value") or 0),
             estimated_cost_usd=round(float(bucket.get("cost", {}).get("value") or 0), 6),
@@ -2449,18 +2493,37 @@ def get_training_usage(
         by_script_list.append(TrainingUsageByScript(
             script_name=bucket["key"],
             call_count=bucket["doc_count"],
+            api_call_count=int(bucket.get("api_calls", {}).get("value") or 0),
             input_tokens=int(bucket.get("input_tokens", {}).get("value") or 0),
             output_tokens=int(bucket.get("output_tokens", {}).get("value") or 0),
             estimated_cost_usd=round(float(bucket.get("cost", {}).get("value") or 0), 6),
         ))
 
+    by_day_list: list[UsageByDayEntry] = []
+    for bucket in (aggs.get("by_day", {}).get("buckets") or []):
+        inp = int(bucket.get("input_tokens", {}).get("value") or 0)
+        outp = int(bucket.get("output_tokens", {}).get("value") or 0)
+        cr = int(bucket.get("cache_read", {}).get("value") or 0)
+        cw = int(bucket.get("cache_write", {}).get("value") or 0)
+        by_day_list.append(UsageByDayEntry(
+            date=bucket.get("key_as_string", ""),
+            input_tokens=inp,
+            output_tokens=outp,
+            cache_read_tokens=cr,
+            cache_write_tokens=cw,
+            total_tokens=inp + outp,
+            estimated_cost_usd=round(float(bucket.get("cost", {}).get("value") or 0), 6),
+        ))
+
     return TrainingUsageSummary(
         total_calls=int(aggs.get("total_calls", {}).get("value") or 0),
+        total_api_calls=int(aggs.get("total_api_calls", {}).get("value") or 0),
         total_input_tokens=int(aggs.get("total_input", {}).get("value") or 0),
         total_output_tokens=int(aggs.get("total_output", {}).get("value") or 0),
         estimated_cost_usd=round(float(aggs.get("total_cost", {}).get("value") or 0), 6),
         by_model=by_model_list,
         by_script=by_script_list,
+        by_day=by_day_list,
     )
 
 

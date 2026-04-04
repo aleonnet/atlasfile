@@ -6,22 +6,22 @@ const ALL_CHANNELS = "__all__";
 const CHANNEL_LABELS: Record<string, string> = { web: "Web", telegram: "TG" };
 const PAGE_SIZE = 10;
 
-function formatTokens(n: number): string {
+export function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
   return String(Math.round(n));
 }
 
-function formatUsd(n: number): string {
+export function formatUsd(n: number): string {
   if (n === 0) return "—";
-  const truncated = Math.floor(n * 100) / 100;
-  return `$${truncated.toFixed(2)}`;
+  const rounded = Math.round(n * 100) / 100;
+  return `$${rounded.toFixed(2)}`;
 }
 
-function formatUsd4(n: number): string {
+export function formatUsd4(n: number): string {
   if (n === 0) return "—";
-  const truncated = Math.floor(n * 10000) / 10000;
-  return `$${truncated.toFixed(4)}`;
+  const rounded = Math.round(n * 10000) / 10000;
+  return `$${rounded.toFixed(4)}`;
 }
 
 function toYyyyMmDd(d: Date): string {
@@ -51,8 +51,90 @@ const TOKEN_LABELS: Record<TokenType, string> = {
   cache_read: "Cache Read",
 };
 
-function DailyTokenChart({ days }: { days: UsageByDayEntry[] }) {
-  const [chartMode, setChartMode] = useState<"total" | "by-type">("by-type");
+const PROCESS_COLORS = {
+  assistant: "#f39c12",
+  classification: "#9b59b6",
+  training: "#3498db",
+} as const;
+
+type ProcessType = keyof typeof PROCESS_COLORS;
+
+const PROCESS_LABELS: Record<ProcessType, string> = {
+  assistant: "Assistente",
+  classification: "Classificacao",
+  training: "Treinamento",
+};
+
+interface MergedDay {
+  date: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  total_tokens: number;
+  assistant_tokens: number;
+  classification_tokens: number;
+  training_tokens: number;
+}
+
+function mergeDays(
+  assistantDays: UsageByDayEntry[],
+  classificationDays: UsageByDayEntry[],
+  trainingDays: UsageByDayEntry[],
+): MergedDay[] {
+  const map = new Map<string, MergedDay>();
+  const ensure = (date: string) => {
+    if (!map.has(date)) {
+      map.set(date, { date, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, total_tokens: 0, assistant_tokens: 0, classification_tokens: 0, training_tokens: 0 });
+    }
+    return map.get(date)!;
+  };
+  for (const d of assistantDays) {
+    const m = ensure(d.date);
+    m.input_tokens += d.input_tokens;
+    m.output_tokens += d.output_tokens;
+    m.cache_read_tokens += d.cache_read_tokens;
+    m.cache_write_tokens += d.cache_write_tokens;
+    m.total_tokens += d.total_tokens;
+    m.assistant_tokens += d.total_tokens;
+  }
+  for (const d of classificationDays) {
+    const m = ensure(d.date);
+    m.input_tokens += d.input_tokens;
+    m.output_tokens += d.output_tokens;
+    m.cache_read_tokens += d.cache_read_tokens;
+    m.cache_write_tokens += d.cache_write_tokens;
+    m.total_tokens += d.total_tokens;
+    m.classification_tokens += d.total_tokens;
+  }
+  for (const d of trainingDays) {
+    const m = ensure(d.date);
+    m.input_tokens += d.input_tokens;
+    m.output_tokens += d.output_tokens;
+    m.cache_read_tokens += d.cache_read_tokens;
+    m.cache_write_tokens += d.cache_write_tokens;
+    m.total_tokens += d.total_tokens;
+    m.training_tokens += d.total_tokens;
+  }
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+type ChartMode = "by-type" | "by-process";
+
+function DailyTokenChart({
+  assistantDays,
+  classificationDays,
+  trainingDays,
+  chartMode,
+  onChartModeChange,
+}: {
+  assistantDays: UsageByDayEntry[];
+  classificationDays: UsageByDayEntry[];
+  trainingDays: UsageByDayEntry[];
+  chartMode: ChartMode;
+  onChartModeChange: (mode: ChartMode) => void;
+}) {
+  const days = useMemo(() => mergeDays(assistantDays, classificationDays, trainingDays), [assistantDays, classificationDays, trainingDays]);
   const maxTokens = useMemo(() => Math.max(...days.map((d) => d.total_tokens), 1), [days]);
   const showLabels = days.length <= 14;
 
@@ -60,9 +142,9 @@ function DailyTokenChart({ days }: { days: UsageByDayEntry[] }) {
     return (
       <div className="usage-chart-card">
         <div className="usage-chart-header">
-          <span className="usage-section-title" style={{ margin: 0 }}>Uso diário de tokens</span>
+          <span className="usage-section-title" style={{ margin: 0 }}>Uso diario de tokens</span>
         </div>
-        <div style={{ padding: "20px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Nenhum dado no período.</div>
+        <div style={{ padding: "20px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Nenhum dado no periodo.</div>
       </div>
     );
   }
@@ -73,42 +155,65 @@ function DailyTokenChart({ days }: { days: UsageByDayEntry[] }) {
         <div className="assistente-tabs-pill" style={{ marginRight: 8 }}>
           <button
             type="button"
-            className={`assistente-tab${chartMode === "total" ? " assistente-tab--active" : ""}`}
-            onClick={() => setChartMode("total")}
-          >Total</button>
+            className={`assistente-tab${chartMode === "by-type" ? " assistente-tab--active" : ""}`}
+            onClick={() => onChartModeChange("by-type")}
+          >Por tipo</button>
           <button
             type="button"
-            className={`assistente-tab${chartMode === "by-type" ? " assistente-tab--active" : ""}`}
-            onClick={() => setChartMode("by-type")}
-          >Por tipo</button>
+            className={`assistente-tab${chartMode === "by-process" ? " assistente-tab--active" : ""}`}
+            onClick={() => onChartModeChange("by-process")}
+          >Por processo</button>
         </div>
-        <span className="usage-section-title" style={{ margin: 0 }}>Uso diário de tokens</span>
+        <span className="usage-section-title" style={{ margin: 0 }}>Uso diario de tokens</span>
       </div>
       <div className="usage-daily-bars">
         {days.map((d) => {
           const heightPct = (d.total_tokens / maxTokens) * 100;
-          const segments: { type: TokenType; value: number }[] = [
-            { type: "output", value: d.output_tokens },
-            { type: "input", value: d.input_tokens },
-            { type: "cache_write", value: d.cache_write_tokens },
-            { type: "cache_read", value: d.cache_read_tokens },
+          if (chartMode === "by-type") {
+            const segments: { type: TokenType; value: number }[] = [
+              { type: "output", value: d.output_tokens },
+              { type: "input", value: d.input_tokens },
+              { type: "cache_write", value: d.cache_write_tokens },
+              { type: "cache_read", value: d.cache_read_tokens },
+            ];
+            const segTotal = segments.reduce((s, seg) => s + seg.value, 0) || 1;
+            return (
+              <div key={d.date} className="usage-daily-col" title={`${d.date}\n${formatTokens(d.total_tokens)} tokens`}>
+                {showLabels && <div className="usage-daily-total">{formatTokens(d.total_tokens)}</div>}
+                <div className="usage-daily-bar" style={{ height: `${heightPct.toFixed(1)}%` }}>
+                  {segments.map((seg) =>
+                    seg.value > 0 ? (
+                      <div
+                        key={seg.type}
+                        className="usage-bar-segment"
+                        style={{ height: `${(seg.value / segTotal) * 100}%`, background: TOKEN_COLORS[seg.type] }}
+                      />
+                    ) : null
+                  )}
+                </div>
+                <div className="usage-daily-label">{formatDayLabel(d.date)}</div>
+              </div>
+            );
+          }
+          const procSegments: { type: ProcessType; value: number }[] = [
+            { type: "assistant", value: d.assistant_tokens },
+            { type: "classification", value: d.classification_tokens },
+            { type: "training", value: d.training_tokens },
           ];
-          const segTotal = segments.reduce((s, seg) => s + seg.value, 0) || 1;
+          const procTotal = procSegments.reduce((s, seg) => s + seg.value, 0) || 1;
           return (
             <div key={d.date} className="usage-daily-col" title={`${d.date}\n${formatTokens(d.total_tokens)} tokens`}>
               {showLabels && <div className="usage-daily-total">{formatTokens(d.total_tokens)}</div>}
               <div className="usage-daily-bar" style={{ height: `${heightPct.toFixed(1)}%` }}>
-                {chartMode === "by-type"
-                  ? segments.map((seg) =>
-                      seg.value > 0 ? (
-                        <div
-                          key={seg.type}
-                          className="usage-bar-segment"
-                          style={{ height: `${(seg.value / segTotal) * 100}%`, background: TOKEN_COLORS[seg.type] }}
-                        />
-                      ) : null
-                    )
-                  : null}
+                {procSegments.map((seg) =>
+                  seg.value > 0 ? (
+                    <div
+                      key={seg.type}
+                      className="usage-bar-segment"
+                      style={{ height: `${(seg.value / procTotal) * 100}%`, background: PROCESS_COLORS[seg.type] }}
+                    />
+                  ) : null
+                )}
               </div>
               <div className="usage-daily-label">{formatDayLabel(d.date)}</div>
             </div>
@@ -119,12 +224,55 @@ function DailyTokenChart({ days }: { days: UsageByDayEntry[] }) {
   );
 }
 
-function TokensByTypeBar({ summary }: { summary: UsageSummaryResponse }) {
+function TokensByTypeBar({
+  chartMode,
+  totalInput, totalOutput, totalCacheRead, totalCacheWrite,
+  totalAssistant, totalClassification, totalTraining,
+}: {
+  chartMode: ChartMode;
+  totalInput: number; totalOutput: number; totalCacheRead: number; totalCacheWrite: number;
+  totalAssistant: number; totalClassification: number; totalTraining: number;
+}) {
+  if (chartMode === "by-process") {
+    const items: { type: ProcessType; value: number }[] = [
+      { type: "assistant", value: totalAssistant },
+      { type: "classification", value: totalClassification },
+      { type: "training", value: totalTraining },
+    ];
+    const total = items.reduce((s, i) => s + i.value, 0) || 1;
+    return (
+      <div className="usage-chart-card">
+        <span className="usage-section-title" style={{ margin: "0 0 10px" }}>Tokens por processo</span>
+        <div className="usage-type-bar">
+          {items.map((item) =>
+            item.value > 0 ? (
+              <div
+                key={item.type}
+                className="usage-type-segment"
+                style={{ width: `${(item.value / total) * 100}%`, background: PROCESS_COLORS[item.type] }}
+                title={`${PROCESS_LABELS[item.type]}: ${formatTokens(item.value)}`}
+              />
+            ) : null
+          )}
+        </div>
+        <div className="usage-type-legend">
+          {items.map((item) => (
+            <span key={item.type} className="usage-type-legend-item">
+              <span className="usage-type-dot" style={{ background: PROCESS_COLORS[item.type] }} />
+              {PROCESS_LABELS[item.type]} {formatTokens(item.value)}
+            </span>
+          ))}
+        </div>
+        <div className="usage-type-total">Total: {formatTokens(total)}</div>
+      </div>
+    );
+  }
+
   const items: { type: TokenType; value: number }[] = [
-    { type: "output", value: summary.total_output_tokens },
-    { type: "input", value: summary.total_input_tokens },
-    { type: "cache_write", value: summary.total_cache_write_tokens },
-    { type: "cache_read", value: summary.total_cache_read_tokens },
+    { type: "output", value: totalOutput },
+    { type: "input", value: totalInput },
+    { type: "cache_write", value: totalCacheWrite },
+    { type: "cache_read", value: totalCacheRead },
   ];
   const total = items.reduce((s, i) => s + i.value, 0) || 1;
 
@@ -164,6 +312,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
   });
   const [endDate, setEndDate] = useState(() => toYyyyMmDd(new Date()));
   const [channel, setChannel] = useState<string>(ALL_CHANNELS);
+  const [chartMode, setChartMode] = useState<ChartMode>("by-type");
   const [summary, setSummary] = useState<UsageSummaryResponse | null>(null);
   const [sessions, setSessions] = useState<UsageSessionItem[]>([]);
   const [classifUsage, setClassifUsage] = useState<ClassificationUsageSummary | null>(null);
@@ -239,6 +388,14 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
               <span className="usage-stat-value">{formatUsd(summary.estimated_cost_usd + (classifUsage?.estimated_cost_usd ?? 0) + (trainingUsage?.estimated_cost_usd ?? 0))}</span>
             </div>
             <div className="usage-stat-card">
+              <span className="usage-stat-label">Chamadas API</span>
+              <span className="usage-stat-value">{
+                (summary.total_api_calls ?? 0)
+                + (classifUsage?.total_calls ?? 0)
+                + (trainingUsage?.total_api_calls ?? 0)
+              }</span>
+            </div>
+            <div className="usage-stat-card">
               <span className="usage-stat-label">Sessões</span>
               <span className="usage-stat-value">{summary.session_count}</span>
             </div>
@@ -257,8 +414,23 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
           </div>
 
           <div className="usage-charts-row">
-            <DailyTokenChart days={summary.by_day} />
-            <TokensByTypeBar summary={summary} />
+            <DailyTokenChart
+              assistantDays={summary.by_day}
+              classificationDays={classifUsage?.by_day ?? []}
+              trainingDays={trainingUsage?.by_day ?? []}
+              chartMode={chartMode}
+              onChartModeChange={setChartMode}
+            />
+            <TokensByTypeBar
+              chartMode={chartMode}
+              totalInput={summary.total_input_tokens + (classifUsage?.total_input_tokens ?? 0) + (trainingUsage?.total_input_tokens ?? 0)}
+              totalOutput={summary.total_output_tokens + (classifUsage?.total_output_tokens ?? 0) + (trainingUsage?.total_output_tokens ?? 0)}
+              totalCacheRead={summary.total_cache_read_tokens}
+              totalCacheWrite={summary.total_cache_write_tokens}
+              totalAssistant={summary.total_tokens}
+              totalClassification={(classifUsage?.total_input_tokens ?? 0) + (classifUsage?.total_output_tokens ?? 0)}
+              totalTraining={(trainingUsage?.total_input_tokens ?? 0) + (trainingUsage?.total_output_tokens ?? 0)}
+            />
           </div>
 
           <h3 className="usage-section-title">Por modelo (Assistente)</h3>
@@ -316,7 +488,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                   <thead>
                     <tr>
                       <th className="left">Modelo</th>
-                      <th>Chamadas</th>
+                      <th>Chamadas API</th>
                       <th>Input (tokens)</th>
                       <th>Output (tokens)</th>
                       <th>Custo</th>
@@ -357,7 +529,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                   <thead>
                     <tr>
                       <th className="left">Script</th>
-                      <th>Chamadas</th>
+                      <th>Chamadas API</th>
                       <th>Input (tokens)</th>
                       <th>Output (tokens)</th>
                       <th>Custo</th>
@@ -367,7 +539,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                     {trainingUsage.by_script.map((row) => (
                       <tr key={row.script_name}>
                         <td className="left">{row.script_name}</td>
-                        <td>{row.call_count}</td>
+                        <td>{row.api_call_count}</td>
                         <td>{formatTokens(row.input_tokens)}</td>
                         <td>{formatTokens(row.output_tokens)}</td>
                         <td>{formatUsd(row.estimated_cost_usd)}</td>
@@ -378,7 +550,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                     <tfoot>
                       <tr className="usage-table-total">
                         <td className="left">Total</td>
-                        <td>{trainingUsage.total_calls}</td>
+                        <td>{trainingUsage.total_api_calls}</td>
                         <td>{formatTokens(trainingUsage.total_input_tokens)}</td>
                         <td>{formatTokens(trainingUsage.total_output_tokens)}</td>
                         <td>{formatUsd(trainingUsage.estimated_cost_usd)}</td>

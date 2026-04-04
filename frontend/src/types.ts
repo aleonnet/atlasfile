@@ -166,6 +166,7 @@ export interface TurnUsage {
   output_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  api_call_count?: number;
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
   cache_write_input_tokens?: number;
@@ -190,6 +191,7 @@ export interface UsageTotals {
   output_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  api_call_count?: number;
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
   cache_write_input_tokens?: number;
@@ -248,6 +250,7 @@ export interface UsageSummaryResponse {
   total_cache_write_tokens: number;
   estimated_cost_usd: number;
   session_count: number;
+  total_api_calls: number;
   by_model: UsageByModelEntry[];
   by_day: UsageByDayEntry[];
 }
@@ -277,11 +280,13 @@ export interface ClassificationUsageSummary {
   total_output_tokens: number;
   estimated_cost_usd: number;
   by_model: ClassificationUsageByModel[];
+  by_day: UsageByDayEntry[];
 }
 
 export interface TrainingUsageByModel {
   model: string;
   call_count: number;
+  api_call_count: number;
   input_tokens: number;
   output_tokens: number;
   estimated_cost_usd: number;
@@ -290,6 +295,7 @@ export interface TrainingUsageByModel {
 export interface TrainingUsageByScript {
   script_name: string;
   call_count: number;
+  api_call_count: number;
   input_tokens: number;
   output_tokens: number;
   estimated_cost_usd: number;
@@ -297,11 +303,13 @@ export interface TrainingUsageByScript {
 
 export interface TrainingUsageSummary {
   total_calls: number;
+  total_api_calls: number;
   total_input_tokens: number;
   total_output_tokens: number;
   estimated_cost_usd: number;
   by_model: TrainingUsageByModel[];
   by_script: TrainingUsageByScript[];
+  by_day: UsageByDayEntry[];
 }
 
 export interface ProfileBusinessDomainFolder {

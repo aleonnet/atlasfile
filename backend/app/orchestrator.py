@@ -32,6 +32,7 @@ def _accumulate_usage(
     """Merge raw usage (input_tokens, output_tokens, cache_*) into acc; then set estimated_cost_usd."""
     if not raw:
         return
+    acc["api_call_count"] = int(acc.get("api_call_count") or 0) + 1
     acc["input_tokens"] = int(acc.get("input_tokens") or 0) + int(raw.get("input_tokens") or raw.get("prompt_tokens") or 0)
     acc["output_tokens"] = int(acc.get("output_tokens") or 0) + int(raw.get("output_tokens") or raw.get("completion_tokens") or 0)
     for key in ("cache_read_input_tokens", "cache_creation_input_tokens", "cache_write_input_tokens"):
@@ -260,6 +261,9 @@ async def _run_chat_openai(
         u = getattr(resp, "usage", None)
         if u is not None:
             raw = {"prompt_tokens": getattr(u, "prompt_tokens", 0) or 0, "completion_tokens": getattr(u, "completion_tokens", 0) or 0}
+            ptd = getattr(u, "prompt_tokens_details", None)
+            if ptd and getattr(ptd, "cached_tokens", None):
+                raw["cache_read_input_tokens"] = ptd.cached_tokens
             _accumulate_usage(usage_accum, raw, "openai", model)
         choice = resp.choices[0] if resp.choices else None
         if not choice:
@@ -302,6 +306,7 @@ def _usage_return(acc: dict[str, int | float]) -> dict[str, int | float]:
         "output_tokens": int(acc.get("output_tokens") or 0),
         "total_tokens": int(acc.get("total_tokens") or 0),
         "estimated_cost_usd": float(acc.get("estimated_cost_usd") or 0),
+        "api_call_count": int(acc.get("api_call_count") or 0),
     }
     for k in ("cache_read_input_tokens", "cache_creation_input_tokens", "cache_write_input_tokens"):
         if acc.get(k):
@@ -560,6 +565,9 @@ async def _classify_openai(
             "input_tokens": getattr(u, "prompt_tokens", 0) or 0,
             "output_tokens": getattr(u, "completion_tokens", 0) or 0,
         }
+        ptd = getattr(u, "prompt_tokens_details", None)
+        if ptd and getattr(ptd, "cached_tokens", None):
+            usage_raw["cache_read_input_tokens"] = ptd.cached_tokens
     choice = resp.choices[0] if resp.choices else None
     if not choice or not getattr(choice.message, "tool_calls", None):
         return {}, usage_raw

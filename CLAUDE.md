@@ -44,9 +44,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Cada plano deve ter um nome único e descritivo (nunca reutilizar/sobrescrever um plano anterior).
 - Planos concluídos devem ser salvos em `docs/planos_concluidos/` como registro de decisões.
 
+### Ao concluir planos (checklist obrigatório)
+1. Salvar plano em `docs/planos_concluidos/<nome_unico>.plan.md`
+2. Atualizar `docs/planos_concluidos/README.md` com o novo plano
+3. Bump de versão em `frontend/package.json` e `frontend/package-lock.json` seguindo SemVer:
+   - **patch** (0.0.x): bug fixes, ajustes visuais, correções de cálculo
+   - **minor** (0.x.0): novas features, novos endpoints, novos componentes
+   - **major** (x.0.0): breaking changes em APIs ou schemas
+4. Atualizar `CHANGELOG.md` com as mudanças da versão
+5. Revisar `README.md` e `INSTALL.md` — atualizar se houve mudança em setup, dependências ou funcionalidades documentadas
+6. Adicionar todos os arquivos alterados ao git staging
+7. Propor texto de commit baseado nas alterações desde o último commit, considerando os planos concluídos
+
 ### Git
 - NUNCA adicionar `--trailer` em commits (ex: `Made-with: Cursor` ou qualquer outro trailer não autorizado).
 - Commits devem conter exclusivamente a mensagem descritiva das mudanças, sem metadados de ferramentas.
+
+## Skills obrigatórios
+- **safe-exec** (`.claude/skills/safe-exec/SKILL.md`): Deve ser sempre usado antes de executar qualquer comando Bash. Classifica comandos como safe (executar imediatamente) ou destructive (pedir confirmação explícita).
 
 ## Comandos de build e teste
 

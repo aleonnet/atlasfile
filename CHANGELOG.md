@@ -4,6 +4,37 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.11.0] -- 2026-04-03
+
+### Uso e custo — precisao e visibilidade
+
+- **Fix custo truncado**: `formatUsd` trocado de `Math.floor` para `Math.round` — $0.0567 agora mostra $0.06 (antes: $0.05)
+- **Contagem de chamadas API**: novo campo `api_call_count` rastreado no orchestrator (OpenAI e Anthropic), persistido por sessao, exposto no endpoint `/api/usage/summary`
+- **Treinamento: chamadas reais**: `records_processed` exposto como `total_api_calls` e `api_call_count` no endpoint `/api/usage/training` — benchmark_llm agora mostra 62 chamadas (antes: 1)
+- **Card "Chamadas API"**: novo card no dashboard somando chamadas de todos os processos (assistente + classificacao + treinamento)
+- **Colunas renomeadas**: "Chamadas" → "Chamadas API" nas tabelas de treinamento e classificacao
+
+### Grafico diario — todos os processos
+
+- **by_day nos endpoints**: `GET /api/usage/training` e `GET /api/usage/classification` agora retornam `by_day` via `date_histogram` do OpenSearch
+- **Aba "Por tipo"** (default): barras empilhadas Input/Output/Cache Read/Cache Write somando todos os processos
+- **Aba "Por processo"** (nova): barras empilhadas Assistente/Classificacao/Treinamento com cores dedicadas
+- **Aba "Total" removida**: redundante (total ja exibido acima de cada barra)
+- **Legenda lateral sincronizada**: "Tokens por tipo" / "Tokens por processo" alterna com a aba selecionada
+
+### Cache tokens da OpenAI
+
+- Captura de `prompt_tokens_details.cached_tokens` (cache read) em `_run_chat_openai`, `_classify_openai` e `benchmark_llm_candidate`
+- Antes: campo ignorado, sempre 0 para OpenAI
+
+### Testes
+
+- Novo: `test_orchestrator_api_call_count.py` (6 testes)
+- Novo: `UsageView.test.tsx` (12 testes — formatUsd, formatUsd4, formatTokens)
+- Atualizados: testes de integracao para endpoints training e classification com by_day e api_call_count
+
+---
+
 ## [0.10.0] -- 2026-04-02
 
 ### Gráficos no chat

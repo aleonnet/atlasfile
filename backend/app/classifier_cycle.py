@@ -427,6 +427,7 @@ def benchmark_llm_candidate(
     run_id = generate_run_id()
     total_input_tokens = 0
     total_output_tokens = 0
+    total_cache_read = 0
 
     results: list[dict[str, Any]] = []
     for example in validation_examples:
@@ -464,6 +465,9 @@ def benchmark_llm_candidate(
             if resp.usage:
                 total_input_tokens += getattr(resp.usage, "prompt_tokens", 0)
                 total_output_tokens += getattr(resp.usage, "completion_tokens", 0)
+                ptd = getattr(resp.usage, "prompt_tokens_details", None)
+                if ptd and getattr(ptd, "cached_tokens", None):
+                    total_cache_read += ptd.cached_tokens
         except Exception:
             pass
 
@@ -488,7 +492,7 @@ def benchmark_llm_candidate(
             run_id=run_id,
             provider=provider,
             model=model,
-            usage={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens},
+            usage={"input_tokens": total_input_tokens, "output_tokens": total_output_tokens, "cache_read_input_tokens": total_cache_read},
             records_processed=len(results),
         )
 

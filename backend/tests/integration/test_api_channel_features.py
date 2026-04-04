@@ -266,6 +266,20 @@ def test_classification_usage_endpoint_200(client: TestClient) -> None:
                         },
                     ]
                 },
+                "by_day": {
+                    "buckets": [
+                        {
+                            "key_as_string": "2025-06-15",
+                            "key": 1750000000000,
+                            "doc_count": 5,
+                            "input_tokens": {"value": 10000},
+                            "output_tokens": {"value": 2000},
+                            "cache_read": {"value": 0},
+                            "cache_write": {"value": 0},
+                            "cost": {"value": 0.05},
+                        },
+                    ]
+                },
             }
         }
         r = client.get(
@@ -282,6 +296,8 @@ def test_classification_usage_endpoint_200(client: TestClient) -> None:
     gpt = next(m for m in data["by_model"] if m["model"] == "gpt-4o-mini")
     assert gpt["call_count"] == 3
     assert gpt["input_tokens"] == 6000
+    assert len(data["by_day"]) == 1
+    assert data["by_day"][0]["date"] == "2025-06-15"
 
 
 def test_classification_usage_with_project_filter(client: TestClient) -> None:
@@ -293,6 +309,7 @@ def test_classification_usage_with_project_filter(client: TestClient) -> None:
                 "total_output": {"value": 0},
                 "total_cost": {"value": 0},
                 "by_model": {"buckets": []},
+                "by_day": {"buckets": []},
             }
         }
         r = client.get(
@@ -323,6 +340,7 @@ def test_classification_usage_empty(client: TestClient) -> None:
                 "total_output": {"value": 0},
                 "total_cost": {"value": 0},
                 "by_model": {"buckets": []},
+                "by_day": {"buckets": []},
             }
         }
         r = client.get(
@@ -332,3 +350,144 @@ def test_classification_usage_empty(client: TestClient) -> None:
     data = r.json()
     assert data["total_calls"] == 0
     assert data["by_model"] == []
+
+
+# ---------------------------------------------------------------------------
+# GET /api/usage/training
+# ---------------------------------------------------------------------------
+
+
+def test_training_usage_endpoint_returns_api_calls(client: TestClient) -> None:
+    with patch("app.main.os_client") as mock_os:
+        mock_os.search.return_value = {
+            "aggregations": {
+                "total_calls": {"value": 1},
+                "total_api_calls": {"value": 62},
+                "total_input": {"value": 357000},
+                "total_output": {"value": 5200},
+                "total_cost": {"value": 0.0567},
+                "by_model": {
+                    "buckets": [
+                        {
+                            "key": "gpt-4o-mini",
+                            "doc_count": 1,
+                            "api_calls": {"value": 62},
+                            "input_tokens": {"value": 357000},
+                            "output_tokens": {"value": 5200},
+                            "cost": {"value": 0.0567},
+                        },
+                    ]
+                },
+                "by_script": {
+                    "buckets": [
+                        {
+                            "key": "benchmark_llm",
+                            "doc_count": 1,
+                            "api_calls": {"value": 62},
+                            "input_tokens": {"value": 357000},
+                            "output_tokens": {"value": 5200},
+                            "cost": {"value": 0.0567},
+                        },
+                    ]
+                },
+                "by_day": {
+                    "buckets": [
+                        {
+                            "key_as_string": "2026-04-03",
+                            "key": 1743638400000,
+                            "doc_count": 1,
+                            "input_tokens": {"value": 357000},
+                            "output_tokens": {"value": 5200},
+                            "cache_read": {"value": 0},
+                            "cache_write": {"value": 0},
+                            "cost": {"value": 0.0567},
+                        },
+                    ]
+                },
+            }
+        }
+        r = client.get(
+            "/api/usage/training",
+            params={"start_date": "2026-04-03", "end_date": "2026-04-03"},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total_calls"] == 1
+    assert data["total_api_calls"] == 62
+    assert data["total_input_tokens"] == 357000
+    assert data["total_output_tokens"] == 5200
+    assert len(data["by_day"]) == 1
+    assert data["by_day"][0]["date"] == "2026-04-03"
+    assert data["by_day"][0]["input_tokens"] == 357000
+    script = data["by_script"][0]
+    assert script["script_name"] == "benchmark_llm"
+    assert script["call_count"] == 1
+    assert script["api_call_count"] == 62
+    model = data["by_model"][0]
+    assert model["model"] == "gpt-4o-mini"
+    assert model["api_call_count"] == 62
+
+
+def test_training_usage_empty(client: TestClient) -> None:
+    with patch("app.main.os_client") as mock_os:
+        mock_os.search.return_value = {
+            "aggregations": {
+                "total_calls": {"value": 0},
+                "total_api_calls": {"value": 0},
+                "total_input": {"value": 0},
+                "total_output": {"value": 0},
+                "total_cost": {"value": 0},
+                "by_model": {"buckets": []},
+                "by_script": {"buckets": []},
+                "by_day": {"buckets": []},
+            }
+        }
+        r = client.get(
+            "/api/usage/training",
+            params={"start_date": "2025-01-01", "end_date": "2025-12-31"},
+        )
+    data = r.json()
+    assert data["total_calls"] == 0
+    assert data["total_api_calls"] == 0
+    assert data["by_script"] == []
+    assert data["by_model"] == []
+    assert data["by_day"] == []
+
+
+def test_usage_summary_includes_total_api_calls(client: TestClient) -> None:
+    with patch("app.main.os_client") as mock_os:
+        mock_os.search.return_value = {
+            "hits": {
+                "hits": [
+                    {
+                        "_source": {
+                            "usage_totals": {
+                                "input_tokens": 1000,
+                                "output_tokens": 200,
+                                "total_tokens": 1200,
+                                "estimated_cost_usd": 0.01,
+                                "api_call_count": 3,
+                            },
+                            "usage_by_model": {
+                                "openai/gpt-4o-mini": {
+                                    "input_tokens": 1000,
+                                    "output_tokens": 200,
+                                    "estimated_cost_usd": 0.01,
+                                },
+                            },
+                            "model": "openai/gpt-4o-mini",
+                            "updatedAt": 1712160000000,
+                        }
+                    },
+                ],
+                "total": {"value": 1},
+            }
+        }
+        r = client.get(
+            "/api/usage/summary",
+            params={"start_date": "2026-04-03", "end_date": "2026-04-03"},
+        )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total_api_calls"] == 3
+    assert data["session_count"] == 1

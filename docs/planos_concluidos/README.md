@@ -4,6 +4,15 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.11.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [usage_api_calls_e_custo_arredondamento](usage_api_calls_e_custo_arredondamento_a3b4c5d6.plan.md) | Fix formatUsd (Math.floor→Math.round), contagem de chamadas API (api_call_count) no orchestrator/sessões/treinamento, card "Chamadas API" unificado, nomenclatura consistente |
+| 2 | [graficos_chat_custos_treinamento_b7c8d9e0](graficos_chat_custos_treinamento_b7c8d9e0.plan.md) | Gráfico diário com dados de todos os processos (assistente+classificação+treinamento), abas "Por tipo"/"Por processo", captura de cache tokens da OpenAI, by_day nos endpoints training e classification |
+
+---
+
 ## 0.10.0
 
 | # | Plano | Escopo |

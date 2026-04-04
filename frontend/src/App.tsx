@@ -896,19 +896,20 @@ function App() {
       let mergedTotals = sessionUsageTotals;
       let newByModel = sessionUsageByModel;
       if (turn) {
-        const pt = sessionUsageTotals ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 };
+        const pt = sessionUsageTotals ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0, api_call_count: 0 };
         mergedTotals = {
           input_tokens: pt.input_tokens + (turn.input_tokens ?? 0),
           output_tokens: pt.output_tokens + (turn.output_tokens ?? 0),
           total_tokens: pt.total_tokens + (turn.total_tokens ?? 0),
           estimated_cost_usd: pt.estimated_cost_usd + (turn.estimated_cost_usd ?? 0),
+          api_call_count: (pt.api_call_count ?? 0) + (turn.api_call_count ?? 0),
           cache_read_input_tokens: (pt.cache_read_input_tokens ?? 0) + (turn.cache_read_input_tokens ?? 0) || undefined,
           cache_creation_input_tokens: (pt.cache_creation_input_tokens ?? 0) + (turn.cache_creation_input_tokens ?? 0) || undefined,
           cache_write_input_tokens: (pt.cache_write_input_tokens ?? 0) + (turn.cache_write_input_tokens ?? 0) || undefined,
         };
         setSessionUsageTotals(mergedTotals);
         const modelKey = selectedModel;
-        const pm = sessionUsageByModel[modelKey] ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0 };
+        const pm = sessionUsageByModel[modelKey] ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0, estimated_cost_usd: 0, api_call_count: 0 };
         newByModel = {
           ...sessionUsageByModel,
           [modelKey]: {
@@ -916,6 +917,7 @@ function App() {
             output_tokens: pm.output_tokens + (turn.output_tokens ?? 0),
             total_tokens: pm.total_tokens + (turn.total_tokens ?? 0),
             estimated_cost_usd: pm.estimated_cost_usd + (turn.estimated_cost_usd ?? 0),
+            api_call_count: (pm.api_call_count ?? 0) + (turn.api_call_count ?? 0),
             cache_read_input_tokens: (pm.cache_read_input_tokens ?? 0) + (turn.cache_read_input_tokens ?? 0) || undefined,
             cache_creation_input_tokens: (pm.cache_creation_input_tokens ?? 0) + (turn.cache_creation_input_tokens ?? 0) || undefined,
             cache_write_input_tokens: (pm.cache_write_input_tokens ?? 0) + (turn.cache_write_input_tokens ?? 0) || undefined,
