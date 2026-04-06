@@ -27,6 +27,7 @@ import {
   getSessionEventsUrl
 } from "./api";
 import type { ChatAttachment } from "./components/ChatPanel";
+import { ToastProvider } from "./contexts/ToastContext";
 import { SearchModal } from "./layouts/SearchModal";
 import { Topbar } from "./layouts/Topbar";
 import { InboxScanCard } from "./features/ingest/InboxScanCard";
@@ -1155,6 +1156,7 @@ function App() {
   }
 
   return (
+    <ToastProvider>
     <div className="shell">
       <Topbar
         healthOk={healthOk}
@@ -1575,6 +1577,7 @@ function App() {
         onSubmit={submitCorrectDecision}
       />
     </div>
+    </ToastProvider>
   );
 }
 

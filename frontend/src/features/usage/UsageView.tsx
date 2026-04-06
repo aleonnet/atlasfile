@@ -1,4 +1,5 @@
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { BarChart3, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { EmptyState } from "../../components/EmptyState";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchClassificationUsage, fetchTrainingUsage, fetchUsageSessions, fetchUsageSummary } from "../../api";
 import type { ClassificationUsageSummary, TrainingUsageSummary, UsageByDayEntry, UsageByModelEntry, UsageSessionItem, UsageSummaryResponse } from "../../types";
@@ -144,7 +145,7 @@ function DailyTokenChart({
         <div className="usage-chart-header">
           <span className="usage-section-title" style={{ margin: 0 }}>Uso diario de tokens</span>
         </div>
-        <div style={{ padding: "20px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Nenhum dado no periodo.</div>
+        <EmptyState icon={<BarChart3 size={32} />} title="Nenhum dado no período" description="Ajuste o intervalo de datas ou use o assistente para gerar atividade." />
       </div>
     );
   }

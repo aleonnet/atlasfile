@@ -1,17 +1,18 @@
 .chart-block-container {
   min-height: 280px;
-  padding: 12px 8px;
+  padding: 16px 16px;
   border-radius: var(--radius-md, 8px);
-  background: var(--panel-strong, #1d1a20);
+  background: linear-gradient(135deg, var(--panel-strong, #1d1a20) 0%, var(--card, #171519) 100%);
   margin: 0.6em 0;
   overflow: hidden;
 }
 
 .chart-block-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-display);
   color: var(--text, #f5f4f8);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   padding-left: 4px;
 }
 

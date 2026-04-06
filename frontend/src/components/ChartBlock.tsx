@@ -85,7 +85,7 @@ function renderBar(spec: ChartSpec) {
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={formatValue} />
         {keys.length > 1 && <Legend />}
         {keys.map((k, i) => (
-          <Bar key={k} dataKey={k} fill={CHART_PALETTE[i % CHART_PALETTE.length]} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          <Bar key={k} dataKey={k} fill={CHART_PALETTE[i % CHART_PALETTE.length]} radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={600} />
         ))}
       </BarChart>
     </ResponsiveContainer>
@@ -104,7 +104,7 @@ function renderStackedBar(spec: ChartSpec) {
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={formatValue} />
         <Legend />
         {keys.map((k, i) => (
-          <Bar key={k} dataKey={k} stackId="a" fill={CHART_PALETTE[i % CHART_PALETTE.length]} isAnimationActive={false} />
+          <Bar key={k} dataKey={k} stackId="a" fill={CHART_PALETTE[i % CHART_PALETTE.length]} isAnimationActive={true} animationDuration={600} />
         ))}
       </BarChart>
     </ResponsiveContainer>
@@ -123,7 +123,7 @@ function renderHorizontalBar(spec: ChartSpec) {
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={formatValue} />
         {keys.length > 1 && <Legend />}
         {keys.map((k, i) => (
-          <Bar key={k} dataKey={k} fill={CHART_PALETTE[i % CHART_PALETTE.length]} radius={[0, 3, 3, 0]} isAnimationActive={false} />
+          <Bar key={k} dataKey={k} fill={CHART_PALETTE[i % CHART_PALETTE.length]} radius={[0, 3, 3, 0]} isAnimationActive={true} animationDuration={600} />
         ))}
       </BarChart>
     </ResponsiveContainer>
@@ -142,7 +142,7 @@ function renderPie(spec: ChartSpec) {
           cx="50%"
           cy="50%"
           outerRadius={100}
-          isAnimationActive={false}
+          isAnimationActive={true} animationDuration={600}
           label={({ name, percent }: { name?: string; percent?: number }) =>
             `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`
           }
@@ -177,7 +177,7 @@ function renderLine(spec: ChartSpec) {
             stroke={CHART_PALETTE[i % CHART_PALETTE.length]}
             strokeWidth={2}
             dot={{ r: 3 }}
-            isAnimationActive={false}
+            isAnimationActive={true} animationDuration={600}
           />
         ))}
       </LineChart>
@@ -204,7 +204,7 @@ function renderArea(spec: ChartSpec) {
             stroke={CHART_PALETTE[i % CHART_PALETTE.length]}
             fill={CHART_PALETTE[i % CHART_PALETTE.length]}
             fillOpacity={0.2}
-            isAnimationActive={false}
+            isAnimationActive={true} animationDuration={600}
           />
         ))}
       </AreaChart>
@@ -226,7 +226,7 @@ function renderComposed(spec: ChartSpec) {
         <Tooltip contentStyle={TOOLTIP_STYLE} formatter={formatValue} />
         <Legend />
         {barKeys.map((k, i) => (
-          <Bar key={k} dataKey={k} fill={CHART_PALETTE[i % CHART_PALETTE.length]} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          <Bar key={k} dataKey={k} fill={CHART_PALETTE[i % CHART_PALETTE.length]} radius={[3, 3, 0, 0]} isAnimationActive={true} animationDuration={600} />
         ))}
         {lineKeys.map((k, i) => (
           <Line
@@ -236,7 +236,7 @@ function renderComposed(spec: ChartSpec) {
             stroke={CHART_PALETTE[(barKeys.length + i) % CHART_PALETTE.length]}
             strokeWidth={2}
             dot={{ r: 3 }}
-            isAnimationActive={false}
+            isAnimationActive={true} animationDuration={600}
           />
         ))}
       </ComposedChart>
