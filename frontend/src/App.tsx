@@ -30,6 +30,7 @@ import { ChatPanel } from "./components/ChatPanel";
 import type { ChatAttachment } from "./components/ChatPanel";
 import { CompanionOrb } from "./components/CompanionOrb";
 import type { CompanionState } from "./components/CompanionOrb";
+import { InboxScanCard } from "./features/ingest/InboxScanCard";
 import { TriageQueue } from "./features/triage/TriageQueue";
 import { ConfigView } from "./views/ConfigView";
 import { buildEvidenceGroups, formatLocationLabel, topLocations } from "./features/search/searchFormatters";
@@ -1349,6 +1350,12 @@ function App() {
           </div>
           <div className="reconcile-footer">
             <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+              <InboxScanCard
+                selectedProject={selectedProject}
+                projects={projects}
+                onStatus={setStatus}
+                onScanComplete={() => { void loadTriage(); }}
+              />
               <button className="btn primary" disabled={reconcilingNow} onClick={handleReconcileNow}>
                 <RefreshCw size={14} className={reconcilingNow ? "spin" : ""} />
                 {reconcilingNow ? "Reconciliando..." : "Reconciliar INDEX"}
@@ -1618,7 +1625,6 @@ function App() {
           projectLabelById={projectLabelById}
           triageItems={triageItems}
           initializingProjectId={initializingProjectId}
-          onDecision={handleDecision}
           onLoadTriage={loadTriage}
           onStatus={setStatus}
           openaiApiKey={openaiApiKey}

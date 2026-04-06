@@ -192,7 +192,6 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof IngestTriag
     projectLabelById: new Map([["p1", "Projeto 1"]]),
     triageItems: [],
     initializingProjectId: null,
-    onDecision: vi.fn(() => Promise.resolve()),
     onLoadTriage: vi.fn(() => Promise.resolve()),
     onStatus: vi.fn(),
     openaiApiKey: "sk-test-key",
@@ -504,33 +503,10 @@ describe("IngestTriageCard", () => {
     });
   });
 
-  it("renders triage items with action buttons", async () => {
-    const triageItems = [
-      {
-        doc_id: "t1",
-        filename: "pending-file.pdf",
-        project_id: "p1",
-        suggested_business_domain: "fiscal",
-        confidence_score: 0.72,
-        reason: "triage_pending",
-        top_candidates: [],
-        source_path: "/p1/_TRIAGE_REVIEW/pending/pending-file.pdf",
-        metadata_path: "/p1/_TRIAGE_REVIEW/pending/t1.json"
-      }
-    ];
-    render(<IngestTriageCard {...defaultProps({ triageItems })} />);
-    await waitFor(() => {
-      expect(screen.getByText(/pending-file\.pdf/i)).toBeInTheDocument();
-    });
-    expect(screen.getByText(/Aprovar/i)).toBeInTheDocument();
-    expect(screen.getByText(/Corrigir/i)).toBeInTheDocument();
-    expect(screen.getByText(/Rejeitar/i)).toBeInTheDocument();
-  });
-
-  it("shows empty state when no items and no history", async () => {
+  it("shows empty state when no history", async () => {
     render(<IngestTriageCard {...defaultProps()} />);
     await waitFor(() => {
-      expect(screen.getByText(/Nenhum item pendente/i)).toBeInTheDocument();
+      expect(screen.getByText(/Nenhum processamento recente/i)).toBeInTheDocument();
     });
   });
 
@@ -625,32 +601,4 @@ describe("IngestTriageCard", () => {
     expect(screen.getByText(/Regra:/)).toBeInTheDocument();
   });
 
-  it("shows LLM context on triage items without auto-create shortcut", async () => {
-    const triageItems = [
-      {
-        doc_id: "t2",
-        filename: "esg-report.pdf",
-        project_id: "p1",
-        suggested_business_domain: "contratos_comunicacao",
-        confidence_score: 0.45,
-        reason: "llm_review_divergence",
-        top_candidates: [],
-        source_path: "/p1/_TRIAGE_REVIEW/pending/esg-report.pdf",
-        metadata_path: "/p1/_TRIAGE_REVIEW/pending/t2.json",
-        llm_explanation: "Relatorio ESG sem area existente",
-        llm_proposed_business_domain: "esg_sustentabilidade",
-        rule_business_domain: "contratos_comunicacao",
-        rule_confidence: 0.12,
-      }
-    ];
-    render(<IngestTriageCard {...defaultProps({ triageItems })} />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/esg-report\.pdf/i)).toBeInTheDocument();
-    });
-
-    expect(screen.getByText(/Relatorio ESG sem area existente/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/esg_sustentabilidade/i).length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByText(/Aprovar: esg_sustentabilidade/i)).not.toBeInTheDocument();
-  });
 });

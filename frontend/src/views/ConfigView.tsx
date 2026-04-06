@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IngestTriageCard } from "../features/ingest/IngestTriageCard";
 import { ProfileLayoutWorkspace } from "../features/profile-layout/ProfileLayoutWorkspace";
 import { TemplateEditorView } from "../features/templates/TemplateEditorView";
-import type { ModelOption, Project, TriageItem } from "../types";
+import type { Project, TriageItem } from "../types";
 
 type ConfigTab = "perfil" | "classificador" | "templates";
 
@@ -13,7 +13,6 @@ type Props = {
   projectLabelById: Map<string, string>;
   triageItems: TriageItem[];
   initializingProjectId: string | null;
-  onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => Promise<void>;
   onLoadTriage: () => Promise<void>;
   onStatus: (msg: string) => void;
   openaiApiKey: string;
@@ -32,7 +31,6 @@ export function ConfigView({
   projectLabelById,
   triageItems,
   initializingProjectId,
-  onDecision,
   onLoadTriage,
   onStatus,
   openaiApiKey,
@@ -94,7 +92,6 @@ export function ConfigView({
             projectLabelById={projectLabelById}
             triageItems={triageItems}
             initializingProjectId={initializingProjectId}
-            onDecision={onDecision}
             onLoadTriage={onLoadTriage}
             onStatus={onStatus}
             openaiApiKey={openaiApiKey}
