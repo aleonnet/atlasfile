@@ -2088,3 +2088,54 @@ a {
   opacity: 1;
   border-color: var(--accent);
 }
+
+/* ========== Triage Queue (standalone no Painel) ========== */
+.triage-queue-card {
+  border-color: var(--accent-soft);
+}
+
+.triage-queue-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.triage-queue-subtitle {
+  font-size: 0.88rem;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.triage-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.triage-queue-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  background: var(--bg-elevated);
+}
+
+/* ========== Config View ========== */
+.config-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.config-view-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

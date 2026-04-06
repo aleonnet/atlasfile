@@ -154,15 +154,15 @@ describe("App", () => {
   it("renders and shows main sections", async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText(/Ingestão e triagem|Ingestao e triagem/i)).toBeInTheDocument();
+      expect(screen.getByText(/documentos indexados/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Processar INBOX/i)).toBeInTheDocument();
+    expect(screen.getByText(/documentos indexados/i)).toBeInTheDocument();
   });
 
   it("opens search modal on Cmd+K", async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText(/Processar INBOX/i)).toBeInTheDocument();
+      expect(screen.getByText(/documentos indexados/i)).toBeInTheDocument();
     });
     fireEvent.keyDown(document, { key: "k", metaKey: true });
     const searchPlaceholder = await screen.findByPlaceholderText("Search...", {}, { timeout: 3000 });
@@ -230,7 +230,7 @@ describe("App", () => {
 
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText(/Ingestão e triagem|Ingestao e triagem/i)).toBeInTheDocument();
+      expect(screen.getByText(/documentos indexados/i)).toBeInTheDocument();
     });
   });
 
@@ -247,7 +247,7 @@ describe("App", () => {
 
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText(/Ingestão e triagem|Ingestao e triagem/i)).toBeInTheDocument();
+      expect(screen.getByText(/documentos indexados/i)).toBeInTheDocument();
     });
     expect(screen.getByTitle(/Replay Onboarding/)).toBeInTheDocument();
   });
@@ -285,7 +285,7 @@ describe("App", () => {
 
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText(/Processar INBOX/i)).toBeInTheDocument();
+      expect(screen.getByText(/documentos indexados/i)).toBeInTheDocument();
     });
     fireEvent.keyDown(document, { key: "k", metaKey: true });
     const input = await screen.findByPlaceholderText("Search...");
@@ -313,10 +313,9 @@ describe("App", () => {
       progress_total: 0
     });
     render(<App />);
-    expect(await screen.findByText(/Controle operacional/, {}, { timeout: 5000 })).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText(/projetos inicializados/)).toBeInTheDocument();
-    });
+    }, { timeout: 5000 });
     expect(screen.getByText(/documentos indexados/)).toBeInTheDocument();
     expect(screen.getByText(/\.PDF/)).toBeInTheDocument();
     const miniTable = document.querySelector(".mini-table");

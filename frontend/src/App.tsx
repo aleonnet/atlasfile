@@ -30,13 +30,12 @@ import { ChatPanel } from "./components/ChatPanel";
 import type { ChatAttachment } from "./components/ChatPanel";
 import { CompanionOrb } from "./components/CompanionOrb";
 import type { CompanionState } from "./components/CompanionOrb";
-import { IngestTriageCard } from "./features/ingest/IngestTriageCard";
-import { ProfileLayoutWorkspace } from "./features/profile-layout/ProfileLayoutWorkspace";
+import { TriageQueue } from "./features/triage/TriageQueue";
+import { ConfigView } from "./views/ConfigView";
 import { buildEvidenceGroups, formatLocationLabel, topLocations } from "./features/search/searchFormatters";
 import { AssistantSettingsModal } from "./features/settings/AssistantSettingsModal";
 import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
 import { TemplateSelectModal } from "./features/templates/TemplateSelectModal";
-import { TemplateEditorView } from "./features/templates/TemplateEditorView";
 import { UsageView } from "./features/usage/UsageView";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import type {
@@ -67,7 +66,7 @@ const AUTO_TITLE_LLM_KEY = "atlasfile-auto-title-llm";
 const ONBOARDING_DONE_KEY = "atlasfile-onboarding-done";
 const TG_TOKEN_STORAGE_KEY = "atlasfile-telegram-bot-token";
 type ThemeMode = "system" | "light" | "dark";
-type ViewKind = "operacional" | "assistente" | "templates";
+type ViewKind = "painel" | "assistente" | "config";
 type InputLikeEvent = { target: { value: string } };
 type KeyboardLikeEvent = { key: string };
 type KeyboardEventLike = { key: string; shiftKey?: boolean; preventDefault?: () => void };
@@ -121,7 +120,7 @@ function App() {
   const [correctSubmitting, setCorrectSubmitting] = useState(false);
   const reconcileEsRef = useRef<EventSource | null>(null);
 
-  const [view, setView] = useState<ViewKind>("operacional");
+  const [view, setView] = useState<ViewKind>("painel");
   const [templateModalProject, setTemplateModalProject] = useState<{ ref: string; label: string } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessageType[]>([]);
   const [chatSending, setChatSending] = useState(false);
@@ -1178,13 +1177,13 @@ function App() {
         <nav className="topbar-nav" aria-label="Visão">
           <button
             type="button"
-            className={view === "operacional" ? "active" : ""}
-            onClick={() => setView("operacional")}
-            aria-current={view === "operacional" ? "page" : undefined}
-            title="Operacional"
+            className={view === "painel" ? "active" : ""}
+            onClick={() => setView("painel")}
+            aria-current={view === "painel" ? "page" : undefined}
+            title="Painel"
           >
             <LayoutDashboard size={18} strokeWidth={2} aria-hidden />
-            <span className="view-tab-label">Operacional</span>
+            <span className="view-tab-label">Painel</span>
           </button>
           <button
             type="button"
@@ -1198,13 +1197,13 @@ function App() {
           </button>
           <button
             type="button"
-            className={view === "templates" ? "active" : ""}
-            onClick={() => setView("templates")}
-            aria-current={view === "templates" ? "page" : undefined}
-            title="Templates"
+            className={view === "config" ? "active" : ""}
+            onClick={() => setView("config")}
+            aria-current={view === "config" ? "page" : undefined}
+            title="Configuração"
           >
             <FolderCog size={18} strokeWidth={2} aria-hidden />
-            <span className="view-tab-label">Templates</span>
+            <span className="view-tab-label">Configuração</span>
           </button>
         </nav>
         <div className="topbar-center">
@@ -1263,15 +1262,11 @@ function App() {
       )}
 
       <main className="content">
-      {view === "operacional" && (
+      {view === "painel" && (
       <>
       <section className="panel panel-control card">
         <div className="panel-head card-header">
-          <h2>Controle operacional</h2>
-          <button className="btn primary" disabled={reconcilingNow} onClick={handleReconcileNow}>
-            <RefreshCw size={14} className={reconcilingNow ? "spin" : ""} />
-            {reconcilingNow ? "Reconciliando INDEX" : "Reconciliar INDEX"}
-          </button>
+          <h2>Painel</h2>
         </div>
         {reconcileStatus?.running ? (
           <div className="reconcile-progress">
@@ -1323,6 +1318,10 @@ function App() {
                 <span className="value">{dashboardStats?.total_documents ?? 0}</span>
                 <span className="label">documentos indexados</span>
               </div>
+              <div className="stat-big">
+                <span className="value">{triageItems.length}</span>
+                <span className="label">pendentes triagem</span>
+              </div>
               {(dashboardStats?.by_extension?.length ?? 0) > 0 && (
                 <div className="ext-badges">
                   {dashboardStats!.by_extension.map(b => (
@@ -1349,6 +1348,12 @@ function App() {
             </div>
           </div>
           <div className="reconcile-footer">
+            <div className="row" style={{ gap: 8, marginBottom: 8 }}>
+              <button className="btn primary" disabled={reconcilingNow} onClick={handleReconcileNow}>
+                <RefreshCw size={14} className={reconcilingNow ? "spin" : ""} />
+                {reconcilingNow ? "Reconciliando..." : "Reconciliar INDEX"}
+              </button>
+            </div>
             <span>Ultima reconciliacao: <span className="meta-value">{formatTimestamp(reconcileStatus?.last_run_finished_at)}</span></span>
             {(reconcileStatus?.summary.adjustments_applied ?? 0) > 0 && (
               <span>Ajustes: <span className="meta-value">{reconcileStatus!.summary.adjustments_applied}</span></span>
@@ -1370,27 +1375,10 @@ function App() {
         )}
       </section>
 
-      <IngestTriageCard
-        selectedProject={selectedProject}
-        selectedProjectLabel={selectedProjectLabel}
-        projects={projects}
-        projectLabelById={projectLabelById}
+      <TriageQueue
         triageItems={triageItems}
-        initializingProjectId={initializingProjectId}
+        projectLabelById={projectLabelById}
         onDecision={handleDecision}
-        onLoadTriage={loadTriage}
-        onStatus={setStatus}
-        openaiApiKey={openaiApiKey}
-        anthropicApiKey={anthropicApiKey}
-        onOpenSettings={() => setSettingsOpen(true)}
-        selectedModelTriage={selectedModelTriage}
-        onChangeModelTriage={setSelectedModelTriage}
-      />
-
-      <ProfileLayoutWorkspace
-        projectRef={selectedProject}
-        disabled={selectedProject === ALL_PROJECTS}
-        onStatus={setStatus}
       />
 
       {fullQuery && (
@@ -1622,8 +1610,23 @@ function App() {
         </section>
       )}
 
-      {view === "templates" && (
-        <TemplateEditorView />
+      {view === "config" && (
+        <ConfigView
+          selectedProject={selectedProject}
+          selectedProjectLabel={selectedProjectLabel}
+          projects={projects}
+          projectLabelById={projectLabelById}
+          triageItems={triageItems}
+          initializingProjectId={initializingProjectId}
+          onDecision={handleDecision}
+          onLoadTriage={loadTriage}
+          onStatus={setStatus}
+          openaiApiKey={openaiApiKey}
+          anthropicApiKey={anthropicApiKey}
+          onOpenSettings={() => setSettingsOpen(true)}
+          selectedModelTriage={selectedModelTriage}
+          onChangeModelTriage={setSelectedModelTriage}
+        />
       )}
 
       <footer className="status">{status}</footer>
@@ -1636,7 +1639,7 @@ function App() {
           projectLabel={templateModalProject.label}
           onClose={() => setTemplateModalProject(null)}
           onInitialized={() => void handleTemplateInitialized()}
-          onCreateTemplate={() => { setTemplateModalProject(null); setView("templates"); }}
+          onCreateTemplate={() => { setTemplateModalProject(null); setView("config"); }}
         />
       )}
 
