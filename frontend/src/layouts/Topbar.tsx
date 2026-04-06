@@ -38,7 +38,7 @@ export function Topbar({
       <div className="topbar-inner">
         <div className="topbar-left">
           <div className="brand" title={healthOk === true ? "API OK" : healthOk === false ? "API offline" : "A verificar..."}>
-            <CompanionOrb state={orbState} size={40} />
+            <CompanionOrb state={orbState} size={48} />
             <h1>AtlasFile</h1>
           </div>
           <select

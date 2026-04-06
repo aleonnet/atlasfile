@@ -283,8 +283,6 @@
 
 .modal.tmpl-editor-modal {
   width: min(920px, 95vw);
-  max-height: 85vh;
-  overflow-y: auto;
 }
 
 .tmpl-editor-fields {

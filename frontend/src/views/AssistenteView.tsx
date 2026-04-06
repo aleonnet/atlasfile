@@ -68,7 +68,7 @@ export function AssistenteView({
   const [assistenteTab, setAssistenteTab] = useState<"chat" | "usage">("chat");
 
   return (
-    <section className="assistente-card">
+    <section className="config-view">
       <nav className="assistente-tabs" role="tablist">
         <div className="assistente-tabs-pill">
           <button
@@ -91,7 +91,7 @@ export function AssistenteView({
           </button>
         </div>
       </nav>
-      <div className="assistente-content">
+      <div className="config-view-content" style={{ flex: "1 1 0", minHeight: 0 }}>
         {assistenteTab === "chat" ? (
           <ChatPanel
             agentName="Assistente"

@@ -413,18 +413,34 @@ img.chat-avatar {
   width: 100%;
   min-height: 44px;
   max-height: 150px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  resize: none;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
   font-size: 14px;
   line-height: 1.45;
+  resize: none;
+  transition: border-color var(--duration-normal) ease;
+}
+
+.chat-compose__field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.chat-compose__field textarea::placeholder {
+  color: var(--muted);
 }
 
 .chat-compose__actions {
   flex-shrink: 0;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .chat-compose__actions .btn {
@@ -435,6 +451,25 @@ img.chat-avatar {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+}
+
+.context-ring-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.context-ring-label {
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .btn-kbd {
@@ -690,16 +725,6 @@ img.chat-avatar {
 }
 
 /* --- Context Pressure Ring --- */
-
-.context-ring-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  padding: 2px;
-  flex-shrink: 0;
-}
 
 .context-ring-svg {
   display: block;

@@ -706,6 +706,7 @@ function ContextRing({ ratio, onNewSession }: { ratio: number; onNewSession: () 
           style={{ transition: "stroke-dashoffset 0.4s ease, stroke 0.3s ease" }}
         />
       </svg>
+      <span className="context-ring-label">{pct}%</span>
     </button>
   );
 }

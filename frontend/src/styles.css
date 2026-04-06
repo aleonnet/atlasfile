@@ -1031,7 +1031,6 @@ button.danger:hover,
 
 @keyframes content-fade-up {
   from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .content > section,
@@ -1039,7 +1038,7 @@ button.danger:hover,
 .content > .card,
 .content > .assistente-card,
 .content > .config-view {
-  animation: content-fade-up var(--duration-slow) var(--ease-out) both;
+  animation: content-fade-up var(--duration-slow) var(--ease-out) backwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1256,6 +1255,7 @@ a {
   backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
+  overflow-y: auto;
   z-index: 90;
   padding: 24px;
 }
@@ -2211,6 +2211,21 @@ a {
   .toast.exiting { animation: none; opacity: 0; }
 }
 
+/* ========== Config View ========== */
+.config-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.config-view-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 /* ========== Skeleton ========== */
 .skeleton {
   background: linear-gradient(90deg, var(--panel-strong) 25%, var(--card-highlight) 50%, var(--panel-strong) 75%);
@@ -2295,15 +2310,3 @@ a {
   background: var(--bg-elevated);
 }
 
-/* ========== Config View ========== */
-.config-view {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.config-view-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
