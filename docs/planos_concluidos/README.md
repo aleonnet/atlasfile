@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.12.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [ui_evolution_v012](ui_evolution_v012_f4e5d6c7.plan.md) | Reestruturação de navegação (Painel/Assistente/Configuração), decomposição IngestTriageCard e App.tsx, refinamentos visuais (tipografia DM Sans, motion, toast, skeletons, charts animados) |
+
+---
+
 ## 0.11.0
 
 | # | Plano | Escopo |

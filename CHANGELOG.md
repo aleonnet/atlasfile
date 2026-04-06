@@ -4,6 +4,40 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.12.0] -- 2026-04-06
+
+### Evolucao UI — arquitetura de informacao e refinamento visual
+
+- **Navegacao reestruturada**: 3 views por frequencia de uso — Painel (diario), Assistente (consulta), Configuracao (setup)
+- **Painel**: KPIs com contagem de triagem pendente, TriageQueue em destaque, InboxScanCard + Reconciliar INDEX, atividade recente
+- **Configuracao**: sub-tabs Perfil do projeto, Classificador, Templates (antes view isolada)
+- **Templates integrado**: deixa de ser view top-level, agora sub-tab contextualizada junto ao perfil
+
+### Decomposicao de componentes
+
+- **IngestTriageCard**: triage queue extraida (TriageQueue.tsx), scan extraido (InboxScanCard.tsx), hooks SSE (useIngestMonitor, useClassifierCycleMonitor)
+- **App.tsx**: Topbar, SearchModal, AssistenteView extraidos como componentes independentes
+- **Novos componentes**: Skeleton (loading shimmer), EmptyState, ToastContext (notificacoes)
+
+### Refinamentos visuais
+
+- **Tipografia**: DM Sans como body font (15px), Fragment Mono reservado para dados numericos (KPIs, tabelas, badges)
+- **Espacamento**: content/cards com padding e gap aumentados para sensacao editorial
+- **Motion**: hover elevation em cards, button active scale(0.97), entrance animation com reduced-motion support
+- **Charts**: animacoes Recharts ativadas (600ms), container com gradient background, titulo DM Sans
+- **Tabelas**: row hover, header uppercase normalizado, zebra striping, total row com background
+- **Chat compose**: textarea harmonizado com tema dark, focus ring accent, botoes alinhados
+- **Modal overlay**: fix position:fixed quebrado por transform residual de animation fill-mode
+- **CompanionOrb**: tamanho aumentado de 40px para 48px no topbar
+
+### Testes
+
+- 94 testes passam (vitest)
+- Build TypeScript limpo
+- Smoke test visual em Docker
+
+---
+
 ## [0.11.0] -- 2026-04-03
 
 ### Uso e custo — precisao e visibilidade
