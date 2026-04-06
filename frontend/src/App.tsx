@@ -1,4 +1,4 @@
-import { Database, File, FileSpreadsheet, FileText, FolderCog, FolderOpen, LayoutDashboard, MessageCircle, Monitor, Moon, Presentation, RefreshCw, Search, Sun } from "lucide-react";
+import { Database, File, FileSpreadsheet, FileText, FolderOpen, Presentation, RefreshCw, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createChatSession,
@@ -26,18 +26,17 @@ import {
   updateChannelConfig,
   getSessionEventsUrl
 } from "./api";
-import { ChatPanel } from "./components/ChatPanel";
 import type { ChatAttachment } from "./components/ChatPanel";
-import { CompanionOrb } from "./components/CompanionOrb";
-import type { CompanionState } from "./components/CompanionOrb";
+import { SearchModal } from "./layouts/SearchModal";
+import { Topbar } from "./layouts/Topbar";
 import { InboxScanCard } from "./features/ingest/InboxScanCard";
 import { TriageQueue } from "./features/triage/TriageQueue";
 import { ConfigView } from "./views/ConfigView";
-import { buildEvidenceGroups, formatLocationLabel, topLocations } from "./features/search/searchFormatters";
+import { buildEvidenceGroups, topLocations } from "./features/search/searchFormatters";
 import { AssistantSettingsModal } from "./features/settings/AssistantSettingsModal";
 import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
 import { TemplateSelectModal } from "./features/templates/TemplateSelectModal";
-import { UsageView } from "./features/usage/UsageView";
+import { AssistenteView } from "./views/AssistenteView";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import type {
   ChatContentPart,
@@ -178,7 +177,6 @@ function App() {
     try { return localStorage.getItem(AUTO_TITLE_LLM_KEY) === "true"; } catch { return false; }
   });
   const [telegramConnected, setTelegramConnected] = useState(false);
-  const [assistenteTab, setAssistenteTab] = useState<"chat" | "usage">("chat");
   const [sessionUsageTotals, setSessionUsageTotals] = useState<UsageTotals | null>(null);
   const [sessionUsageByModel, setSessionUsageByModel] = useState<Record<string, UsageTotals>>({});
 
@@ -1158,103 +1156,17 @@ function App() {
 
   return (
     <div className="shell">
-      <header className="topbar">
-        <div className="topbar-inner">
-        <div className="topbar-left">
-          <div className="brand" title={healthOk === true ? "API OK" : healthOk === false ? "API offline" : "A verificar..."}>
-            <CompanionOrb state={(healthOk === true ? "alive" : healthOk === false ? "error" : "idle") as CompanionState} size={40} />
-            <h1>AtlasFile</h1>
-          </div>
-          <select className="project-select" value={selectedProject} onChange={(e: InputLikeEvent) => void handleSelectProject(e.target.value)}>
-            <option value={ALL_PROJECTS}>Geral (todos os projetos)</option>
-            {projects.map((project) => (
-              <option key={project.project_id} value={project.project_id}>
-                {project.project_label}
-                {project.initialized ? "" : " (nao inicializado)"}
-              </option>
-            ))}
-          </select>
-        </div>
-        <nav className="topbar-nav" aria-label="Visão">
-          <button
-            type="button"
-            className={view === "painel" ? "active" : ""}
-            onClick={() => setView("painel")}
-            aria-current={view === "painel" ? "page" : undefined}
-            title="Painel"
-          >
-            <LayoutDashboard size={18} strokeWidth={2} aria-hidden />
-            <span className="view-tab-label">Painel</span>
-          </button>
-          <button
-            type="button"
-            className={view === "assistente" ? "active" : ""}
-            onClick={() => setView("assistente")}
-            aria-current={view === "assistente" ? "page" : undefined}
-            title="Assistente"
-          >
-            <MessageCircle size={18} strokeWidth={2} aria-hidden />
-            <span className="view-tab-label">Assistente</span>
-          </button>
-          <button
-            type="button"
-            className={view === "config" ? "active" : ""}
-            onClick={() => setView("config")}
-            aria-current={view === "config" ? "page" : undefined}
-            title="Configuração"
-          >
-            <FolderCog size={18} strokeWidth={2} aria-hidden />
-            <span className="view-tab-label">Configuração</span>
-          </button>
-        </nav>
-        <div className="topbar-center">
-          <div className="header-search-card">
-            <button className="header-search-btn" onClick={() => setSearchModalOpen(true)} title="Abrir busca (Cmd/Ctrl + K)">
-              <Search size={16} />
-              <span className="header-search-text">Search...</span>
-              <span className="kbd">⌘K</span>
-            </button>
-          </div>
-        </div>
-        <div className="topbar-status">
-          <button className="topbar-search-icon" onClick={() => setSearchModalOpen(true)} title="Buscar" aria-label="Buscar">
-            <Search size={18} />
-          </button>
-          <div className="theme-toggle" role="group" aria-label="Tema">
-            <button
-              type="button"
-              className={`theme-toggle__button ${theme === "system" ? "active" : ""}`}
-              onClick={() => setTheme("system")}
-              aria-pressed={theme === "system"}
-              aria-label="Tema sistema"
-              title="Sistema"
-            >
-              <Monitor size={18} />
-            </button>
-            <button
-              type="button"
-              className={`theme-toggle__button ${theme === "light" ? "active" : ""}`}
-              onClick={() => setTheme("light")}
-              aria-pressed={theme === "light"}
-              aria-label="Tema claro"
-              title="Claro"
-            >
-              <Sun size={18} />
-            </button>
-            <button
-              type="button"
-              className={`theme-toggle__button ${theme === "dark" ? "active" : ""}`}
-              onClick={() => setTheme("dark")}
-              aria-pressed={theme === "dark"}
-              aria-label="Tema escuro"
-              title="Escuro"
-            >
-              <Moon size={18} />
-            </button>
-          </div>
-        </div>
-        </div>
-      </header>
+      <Topbar
+        healthOk={healthOk}
+        projects={projects}
+        selectedProject={selectedProject}
+        onSelectProject={handleSelectProject}
+        view={view}
+        onChangeView={setView}
+        theme={theme}
+        onChangeTheme={setTheme}
+        onOpenSearch={() => setSearchModalOpen(true)}
+      />
 
       {appEnv === "dev" && (
         <button type="button" className="dev-onboarding-btn" onClick={handleReplayOnboarding} title="Replay Onboarding (dev only)">
@@ -1547,45 +1459,13 @@ function App() {
       )}
 
       {view === "assistente" && (
-        <section className="assistente-card">
-          <nav className="assistente-tabs" role="tablist">
-            <div className="assistente-tabs-pill">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={assistenteTab === "chat"}
-                className={`assistente-tab${assistenteTab === "chat" ? " assistente-tab--active" : ""}`}
-                onClick={() => setAssistenteTab("chat")}
-              >
-                Chat
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={assistenteTab === "usage"}
-                className={`assistente-tab${assistenteTab === "usage" ? " assistente-tab--active" : ""}`}
-                onClick={() => setAssistenteTab("usage")}
-              >
-                Uso e custo
-              </button>
-            </div>
-          </nav>
-          <div className="assistente-content">
-          {assistenteTab === "chat" ? (
-        <ChatPanel
-          agentName="Assistente"
-          agentAvatarUrl={null}
-          messages={chatMessages.filter((m): m is ChatMessageType & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant").map((m) => ({
-            role: m.role,
-            content: typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" "),
-            timestamp: m.timestamp,
-            ...(m.role === "user" && Array.isArray(m.content) && { contentParts: m.content }),
-            ...(m.model ? { model: m.model } : {}),
-          }))}
+        <AssistenteView
+          selectedProject={selectedProject}
+          chatMessages={chatMessages}
+          chatSending={chatSending}
+          chatError={chatError}
           lastToolCalls={lastToolCalls}
-          sending={chatSending}
-          error={chatError}
-          canAbort={chatSending}
+          contextPressureRatio={contextPressureRatio}
           selectedModel={selectedModel}
           models={models}
           onModelChange={setSelectedModel}
@@ -1595,7 +1475,6 @@ function App() {
           onNewSession={handleRequestNewSession}
           showThinking={showThinking}
           onShowThinkingChange={setShowThinking}
-          disabled={models.length === 0 || !selectedModel}
           sessions={sessions}
           sessionsLoading={sessionsLoading}
           activeSessionId={activeSessionId}
@@ -1608,13 +1487,7 @@ function App() {
           savingSession={savingSession}
           telegramConnected={telegramConnected}
           onToggleTelegram={handleToggleTelegram}
-          contextPressureRatio={contextPressureRatio}
         />
-          ) : (
-            <UsageView projectId={selectedProject === ALL_PROJECTS ? null : selectedProject} />
-          )}
-          </div>
-        </section>
       )}
 
       {view === "config" && (
@@ -1649,91 +1522,25 @@ function App() {
         />
       )}
 
-      {searchModalOpen && (
-        <div className="search-modal-overlay" role="dialog" aria-modal="true" aria-label="Busca global" onClick={() => setSearchModalOpen(false)}>
-          <div className="search-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="search-modal-input-wrap">
-              <Search size={18} className="search-modal-input-icon" />
-              <input
-                value={query}
-                onChange={(e: InputLikeEvent) => setQuery(e.target.value)}
-                onKeyDown={(e: KeyboardLikeEvent) => {
-                  if (e.key === "Escape") {
-                    if (query.trim()) clearSearch();
-                    else setSearchModalOpen(false);
-                  }
-                  if (e.key === "Enter") {
-                    setFullSearchInput(query.trim());
-                    void runFullSearch(1, query.trim());
-                    setSearchModalOpen(false);
-                  }
-                }}
-                placeholder="Search..."
-                autoFocus
-              />
-              {query.trim().length > 0 && (
-                <button type="button" className="search-modal-kbd esc-btn" onClick={clearSearch} title="Limpar (ESC)">
-                  ESC
-                </button>
-              )}
-            </div>
-
-            {query.trim().length > 0 && (
-              <div className="search-results-scroll">
-                <ul className="list search-list">
-                  {modalHits.map((hit) => (
-                    <li key={`top-${hit.doc_id}`} className="list-item search-item">
-                      <div className="search-item-content">
-                        <div className="sub breadcrumb-line">{renderBreadcrumb(hit.project_id, hit.path)}</div>
-                        <div className="title-row">
-                          <span className="doc-icon-inline">{getDocIcon(hit.content_type, hit.original_filename)}</span>
-                          <a className="result-link result-title" href={getFileDownloadUrl(hit.path)} target="_blank" rel="noreferrer">
-                            {highlightTerm(hit.original_filename, query)}
-                          </a>
-                        </div>
-                        {hit.evidences && hit.evidences.length > 0 ? (
-                          <div className="snippet" dangerouslySetInnerHTML={{ __html: hit.evidences[0].snippet }} />
-                        ) : (
-                          extractSnippets(hit.highlights).map((snippet, idx) => (
-                            <div key={`top-${hit.doc_id}-snippet-${idx}`} className="snippet" dangerouslySetInnerHTML={{ __html: snippet }} />
-                          ))
-                        )}
-                        {(() => {
-                          const totalEv = hit.total_evidences ?? 0;
-                          const groups = buildEvidenceGroups(hit.evidences ?? []);
-                          const locs =
-                            (hit.evidences?.length ?? 0) > 0
-                              ? groups.slice(0, 2).map((g) => g.label)
-                              : topLocations(hit.match_locations, 2);
-                          const extra =
-                            totalEv > 2 ? ` e outras ${totalEv - 2} ocorrência${totalEv - 2 === 1 ? "" : "s"}` : "";
-                          return locs.length > 0 ? (
-                            <div className="sub">
-                              Local: {locs.join(" | ")}
-                              {extra}
-                            </div>
-                          ) : null;
-                        })()}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                {modalHits.length === 0 && query.trim().length >= 2 && !modalLoading && (
-                  <p className="sub empty-search">Nenhum resultado para os termos digitados.</p>
-                )}
-              </div>
-            )}
-
-            {query.trim().length > 0 && (
-              <div className="search-modal-footer">
-                <span className="sub">
-                  Top {modalHits.length} resultado(s) em tempo real. Pressione Enter para listar todos.
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <SearchModal
+        open={searchModalOpen}
+        query={query}
+        onQueryChange={setQuery}
+        modalHits={modalHits}
+        modalLoading={modalLoading}
+        onClose={() => setSearchModalOpen(false)}
+        onClearSearch={clearSearch}
+        onSubmitSearch={(q) => {
+          setFullSearchInput(q);
+          void runFullSearch(1, q);
+          setSearchModalOpen(false);
+        }}
+        renderBreadcrumb={renderBreadcrumb}
+        highlightTerm={highlightTerm}
+        extractSnippets={extractSnippets}
+        getDocIcon={getDocIcon}
+        getFileDownloadUrl={getFileDownloadUrl}
+      />
 
       <AssistantSettingsModal
         open={settingsOpen}
