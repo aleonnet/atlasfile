@@ -88,6 +88,11 @@ class DocumentMetadataUpdate(BaseModel):
     review_status: Optional[str] = None
 
 
+class DocumentMoveRequest(BaseModel):
+    target_business_domain: str
+    target_document_type: str
+
+
 class ChatMessage(BaseModel):
     role: str  # user | assistant | system
     content: str | list[dict[str, Any]]  # str ou lista multimodal (text + image_url)

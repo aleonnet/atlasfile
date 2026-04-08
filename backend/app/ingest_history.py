@@ -63,3 +63,32 @@ def append_ingest_entry(
         encoding="utf-8",
     )
     return entries
+
+
+def update_history_item(
+    project_root: Path,
+    doc_id: str,
+    updates: dict[str, Any],
+) -> bool:
+    """Update fields of a specific item in the ingest history by doc_id.
+
+    Returns True if the item was found and updated.
+    """
+    entries = load_ingest_history(project_root)
+    found = False
+    for entry in entries:
+        for item in entry.get("items", []):
+            if item.get("doc_id") == doc_id:
+                item.update(updates)
+                found = True
+                break
+        if found:
+            break
+    if not found:
+        return False
+    path = _history_path(project_root)
+    path.write_text(
+        json.dumps({"max_entries": MAX_ENTRIES, "entries": entries}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return True

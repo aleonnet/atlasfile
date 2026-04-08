@@ -653,6 +653,28 @@ export interface LayoutPlanResponse {
   plan: LayoutPlan;
 }
 
+/* ── Upload / Move ── */
+
+export interface UploadedFile {
+  filename: string;
+  saved_as: string;
+}
+
+export interface UploadResult {
+  uploaded: UploadedFile[];
+}
+
+export interface MoveResult {
+  status: string;
+  doc_id: string;
+  old_path: string;
+  new_path: string;
+  old_business_domain: string;
+  new_business_domain: string;
+  old_document_type: string;
+  new_document_type: string;
+}
+
 /* ── Channels ── */
 
 export interface ChannelConfigTelegram {

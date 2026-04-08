@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.13.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [upload_move_reconciliacao_v013](upload_move_reconciliacao_v013.plan.md) | Upload de arquivos via frontend (drag-and-drop + file picker), move de documentos entre bd/dt com training pool, extração PainelView do App.tsx, fix reconcile incremental (path), fix build_corpus (último SHA ganha), triage atualiza ingest_history |
+
+---
+
 ## 0.12.0
 
 | # | Plano | Escopo |

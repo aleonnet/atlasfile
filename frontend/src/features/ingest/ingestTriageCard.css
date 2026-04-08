@@ -543,6 +543,7 @@ details.itc-collapsible[open] > .itc-collapsible-header::before {
 }
 
 .itc-scan-badge.auto { background: var(--ok-subtle); color: var(--ok); }
+.itc-scan-badge.moved { background: rgba(100, 160, 255, 0.12); color: #64a0ff; }
 .itc-scan-badge.triage_pending { background: var(--accent-soft); color: var(--accent); }
 .itc-scan-badge.duplicate { background: rgba(128, 128, 128, 0.12); color: var(--muted); }
 .itc-scan-badge.error { background: rgba(239, 68, 68, 0.12); color: var(--danger); }
@@ -797,4 +798,21 @@ details.itc-history-entry[open] > .itc-history-summary::before {
   .itc-scan-datetime {
     display: none;
   }
+}
+
+/* Move button in scan table */
+.itc-move-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  margin-left: 4px;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+  vertical-align: middle;
+}
+.itc-move-btn:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
 }

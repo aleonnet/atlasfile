@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query, Response
+from fastapi import FastAPI, File as FastAPIFile, Header, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
@@ -41,7 +41,7 @@ from .evaluation_dataset import (
     validation_overlap_for_file,
 )
 from .indexer import backfill_search_fields, index_document, read_text_excerpt
-from .ingest_history import append_ingest_entry, load_ingest_history
+from .ingest_history import append_ingest_entry, load_ingest_history, update_history_item
 from .ingestion import _append_index_md, process_inbox_file
 from .models import (
     ChatRequest,
@@ -55,6 +55,7 @@ from .models import (
     ClassifyResponse,
     ContextPressure,
     DocumentMetadataUpdate,
+    DocumentMoveRequest,
     DocumentTagsUpdate,
     ListDocumentItem,
     ListDocumentsResponse,
@@ -1545,6 +1546,64 @@ def scan_project_inbox(project_id: str) -> dict[str, Any]:
     return result
 
 
+@app.post("/api/ingest/upload/{project_id}")
+async def upload_to_inbox(
+    project_id: str,
+    files: list[UploadFile] = FastAPIFile(...),
+) -> dict[str, Any]:
+    project_root = _resolve_project_root(project_id)
+    profile = load_project_profile(project_root)
+    inbox = project_root / inbox_rel(profile)
+    inbox.mkdir(parents=True, exist_ok=True)
+
+    uploaded: list[dict[str, str]] = []
+    for upload_file in files:
+        original_name = upload_file.filename or "unnamed"
+        dest = inbox / original_name
+        if dest.exists():
+            stem = Path(original_name).stem
+            suffix = Path(original_name).suffix
+            n = 2
+            while dest.exists():
+                dest = inbox / f"{stem}__{n}{suffix}"
+                n += 1
+        content = await upload_file.read()
+        dest.write_bytes(content)
+        uploaded.append({"filename": original_name, "saved_as": dest.name})
+
+    return {"uploaded": uploaded}
+
+
+@app.get("/api/ingest/inbox/{project_id}")
+def list_inbox_files(project_id: str) -> dict[str, Any]:
+    project_root = _resolve_project_root(project_id)
+    profile = load_project_profile(project_root)
+    inbox = project_root / inbox_rel(profile)
+    if not inbox.exists():
+        return {"files": []}
+    files = [
+        {"filename": f.name, "size": f.stat().st_size}
+        for f in sorted(inbox.iterdir(), key=lambda p: p.name.lower())
+        if f.is_file() and not f.name.startswith(".")
+    ]
+    return {"files": files}
+
+
+@app.delete("/api/ingest/upload/{project_id}/{filename:path}")
+def delete_inbox_file(project_id: str, filename: str) -> dict[str, Any]:
+    project_root = _resolve_project_root(project_id)
+    profile = load_project_profile(project_root)
+    inbox = project_root / inbox_rel(profile)
+    target = (inbox / filename).resolve()
+    # Prevent path traversal
+    if not str(target).startswith(str(inbox.resolve())):
+        raise HTTPException(status_code=400, detail="Path invalido")
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"Arquivo nao encontrado na inbox: {filename}")
+    target.unlink()
+    return {"status": "ok", "deleted": filename}
+
+
 @app.get("/api/ingest/history/{project_id}")
 def get_ingest_history(project_id: str) -> dict[str, Any]:
     project_root = _resolve_project_root(project_id)
@@ -1717,6 +1776,72 @@ def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate) -> di
         return {"status": "ok", "doc_id": doc_id}
     os_client.update(index=settings.opensearch_index, id=doc_id, body={"doc": doc_updates}, refresh=True)
     return {"status": "ok", "doc_id": doc_id}
+
+
+@app.post("/api/documents/{project_id}/{doc_id}/move")
+def move_document(project_id: str, doc_id: str, request: DocumentMoveRequest) -> dict[str, Any]:
+    project_root = _resolve_project_root(project_id)
+    profile = load_project_profile(project_root)
+
+    # Fetch current document from OpenSearch
+    try:
+        result = os_client.get(index=settings.opensearch_index, id=doc_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+
+    source = result.get("_source", {})
+    source_path_str = source.get("path", "")
+    if not source_path_str:
+        raise HTTPException(status_code=400, detail="Documento sem path registrado")
+
+    source_path = Path(source_path_str)
+    if not source_path.exists():
+        raise HTTPException(status_code=400, detail=f"Arquivo nao encontrado no filesystem: {source_path}")
+
+    old_business_domain = source.get("business_domain", "")
+    old_document_type = source.get("document_type", "")
+    original_filename = source.get("original_filename", source_path.name)
+
+    try:
+        indexed_payload = _relocate_document(
+            project_root=project_root,
+            profile=profile,
+            project_id=project_id,
+            doc_id=doc_id,
+            source_path=source_path,
+            target_business_domain=request.target_business_domain,
+            target_document_type=request.target_document_type,
+            original_filename=original_filename,
+            decision="moved",
+            existing_canonical_filename=source.get("canonical_filename"),
+            ingested_at=source.get("ingested_at"),
+            sha256=source.get("sha256", ""),
+            extra_metadata={
+                "confidence_score": source.get("confidence_score", 0.0),
+                "entities": source.get("entities", []),
+                "topics": source.get("topics", []),
+                "naming_pattern": source.get("naming_pattern"),
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    update_history_item(project_root, doc_id, {
+        "business_domain": request.target_business_domain,
+        "document_type": request.target_document_type,
+        "decision": "moved",
+    })
+
+    return {
+        "status": "ok",
+        "doc_id": doc_id,
+        "old_path": source_path_str,
+        "new_path": indexed_payload["path"],
+        "old_business_domain": old_business_domain,
+        "new_business_domain": request.target_business_domain,
+        "old_document_type": old_document_type,
+        "new_document_type": request.target_document_type,
+    }
 
 
 @app.get("/api/tags")
@@ -2575,6 +2700,134 @@ def _ingested_date_token(ingested_at: Any, date_format: str) -> str | None:
         return None
 
 
+def _relocate_document(
+    *,
+    project_root: Path,
+    profile: dict[str, Any],
+    project_id: str,
+    doc_id: str,
+    source_path: Path,
+    target_business_domain: str,
+    target_document_type: str,
+    original_filename: str,
+    decision: str,
+    existing_canonical_filename: str | None = None,
+    ingested_at: str | None = None,
+    sha256: str = "",
+    extra_metadata: dict[str, Any] | None = None,
+    note: str = "",
+) -> dict[str, Any]:
+    """Move arquivo para 02_AREAS/{bd}/{dt}, reindexar, e append training pool.
+
+    Returns the indexed payload dict with training_pool_status.
+    """
+    profile = _ensure_business_domain_in_profile(project_root, profile, target_business_domain)
+    profile = _ensure_document_type_in_profile(project_root, profile, target_document_type)
+    classification_path = resolve_classification_path(
+        project_root=project_root,
+        profile=profile,
+        business_domain=target_business_domain,
+        document_type=target_document_type,
+        create_if_missing=True,
+    )
+
+    naming = profile.get("naming") or {}
+    canonical_pattern = str(
+        (extra_metadata or {}).get("naming_pattern")
+        or naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN)
+    )
+    date_format = str(naming.get("date_format", "%Y%m%d"))
+    original_path = Path(original_filename)
+    canonical_filename = (existing_canonical_filename or "").strip()
+    preserved_version = _extract_canonical_version(canonical_filename)
+    preserved_date = _ingested_date_token(ingested_at, date_format)
+    if decision in ("corrected", "moved") or not canonical_filename:
+        canonical_filename = build_canonical_filename(
+            pattern=canonical_pattern,
+            date_format=date_format,
+            fields={
+                "project": project_id,
+                "business_domain": target_business_domain,
+                "original_name": original_path.stem,
+                "document_type": target_document_type,
+            },
+            original_suffix=original_path.suffix or source_path.suffix or ".bin",
+            version=preserved_version,
+            date_override=preserved_date,
+        )
+
+    dest_dir = project_root / classification_path
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = dest_dir / canonical_filename
+    shutil.move(str(source_path), str(dest_path))
+
+    indexed_payload: dict[str, Any] = {
+        "doc_id": doc_id,
+        "project_id": project_id,
+        "business_domain": target_business_domain,
+        "title": source_path.stem,
+        "content": read_text_excerpt(dest_path),
+        "original_filename": original_filename,
+        "canonical_filename": canonical_filename,
+        "path": str(dest_path),
+        "source_channel": (extra_metadata or {}).get("source_channel", ""),
+        "source_ref": (extra_metadata or {}).get("source_ref", ""),
+        "sender": (extra_metadata or {}).get("sender", ""),
+        "received_at": (extra_metadata or {}).get("received_at"),
+        "ingested_at": ingested_at,
+        "processed_at": utc_now_iso(),
+        "decision": decision,
+        "confidence_score": float((extra_metadata or {}).get("confidence_score", 0.0)),
+        "sha256": sha256,
+        "tags": [target_business_domain, target_document_type],
+        "document_type": target_document_type,
+        "entities": (extra_metadata or {}).get("entities", []),
+        "naming_pattern": canonical_pattern,
+    }
+    index_document(os_client, indexed_payload, profile=profile)
+    _append_index_md(project_root, indexed_payload)
+
+    # Training pool
+    training_pool_status = "appended"
+    training_pool_details: dict[str, Any] = {}
+    validation_overlap = validation_overlap_for_file(dest_path)
+    if validation_overlap:
+        training_pool_status = "skipped_overlap_with_validation_set"
+        training_pool_details = {
+            "training_pool_validation_files": validation_overlap,
+        }
+    else:
+        snapshot_path, snapshot_sha = materialize_training_pool_snapshot(
+            source_path=dest_path,
+            doc_id=doc_id,
+            original_filename=original_filename,
+        )
+        append_training_pool_record(
+            TrainingPoolRecord(
+                doc_id=doc_id,
+                project_id=project_id,
+                original_filename=original_filename,
+                path=dataset_relative_path(snapshot_path),
+                source_path=str(dest_path),
+                business_domain=target_business_domain,
+                document_type=target_document_type,
+                decision=decision,
+                sha256=snapshot_sha,
+                topics=list((extra_metadata or {}).get("topics", []) or []),
+                entities=list((extra_metadata or {}).get("entities", []) or []),
+                notes=note,
+            )
+        )
+        training_pool_details = {
+            "training_pool_record_path": dataset_relative_path(snapshot_path),
+            "training_pool_sha256": snapshot_sha,
+        }
+
+    indexed_payload["training_pool_status"] = training_pool_status
+    indexed_payload.update(training_pool_details)
+    return indexed_payload
+
+
 @app.post("/api/triage/{project_id}/{doc_id}/decision")
 def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) -> dict[str, Any]:
     project_root = _resolve_project_root(project_id)
@@ -2639,6 +2892,10 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
                 "sha256": data.get("sha256", ""),
             },
         )
+        update_history_item(project_root, doc_id, {
+            "business_domain": str(data.get("suggested_business_domain") or ""),
+            "decision": "rejected",
+        })
         return {"status": "ok", "action": "rejected", "doc_id": doc_id}
 
     # approve or correct
@@ -2655,126 +2912,65 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) 
     if not target_document_type:
         raise HTTPException(status_code=400, detail="document_type alvo nao definido para aprovacao/correcao")
 
+    original_filename = str(data.get("original_filename") or source_path.name)
+    decision_value = "approved" if action == "approve" else "corrected"
+
     try:
-        profile = _ensure_business_domain_in_profile(project_root, profile, target_business_domain)
-        profile = _ensure_document_type_in_profile(project_root, profile, target_document_type)
-        classification_path = resolve_classification_path(
+        indexed_payload = _relocate_document(
             project_root=project_root,
             profile=profile,
-            business_domain=target_business_domain,
-            document_type=target_document_type,
-            create_if_missing=True,
+            project_id=project_id,
+            doc_id=doc_id,
+            source_path=source_path,
+            target_business_domain=target_business_domain,
+            target_document_type=target_document_type,
+            original_filename=original_filename,
+            decision=decision_value,
+            existing_canonical_filename=str(data.get("canonical_filename") or "").strip() or None,
+            ingested_at=data.get("ingested_at"),
+            sha256=data.get("sha256", ""),
+            extra_metadata={
+                "naming_pattern": data.get("naming_pattern"),
+                "source_channel": data.get("source_channel", ""),
+                "source_ref": data.get("source_ref", ""),
+                "sender": data.get("sender", ""),
+                "received_at": data.get("received_at"),
+                "confidence_score": data.get("confidence_score", 0.0),
+                "entities": data.get("entities", []),
+                "topics": data.get("topics", []),
+            },
+            note=str(request.note or ""),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    naming = profile.get("naming") or {}
-    canonical_pattern = str(
-        data.get("naming_pattern") or naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN)
-    )
-    date_format = str(naming.get("date_format", "%Y%m%d"))
-    original_filename = str(data.get("original_filename") or source_path.name)
-    original_path = Path(original_filename)
-    canonical_filename = str(data.get("canonical_filename") or "").strip()
-    preserved_version = _extract_canonical_version(canonical_filename)
-    preserved_date = _ingested_date_token(data.get("ingested_at"), date_format)
-    if action == "correct" or not canonical_filename:
-        canonical_filename = build_canonical_filename(
-            pattern=canonical_pattern,
-            date_format=date_format,
-            fields={
-                "project": project_id,
-                "business_domain": target_business_domain,
-                "original_name": original_path.stem,
-                "document_type": target_document_type,
-            },
-            original_suffix=original_path.suffix or source_path.suffix or ".bin",
-            version=preserved_version,
-            date_override=preserved_date,
-        )
-    dest_dir = project_root / classification_path
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = dest_dir / canonical_filename
-    shutil.move(str(source_path), str(dest_path))
-
-    indexed_payload = {
-        "doc_id": doc_id,
-        "project_id": project_id,
-        "business_domain": target_business_domain,
-        "title": source_path.stem,
-        "content": read_text_excerpt(dest_path),
-        "original_filename": original_filename,
-        "canonical_filename": canonical_filename,
-        "path": str(dest_path),
-        "source_channel": data.get("source_channel", ""),
-        "source_ref": data.get("source_ref", ""),
-        "sender": data.get("sender", ""),
-        "received_at": data.get("received_at"),
-        "ingested_at": data.get("ingested_at"),
-        "processed_at": utc_now_iso(),
-        "decision": "approved" if action == "approve" else "corrected",
-        "confidence_score": float(data.get("confidence_score", 0.0)),
-        "sha256": data.get("sha256", ""),
-        "tags": [target_business_domain, target_document_type],
-        "document_type": target_document_type,
-        "entities": data.get("entities", []),
-        "naming_pattern": canonical_pattern,
-    }
-    index_document(os_client, indexed_payload, profile=profile)
-    _append_index_md(project_root, indexed_payload)
-
-    training_pool_status = "appended"
-    training_pool_details: dict[str, Any] = {}
-    validation_overlap = validation_overlap_for_file(dest_path)
-    if validation_overlap:
-        training_pool_status = "skipped_overlap_with_validation_set"
-        training_pool_details = {
-            "training_pool_validation_files": validation_overlap,
-        }
-    else:
-        snapshot_path, snapshot_sha = materialize_training_pool_snapshot(
-            source_path=dest_path,
-            doc_id=doc_id,
-            original_filename=str(indexed_payload.get("original_filename") or source_path.name),
-        )
-        append_training_pool_record(
-            TrainingPoolRecord(
-                doc_id=doc_id,
-                project_id=project_id,
-                original_filename=str(indexed_payload.get("original_filename") or source_path.name),
-                path=dataset_relative_path(snapshot_path),
-                source_path=str(dest_path),
-                business_domain=target_business_domain,
-                document_type=target_document_type,
-                decision=str(indexed_payload["decision"]),
-                sha256=snapshot_sha,
-                topics=list(data.get("topics", []) or []),
-                entities=list(data.get("entities", []) or []),
-                notes=str(request.note or ""),
-            )
-        )
-        training_pool_details = {
-            "training_pool_record_path": dataset_relative_path(snapshot_path),
-            "training_pool_sha256": snapshot_sha,
-        }
-
     data["decision"] = indexed_payload["decision"]
     data["processed_at"] = indexed_payload["processed_at"]
-    data["filename"] = canonical_filename
-    data["canonical_filename"] = canonical_filename
-    data["source_path"] = str(dest_path)
-    data["path"] = str(dest_path)
-    data["final_path"] = str(dest_path)
+    data["filename"] = indexed_payload["canonical_filename"]
+    data["canonical_filename"] = indexed_payload["canonical_filename"]
+    data["source_path"] = indexed_payload["path"]
+    data["path"] = indexed_payload["path"]
+    data["final_path"] = indexed_payload["path"]
     data["business_domain"] = target_business_domain
     data["document_type"] = target_document_type
-    data["naming_pattern"] = canonical_pattern
-    data["training_pool_status"] = training_pool_status
-    data.update(training_pool_details)
+    data["naming_pattern"] = indexed_payload["naming_pattern"]
+    data["training_pool_status"] = indexed_payload.get("training_pool_status", "")
+    if indexed_payload.get("training_pool_record_path"):
+        data["training_pool_record_path"] = indexed_payload["training_pool_record_path"]
+    if indexed_payload.get("training_pool_sha256"):
+        data["training_pool_sha256"] = indexed_payload["training_pool_sha256"]
+    if indexed_payload.get("training_pool_validation_files"):
+        data["training_pool_validation_files"] = indexed_payload["training_pool_validation_files"]
 
     pending_meta.unlink(missing_ok=True)
     (triage_resolved_dir(project_root) / f"{doc_id}.json").write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    update_history_item(project_root, doc_id, {
+        "business_domain": target_business_domain,
+        "document_type": target_document_type,
+        "decision": decision_value,
+    })
     return {"status": "ok", "action": indexed_payload["decision"], "doc_id": doc_id}
 
 

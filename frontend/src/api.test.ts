@@ -9,10 +9,12 @@ import {
   fetchStats,
   fetchSuggestions,
   getFileDownloadUrl,
+  moveDocument,
   planProjectLayout,
   sendChatMessage,
   searchDocuments,
   updateProjectProfile,
+  uploadToInbox,
   validateProjectProfile
 } from "./api";
 
@@ -337,5 +339,72 @@ describe("profile/layout api", () => {
     const apply = await applyProjectLayout("p1", { profile: profilePayload, plan_id: "plan1", confirm: true, if_match_version: 2 });
     expect(apply.ok).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("uploadToInbox", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends multipart POST and returns uploaded list", async () => {
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ uploaded: [{ filename: "doc.pdf", saved_as: "doc.pdf" }] }),
+    } as Response);
+
+    const file = new File(["content"], "doc.pdf", { type: "application/pdf" });
+    const result = await uploadToInbox("proj1", [file]);
+    expect(result.uploaded).toHaveLength(1);
+    expect(result.uploaded[0].filename).toBe("doc.pdf");
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [url, opts] = spy.mock.calls[0];
+    expect(url).toContain("/api/ingest/upload/proj1");
+    expect(opts?.method).toBe("POST");
+    expect(opts?.body).toBeInstanceOf(FormData);
+  });
+
+  it("throws on error response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false, status: 404 } as Response);
+    await expect(uploadToInbox("proj1", [])).rejects.toThrow("Falha ao enviar arquivos");
+  });
+});
+
+describe("moveDocument", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends POST with JSON body and returns move result", async () => {
+    const moveResult = {
+      status: "ok",
+      doc_id: "doc-1",
+      old_path: "/old/path",
+      new_path: "/new/path",
+      old_business_domain: "fiscal",
+      new_business_domain: "juridico",
+      old_document_type: "contrato",
+      new_document_type: "contrato",
+    };
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(moveResult),
+    } as Response);
+
+    const result = await moveDocument("proj1", "doc-1", "juridico", "contrato");
+    expect(result.status).toBe("ok");
+    expect(result.new_business_domain).toBe("juridico");
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [url, opts] = spy.mock.calls[0];
+    expect(url).toContain("/api/documents/proj1/doc-1/move");
+    expect(opts?.method).toBe("POST");
+    const body = JSON.parse(opts?.body as string);
+    expect(body.target_business_domain).toBe("juridico");
+    expect(body.target_document_type).toBe("contrato");
+  });
+
+  it("throws on error response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false, status: 400 } as Response);
+    await expect(moveDocument("proj1", "doc-1", "x", "y")).rejects.toThrow("Falha ao mover documento");
   });
 });

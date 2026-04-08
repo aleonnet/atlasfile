@@ -598,7 +598,7 @@ def sync_search_index_for_project(
             get_res = client.get(
                 index=settings.opensearch_index,
                 id=doc_id,
-                _source=["sha256", "project_id", "business_domain", "document_type"],
+                _source=["sha256", "project_id", "business_domain", "document_type", "path"],
             )
             src = get_res.get("_source") or {}
             existing_sha = src.get("sha256") or ""
@@ -615,6 +615,7 @@ def sync_search_index_for_project(
                 and existing_pid == row["project_id"]
                 and (src.get("business_domain") or "") == expected_business_domain
                 and (src.get("document_type") or "") == expected_document_type
+                and (src.get("path") or "") == row["path"]
             ):
                 skipped_docs += 1
                 if progress is not None:

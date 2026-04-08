@@ -16,6 +16,7 @@ type Props = {
   theme: ThemeMode;
   onChangeTheme: (theme: ThemeMode) => void;
   onOpenSearch: () => void;
+  onNewProject?: () => void;
 };
 
 const ALL_PROJECTS = "__all__";
@@ -30,6 +31,7 @@ export function Topbar({
   theme,
   onChangeTheme,
   onOpenSearch,
+  onNewProject,
 }: Props) {
   const orbState: CompanionState = healthOk === true ? "alive" : healthOk === false ? "error" : "idle";
 
@@ -44,7 +46,15 @@ export function Topbar({
           <select
             className="project-select"
             value={selectedProject}
-            onChange={(e) => void onSelectProject(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "__new__") {
+                e.target.value = selectedProject;
+                onNewProject?.();
+              } else {
+                void onSelectProject(v);
+              }
+            }}
           >
             <option value={ALL_PROJECTS}>Geral (todos os projetos)</option>
             {projects.map((project) => (
@@ -53,6 +63,7 @@ export function Topbar({
                 {project.initialized ? "" : " (nao inicializado)"}
               </option>
             ))}
+            {onNewProject && <option value="__new__">+ Novo projeto</option>}
           </select>
         </div>
         <nav className="topbar-nav" aria-label="Visão">

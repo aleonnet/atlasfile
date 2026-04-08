@@ -114,7 +114,7 @@ def _load_existing_labels() -> dict[str, dict]:
                 continue
             record = json.loads(line)
             sha = record.get("sha256", "")
-            if sha and sha not in labels:
+            if sha:
                 labels[sha] = {
                     "business_domain": record.get("business_domain", ""),
                     "document_type": record.get("document_type", ""),

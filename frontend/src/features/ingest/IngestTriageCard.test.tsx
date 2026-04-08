@@ -297,12 +297,7 @@ describe("IngestTriageCard", () => {
     });
   });
 
-  it("calls triggerScan and shows files in flat table", async () => {
-    const { fetchIngestHistory } = await import("../../api");
-    vi.mocked(fetchIngestHistory)
-      .mockResolvedValueOnce({ project_id: "p1", entries: [] })
-      .mockResolvedValueOnce({ project_id: "p1", entries: [mockHistoryEntry] });
-
+  it("calls triggerScan on button click", async () => {
     const onStatus = vi.fn();
     render(<IngestTriageCard {...defaultProps({ onStatus })} />);
     await waitFor(() => {
@@ -317,12 +312,6 @@ describe("IngestTriageCard", () => {
     await waitFor(() => {
       expect(vi.mocked(triggerScan)).toHaveBeenCalledWith("p1");
     });
-
-    await waitFor(() => {
-      expect(screen.getByText(/relatorio\.pdf/i)).toBeInTheDocument();
-    });
-    expect(screen.getByText(/contrato\.docx/i)).toBeInTheDocument();
-    expect(screen.getByText(/duplicado\.pdf/i)).toBeInTheDocument();
   });
 
   it("shows live inbox progress after the scan starts from an idle status", async () => {
@@ -489,116 +478,6 @@ describe("IngestTriageCard", () => {
     }
   });
 
-  it("shows LLM indicator for files classified with LLM", async () => {
-    const { fetchIngestHistory } = await import("../../api");
-    vi.mocked(fetchIngestHistory).mockResolvedValue({
-      project_id: "p1",
-      entries: [mockHistoryEntry]
-    });
-
-    render(<IngestTriageCard {...defaultProps()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("🤖")).toBeInTheDocument();
-    });
-  });
-
-  it("shows empty state when no history", async () => {
-    render(<IngestTriageCard {...defaultProps()} />);
-    await waitFor(() => {
-      expect(screen.getByText(/Nenhum processamento recente/i)).toBeInTheDocument();
-    });
-  });
-
-  it("shows Data / Hora column header and Processamentos section", async () => {
-    const { fetchIngestHistory } = await import("../../api");
-    vi.mocked(fetchIngestHistory).mockResolvedValue({
-      project_id: "p1",
-      entries: [mockHistoryEntry]
-    });
-
-    render(<IngestTriageCard {...defaultProps()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Data / Hora")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Arquivo")).toBeInTheDocument();
-    expect(screen.getByText("Domínio / Tipo")).toBeInTheDocument();
-    expect(screen.getByText("Decisão")).toBeInTheDocument();
-    expect(screen.getByText("Conf.")).toBeInTheDocument();
-    expect(screen.getByText(/Processamentos/i)).toBeInTheDocument();
-  });
-
-  it("restores scan history from backend on mount", async () => {
-    const { fetchIngestHistory } = await import("../../api");
-    vi.mocked(fetchIngestHistory).mockResolvedValue({
-      project_id: "p1",
-      entries: [mockHistoryEntry]
-    });
-
-    render(<IngestTriageCard {...defaultProps()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/relatorio\.pdf/i)).toBeInTheDocument();
-    });
-    expect(screen.getByText(/3 arquivo/i)).toBeInTheDocument();
-  });
-
-  it("flattens multiple entries into single table", async () => {
-    const { fetchIngestHistory } = await import("../../api");
-    const olderEntry = {
-      ...mockHistoryEntry,
-      timestamp: "2026-03-03T08:00:00+00:00",
-      items: [mockHistoryEntry.items[0]]
-    };
-    vi.mocked(fetchIngestHistory).mockResolvedValue({
-      project_id: "p1",
-      entries: [mockHistoryEntry, olderEntry]
-    });
-
-    render(<IngestTriageCard {...defaultProps()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/4 arquivo/i)).toBeInTheDocument();
-    });
-  });
-
-  it("shows LLM detail card when expanding a row with llm_explanation", async () => {
-    const llmEntry = {
-      ...mockHistoryEntry,
-      items: [
-        {
-          ...mockHistoryEntry.items[0],
-          rule_business_domain: "contratos_comunicacao",
-          rule_confidence: 0.33,
-          llm_explanation: "Resumo financeiro com EBITDA",
-          business_domain: "financeiro",
-          confidence_score: 0.85,
-        }
-      ]
-    };
-    const { fetchIngestHistory } = await import("../../api");
-    vi.mocked(fetchIngestHistory).mockResolvedValue({
-      project_id: "p1",
-      entries: [llmEntry]
-    });
-
-    render(<IngestTriageCard {...defaultProps()} />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/relatorio\.pdf/i)).toBeInTheDocument();
-    });
-
-    const row = screen.getByText(/relatorio\.pdf/i).closest("tr");
-    expect(row).toBeTruthy();
-    await act(async () => {
-      fireEvent.click(row!);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Resumo financeiro com EBITDA/i)).toBeInTheDocument();
-    });
-    expect(screen.getByText(/Regra:/)).toBeInTheDocument();
-  });
+  // History table tests moved to IngestHistoryCard
 
 });

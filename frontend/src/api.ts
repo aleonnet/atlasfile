@@ -28,6 +28,8 @@ import type {
   TemplateData,
   TemplateMeta,
   TriageItem,
+  UploadResult,
+  MoveResult,
   UsageSessionItem,
   UsageSummaryResponse,
   UsageTotals
@@ -567,6 +569,55 @@ export async function fetchTrainingUsage(params: {
 export async function deleteChatSession(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Falha ao excluir sessão");
+}
+
+/* ── Upload / Move ── */
+
+export async function uploadToInbox(projectId: string, files: File[]): Promise<UploadResult> {
+  const formData = new FormData();
+  for (const file of files) formData.append("files", file);
+  const res = await fetch(`${API_URL}/api/ingest/upload/${encodeURIComponent(projectId)}`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Falha ao enviar arquivos");
+  return res.json();
+}
+
+export async function fetchInboxFiles(projectId: string): Promise<{ files: Array<{ filename: string; size: number }> }> {
+  const res = await fetch(`${API_URL}/api/ingest/inbox/${encodeURIComponent(projectId)}`);
+  if (!res.ok) throw new Error("Falha ao listar inbox");
+  return res.json();
+}
+
+export async function deleteInboxFile(projectId: string, filename: string): Promise<{ status: string; deleted: string }> {
+  const res = await fetch(
+    `${API_URL}/api/ingest/upload/${encodeURIComponent(projectId)}/${encodeURIComponent(filename)}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw new Error("Falha ao deletar arquivo");
+  return res.json();
+}
+
+export async function moveDocument(
+  projectId: string,
+  docId: string,
+  targetBusinessDomain: string,
+  targetDocumentType: string
+): Promise<MoveResult> {
+  const res = await fetch(
+    `${API_URL}/api/documents/${encodeURIComponent(projectId)}/${encodeURIComponent(docId)}/move`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target_business_domain: targetBusinessDomain,
+        target_document_type: targetDocumentType,
+      }),
+    }
+  );
+  if (!res.ok) throw new Error("Falha ao mover documento");
+  return res.json();
 }
 
 /* ── Channels ── */

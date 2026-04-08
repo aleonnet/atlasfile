@@ -4,6 +4,39 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.13.0] -- 2026-04-08
+
+### Upload de arquivos via frontend
+
+- **Drag-and-drop + file picker**: zona de upload no Painel envia multiplos arquivos para `_INBOX_DROP/` via HTTP
+- **Lista de arquivos enviados**: estado done mostra cada arquivo com botao × para remover da inbox
+- **Persistencia**: inbox carregada do backend ao montar — arquivos permanecem visiveis entre trocas de aba
+- **Endpoints**: `POST /api/ingest/upload`, `GET /api/ingest/inbox`, `DELETE /api/ingest/upload/{filename}`
+
+### Move de documentos
+
+- **Endpoint move**: `POST /api/documents/{project_id}/{doc_id}/move` com integracao training pool
+- **MoveDocumentModal**: modal compartilhado com seletores bd/dt, confirmacao e erro inline
+- **Dois pontos de entrada**: botao [Mover] nos resultados de busca + icone na tabela Processamentos
+- **Todas as decisoes**: move habilitado para AUTO, TRIAGEM, aprovados e corrigidos (exceto DUP e error)
+- **Ingest history**: triage approve/correct/reject e move atualizam `ingest_history.json`
+
+### Refatoracao e componentizacao
+
+- **`_relocate_document()`**: funcao extraida do triage para reuso pelo move
+- **`PainelView`**: extraido do App.tsx (~280 linhas removidas)
+- **`IngestHistoryCard`**: tabela Processamentos extraida do IngestTriageCard, movida para o Painel
+- **`FileUploadZone`**: componente de upload com estados idle/dragover/uploading/done/error
+
+### Fixes
+
+- **Reconcile incremental**: comparacao de skip agora inclui `path` — detecta renomeacoes de arquivo
+- **`build_corpus.py`**: `_load_existing_labels` usa ultimo registro por SHA256 (correcoes sobrescrevem)
+- **`.gitignore`**: `_ATLASFILE/` adicionado para evitar artefatos de runtime no repo
+- **Teste isolado**: `test_build_corpus_last_label_wins` usa `tmp_path` em vez de poluir o repo
+
+---
+
 ## [0.12.0] -- 2026-04-06
 
 ### Evolucao UI — arquitetura de informacao e refinamento visual
