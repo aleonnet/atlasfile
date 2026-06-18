@@ -4,6 +4,17 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## Não versionado — Ferramental
+
+### PoC: MarkItDown vs Extrator AtlasFile (`extractor-benchmark_mdxaf`)
+
+- **Nova pasta de benchmark** comparando MarkItDown (vanilla) vs o extrator de produção do AtlasFile, lado a lado, sobre 6 contratos reais (PDF/DOCX/XLSX/PPTX)
+- **Comparação determinística** (sem LLM-judge, sem custo de API): métricas objetivas (tamanho, linhas de tabela markdown, densidade numérica, latência, memória) + outputs lado a lado para inspeção humana
+- **Achado principal**: extrator do AtlasFile superior em PDF nativo (preserva espaçamento; MarkItDown mangla) e escaneado (OCR; MarkItDown sai vazio após ~24 min). MarkItDown só agrega como gerador de Markdown estruturado de Office
+- **Não toca** backend, frontend nem o `extractor-benchmark/` existente. `corpus/` e `results/` fora do git (contratos sensíveis). Detalhes em `extractor-benchmark_mdxaf/ACHADOS.md`
+
+---
+
 ## [0.13.0] -- 2026-04-08
 
 ### Upload de arquivos via frontend

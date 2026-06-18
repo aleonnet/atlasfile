@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## Ferramental / PoCs (não versionado)
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [poc_markitdown_vs_atlasfile_extractor](poc_markitdown_vs_atlasfile_extractor.plan.md) | PoC `extractor-benchmark_mdxaf`: comparação lado-a-lado MarkItDown vanilla vs extrator do AtlasFile sobre 6 contratos (PDF/DOCX/XLSX/PPTX). Achado: AtlasFile superior em PDF nativo (fidelidade) e escaneado (OCR; MarkItDown vazio + 24 min); MarkItDown só agrega Markdown estruturado de Office |
+
+---
+
 ## 0.13.0
 
 | # | Plano | Escopo |

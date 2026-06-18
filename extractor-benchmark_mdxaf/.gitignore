@@ -1,0 +1,8 @@
+# Dados sensiveis e artefatos — nunca versionar.
+# corpus/ contem contratos reais; results/ contem o conteudo extraido deles.
+corpus/
+results/
+.venv/
+.env
+__pycache__/
+*.pyc
