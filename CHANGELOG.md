@@ -15,6 +15,20 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.14.0] -- 2026-07-16
+
+### Remoção do modo de classificação `setfit`
+
+- **Modos suportados agora são 3**: `bootstrap`, `sparse_logreg` e `llm`. O `setfit` perdia do `sparse_logreg` no benchmark, nunca era servido em ingestão por padrão e era o único usuário de torch/transformers/setfit/sentence-transformers (~545 MB no venv)
+- **Dependências removidas** de `requirements.txt`: `setfit`, `sentence-transformers`, `transformers` (imagem Docker do backend encolhe)
+- **Saneamento automático de registry legado**: `registry.json` persistido com `champion_mode`/`fallback_mode: "setfit"` é rebaixado na carga para `sparse_logreg` (se houver artefato) ou `bootstrap`, com warning; entradas `setfit` em `benchmark_enabled_modes` e `champion_summary` são removidas e o registry saneado é persistido
+- **Arquivos deletados**: `backend/app/classifier_setfit.py`, `backend/tests/unit/test_classifier_setfit.py`
+- **Frontend**: `setfit` removido de `OperationalClassifierMode` e das listas/labels do IngestTriageCard
+- **Dados preservados**: `_ATLASFILE/classifier/models/setfit/` não é deletado — apenas ignorado
+- Parte da Fase 1 do plano `rag_hibrido_permissoes_ui_v2`
+
+---
+
 ## [0.13.0] -- 2026-04-08
 
 ### Upload de arquivos via frontend

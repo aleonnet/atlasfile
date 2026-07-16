@@ -66,7 +66,7 @@ def test_choose_champion_mode_keeps_current_on_full_tie() -> None:
     assert mode == "bootstrap"
 
 
-def test_choose_champion_mode_considers_setfit() -> None:
+def test_choose_champion_mode_considers_llm() -> None:
     registry = ClassifierRegistry(champion_mode="bootstrap")
     mode, summary = choose_champion_mode(
         registry=registry,
@@ -90,9 +90,9 @@ def test_choose_champion_mode_considers_setfit() -> None:
                     "exact_match_accuracy": 0.50,
                 }
             },
-            "setfit": {
+            "llm": {
                 "summary": {
-                    "mode": "setfit",
+                    "mode": "llm",
                     "total_labeled": 50,
                     "business_domain_accuracy": 0.70,
                     "document_type_accuracy": 0.88,
@@ -102,7 +102,7 @@ def test_choose_champion_mode_considers_setfit() -> None:
         },
     )
 
-    assert mode == "setfit"
+    assert mode == "llm"
     assert summary.exact_match_accuracy == 0.65
 
 

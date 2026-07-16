@@ -55,11 +55,14 @@ def test_runtime_falls_back_to_bootstrap_when_supervised_artifact_is_missing(tmp
     assert result["document_type"]
 
 
-def test_runtime_falls_back_to_bootstrap_when_setfit_artifact_is_missing(tmp_path, monkeypatch) -> None:
+def test_runtime_handles_legacy_registry_with_setfit_champion(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("PROJECTS_HOST_ROOT", str(tmp_path))
-    registry = load_classifier_registry()
-    registry.champion_mode = "setfit"
-    save_classifier_registry(registry)
+    registry_path = tmp_path / "_ATLASFILE" / "classifier" / "registry.json"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps({"champion_mode": "setfit", "fallback_mode": "setfit"}),
+        encoding="utf-8",
+    )
 
     profile = _load_runtime_profile()
 
@@ -69,8 +72,7 @@ def test_runtime_falls_back_to_bootstrap_when_setfit_artifact_is_missing(tmp_pat
         text_excerpt="CONTRATO de serviços SAP Business One para implantação e suporte.",
     )
 
-    assert result["classifier_requested_mode"] == "setfit"
+    assert result["classifier_requested_mode"] == "bootstrap"
     assert result["classifier_mode"] == "bootstrap"
-    assert result["classifier_fallback_reason"] == "artifact_missing"
     assert result["business_domain"]
     assert result["document_type"]

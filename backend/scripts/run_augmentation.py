@@ -48,7 +48,7 @@ def main() -> int:
     parser.add_argument("--min-per-class", type=int, default=8, help="Mínimo de exemplos por classe")
     parser.add_argument("--max-per-class", type=int, default=20, help="Máximo de exemplos sintéticos por combinação")
     parser.add_argument("--all-combinations", action="store_true", help="Gerar para todas as combinações domain×type (default: apenas combinações do validation set)")
-    parser.add_argument("--fill-classes", action="store_true", help="Preencher classes sub-representadas com pares semanticamente coerentes (mínimo necessário para destravar SetFit)")
+    parser.add_argument("--fill-classes", action="store_true", help="Preencher classes sub-representadas com pares semanticamente coerentes")
     parser.add_argument("--dry-run", action="store_true", help="Apenas analisa gaps e mostra plano, sem gerar dados")
     parser.add_argument("--provider", default=None, help="LLM provider (openai/anthropic). Default: config.")
     parser.add_argument("--model", default=None, help="LLM model. Default: config.")

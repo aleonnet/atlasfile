@@ -105,7 +105,7 @@ Monorepo com 5 serviços Docker: API (FastAPI :8000), MCP Server (FastMCP :8001)
 - **`app/main.py`** — arquivo monolítico (~2000+ linhas) com todos os endpoints REST e SSE. Entry point do uvicorn.
 - **`app/ingestion.py`** — pipeline de ingestão: extração de texto, dedup SHA256, classificação, roteamento para filesystem, indexação no OpenSearch.
 - **`app/document_extractor.py`** — extração de PDF, DOCX, XLSX, PPTX, MSG com OCR (tesseract).
-- **`app/classifier_*.py`** — sistema de classificação com 4 modos: `bootstrap` (regras + aliases), `sparse_logreg` (TF-IDF + LogReg), `setfit` (ModernBERT contrastivo, subprocess para evitar OOM), `llm` (GPT-4o-mini). Registry global em `_ATLASFILE/classifier/`. Decisões de design: `docs/planos_concluidos/classificacao_4_modos_pipeline_dados_v090.plan.md`.
+- **`app/classifier_*.py`** — sistema de classificação com 3 modos: `bootstrap` (regras + aliases), `sparse_logreg` (TF-IDF + LogReg), `llm` (GPT-4o-mini). Registry global em `_ATLASFILE/classifier/`. Decisões de design: `docs/planos_concluidos/classificacao_4_modos_pipeline_dados_v090.plan.md` (o modo `setfit` foi removido posteriormente).
 - **`app/orchestrator.py`** — loop de chat LLM com MCP tools, suporta OpenAI e Anthropic.
 - **`app/mcp/server.py`** — MCP server (FastMCP) que expõe tools de busca, tags e stats.
 - **`app/mcp_client/`** — cliente MCP para o orchestrator chamar tools.

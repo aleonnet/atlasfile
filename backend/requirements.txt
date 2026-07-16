@@ -20,8 +20,5 @@ anthropic>=0.39.0
 extract-msg==0.55.0
 rarfile==4.2
 scikit-learn==1.8.0
-setfit>=1.1.0
-sentence-transformers>=3.0.0
-transformers>=4.40,<5
 aiogram>=3.26.0
 matplotlib>=3.9

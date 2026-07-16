@@ -53,7 +53,7 @@ def main() -> int:
     parser.add_argument("--profile", default="config/templates/default.json", help="Template/profile usado como referência")
     parser.add_argument("--min-training-docs", type=int, default=SPARSE_MIN_TRAINING_DOCS)
     parser.add_argument("--min-docs-per-class", type=int, default=SPARSE_MIN_DOCS_PER_CLASS)
-    parser.add_argument("--benchmark-modes", nargs="+", default=None, help="Modos a incluir no benchmark (ex: bootstrap sparse_logreg setfit llm)")
+    parser.add_argument("--benchmark-modes", nargs="+", default=None, help="Modos a incluir no benchmark (ex: bootstrap sparse_logreg llm)")
     args = parser.parse_args()
 
     payload = run_classifier_cycle(

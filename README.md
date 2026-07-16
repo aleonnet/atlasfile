@@ -5,7 +5,7 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 ## Visão geral
 
 - **Ingestão automática** via pasta `_INBOX_DROP` por projeto
-- **Classificação operacional** via modo efetivo do runtime (`bootstrap`, `sparse_logreg`, `setfit` ou `llm`)
+- **Classificação operacional** via modo efetivo do runtime (`bootstrap`, `sparse_logreg` ou `llm`)
 - **Ciclo do classificador** com benchmark + retreino, campeão global, override por projeto e reports persistidos
 - **Triagem humana** no frontend para documentos pendentes (`Aprovar`, `Corrigir`, `Rejeitar`)
 - **Dedup precoce** por SHA256 antes do fluxo completo
@@ -14,7 +14,7 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 - **Assistente LLM** com escopo por projeto, sessões persistentes, gráficos inline (8 tipos) e rastreamento de uso/custo
 - **Canais** com Telegram opcional e comando `/projeto` para fixar escopo do chat
 - **Templates, profiles e layout** editáveis pela UI
-- **Benchmark supervisionado** com 4 modos (bootstrap, sparse_logreg, setfit, llm), corpus unificado e splits estratificados
+- **Benchmark supervisionado** com 3 modos (bootstrap, sparse_logreg, llm), corpus unificado e splits estratificados
 - **Status em tempo real** para reconcile, INBOX e ciclo do classificador
 - **Rastreabilidade** completa: nome original → nome canônico → triagem → índice → benchmark
 
@@ -113,7 +113,7 @@ _ATLASFILE/
 - O root operacional dos datasets fica em `_ATLASFILE/classifier/datasets`, fora da imagem Docker, com corpus, splits, `validation_set` e `training_pool` persistidos no volume de projetos.
 - O runtime nao faz bootstrap silencioso a partir do repo: se o dataset operacional estiver vazio, benchmark/ciclo refletem esse estado explicitamente.
 - Cada projeto pode fixar `classification.operational.override_mode`; sem override, a ingestao usa o campeao atual.
-- O runtime serve `bootstrap`, `sparse_logreg`, `setfit` ou `llm` e faz fallback explicito para `bootstrap` se o artefato supervisionado estiver ausente ou falhar.
+- O runtime serve `bootstrap`, `sparse_logreg` ou `llm` e faz fallback explicito para `bootstrap` se o artefato supervisionado estiver ausente ou falhar.
 - Modos de benchmark sao configuraveis pela UI; cada modo pode ser habilitado/desabilitado independentemente. Modos pulados herdam metricas do ciclo anterior.
 - A triagem grava snapshots estaveis do training pool e pula documentos que colidam por SHA com o validation set.
 - A UI expoe benchmark + retreino, scorecards por documento, campeao atual, cancelamento de ciclo e override manual sem reintroduzir `baseline` como modo publico.
@@ -193,7 +193,7 @@ Arquivo entra em _INBOX_DROP
 ```
 
 - `bootstrap` continua como fallback seguro do runtime (campeao atual: 87.1% domain, 82.3% exact match)
-- `sparse_logreg`, `setfit` e `llm` sao candidatos de benchmark e podem virar modo efetivo apos o ciclo oficial
+- `sparse_logreg` e `llm` sao candidatos de benchmark e podem virar modo efetivo apos o ciclo oficial
 - o LLM de ingestão é opcional e não é o classificador principal
 
 ## Convenção de nomes (canonical)

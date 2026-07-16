@@ -467,7 +467,7 @@ export interface IngestOperationStatus {
   last_error: string | null;
 }
 
-export type OperationalClassifierMode = "bootstrap" | "sparse_logreg" | "setfit" | "llm";
+export type OperationalClassifierMode = "bootstrap" | "sparse_logreg" | "llm";
 
 export interface ClassifierBenchmarkSummary {
   mode: string;

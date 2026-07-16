@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,7 +11,9 @@ from pydantic import BaseModel, Field, model_validator
 
 from .config import settings
 
-SUPPORTED_CLASSIFIER_MODES = ("bootstrap", "sparse_logreg", "setfit", "llm")
+logger = logging.getLogger(__name__)
+
+SUPPORTED_CLASSIFIER_MODES = ("bootstrap", "sparse_logreg", "llm")
 DEFAULT_CLASSIFIER_MODE = "bootstrap"
 DEFAULT_PROMOTION_POLICY = "auto_best_with_ui_override"
 DEFAULT_BENCHMARK_ENABLED_MODES = ["bootstrap", "sparse_logreg"]
@@ -154,6 +157,34 @@ class ClassifierRegistry(BaseModel):
         return self
 
 
+def _sanitize_legacy_registry(raw: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Remove referências ao modo legado ``setfit`` de registries persistidos."""
+    changed = False
+    fallback = (
+        "sparse_logreg"
+        if (classifier_models_dir() / "sparse_logreg.pkl").exists()
+        else DEFAULT_CLASSIFIER_MODE
+    )
+    for field in ("champion_mode", "fallback_mode"):
+        if raw.get(field) == "setfit":
+            raw[field] = fallback
+            changed = True
+    modes = raw.get("benchmark_enabled_modes")
+    if isinstance(modes, list) and "setfit" in modes:
+        raw["benchmark_enabled_modes"] = [mode for mode in modes if mode != "setfit"]
+        changed = True
+    summary = raw.get("champion_summary")
+    if isinstance(summary, dict) and summary.get("mode") == "setfit":
+        raw["champion_summary"] = None
+        changed = True
+    if changed:
+        logger.warning(
+            "registry.json continha o modo removido 'setfit'; champion/fallback rebaixados para '%s'",
+            fallback,
+        )
+    return raw, changed
+
+
 def load_classifier_registry() -> ClassifierRegistry:
     ensure_classifier_runtime_dirs()
     path = classifier_registry_path()
@@ -162,7 +193,10 @@ def load_classifier_registry() -> ClassifierRegistry:
         save_classifier_registry(registry)
         return registry
     raw = json.loads(path.read_text(encoding="utf-8") or "{}")
+    raw, sanitized = _sanitize_legacy_registry(raw)
     registry = ClassifierRegistry.model_validate(raw)
+    if sanitized:
+        registry = save_classifier_registry(registry)
     if not registry.updated_at:
         registry.updated_at = _utc_now_iso()
     return registry
@@ -181,8 +215,6 @@ def save_classifier_registry(registry: ClassifierRegistry) -> ClassifierRegistry
 def classifier_model_path(mode: str) -> Path:
     if mode not in SUPPORTED_CLASSIFIER_MODES:
         raise ValueError(f"unsupported classifier mode: {mode}")
-    if mode == "setfit":
-        return classifier_models_dir() / "setfit"
     return classifier_models_dir() / f"{mode}.pkl"
 
 

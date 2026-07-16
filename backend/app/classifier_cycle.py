@@ -18,15 +18,6 @@ from .classifier_registry import (
     save_classifier_report,
     summary_from_benchmark,
 )
-from .classifier_setfit import (
-    SETFIT_MIN_DOCS_PER_CLASS,
-    SETFIT_MIN_TRAINING_DOCS,
-    compute_setfit_gate,
-    fit_setfit_artifact,
-    predict_labels_from_setfit_artifact,
-    save_setfit_artifact,
-    setfit_import_error,
-)
 from .classifier_supervised import (
     SPARSE_MODEL_FAMILIES,
     SPARSE_MIN_DOCS_PER_CLASS,
@@ -754,108 +745,6 @@ def benchmark_sparse_candidates(
     return output
 
 
-def benchmark_setfit_candidate(
-    *,
-    repo_root: Path,
-    validation_examples: list[dict[str, Any]],
-    training_records: list[TrainingPoolRecord],
-    training_examples: list[dict[str, Any]] | None = None,
-    min_training_docs: int = SETFIT_MIN_TRAINING_DOCS,
-    min_docs_per_class: int = SETFIT_MIN_DOCS_PER_CLASS,
-    include_artifacts: bool = False,
-) -> dict[str, Any]:
-    gate = compute_setfit_gate(
-        training_records,
-        min_training_docs=min_training_docs,
-        min_docs_per_class=min_docs_per_class,
-    )
-    output: dict[str, Any] = {"gate": gate, "benchmarks": {}, "training_examples_resolved": 0}
-    if not gate["eligible"]:
-        output["benchmarks"]["setfit"] = {
-            "summary": {
-                "mode": "setfit",
-                "role": mode_role("setfit"),
-                "skipped": True,
-                "skip_reason": gate["reasons"],
-                "total_labeled": len(validation_examples),
-            },
-            "results": [],
-        }
-        return output
-
-    if training_examples is None:
-        training_examples, skipped = load_training_examples(repo_root, training_records)
-    else:
-        skipped = []
-    output["training_examples_resolved"] = len(training_examples)
-
-    if skipped:
-        gate = compute_setfit_gate(
-            [example["record"] for example in training_examples],
-            min_training_docs=min_training_docs,
-            min_docs_per_class=min_docs_per_class,
-        )
-        output["gate"] = gate
-        if not gate["eligible"]:
-            output["benchmarks"]["setfit"] = {
-                "summary": {
-                    "mode": "setfit",
-                    "role": mode_role("setfit"),
-                    "skipped": True,
-                    "skip_reason": gate["reasons"],
-                    "total_labeled": len(validation_examples),
-                },
-                "results": [],
-            }
-            return output
-
-    train_texts = [example["text"] for example in training_examples]
-    train_business_domains = [example["record"].business_domain for example in training_examples]
-    train_document_types = [example["record"].document_type for example in training_examples]
-
-    artifact = fit_setfit_artifact(
-        train_texts=train_texts,
-        train_business_domains=train_business_domains,
-        train_document_types=train_document_types,
-        training_pool_records=len(training_examples),
-    )
-    if include_artifacts:
-        output["artifacts"] = {"setfit": artifact}
-
-    results: list[dict[str, Any]] = []
-    for example in validation_examples:
-        entry = example["entry"]
-        predictions = predict_labels_from_setfit_artifact(artifact, example["text"])
-        predicted_domain = str(predictions["business_domain"]["label"])
-        predicted_type = str(predictions["document_type"]["label"])
-        results.append(
-            {
-                "file": entry.file,
-                "expected_business_domain": entry.business_domain,
-                "predicted_business_domain": predicted_domain,
-                "expected_document_type": entry.document_type,
-                "predicted_document_type": predicted_type,
-                "business_domain_ok": predicted_domain == entry.business_domain,
-                "document_type_ok": predicted_type == entry.document_type,
-                "exact_ok": predicted_domain == entry.business_domain and predicted_type == entry.document_type,
-            }
-        )
-
-    output["benchmarks"]["setfit"] = {
-        "summary": summarize_predictions(
-            "setfit",
-            results,
-            extra_summary={
-                "training_pool_records": len(training_examples),
-                "validation_records": len(validation_examples),
-                "vectorizer": "setfit_paraphrase_multilingual",
-            },
-        ),
-        "results": results,
-    }
-    return output
-
-
 def _summary_threshold_ok(summary: ClassifierSummary, registry: ClassifierRegistry) -> bool:
     gates = registry.promotion_gates
     return (
@@ -930,10 +819,9 @@ def evaluate_classifier_cycle(
 ) -> dict[str, Any]:
     _enabled_modes = set(benchmark_enabled_modes) if benchmark_enabled_modes else set(SUPPORTED_CLASSIFIER_MODES)
     sparse_enabled = bool(_enabled_modes & set(SPARSE_MODEL_FAMILIES))
-    setfit_enabled = "setfit" in _enabled_modes
     llm_enabled = "llm" in _enabled_modes
     bootstrap_enabled = "bootstrap" in _enabled_modes
-    needs_supervised_data = sparse_enabled or setfit_enabled
+    needs_supervised_data = sparse_enabled
 
     # Dynamic step count: 1 per enabled model. No separate loading/persist/promote phases.
     _step = 0
@@ -942,8 +830,6 @@ def evaluate_classifier_cycle(
         _total_steps += 1
     enabled_sparse_families = [f for f in SPARSE_MODEL_FAMILIES if f in _enabled_modes]
     _total_steps += len(enabled_sparse_families)
-    if setfit_enabled:
-        _total_steps += 1
     if llm_enabled:
         _total_steps += 1
     if _total_steps == 0:
@@ -1063,45 +949,6 @@ def evaluate_classifier_cycle(
     resolved_training_examples = list(supervised.pop("resolved_training_examples", []))
     skipped_training_examples = list(supervised.get("training_examples_skipped", []) or [])
 
-    setfit_result: dict[str, Any] = {"gate": {"eligible": False, "reasons": []}, "benchmarks": {}}
-    if setfit_enabled:
-        _step += 1
-        _emit_progress(progress_callback, phase="benchmark:setfit", progress_current=_step, progress_total=_total_steps)
-        if not setfit_import_error():
-            setfit_result = benchmark_setfit_candidate(
-                repo_root=repo_root,
-                validation_examples=validation_examples,
-                training_records=training_records,
-                training_examples=resolved_training_examples or None,
-                include_artifacts=include_artifacts,
-            )
-        else:
-            setfit_result["benchmarks"]["setfit"] = {
-                "summary": {
-                    "mode": "setfit",
-                    "role": mode_role("setfit"),
-                    "skipped": True,
-                    "skip_reason": [f"setfit_unavailable:{setfit_import_error()}"],
-                    "total_labeled": len(validation_examples),
-                },
-                "results": [],
-            }
-        setfit_summary = (setfit_result.get("benchmarks", {}).get("setfit", {}) or {}).get("summary")
-        if setfit_summary:
-            _partial_benchmarks["setfit"] = {"summary": setfit_summary}
-            _emit_progress(progress_callback, benchmarks=_partial_benchmarks)
-    else:
-        setfit_result["benchmarks"]["setfit"] = {
-            "summary": {
-                "mode": "setfit",
-                "role": mode_role("setfit"),
-                "skipped": True,
-                "skip_reason": ["disabled_by_user"],
-                "total_labeled": len(validation_examples),
-            },
-            "results": [],
-        }
-
     llm_result: dict[str, Any] = {}
     if llm_enabled:
         _step += 1
@@ -1126,7 +973,6 @@ def evaluate_classifier_cycle(
     benchmarks: dict[str, Any] = {
         "bootstrap": bootstrap,
         **supervised["benchmarks"],
-        **setfit_result["benchmarks"],
         "llm": llm_result,
     }
     dataset_manifest = build_dataset_manifest(
@@ -1143,7 +989,6 @@ def evaluate_classifier_cycle(
         "dataset_manifest": dataset_manifest,
         "gates": {
             "supervised": supervised["gate"],
-            "setfit": setfit_result["gate"],
         },
         "training_pool_records_jsonl": len(training_records),
         "training_pool_records_resolved": int(supervised.get("training_examples_resolved") or 0),
@@ -1153,11 +998,8 @@ def evaluate_classifier_cycle(
     }
     if "training_examples_skipped" in supervised:
         payload["training_examples_skipped"] = supervised["training_examples_skipped"]
-    all_artifacts: dict[str, Any] = {}
     if include_artifacts:
-        all_artifacts.update(supervised.get("artifacts", {}))
-        all_artifacts.update(setfit_result.get("artifacts", {}))
-        payload["artifacts"] = all_artifacts
+        payload["artifacts"] = dict(supervised.get("artifacts", {}))
     return payload
 
 
@@ -1213,10 +1055,7 @@ def run_classifier_cycle(
                         _summary["inherited_from_report_id"] = registry.latest_report_id
         artifacts = dict(report.pop("artifacts", {}) or {})
         for family, artifact in artifacts.items():
-            if family == "setfit":
-                save_setfit_artifact(classifier_model_path(family), artifact)
-            else:
-                save_sparse_artifact(classifier_model_path(family), artifact)
+            save_sparse_artifact(classifier_model_path(family), artifact)
         champion_mode, champion_summary = choose_champion_mode(
             registry=registry,
             benchmarks=report["benchmarks"],
@@ -1230,15 +1069,10 @@ def run_classifier_cycle(
             "promotion_policy": registry.promotion_policy,
         }
         report["operational_classifier_mode"] = champion_mode
-        all_families = list(SPARSE_MODEL_FAMILIES) + ["setfit"]
         report["model_artifacts"] = {
             family: {"path": str(classifier_model_path(family))}
-            for family in all_families
-            if (
-                (classifier_model_path(family) / "metadata.json").exists()
-                if family == "setfit"
-                else classifier_model_path(family).exists()
-            )
+            for family in SPARSE_MODEL_FAMILIES
+            if classifier_model_path(family).exists()
         }
         report_id = save_classifier_report(report)
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app.classifier_registry import (
     classifier_registry_path,
     list_classifier_reports,
@@ -47,16 +49,46 @@ def test_save_classifier_report_is_listed_from_runtime_state(tmp_path, monkeypat
     assert reports[0]["champion"]["mode"] == "bootstrap"
 
 
-def test_registry_accepts_setfit_champion_mode(tmp_path, monkeypatch) -> None:
+def test_load_classifier_registry_sanitizes_legacy_setfit_entries(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("PROJECTS_HOST_ROOT", str(tmp_path))
+    registry_path = tmp_path / "_ATLASFILE" / "classifier" / "registry.json"
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.write_text(
+        json.dumps(
+            {
+                "champion_mode": "setfit",
+                "fallback_mode": "setfit",
+                "benchmark_enabled_modes": ["bootstrap", "sparse_logreg", "setfit"],
+                "champion_summary": {"mode": "setfit", "total_labeled": 10},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     registry = load_classifier_registry()
-    registry.champion_mode = "setfit"
-    save_classifier_registry(registry)
 
-    reloaded = load_classifier_registry()
+    assert registry.champion_mode == "bootstrap"
+    assert registry.fallback_mode == "bootstrap"
+    assert registry.benchmark_enabled_modes == ["bootstrap", "sparse_logreg"]
+    assert registry.champion_summary is None
 
-    assert reloaded.champion_mode == "setfit"
+    persisted = json.loads(registry_path.read_text(encoding="utf-8"))
+    assert persisted["champion_mode"] == "bootstrap"
+
+
+def test_load_classifier_registry_downgrades_setfit_to_sparse_when_artifact_exists(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PROJECTS_HOST_ROOT", str(tmp_path))
+    classifier_root = tmp_path / "_ATLASFILE" / "classifier"
+    (classifier_root / "models").mkdir(parents=True, exist_ok=True)
+    (classifier_root / "models" / "sparse_logreg.pkl").write_bytes(b"artifact")
+    (classifier_root / "registry.json").write_text(
+        json.dumps({"champion_mode": "setfit"}),
+        encoding="utf-8",
+    )
+
+    registry = load_classifier_registry()
+
+    assert registry.champion_mode == "sparse_logreg"
 
 
 def test_benchmark_enabled_modes_default_and_persistence(tmp_path, monkeypatch) -> None:
@@ -66,12 +98,12 @@ def test_benchmark_enabled_modes_default_and_persistence(tmp_path, monkeypatch) 
 
     assert registry.benchmark_enabled_modes == ["bootstrap", "sparse_logreg"]
 
-    registry.benchmark_enabled_modes = ["bootstrap", "sparse_logreg", "setfit"]
+    registry.benchmark_enabled_modes = ["bootstrap", "sparse_logreg", "llm"]
     save_classifier_registry(registry)
 
     reloaded = load_classifier_registry()
 
-    assert reloaded.benchmark_enabled_modes == ["bootstrap", "sparse_logreg", "setfit"]
+    assert reloaded.benchmark_enabled_modes == ["bootstrap", "sparse_logreg", "llm"]
 
 
 def test_benchmark_enabled_modes_rejects_unsupported_mode() -> None:

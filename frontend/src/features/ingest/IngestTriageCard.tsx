@@ -62,8 +62,6 @@ function formatClassifierModeLabel(mode?: string | null): string {
       return "bootstrap";
     case "sparse_logreg":
       return "sparse_logreg";
-    case "setfit":
-      return "setfit";
     case "llm":
       return "llm";
     default:
@@ -744,8 +742,8 @@ export function IngestTriageCard({
                 </div>
 
                 <div className="itc-benchmark-modes">
-                  {(["bootstrap", "sparse_logreg", "setfit", "llm"] as const).map((mode) => {
-                    const enabled = classifierStatus.benchmark_enabled_modes?.includes(mode) ?? (mode !== "setfit" && mode !== "llm");
+                  {(["bootstrap", "sparse_logreg", "llm"] as const).map((mode) => {
+                    const enabled = classifierStatus.benchmark_enabled_modes?.includes(mode) ?? (mode !== "llm");
                     return (
                       <label key={mode} className="checkbox-inline">
                         <input
@@ -813,7 +811,7 @@ export function IngestTriageCard({
                       </tr>
                     </thead>
                     <tbody>
-                      {(["bootstrap", "sparse_logreg", "setfit", "llm"] as const).map((mode) => {
+                      {(["bootstrap", "sparse_logreg", "llm"] as const).map((mode) => {
                         const liveSummary = liveBenchmarks?.[mode]?.summary;
                         const reportSummary = reportBenchmarks?.[mode]?.summary;
                         const liveIsSkipped = liveSummary?.skipped === true;
