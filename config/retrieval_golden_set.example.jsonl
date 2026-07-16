@@ -1,0 +1,6 @@
+# Template do golden set de retrieval (copie para <projects_root>/_ATLASFILE/retrieval_golden_set.jsonl — fora do git).
+# 1 query por linha. Campos: query (obrigatório), expected_files e/ou expected_doc_ids (>=1), project_id (opcional).
+# Dica: inclua queries parafraseadas ("contrato de aluguel" para achar doc que diz "locação") para medir o ganho semântico.
+{"query": "contrato de aluguel do escritório", "expected_files": ["Contrato_Locacao_Sede_2024.pdf"]}
+{"query": "quanto pagamos de licença do ERP", "expected_files": ["Fatura_SAP_2026-03.pdf", "Contrato_Servicos_TI.pdf"], "project_id": "meu-projeto"}
+{"query": "política de férias e abonos", "expected_doc_ids": ["a1b2c3d4"]}

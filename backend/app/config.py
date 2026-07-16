@@ -35,6 +35,23 @@ class Settings(BaseSettings):
     # Número de fragmentos de highlight em modo strict (query longa).
     search_highlight_number_of_fragments_strict: int = 6
 
+    # --- Busca híbrida (BM25 + kNN + RRF) ---
+    # Modo default do GET /api/search quando o cliente não pede mode explícito.
+    search_hybrid_enabled: bool = True
+    # k do braço semântico: nº de chunks buscados no kNN e tamanho do braço BM25 na fusão.
+    search_knn_k: int = 50
+    # Constante k do RRF (score = Σ 1/(k + rank)). 60 é o valor canônico do paper;
+    # validável com dados via scripts/benchmark_retrieval.py.
+    search_rrf_rank_constant: int = 60
+    # Rerank opcional por cross-encoder ONNX (fastembed, sem torch, custo zero de API).
+    # Requer: pip install -r backend/requirements-local-embeddings.txt
+    search_rerank_enabled: bool = False
+    # Vazio = default (jinaai/jina-reranker-v2-base-multilingual — CC-BY-NC-4.0;
+    # para uso comercial configure alternativa).
+    search_rerank_model: str = ""
+    # Quantos resultados fundidos passam pelo rerank (o restante mantém a ordem RRF).
+    search_rerank_top_n: int = 20
+
     # --- Autocomplete (suggest) ---
     # Número de sugestões retornadas no autocomplete.
     suggest_size: int = 8
@@ -90,6 +107,21 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     channel_session_timeout_minutes: int = 30
     telegram_mirror_responses: bool = False
+
+    # --- Embeddings (camada semântica / RAG) ---
+    # Habilita geração de embeddings por chunk (índice separado atlasfile_chunk_vectors).
+    # Falha de embedding nunca quebra a ingestão: o doc é indexado sem vetores e flagado.
+    embedding_enabled: bool = True
+    # Provider: "openai" (API) ou "fastembed" (local ONNX; requer requirements-local-embeddings.txt).
+    embedding_provider: str = "openai"
+    # Modelo; vazio = default do provider (openai: text-embedding-3-small; fastembed: intfloat/multilingual-e5-small).
+    embedding_model: str = ""
+    # Dimensão do vetor; 0 = default do modelo (text-embedding-3-small: 1536; multilingual-e5-small: 384).
+    # Trocar provider/modelo/dimensão exige recriar o índice de vetores e rodar scripts/backfill_embeddings.py --force.
+    embedding_dimension: int = 0
+    # Quantidade de textos por chamada de embedding (batch).
+    embedding_batch_size: int = 100
+    opensearch_chunk_vectors_index: str = "atlasfile_chunk_vectors"
 
     # --- Classification usage ---
     opensearch_classification_usage_index: str = "atlasfile_classification_usage"

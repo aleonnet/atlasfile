@@ -45,3 +45,18 @@ def test_estimate_usage_cost_from_config() -> None:
         )
         assert cost == pytest.approx(0.15 + 0.30, rel=1e-5)
         assert cost == 0.45
+
+
+def test_estimate_usage_cost_embedding_model() -> None:
+    with patch("app.usage_costs._load_config") as mock_load:
+        mock_load.return_value = {
+            "openai": {
+                "text-embedding-3-small": {"input": 0.02, "output": 0, "cache_read": 0, "cache_write": 0},
+            },
+        }
+        cost = estimate_usage_cost(
+            {"input_tokens": 1_000_000},
+            "openai",
+            "text-embedding-3-small",
+        )
+        assert cost == pytest.approx(0.02, rel=1e-6)

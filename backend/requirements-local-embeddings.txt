@@ -1,0 +1,4 @@
+# Provider local de embeddings (opcional): fastembed/ONNX, sem torch.
+# Instalar apenas se embedding_provider=fastembed:
+#   cd backend && .venv/bin/pip install -r requirements-local-embeddings.txt
+fastembed>=0.4.0

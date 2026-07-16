@@ -72,6 +72,7 @@ type EvidenceGroup = {
   label: string;
   count: number;
   snippets: string[];
+  semantic: boolean;
 };
 
 export function buildEvidenceGroups(evidences: SearchEvidence[]): EvidenceGroup[] {
@@ -82,14 +83,17 @@ export function buildEvidenceGroups(evidences: SearchEvidence[]): EvidenceGroup[
     const key = pageKey ?? ev.location;
     const label = formatEvidenceLocation(ev.location, pageCounts);
     const groupCount = pageKey ? pageCounts.get(pageKey) ?? evidenceMatchCount(ev) : evidenceMatchCount(ev);
+    const isSemantic = ev.match_type === "semantic";
     const existing = groups.get(key);
     if (!existing) {
-      groups.set(key, { key, label, count: groupCount, snippets: [ev.snippet] });
+      groups.set(key, { key, label, count: groupCount, snippets: [ev.snippet], semantic: isSemantic });
       continue;
     }
     if (!existing.snippets.includes(ev.snippet) && existing.snippets.length < 2) {
       existing.snippets.push(ev.snippet);
     }
+    // Grupo misto (lexical + semântico) mantém o rótulo lexical.
+    existing.semantic = existing.semantic && isSemantic;
   }
   return Array.from(groups.values());
 }

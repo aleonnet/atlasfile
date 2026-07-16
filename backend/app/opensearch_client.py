@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from opensearchpy import OpenSearch
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def get_client() -> OpenSearch:
@@ -86,6 +89,7 @@ def ensure_index(client: OpenSearch) -> None:
         "extension": {"type": "keyword"},
         "topics": {"type": "keyword"},
         "topics_source": {"type": "keyword"},
+        "embedding_status": {"type": "keyword"},
     }
 
     if client.indices.exists(index=index_name):
@@ -104,6 +108,75 @@ def ensure_index(client: OpenSearch) -> None:
         "mappings": {"properties": properties},
     }
     client.indices.create(index=index_name, body=mapping)
+
+
+def ensure_chunk_vectors_index(client: OpenSearch, provider: Any | None = None) -> None:
+    """Create the per-chunk vector index (separate from the main documents index).
+
+    O índice principal não recebe knn_vector (index.knn é setting estático → exigiria
+    reindex). Cada doc aqui é 1 chunk, com metadados duplicados para filtered k-NN
+    (engine lucene, suportado no OpenSearch 2.17).
+    Se o índice já existe com _meta divergente das settings atuais, apenas loga alerta
+    instruindo re-embed — nunca recria automaticamente.
+    """
+    from .embeddings import get_embedding_provider
+
+    index_name = settings.opensearch_chunk_vectors_index
+    if provider is None:
+        provider = get_embedding_provider()
+    meta = {
+        "embedding_provider": provider.provider_name,
+        "embedding_model": provider.model_name,
+        "embedding_dimension": int(provider.dimension),
+    }
+
+    if client.indices.exists(index=index_name):
+        try:
+            mapping = client.indices.get_mapping(index=index_name)
+            existing_meta = (next(iter(mapping.values())).get("mappings") or {}).get("_meta") or {}
+        except Exception:
+            existing_meta = {}
+        if existing_meta and existing_meta != meta:
+            logger.warning(
+                "Índice %s foi criado com %s mas as settings atuais pedem %s. "
+                "Para trocar provider/modelo/dimensão: delete o índice e rode "
+                "scripts/backfill_embeddings.py --force.",
+                index_name,
+                existing_meta,
+                meta,
+            )
+        return
+
+    properties: dict[str, Any] = {
+        "doc_id": {"type": "keyword"},
+        "project_id": {"type": "keyword"},
+        "business_domain": {"type": "keyword"},
+        "document_type": {"type": "keyword"},
+        "doc_kind": {"type": "keyword"},
+        "tags": {"type": "keyword"},
+        "ingested_at": {"type": "date", "ignore_malformed": True},
+        "location": {"type": "keyword"},
+        "chunk_index": {"type": "integer"},
+        "text": {"type": "text"},
+        "sha256": {"type": "keyword"},
+        "embedding_provider": {"type": "keyword"},
+        "embedding_model": {"type": "keyword"},
+        "embedding": {
+            "type": "knn_vector",
+            "dimension": int(provider.dimension),
+            "method": {
+                "name": "hnsw",
+                "space_type": "cosinesimil",
+                "engine": "lucene",
+                "parameters": {"m": 16, "ef_construction": 100},
+            },
+        },
+    }
+    body: dict[str, Any] = {
+        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0, "knn": True}},
+        "mappings": {"_meta": meta, "properties": properties},
+    }
+    client.indices.create(index=index_name, body=body)
 
 
 def ensure_chat_sessions_index(client: OpenSearch) -> None:

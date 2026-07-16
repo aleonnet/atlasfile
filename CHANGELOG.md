@@ -15,6 +15,34 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.16.0] -- 2026-07-16
+
+### Busca híbrida BM25 + kNN + RRF com rerank opcional (Fase 3 do plano rag_hibrido_permissoes_ui_v2)
+
+- **Novo `app/search_hybrid.py`**: braço semântico (kNN filtrado no `atlasfile_chunk_vectors`, agregado por documento com top-3 chunks como evidências), fusão RRF manual determinística (OpenSearch 2.17 sem RRF nativo; módulo isola o ponto de troca para ≥2.19), rerank opcional por **cross-encoder ONNX via fastembed** (sem torch; decisão ajustada após verificação SOTA — cross-encoder supera LLM listwise em custo/latência)
+- **`GET /api/search` ganha `mode`**: `hybrid` (default), `lexical`, `semantic`; fallback silencioso para lexical quando embeddings indisponíveis, com `search_mode_effective` na resposta; docs achados só via kNN entram com evidências `match_type: "semantic"`; paginação pós-fusão sobre o top-N fundido
+- **Novo `GET /api/search/chunks`** + **tool MCP `semantic_search_chunks`**: chunks crus com location/filename para RAG com citações; `search_documents` (MCP) ganha `mode`
+- **Novo `scripts/benchmark_retrieval.py`**: Recall@5/MRR/NDCG@10 por modo contra golden set de queries pt-BR (`_ATLASFILE/retrieval_golden_set.jsonl`; template em `config/retrieval_golden_set.example.jsonl`) — decisões de RRF k e rerank passam a ser mensuráveis no corpus real
+- **Frontend**: badge "semântico" (aura púrpura) em evidências vindas do braço vetorial; tipos atualizados
+- **Settings novos**: `SEARCH_HYBRID_ENABLED`, `SEARCH_KNN_K`, `SEARCH_RRF_RANK_CONSTANT`, `SEARCH_RERANK_ENABLED`, `SEARCH_RERANK_MODEL`, `SEARCH_RERANK_TOP_N`
+- Testes: 16 novos (RRF, filtros, braço semântico, rerank, integração do endpoint)
+
+---
+
+## [0.15.0] -- 2026-07-16
+
+### Camada semântica: embeddings + índice de vetores (Fase 2 do plano rag_hibrido_permissoes_ui_v2)
+
+- **Novo `app/embeddings.py`**: providers plugáveis — `openai` (text-embedding-3-small, dim 1536, batching, tokens rastreados) e `fastembed` (local/ONNX, `intfloat/multilingual-e5-small` dim 384 com prefixos query/passage; lazy import com erro claro; dependência opcional em `requirements-local-embeddings.txt`)
+- **Novo índice `atlasfile_chunk_vectors`** (1 doc por chunk, knn_vector hnsw/cosinesimil/engine lucene — filtered k-NN no OpenSearch 2.17): metadados duplicados por chunk (project_id, business_domain, document_type, doc_kind, tags, datas) para k-NN filtrado; `_meta` com provider/modelo/dimensão e alerta em divergência (nunca recria sozinho). Zero reindex do índice principal
+- **Ingestão e reconcile geram embeddings**: `index_document_chunks_embeddings` com skip incremental por sha256+provider+modelo; falha de embedding nunca quebra ingestão (doc flagado com `embedding_status`); reconcile faz backfill de docs sem vetores e remove vetores órfãos (doc removido e projeto órfão)
+- **Novo `scripts/backfill_embeddings.py`**: migração do corpus já indexado; idempotente, flags `--project` e `--force`
+- **Custos**: `text-embedding-3-small` ($0.02/1M input) em `config/usage_costs.json`; uso gravado no índice de training usage com `script_name: embeddings_ingest|embeddings_backfill`
+- **Settings novos**: `EMBEDDING_ENABLED`, `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `EMBEDDING_BATCH_SIZE` (documentados em `.env.example`/INSTALL.md)
+- Testes: 15 novos (providers/factory, ensure do índice, indexação/skip/falha, custo)
+
+---
+
 ## [0.14.0] -- 2026-07-16
 
 ### Remoção do modo de classificação `setfit`

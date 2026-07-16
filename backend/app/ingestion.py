@@ -14,7 +14,7 @@ from .area_resolver import resolve_classification_path
 from .bootstrap import ensure_project_structure
 from .config import settings
 from .classifier_runtime import classify_with_operational_mode
-from .indexer import index_document, read_text_excerpt
+from .indexer import index_document, index_document_chunks_embeddings, read_text_excerpt
 from .profile_runtime import areas_root_rel, triage_paths
 from .triage import save_pending_metadata
 from .utils import (
@@ -572,7 +572,8 @@ def process_inbox_file(
     payload["classification_reason"] = classification.get("reason", "")
 
     if decision == "auto":
-        index_document(client, payload, profile=profile)
+        enriched = index_document(client, payload, profile=profile)
+        index_document_chunks_embeddings(client, enriched)
 
     _append_index_md(project_root, payload)
     return payload

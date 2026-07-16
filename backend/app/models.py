@@ -26,6 +26,9 @@ class SearchResponse(BaseModel):
     page_size: int
     total_pages: int
     hits: list[SearchHit]
+    # "hybrid" | "lexical" | "semantic" — modo efetivamente servido (difere do pedido
+    # quando o braço semântico está indisponível e a busca degrada para lexical).
+    search_mode_effective: str | None = None
 
 
 class SearchSuggestion(BaseModel):

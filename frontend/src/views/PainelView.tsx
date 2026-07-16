@@ -450,7 +450,10 @@ export function PainelView({
                     <>
                       {buildEvidenceGroups(hit.evidences ?? []).map((group, i: number) => (
                         <div key={`evg-${hit.doc_id}-${group.key}-${i}`} className="evidence">
-                          <span className="evidence-location sub">{group.label}</span>
+                          <span className="evidence-location sub">
+                            {group.label}
+                            {group.semantic && <span className="evidence-badge-semantic">semântico</span>}
+                          </span>
                           {group.snippets.map((snippet, j) => (
                             <div
                               key={`evg-${hit.doc_id}-${group.key}-${j}`}

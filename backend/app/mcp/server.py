@@ -58,14 +58,15 @@ def search_documents(
     date_to: str | None = None,
     page: int = 1,
     size: int = 20,
+    mode: str = "hybrid",
 ) -> str:
-    """Search documents by full-text query with optional filters: project_id, business_domain, document_type, doc_kind (pdf, docx, xlsx, pptx, plain_text, html, msg, archive_listing), tags, date_from, date_to (ISO dates). Returns JSON with total, page, and hits (doc_id, title, path, score, highlights, evidences)."""
+    """Search documents by full-text query with optional filters: project_id, business_domain, document_type, doc_kind (pdf, docx, xlsx, pptx, plain_text, html, msg, archive_listing), tags, date_from, date_to (ISO dates). mode: "hybrid" (default — BM25 + semantic kNN fused via RRF, finds paraphrases and synonyms), "lexical" (exact/fuzzy term match only) or "semantic" (embedding similarity only). Returns JSON with total, page, search_mode_effective, and hits (doc_id, title, path, score, highlights, evidences; each evidence has match_type "lexical" or "semantic")."""
     if len(query.strip()) < 2:
         return json.dumps(
             {"error": "query must have at least 2 characters. Use list_documents to browse without a text query."},
             ensure_ascii=False,
         )
-    params: dict[str, Any] = {"q": query, "page": page, "size": size}
+    params: dict[str, Any] = {"q": query, "page": page, "size": size, "mode": mode}
     if project_id:
         params["project_id"] = project_id
     if business_domain:
@@ -81,6 +82,22 @@ def search_documents(
     if date_to:
         params["date_to"] = date_to
     data = get("/api/search", params=params)
+    return json.dumps(data, ensure_ascii=False)
+
+
+@mcp.tool()
+def semantic_search_chunks(
+    query: str,
+    project_id: str | None = None,
+    k: int = 10,
+) -> str:
+    """Semantic (embedding/kNN) search returning the raw text chunks most similar to the query, with doc_id, location, text, score, original_filename and path. Use for RAG-style answers with citations: quote the chunk text and cite (original_filename, location). Finds paraphrases and related concepts even when exact words differ. Falls back with available=false when embeddings are disabled. For document-level results use search_documents instead."""
+    if len(query.strip()) < 2:
+        return json.dumps({"error": "query must have at least 2 characters"}, ensure_ascii=False)
+    params: dict[str, Any] = {"q": query, "k": max(1, min(int(k), 50))}
+    if project_id:
+        params["project_id"] = project_id
+    data = get("/api/search/chunks", params=params)
     return json.dumps(data, ensure_ascii=False)
 
 

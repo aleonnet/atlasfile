@@ -46,9 +46,12 @@ def test_cleanup_removes_orphan_project() -> None:
 
     assert result["orphan_projects_found"] == 1
     assert result["orphan_docs_deleted"] == 3
-    client.delete_by_query.assert_called_once()
-    call_body = client.delete_by_query.call_args.kwargs.get("body") or client.delete_by_query.call_args[1].get("body")
-    assert call_body["query"]["term"]["project_id"] == "proj_b"
+    # 2 chamadas por órfão: índice principal + índice de chunk vectors
+    assert client.delete_by_query.call_count == 2
+    indexes_called = [call.kwargs.get("index") for call in client.delete_by_query.call_args_list]
+    assert indexes_called == ["atlasfile_documents", "atlasfile_chunk_vectors"]
+    for call in client.delete_by_query.call_args_list:
+        assert call.kwargs["body"]["query"]["term"]["project_id"] == "proj_b"
 
 
 def test_cleanup_multiple_orphans() -> None:
@@ -64,7 +67,8 @@ def test_cleanup_multiple_orphans() -> None:
 
     assert result["orphan_projects_found"] == 2
     assert result["orphan_docs_deleted"] == 4
-    assert client.delete_by_query.call_count == 2
+    # 2 órfãos x (índice principal + índice de chunk vectors)
+    assert client.delete_by_query.call_count == 4
 
 
 def test_cleanup_empty_index() -> None:

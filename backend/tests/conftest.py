@@ -26,6 +26,17 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _disable_embeddings_by_default(monkeypatch):
+    """Embeddings desabilitados por default nos testes (sem chamadas reais de API).
+
+    Testes de embeddings re-habilitam explicitamente com monkeypatch.
+    """
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "embedding_enabled", False)
+
+
 @pytest.fixture
 def mock_os_search():
     """Return a dict that mimics OpenSearch search() result for hits/total."""

@@ -35,6 +35,7 @@ export interface SearchEvidence {
   location: string;
   snippet: string;
   match_count?: number;
+  match_type?: "lexical" | "semantic";
 }
 
 export interface SearchHit {
@@ -60,6 +61,7 @@ export interface SearchResponse {
   page_size: number;
   total_pages: number;
   hits: SearchHit[];
+  search_mode_effective?: "hybrid" | "lexical" | "semantic";
 }
 
 export interface SearchSuggestion {

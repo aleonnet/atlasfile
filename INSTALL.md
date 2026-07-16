@@ -80,7 +80,21 @@ CLASSIFICATION_LLM_ENABLED=true
 CLASSIFIER_DATASETS_ROOT=/projects/_ATLASFILE/classifier/datasets
 ```
 
-Veja `.env.example` para a lista completa de variáveis (CORS, OpenSearch, reconciliação, etc.).
+```bash
+# Embeddings / busca semântica (default: habilitado com provider openai)
+# EMBEDDING_ENABLED=true
+# EMBEDDING_PROVIDER=openai   # ou "fastembed" (local, sem API):
+#   cd backend && .venv/bin/pip install -r requirements-local-embeddings.txt
+```
+
+Para popular embeddings de um corpus já indexado (migração), rode:
+
+```bash
+cd backend && .venv/bin/python scripts/backfill_embeddings.py           # idempotente
+cd backend && .venv/bin/python scripts/backfill_embeddings.py --force   # re-embedar tudo
+```
+
+Veja `.env.example` para a lista completa de variáveis (CORS, OpenSearch, reconciliação, embeddings, etc.).
 
 ---
 

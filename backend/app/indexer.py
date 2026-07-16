@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,11 @@ from .config import settings
 from .document_extractor import extract_document_content
 from .topics import match_topics
 from .utils import fold_ocr_spacing, normalize_text, sha256_file
+
+logger = logging.getLogger(__name__)
+
+# Índices de vetores já garantidos neste processo (evita exists() por documento).
+_ENSURED_VECTOR_INDEXES: set[str] = set()
 
 
 def read_text_excerpt(path: Path, limit: int = 20000) -> str:
@@ -95,7 +101,7 @@ def index_document(
     *,
     refresh: bool = True,
     profile: dict[str, Any] | None = None,
-) -> None:
+) -> dict[str, Any]:
     enriched = _enrich_search_fields(payload, profile=profile)
     limit_bytes = _indexing_pressure_limit_bytes(client)
     if isinstance(limit_bytes, int) and limit_bytes > 0:
@@ -106,6 +112,7 @@ def index_document(
         body=enriched,
         refresh=refresh,
     )
+    return enriched
 
 
 def _derive_doc_kind_from_extension(ext: str) -> str:
@@ -236,6 +243,171 @@ def _enrich_search_fields(payload: dict[str, Any], *, profile: dict[str, Any] | 
         enriched["topics"] = topics
         enriched["topics_source"] = topics_source
     return enriched
+
+
+# ---------------------------------------------------------------------------
+# Embeddings por chunk (índice separado atlasfile_chunk_vectors)
+# ---------------------------------------------------------------------------
+
+
+def _ensure_chunk_vectors_index_cached(client: OpenSearch, provider: Any) -> None:
+    from .opensearch_client import ensure_chunk_vectors_index
+
+    index_name = settings.opensearch_chunk_vectors_index
+    if index_name in _ENSURED_VECTOR_INDEXES:
+        return
+    ensure_chunk_vectors_index(client, provider)
+    _ENSURED_VECTOR_INDEXES.add(index_name)
+
+
+def document_embeddings_up_to_date(
+    client: OpenSearch,
+    doc_id: str,
+    sha256: str,
+    provider: Any,
+) -> bool:
+    """True se o índice de vetores já tem chunks deste doc para o mesmo sha256+modelo."""
+    if not sha256:
+        return False
+    try:
+        res = client.search(
+            index=settings.opensearch_chunk_vectors_index,
+            body={
+                "query": {"term": {"doc_id": doc_id}},
+                "size": 1,
+                "_source": ["sha256", "embedding_provider", "embedding_model"],
+            },
+        )
+        hits = res.get("hits", {}).get("hits", [])
+        if not hits:
+            return False
+        src = hits[0].get("_source") or {}
+        return (
+            src.get("sha256") == sha256
+            and src.get("embedding_provider") == provider.provider_name
+            and src.get("embedding_model") == provider.model_name
+        )
+    except Exception:
+        return False
+
+
+def delete_document_chunk_vectors(client: OpenSearch, doc_id: str) -> None:
+    """Remove os vetores de um documento. Nunca levanta exceção."""
+    try:
+        if not client.indices.exists(index=settings.opensearch_chunk_vectors_index):
+            return
+        client.delete_by_query(
+            index=settings.opensearch_chunk_vectors_index,
+            body={"query": {"term": {"doc_id": doc_id}}},
+            conflicts="proceed",
+            refresh=False,
+        )
+    except Exception:
+        logger.exception("Falha ao remover chunk vectors de doc_id=%s", doc_id)
+
+
+def _set_embedding_status(client: OpenSearch, doc_id: str, status: str) -> None:
+    try:
+        client.update(
+            index=settings.opensearch_index,
+            id=doc_id,
+            body={"doc": {"embedding_status": status}},
+        )
+    except Exception:
+        pass
+
+
+def index_document_chunks_embeddings(
+    client: OpenSearch,
+    payload: dict[str, Any],
+    provider: Any | None = None,
+    *,
+    usage_script_name: str = "embeddings_ingest",
+    force: bool = False,
+    record_usage: bool = True,
+) -> dict[str, Any]:
+    """Indexa embeddings dos content_chunks no índice de vetores (1 doc por chunk).
+
+    Idempotente por sha256+provider+modelo (skip incremental, exceto force=True).
+    Falha de embedding NUNCA quebra a ingestão: retorna status="failed", loga e
+    flaga o doc principal com embedding_status="failed".
+    """
+    if not getattr(settings, "embedding_enabled", False):
+        return {"status": "disabled", "chunks": 0}
+    doc_id = str(payload.get("doc_id") or "").strip()
+    if not doc_id:
+        return {"status": "skipped", "reason": "no_doc_id", "chunks": 0}
+
+    try:
+        if provider is None:
+            from .embeddings import get_embedding_provider
+
+            provider = get_embedding_provider()
+        _ensure_chunk_vectors_index_cached(client, provider)
+
+        sha = str(payload.get("sha256") or "")
+        if not force and document_embeddings_up_to_date(client, doc_id, sha, provider):
+            return {"status": "skipped", "reason": "up_to_date", "chunks": 0}
+
+        chunks = payload.get("content_chunks") or []
+        indexed_chunks = [
+            (index, str(chunk.get("text") or ""), str(chunk.get("location") or ""))
+            for index, chunk in enumerate(chunks)
+            if str(chunk.get("text") or "").strip()
+        ]
+
+        delete_document_chunk_vectors(client, doc_id)
+        if not indexed_chunks:
+            return {"status": "indexed", "chunks": 0}
+
+        tokens_before = int(getattr(provider, "total_tokens_used", 0) or 0)
+        embeddings = provider.embed_texts([text for _, text, _ in indexed_chunks])
+        tokens_used = int(getattr(provider, "total_tokens_used", 0) or 0) - tokens_before
+
+        actions = [
+            {
+                "_op_type": "index",
+                "_index": settings.opensearch_chunk_vectors_index,
+                "_id": f"{doc_id}::{chunk_index:04d}",
+                "_source": {
+                    "doc_id": doc_id,
+                    "project_id": str(payload.get("project_id") or ""),
+                    "business_domain": str(payload.get("business_domain") or ""),
+                    "document_type": str(payload.get("document_type") or ""),
+                    "doc_kind": str(payload.get("doc_kind") or ""),
+                    "tags": list(payload.get("tags") or []),
+                    "ingested_at": payload.get("ingested_at"),
+                    "location": location,
+                    "chunk_index": chunk_index,
+                    "text": text,
+                    "sha256": sha,
+                    "embedding_provider": provider.provider_name,
+                    "embedding_model": provider.model_name,
+                    "embedding": embedding,
+                },
+            }
+            for (chunk_index, text, location), embedding in zip(indexed_chunks, embeddings, strict=True)
+        ]
+        bulk(client, actions, refresh=False)
+
+        if record_usage and tokens_used > 0:
+            from .training_usage import generate_run_id, persist_training_usage
+
+            persist_training_usage(
+                script_name=usage_script_name,
+                run_id=generate_run_id(),
+                provider=provider.provider_name,
+                model=provider.model_name,
+                usage={"input_tokens": tokens_used},
+                records_processed=len(actions),
+            )
+
+        _set_embedding_status(client, doc_id, "indexed")
+        return {"status": "indexed", "chunks": len(actions), "tokens": tokens_used}
+    except Exception:
+        logger.exception("Falha ao indexar embeddings de doc_id=%s", doc_id)
+        _set_embedding_status(client, doc_id, "failed")
+        return {"status": "failed", "chunks": 0}
 
 
 def backfill_search_fields(client: OpenSearch) -> int:

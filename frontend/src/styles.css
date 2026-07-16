@@ -988,6 +988,20 @@ button.danger:hover,
   font-weight: 700;
 }
 
+.evidence-badge-semantic {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--accent-purple) 45%, transparent);
+  background: color-mix(in oklab, var(--accent-purple) 12%, transparent);
+  color: var(--accent-purple);
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
 .suggestion-title em,
 .result-title em {
   color: var(--accent);

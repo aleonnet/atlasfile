@@ -14,7 +14,13 @@ from opensearchpy import OpenSearch
 from opensearchpy.exceptions import TransportError
 
 from .config import settings
-from .indexer import index_document, read_text_excerpt
+from .indexer import (
+    delete_document_chunk_vectors,
+    document_embeddings_up_to_date,
+    index_document,
+    index_document_chunks_embeddings,
+    read_text_excerpt,
+)
 from .opensearch_client import ensure_index
 from .profile_runtime import (
     areas_root_rel,
@@ -33,6 +39,19 @@ from .utils import (
 )
 
 _VERSION_TAIL_RE = re.compile(r"__v(\d{2})(\.\w+)$")
+
+
+def _resolve_embedding_provider() -> Any | None:
+    """Provider de embeddings para o reconcile; None desabilita o braço de vetores."""
+    if not getattr(settings, "embedding_enabled", False):
+        return None
+    try:
+        from .embeddings import get_embedding_provider
+
+        return get_embedding_provider()
+    except Exception:
+        logger.exception("Embedding provider indisponível; reconcile segue sem embeddings")
+        return None
 
 
 def _is_ignored_file(path: Path) -> bool:
@@ -408,6 +427,7 @@ def rebuild_search_index(
         if client.indices.exists(index=settings.opensearch_index):
             client.indices.delete(index=settings.opensearch_index)
         ensure_index(client)
+        embed_provider = _resolve_embedding_provider()
         indexed = 0
         for project_root in project_roots:
             try:
@@ -430,7 +450,9 @@ def rebuild_search_index(
                     project_root=project_root,
                     profile=profile,
                 )
-                index_document(client, payload, refresh=False, profile=profile)
+                enriched = index_document(client, payload, refresh=False, profile=profile)
+                if embed_provider is not None:
+                    index_document_chunks_embeddings(client, enriched, embed_provider)
                 indexed += 1
                 if progress is not None:
                     progress["progress_current"] = progress.get("progress_current", 0) + 1
@@ -501,6 +523,16 @@ def cleanup_orphan_projects(
             total_deleted += int(del_res.get("deleted", 0))
         except Exception:
             logger.exception("Failed to delete orphan docs for project_id=%s", orphan_id)
+        try:
+            if client.indices.exists(index=settings.opensearch_chunk_vectors_index):
+                client.delete_by_query(
+                    index=settings.opensearch_chunk_vectors_index,
+                    body={"query": query},
+                    conflicts="proceed",
+                    refresh=False,
+                )
+        except Exception:
+            logger.exception("Failed to delete orphan chunk vectors for project_id=%s", orphan_id)
 
     if total_deleted > 0:
         try:
@@ -535,6 +567,8 @@ def sync_search_index_for_project(
     rows = [r for r in rows if Path(r["path"]).exists() and Path(r["path"]).is_file()]
     rows = [r for r in rows if not _is_ignored_file(Path(r["path"]))]
 
+    embed_provider = _resolve_embedding_provider()
+
     if not use_incremental:
         delete_result = client.delete_by_query(
             index=settings.opensearch_index,
@@ -554,7 +588,9 @@ def sync_search_index_for_project(
                 project_root=project_root,
                 profile=profile,
             )
-            index_document(client, payload, refresh=False, profile=profile)
+            enriched = index_document(client, payload, refresh=False, profile=profile)
+            if embed_provider is not None:
+                index_document_chunks_embeddings(client, enriched, embed_provider)
             indexed_docs += 1
             if progress is not None:
                 progress["progress_current"] = progress.get("progress_current", 0) + 1
@@ -581,6 +617,7 @@ def sync_search_index_for_project(
             deleted_docs += 1
         except Exception:
             pass
+        delete_document_chunk_vectors(client, doc_id)
 
     indexed_docs = 0
     skipped_docs = 0
@@ -621,6 +658,14 @@ def sync_search_index_for_project(
                 if progress is not None:
                     progress["progress_skipped"] = progress.get("progress_skipped", 0) + 1
                     progress["progress_file_pct"] = 100
+                # Doc inalterado: backfill de embeddings se ausentes/desatualizados.
+                if embed_provider is not None:
+                    try:
+                        if not document_embeddings_up_to_date(client, doc_id, current_sha, embed_provider):
+                            full_src = client.get(index=settings.opensearch_index, id=doc_id).get("_source") or {}
+                            index_document_chunks_embeddings(client, full_src, embed_provider)
+                    except Exception:
+                        logger.exception("Falha no backfill de embeddings doc_id=%s", doc_id)
                 continue
         except Exception:
             pass
@@ -640,7 +685,9 @@ def sync_search_index_for_project(
             )
             for attempt in range(3):
                 try:
-                    index_document(client, payload, refresh=False, profile=profile)
+                    enriched = index_document(client, payload, refresh=False, profile=profile)
+                    if embed_provider is not None:
+                        index_document_chunks_embeddings(client, enriched, embed_provider)
                     indexed_docs += 1
                     if progress is not None:
                         progress["progress_file_pct"] = 100

@@ -80,6 +80,13 @@ from .models import (
 )
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from .opensearch_client import ensure_chat_sessions_index, ensure_classification_usage_index, ensure_index, ensure_training_usage_index, get_client
+from .search_hybrid import (
+    build_chunk_filters,
+    rerank_pairs,
+    rrf_fuse,
+    semantic_search,
+    semantic_search_chunks,
+)
 from .project_profile import list_project_roots, load_project_profile
 from .profile_runtime import inbox_rel
 from .profile_schema_v2 import OperationalClassifierMode
@@ -3028,6 +3035,144 @@ def list_documents(
     return ListDocumentsResponse(total=total, page=page, page_size=size, items=items)
 
 
+def _semantic_snippet(text: str) -> str:
+    limit = int(settings.snippet_total_max)
+    cleaned = " ".join(str(text or "").split())
+    return cleaned if len(cleaned) <= limit else cleaned[:limit].rstrip() + "…"
+
+
+def _semantic_evidence(chunk: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "location": str(chunk.get("location") or ""),
+        "snippet": _semantic_snippet(chunk.get("text") or ""),
+        "match_count": 0,
+        "match_type": "semantic",
+    }
+
+
+def _fetch_hits_for_semantic_docs(
+    doc_ids: list[str],
+    semantic_by_id: dict[str, dict[str, Any]],
+) -> dict[str, SearchHit]:
+    """SearchHits para docs achados só via kNN (metadados via mget no índice principal)."""
+    if not doc_ids:
+        return {}
+    try:
+        res = os_client.mget(
+            index=settings.opensearch_index,
+            body={"ids": doc_ids},
+            _source=[
+                "doc_id", "project_id", "business_domain", "document_type",
+                "original_filename", "canonical_filename", "path", "content_type",
+            ],
+        )
+    except Exception:
+        _logger.exception("Falha no mget de docs do braço semântico")
+        return {}
+    out: dict[str, SearchHit] = {}
+    for doc in res.get("docs", []):
+        if not doc.get("found"):
+            continue
+        src = doc.get("_source") or {}
+        doc_id = str(src.get("doc_id") or doc.get("_id") or "")
+        sem = semantic_by_id.get(doc_id) or {}
+        chunks = list(sem.get("chunks") or [])
+        evidences = [_semantic_evidence(c) for c in chunks]
+        out[doc_id] = SearchHit(
+            doc_id=doc_id,
+            project_id=str(src.get("project_id") or ""),
+            business_domain=src.get("business_domain"),
+            document_type=src.get("document_type"),
+            original_filename=str(src.get("original_filename") or ""),
+            canonical_filename=str(src.get("canonical_filename") or ""),
+            path=str(src.get("path") or ""),
+            score=float(sem.get("score") or 0.0),
+            highlights=[],
+            match_locations=[str(c.get("location") or "") for c in chunks if c.get("location")],
+            evidences=evidences,
+            total_evidences=len(evidences),
+            omitted_evidences=0,
+            content_type=src.get("content_type"),
+        )
+    return out
+
+
+def _rerank_hybrid_hits(q: str, hits: list[SearchHit]) -> list[SearchHit]:
+    """Rerank opcional (cross-encoder) do top-N fundido; o restante mantém a ordem RRF."""
+    top_n = max(1, int(settings.search_rerank_top_n))
+    head, tail = hits[:top_n], hits[top_n:]
+    texts: list[str] = []
+    for hit in head:
+        snippet = ""
+        if hit.evidences:
+            snippet = re.sub(r"</?em>", "", str(hit.evidences[0].get("snippet") or ""))
+        texts.append(f"{hit.original_filename}\n{snippet}".strip())
+    scores = rerank_pairs(q, texts)
+    if not scores or len(scores) != len(head):
+        return hits
+    order = sorted(range(len(head)), key=lambda i: -scores[i])
+    return [head[i] for i in order] + tail
+
+
+def _build_hybrid_response(
+    *,
+    q: str,
+    page: int,
+    page_size: int,
+    lexical_hits: list[SearchHit],
+    semantic_docs: list[dict[str, Any]],
+    mode: str,
+) -> SearchResponse:
+    """Fusão RRF dos braços lexical e semântico + rerank opcional + paginação em Python.
+
+    O universo do híbrido é o top-N fundido (N = search_knn_k por braço); `total`
+    reflete o conjunto fundido, não o total lexical do índice.
+    """
+    semantic_by_id = {str(d["doc_id"]): d for d in semantic_docs}
+    lexical_by_id = {hit.doc_id: hit for hit in lexical_hits}
+    if mode == "semantic":
+        fused_ids = [str(d["doc_id"]) for d in semantic_docs]
+    else:
+        fused = rrf_fuse([
+            [hit.doc_id for hit in lexical_hits],
+            [str(d["doc_id"]) for d in semantic_docs],
+        ])
+        fused_ids = [doc_id for doc_id, _ in fused]
+    missing_ids = [doc_id for doc_id in fused_ids if doc_id not in lexical_by_id]
+    fetched = _fetch_hits_for_semantic_docs(missing_ids, semantic_by_id)
+    max_ev = int(settings.search_evidences_max_per_hit)
+    hits_out: list[SearchHit] = []
+    for doc_id in fused_ids:
+        hit = lexical_by_id.get(doc_id)
+        if hit is not None and doc_id in semantic_by_id:
+            existing_locations = {str(e.get("location") or "") for e in hit.evidences}
+            for chunk in semantic_by_id[doc_id].get("chunks") or []:
+                if len(hit.evidences) >= max_ev:
+                    break
+                location = str(chunk.get("location") or "")
+                if location and location in existing_locations:
+                    continue
+                hit.evidences.append(_semantic_evidence(chunk))
+        if hit is None:
+            hit = fetched.get(doc_id)
+        if hit is None:
+            continue
+        hits_out.append(hit)
+    if settings.search_rerank_enabled:
+        hits_out = _rerank_hybrid_hits(q, hits_out)
+    total = len(hits_out)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    start = max(0, (page - 1) * page_size)
+    return SearchResponse(
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        hits=hits_out[start : start + page_size],
+        search_mode_effective=mode,
+    )
+
+
 @app.get("/api/search", response_model=SearchResponse)
 def search(
     q: str = Query(..., min_length=2),
@@ -3040,8 +3185,29 @@ def search(
     date_to: str | None = Query(None, description="Filter ingested_at <= (ISO date)"),
     page: int = Query(1, ge=1),
     size: int | None = Query(None, ge=1, le=100),
+    mode: str | None = Query(None, description="Search mode: hybrid (BM25+kNN+RRF, default) | lexical | semantic"),
 ) -> SearchResponse:
     page_size = size if size is not None else settings.search_page_size
+    requested_mode = (mode or "").strip().lower()
+    if requested_mode not in {"lexical", "hybrid", "semantic"}:
+        requested_mode = "hybrid" if settings.search_hybrid_enabled else "lexical"
+    search_mode_effective = requested_mode
+    semantic_docs: list[dict[str, Any]] | None = None
+    if requested_mode in {"hybrid", "semantic"}:
+        chunk_filters = build_chunk_filters(
+            project_id=project_id,
+            business_domain=business_domain,
+            tags=tags,
+            document_type=document_type,
+            doc_kind=doc_kind,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        semantic_docs = semantic_search(os_client, q, filters=chunk_filters)
+        if semantic_docs is None:
+            # Degrade silencioso: braço semântico indisponível → lexical puro.
+            search_mode_effective = "lexical"
+    hybrid_active = search_mode_effective in {"hybrid", "semantic"}
     normalized_q = _normalize_query_text(q)
     query_tokens = _tokenize_normalized(q)
     # Strict mode for long natural-language queries: favor continuous coverage over loose token hits.
@@ -3172,10 +3338,12 @@ def search(
         filters.append({"range": {"ingested_at": {"lte": date_to}}})
 
     query = {"bool": {"should": should, "minimum_should_match": 2 if strict_mode else 1, "filter": filters}}
-    from_ = max(0, (page - 1) * page_size)
+    # Híbrido: busca top-N fixo (search_knn_k) em cada braço e pagina após a fusão.
+    from_ = 0 if hybrid_active else max(0, (page - 1) * page_size)
+    fetch_size = max(int(settings.search_knn_k), page_size) if hybrid_active else page_size
     body = {
         "from": from_,
-        "size": page_size,
+        "size": fetch_size,
         "query": query,
         "highlight": {
             "require_field_match": False,
@@ -3197,10 +3365,16 @@ def search(
         },
     }
 
-    try:
-        result = os_client.search(index=settings.opensearch_index, body=body)
-    except OSNotFoundError:
-        return SearchResponse(total=0, page=page, hits=[])
+    if search_mode_effective == "semantic":
+        result = {"hits": {"hits": [], "total": {"value": 0}}}
+    else:
+        try:
+            result = os_client.search(index=settings.opensearch_index, body=body)
+        except OSNotFoundError:
+            return SearchResponse(
+                total=0, page=page, page_size=page_size, total_pages=1, hits=[],
+                search_mode_effective=search_mode_effective,
+            )
     ranked_hits: list[tuple[tuple[int, int, int, float, int], SearchHit]] = []
     for h in result["hits"]["hits"]:
         src = h["_source"]
@@ -3240,7 +3414,7 @@ def search(
                 match_count = _count_query_occurrences_in_text(raw_text, q)
                 if match_count <= 0:
                     match_count = max(1, snippet.lower().count("<em>"))
-                evidences.append({"location": loc, "snippet": snippet, "match_count": match_count})
+                evidences.append({"location": loc, "snippet": snippet, "match_count": match_count, "match_type": "lexical"})
             evidences.sort(key=lambda e: _evidence_location_sort_key(e.get("location", "")))
             if evidences:
                 best_idx = max(range(len(evidences)), key=lambda i: int(evidences[i].get("match_count", 0)))
@@ -3271,11 +3445,75 @@ def search(
                 ),
             )
         )
-    total = result["hits"]["total"]["value"] if isinstance(result["hits"]["total"], dict) else int(result["hits"]["total"])
-    total_pages = max(1, (total + page_size - 1) // page_size)
     ranked_hits.sort(key=lambda item: item[0], reverse=True)
-    hits = [item[1] for item in ranked_hits]
-    return SearchResponse(total=total, page=page, page_size=page_size, total_pages=total_pages, hits=hits)
+    lexical_hits = [item[1] for item in ranked_hits]
+    if not hybrid_active:
+        total = result["hits"]["total"]["value"] if isinstance(result["hits"]["total"], dict) else int(result["hits"]["total"])
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        return SearchResponse(
+            total=total, page=page, page_size=page_size, total_pages=total_pages,
+            hits=lexical_hits, search_mode_effective="lexical",
+        )
+    return _build_hybrid_response(
+        q=q,
+        page=page,
+        page_size=page_size,
+        lexical_hits=lexical_hits,
+        semantic_docs=semantic_docs or [],
+        mode=search_mode_effective,
+    )
+
+
+@app.get("/api/search/chunks")
+def search_semantic_chunks(
+    q: str = Query(..., min_length=2),
+    project_id: str | None = None,
+    business_domain: str | None = None,
+    document_type: str | None = None,
+    doc_kind: str | None = None,
+    k: int = Query(10, ge=1, le=50),
+) -> dict[str, Any]:
+    """Chunks crus por busca semântica (kNN) — base para RAG com citações via MCP."""
+    filters = build_chunk_filters(
+        project_id=project_id,
+        business_domain=business_domain,
+        document_type=document_type,
+        doc_kind=doc_kind,
+    )
+    chunks = semantic_search_chunks(os_client, q, filters=filters, k=k)
+    if chunks is None:
+        return {
+            "available": False,
+            "chunks": [],
+            "message": "Busca semântica indisponível (embeddings desabilitados ou provider com falha).",
+        }
+    doc_ids = sorted({str(c["doc_id"]) for c in chunks})
+    doc_meta: dict[str, dict[str, Any]] = {}
+    if doc_ids:
+        try:
+            res = os_client.mget(
+                index=settings.opensearch_index,
+                body={"ids": doc_ids},
+                _source=["doc_id", "project_id", "original_filename", "path"],
+            )
+            for doc in res.get("docs", []):
+                if doc.get("found"):
+                    src = doc.get("_source") or {}
+                    doc_meta[str(src.get("doc_id") or doc.get("_id") or "")] = src
+        except Exception:
+            _logger.exception("Falha no mget de metadados para /api/search/chunks")
+    enriched = []
+    for chunk in chunks:
+        meta = doc_meta.get(str(chunk["doc_id"]), {})
+        enriched.append(
+            {
+                **chunk,
+                "original_filename": str(meta.get("original_filename") or ""),
+                "path": str(meta.get("path") or ""),
+                "project_id": str(meta.get("project_id") or ""),
+            }
+        )
+    return {"available": True, "chunks": enriched}
 
 
 @app.get("/api/search/suggest", response_model=SuggestResponse)
