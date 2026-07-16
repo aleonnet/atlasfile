@@ -29,6 +29,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# Load .env from project root (two levels up from scripts/)
+_env_path = Path(__file__).resolve().parents[2] / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            value = value.strip()
+            if "  #" in value:
+                value = value[:value.index("  #")].strip()
+            os.environ.setdefault(key.strip(), value)
+
 import httpx  # noqa: E402
 
 from app.classifier_registry import classifier_state_base_root  # noqa: E402
@@ -56,13 +68,17 @@ def load_golden(path: Path) -> list[dict]:
     return entries
 
 
-def hit_is_relevant(hit: dict, entry: dict) -> bool:
+def hit_expected_key(hit: dict, entry: dict) -> str | None:
+    """Chave do item esperado que este hit satisfaz, ou None."""
     expected_ids = {str(v) for v in (entry.get("expected_doc_ids") or [])}
     expected_files = {str(v) for v in (entry.get("expected_files") or [])}
-    return (
-        str(hit.get("doc_id") or "") in expected_ids
-        or str(hit.get("original_filename") or "") in expected_files
-    )
+    doc_id = str(hit.get("doc_id") or "")
+    filename = str(hit.get("original_filename") or "")
+    if doc_id in expected_ids:
+        return f"id:{doc_id}"
+    if filename in expected_files:
+        return f"file:{filename}"
+    return None
 
 
 def evaluate_query(client: httpx.Client, api_base: str, entry: dict, mode: str) -> dict:
@@ -73,7 +89,16 @@ def evaluate_query(client: httpx.Client, api_base: str, entry: dict, mode: str) 
     response.raise_for_status()
     payload = response.json()
     hits = payload.get("hits") or []
-    relevance = [1 if hit_is_relevant(hit, entry) else 0 for hit in hits[:RANK_AT]]
+    # Cada item esperado conta 1 vez (corpus pode ter o mesmo arquivo em N projetos).
+    relevance: list[int] = []
+    matched_keys: set[str] = set()
+    for hit in hits[:RANK_AT]:
+        key = hit_expected_key(hit, entry)
+        if key and key not in matched_keys:
+            matched_keys.add(key)
+            relevance.append(1)
+        else:
+            relevance.append(0)
     expected_total = len(entry.get("expected_doc_ids") or []) + len(entry.get("expected_files") or [])
 
     found_at_recall = sum(relevance[:RECALL_AT])

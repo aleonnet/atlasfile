@@ -60,3 +60,17 @@ def test_estimate_usage_cost_embedding_model() -> None:
             "text-embedding-3-small",
         )
         assert cost == pytest.approx(0.02, rel=1e-6)
+
+
+def test_load_config_falls_back_to_repo_config_when_container_path_missing() -> None:
+    """Path default aponta para /workspace (container); execução local usa o config do repo."""
+    from app.usage_costs import _LOADED, _load_config
+
+    _LOADED.clear()
+    with patch("app.usage_costs.settings") as mock_settings:
+        mock_settings.usage_costs_config_path = "/workspace/config/usage_costs.json"
+        config = _load_config()
+    _LOADED.clear()
+
+    assert "openai" in config
+    assert "text-embedding-3-small" in config["openai"]

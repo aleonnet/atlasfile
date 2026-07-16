@@ -22,6 +22,12 @@ def _load_config() -> dict:
     path = Path(path_str)
     if not path.is_absolute():
         path = Path.cwd() / path_str
+    if not path.exists():
+        # Fallback: path default aponta para o container (/workspace); em execução
+        # local (scripts no venv) usa o config/usage_costs.json do repositório.
+        repo_fallback = Path(__file__).resolve().parents[2] / "config" / "usage_costs.json"
+        if repo_fallback.exists():
+            path = repo_fallback
     if path not in _LOADED:
         try:
             if path.exists():
