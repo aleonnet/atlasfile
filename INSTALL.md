@@ -94,7 +94,17 @@ cd backend && .venv/bin/python scripts/backfill_embeddings.py           # idempo
 cd backend && .venv/bin/python scripts/backfill_embeddings.py --force   # re-embedar tudo
 ```
 
-Veja `.env.example` para a lista completa de variáveis (CORS, OpenSearch, reconciliação, embeddings, etc.).
+```bash
+# Autenticação por API key (default: desligada)
+# API_AUTH_ENABLED=true
+# 1) Crie config/api_keys.json a partir de config/api_keys.example.json (fica fora do git)
+# 2) Coloque a key do MCP em ATLASFILE_API_TOKEN no .env (precisa existir no json)
+# 3) Rebuild do container api (as keys entram na imagem no build)
+# 4) No frontend: Config → Acesso → cole a key do navegador
+# Obs.: a porta 8001 (MCP) não valida key — mantenha-a interna/fechada na rede.
+```
+
+Veja `.env.example` para a lista completa de variáveis (CORS, OpenSearch, reconciliação, embeddings, auth, etc.).
 
 ---
 

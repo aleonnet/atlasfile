@@ -42,8 +42,62 @@ const API_BASE =
     : "http://localhost:8000");
 export const API_URL = API_BASE;
 
+/* ── Autenticação (API key + escopo de projeto) ── */
+
+const API_KEY_STORAGE = "atlasfile_api_key";
+
+export function getApiKey(): string {
+  try {
+    return localStorage.getItem(API_KEY_STORAGE) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setApiKey(value: string): void {
+  try {
+    if (value.trim()) localStorage.setItem(API_KEY_STORAGE, value.trim());
+    else localStorage.removeItem(API_KEY_STORAGE);
+  } catch {
+    /* storage indisponível (ex.: modo privado) — segue sem persistir */
+  }
+}
+
+type UnauthorizedHandler = (status: number, detail: string) => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+/** Registra callback para 401/403 (ex.: exibir aviso na UI). */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  unauthorizedHandler = handler;
+}
+
+/** fetch com Authorization: Bearer <api key> quando configurada; notifica 401/403. */
+async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const key = getApiKey();
+  const headers = new Headers(init.headers);
+  if (key && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${key}`);
+  const res = await fetch(input, { ...init, headers });
+  if ((res.status === 401 || res.status === 403) && unauthorizedHandler) {
+    let detail = "";
+    try {
+      detail = String((await res.clone().json())?.detail ?? "");
+    } catch {
+      /* corpo não-JSON */
+    }
+    unauthorizedHandler(res.status, detail);
+  }
+  return res;
+}
+
+/** Anexa a API key como query param — para URLs sem header (EventSource/links). */
+function withApiKeyParam(url: string): string {
+  const key = getApiKey();
+  if (!key) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(key)}`;
+}
+
 export function getFileDownloadUrl(filePath: string): string {
-  return `${API_URL}/api/files/download?path=${encodeURIComponent(filePath)}`;
+  return withApiKeyParam(`${API_URL}/api/files/download?path=${encodeURIComponent(filePath)}`);
 }
 
 /* ── Setup / Onboarding ── */
@@ -57,20 +111,20 @@ export interface SetupStatus {
 }
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {
-  const res = await fetch(`${API_URL}/api/setup/status`);
+  const res = await apiFetch(`${API_URL}/api/setup/status`);
   if (!res.ok) throw new Error("Falha ao verificar status de setup");
   return res.json();
 }
 
 export async function fetchProjects(): Promise<Project[]> {
-  const res = await fetch(`${API_URL}/api/projects`);
+  const res = await apiFetch(`${API_URL}/api/projects`);
   if (!res.ok) throw new Error("Falha ao carregar projetos");
   return res.json();
 }
 
 export async function initializeProject(projectRef: string, templateSlug?: string): Promise<{ status: string; already_initialized: boolean }> {
   const params = templateSlug ? `?template=${encodeURIComponent(templateSlug)}` : "";
-  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/initialize${params}`, { method: "POST" });
+  const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/initialize${params}`, { method: "POST" });
   if (!res.ok) throw new Error("Falha ao inicializar projeto");
   return res.json();
 }
@@ -78,19 +132,19 @@ export async function initializeProject(projectRef: string, templateSlug?: strin
 /* ── Templates ── */
 
 export async function listTemplates(): Promise<TemplateMeta[]> {
-  const res = await fetch(`${API_URL}/api/templates`);
+  const res = await apiFetch(`${API_URL}/api/templates`);
   if (!res.ok) throw new Error("Falha ao listar templates");
   return res.json();
 }
 
 export async function getTemplate(slug: string): Promise<TemplateData> {
-  const res = await fetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`);
+  const res = await apiFetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`);
   if (!res.ok) throw new Error("Template não encontrado");
   return res.json();
 }
 
 export async function saveTemplate(slug: string, data: Record<string, unknown>): Promise<TemplateMeta> {
-  const res = await fetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`, {
+  const res = await apiFetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -100,7 +154,7 @@ export async function saveTemplate(slug: string, data: Record<string, unknown>):
 }
 
 export async function createTemplate(data: Record<string, unknown>): Promise<TemplateMeta> {
-  const res = await fetch(`${API_URL}/api/templates`, {
+  const res = await apiFetch(`${API_URL}/api/templates`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -110,18 +164,18 @@ export async function createTemplate(data: Record<string, unknown>): Promise<Tem
 }
 
 export async function deleteTemplate(slug: string): Promise<void> {
-  const res = await fetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`, { method: "DELETE" });
+  const res = await apiFetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Falha ao excluir template");
 }
 
 export async function fetchProjectProfile(projectRef: string): Promise<ProjectProfileResponse> {
-  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile`);
+  const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile`);
   if (!res.ok) throw new Error("Falha ao carregar profile do projeto");
   return res.json();
 }
 
 export async function validateProjectProfile(projectRef: string, profile: ProjectProfileV2): Promise<{ valid: boolean; profile: ProjectProfileV2 }> {
-  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile/validate`, {
+  const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile/validate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ profile })
@@ -136,7 +190,7 @@ export async function updateProjectProfile(
   ifMatchVersion: number,
   updatedBy?: string
 ): Promise<ProjectProfileResponse> {
-  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile`, {
+  const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -150,7 +204,7 @@ export async function updateProjectProfile(
 }
 
 export async function fetchProfileHistory(projectRef: string): Promise<{ entries: Array<{ entry: string; version: number; updated_at: string | null; updated_by: string | null; etag: string }> }> {
-  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile/history`);
+  const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile/history`);
   if (!res.ok) throw new Error("Falha ao carregar histórico de profile");
   return res.json();
 }
@@ -160,7 +214,7 @@ export async function planProjectLayout(
   profile: ProjectProfileV2,
   options?: { strategy?: "rename_with_suffix" | "skip" | "overwrite"; cleanup_empty_dirs?: boolean }
 ): Promise<LayoutPlanResponse> {
-  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/layout/plan`, {
+  const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/layout/plan`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -184,7 +238,7 @@ export async function applyProjectLayout(
     if_match_version?: number;
   }
 ): Promise<{ ok: boolean; plan_id: string; profile_version: number; apply: Record<string, unknown> }> {
-  const res = await fetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/layout/apply`, {
+  const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/layout/apply`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -194,37 +248,37 @@ export async function applyProjectLayout(
 }
 
 export async function triggerScan(projectId: string): Promise<ScanResult> {
-  const res = await fetch(`${API_URL}/api/ingest/scan/${projectId}`, { method: "POST" });
+  const res = await apiFetch(`${API_URL}/api/ingest/scan/${projectId}`, { method: "POST" });
   if (!res.ok) throw new Error("Falha ao escanear inbox");
   return res.json();
 }
 
 export async function fetchIngestHistory(projectId: string): Promise<IngestHistoryResponse> {
-  const res = await fetch(`${API_URL}/api/ingest/history/${encodeURIComponent(projectId)}`);
+  const res = await apiFetch(`${API_URL}/api/ingest/history/${encodeURIComponent(projectId)}`);
   if (!res.ok) throw new Error("Falha ao carregar histórico de ingestão");
   return res.json();
 }
 
 export async function fetchIngestStatus(): Promise<IngestOperationStatus> {
-  const res = await fetch(`${API_URL}/api/ingest/status`);
+  const res = await apiFetch(`${API_URL}/api/ingest/status`);
   if (!res.ok) throw new Error("Falha ao carregar status da ingestão");
   return res.json();
 }
 
 export function getIngestStatusStreamUrl(): string {
-  return `${API_URL}/api/ingest/status/stream`;
+  return withApiKeyParam(`${API_URL}/api/ingest/status/stream`);
 }
 
 export async function fetchClassifierStatus(projectId?: string): Promise<ClassifierStatusResponse> {
   const url = new URL(`${API_URL}/api/classifier/status`);
   if (projectId) url.searchParams.set("project_id", projectId);
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar status do classificador");
   return res.json();
 }
 
 export async function fetchClassifierReportLatest(): Promise<ClassifierReport> {
-  const res = await fetch(`${API_URL}/api/classifier/report/latest`);
+  const res = await apiFetch(`${API_URL}/api/classifier/report/latest`);
   if (!res.ok) throw new Error("Falha ao carregar benchmark atual");
   return res.json();
 }
@@ -232,13 +286,13 @@ export async function fetchClassifierReportLatest(): Promise<ClassifierReport> {
 export async function fetchClassifierReports(limit = 10): Promise<ClassifierReportSummary[]> {
   const url = new URL(`${API_URL}/api/classifier/reports`);
   url.searchParams.set("limit", String(limit));
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar histórico do classificador");
   return res.json();
 }
 
 export async function deleteClassifierReport(reportId: string): Promise<void> {
-  const res = await fetch(`${API_URL}/api/classifier/reports/${encodeURIComponent(reportId)}`, {
+  const res = await apiFetch(`${API_URL}/api/classifier/reports/${encodeURIComponent(reportId)}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -251,7 +305,7 @@ export async function updateClassifierOverride(
   projectId: string,
   overrideMode: OperationalClassifierMode | null
 ): Promise<ClassifierStatusResponse> {
-  const res = await fetch(`${API_URL}/api/classifier/override/${encodeURIComponent(projectId)}`, {
+  const res = await apiFetch(`${API_URL}/api/classifier/override/${encodeURIComponent(projectId)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ override_mode: overrideMode })
@@ -261,7 +315,7 @@ export async function updateClassifierOverride(
 }
 
 export async function updateBenchmarkEnabledModes(modes: string[]): Promise<ClassifierStatusResponse> {
-  const res = await fetch(`${API_URL}/api/classifier/benchmark-modes`, {
+  const res = await apiFetch(`${API_URL}/api/classifier/benchmark-modes`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ benchmark_enabled_modes: modes }),
@@ -277,26 +331,26 @@ export async function startClassifierCycle(params?: {
   const url = new URL(`${API_URL}/api/classifier/cycle`);
   if (params?.min_training_docs != null) url.searchParams.set("min_training_docs", String(params.min_training_docs));
   if (params?.min_docs_per_class != null) url.searchParams.set("min_docs_per_class", String(params.min_docs_per_class));
-  const res = await fetch(url.toString(), { method: "POST" });
+  const res = await apiFetch(url.toString(), { method: "POST" });
   if (res.status === 409) throw new Error("Ciclo do classificador já em andamento");
   if (!res.ok) throw new Error("Falha ao iniciar ciclo do classificador");
   return res.json();
 }
 
 export async function fetchClassifierCycleStatus(): Promise<ClassifierCycleStatus> {
-  const res = await fetch(`${API_URL}/api/classifier/cycle/status`);
+  const res = await apiFetch(`${API_URL}/api/classifier/cycle/status`);
   if (!res.ok) throw new Error("Falha ao carregar status do ciclo do classificador");
   return res.json();
 }
 
 export async function cancelClassifierCycle(): Promise<void> {
-  const res = await fetch(`${API_URL}/api/classifier/cycle`, { method: "DELETE" });
+  const res = await apiFetch(`${API_URL}/api/classifier/cycle`, { method: "DELETE" });
   if (res.status === 409) throw new Error("Nenhum ciclo em andamento");
   if (!res.ok) throw new Error("Falha ao cancelar ciclo do classificador");
 }
 
 export function getClassifierCycleStatusStreamUrl(): string {
-  return `${API_URL}/api/classifier/cycle/status/stream`;
+  return withApiKeyParam(`${API_URL}/api/classifier/cycle/status/stream`);
 }
 
 export async function searchDocuments(
@@ -314,7 +368,7 @@ export async function searchDocuments(
   if (filters?.doc_kind) url.searchParams.set("doc_kind", filters.doc_kind);
   if (filters?.document_type) url.searchParams.set("document_type", filters.document_type);
   if (filters?.business_domain) url.searchParams.set("business_domain", filters.business_domain);
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha na busca");
   return res.json();
 }
@@ -322,7 +376,7 @@ export async function searchDocuments(
 export async function fetchStats(projectId?: string): Promise<StatsResponse> {
   const url = new URL(`${API_URL}/api/stats`);
   if (projectId) url.searchParams.set("project_id", projectId);
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar estatísticas");
   return res.json();
 }
@@ -331,13 +385,13 @@ export async function fetchSuggestions(query: string, projectId?: string): Promi
   const url = new URL(`${API_URL}/api/search/suggest`);
   url.searchParams.set("q", query);
   if (projectId) url.searchParams.set("project_id", projectId);
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha no autocomplete");
   return res.json();
 }
 
 export async function fetchTriage(projectId: string): Promise<TriageItem[]> {
-  const res = await fetch(`${API_URL}/api/triage/${projectId}`);
+  const res = await apiFetch(`${API_URL}/api/triage/${projectId}`);
   if (!res.ok) throw new Error("Falha ao carregar triagem");
   return res.json();
 }
@@ -349,7 +403,7 @@ export async function triageDecision(
   targetBusinessDomain?: string,
   targetDocumentType?: string
 ): Promise<void> {
-  const res = await fetch(`${API_URL}/api/triage/${projectId}/${docId}/decision`, {
+  const res = await apiFetch(`${API_URL}/api/triage/${projectId}/${docId}/decision`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -367,37 +421,37 @@ export async function runReconcile(projectId?: string): Promise<{
   summary?: ReconcileStatus["summary"];
 }> {
   const url = projectId ? `${API_URL}/api/reconcile/${encodeURIComponent(projectId)}` : `${API_URL}/api/reconcile`;
-  const res = await fetch(url, { method: "POST" });
+  const res = await apiFetch(url, { method: "POST" });
   if (res.status === 409) throw new Error("Reconciliacao ja em andamento");
   if (!res.ok) throw new Error("Falha ao reconciliar");
   return res.json();
 }
 
 export async function fetchReconcileStatus(): Promise<ReconcileStatus> {
-  const res = await fetch(`${API_URL}/api/reconcile/status`);
+  const res = await apiFetch(`${API_URL}/api/reconcile/status`);
   if (!res.ok) throw new Error("Falha ao carregar status de reconciliacao");
   return res.json();
 }
 
 /** URL do stream SSE de status de reconcile (Server-Sent Events). */
 export function getReconcileStatusStreamUrl(): string {
-  return `${API_URL}/api/reconcile/status/stream`;
+  return withApiKeyParam(`${API_URL}/api/reconcile/status/stream`);
 }
 
 /** URL do stream SSE de eventos de uma sessão de chat (atualização em tempo real). */
 export function getSessionEventsUrl(sessionId: string): string {
-  return `${API_URL}/api/chat/sessions/${encodeURIComponent(sessionId)}/events`;
+  return withApiKeyParam(`${API_URL}/api/chat/sessions/${encodeURIComponent(sessionId)}/events`);
 }
 
 /** Health check: backend GET /health returns 200 when OK. */
 export async function fetchHealth(): Promise<{ ok: boolean }> {
-  const res = await fetch(`${API_URL}/health`);
+  const res = await apiFetch(`${API_URL}/health`);
   return { ok: res.ok };
 }
 
 /** List LLM models (provider/model) for chat. */
 export async function fetchModels(): Promise<ModelOption[]> {
-  const res = await fetch(`${API_URL}/api/models`);
+  const res = await apiFetch(`${API_URL}/api/models`);
   if (!res.ok) throw new Error("Falha ao carregar modelos");
   return res.json();
 }
@@ -423,7 +477,7 @@ export async function sendChatMessage(
   if (options?.provider) body.provider = options.provider;
   if (options?.model) body.model = options.model;
   if (options?.enableThinking === true) body.enable_thinking = true;
-  const res = await fetch(`${API_URL}/api/chat`, {
+  const res = await apiFetch(`${API_URL}/api/chat`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -446,14 +500,14 @@ export async function sendChatMessage(
 export async function fetchChatSessions(q?: string): Promise<ChatSession[]> {
   const url = new URL(`${API_URL}/api/chat/sessions`);
   if (q?.trim()) url.searchParams.set("q", q.trim());
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha ao listar sessões");
   return res.json();
 }
 
 /** Get one chat session by id. */
 export async function getChatSession(id: string): Promise<ChatSession> {
-  const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`);
+  const res = await apiFetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`);
   if (!res.ok) throw new Error("Sessão não encontrada");
   return res.json();
 }
@@ -469,7 +523,7 @@ export async function createChatSession(payload: {
   channel?: string;
   channel_chat_id?: string | null;
 }): Promise<ChatSession> {
-  const res = await fetch(`${API_URL}/api/chat/sessions`, {
+  const res = await apiFetch(`${API_URL}/api/chat/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -491,7 +545,7 @@ export async function updateChatSession(
     source_channel?: string;
   }
 ): Promise<ChatSession> {
-  const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -512,7 +566,7 @@ export async function fetchUsageSummary(params: {
   url.searchParams.set("end_date", params.end_date);
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
   if (params.channel?.trim()) url.searchParams.set("channel", params.channel.trim());
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar resumo de uso");
   return res.json();
 }
@@ -531,7 +585,7 @@ export async function fetchUsageSessions(params: {
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
   if (params.channel?.trim()) url.searchParams.set("channel", params.channel.trim());
   if (params.limit != null) url.searchParams.set("limit", String(params.limit));
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar sessões de uso");
   return res.json();
 }
@@ -546,7 +600,7 @@ export async function fetchClassificationUsage(params: {
   url.searchParams.set("start_date", params.start_date);
   url.searchParams.set("end_date", params.end_date);
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar uso de classificação");
   return res.json();
 }
@@ -560,14 +614,14 @@ export async function fetchTrainingUsage(params: {
   url.searchParams.set("start_date", params.start_date);
   url.searchParams.set("end_date", params.end_date);
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
-  const res = await fetch(url.toString());
+  const res = await apiFetch(url.toString());
   if (!res.ok) throw new Error("Falha ao carregar uso de treinamento");
   return res.json();
 }
 
 /** Delete a chat session. */
 export async function deleteChatSession(id: string): Promise<void> {
-  const res = await fetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  const res = await apiFetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Falha ao excluir sessão");
 }
 
@@ -576,7 +630,7 @@ export async function deleteChatSession(id: string): Promise<void> {
 export async function uploadToInbox(projectId: string, files: File[]): Promise<UploadResult> {
   const formData = new FormData();
   for (const file of files) formData.append("files", file);
-  const res = await fetch(`${API_URL}/api/ingest/upload/${encodeURIComponent(projectId)}`, {
+  const res = await apiFetch(`${API_URL}/api/ingest/upload/${encodeURIComponent(projectId)}`, {
     method: "POST",
     body: formData,
   });
@@ -585,13 +639,13 @@ export async function uploadToInbox(projectId: string, files: File[]): Promise<U
 }
 
 export async function fetchInboxFiles(projectId: string): Promise<{ files: Array<{ filename: string; size: number }> }> {
-  const res = await fetch(`${API_URL}/api/ingest/inbox/${encodeURIComponent(projectId)}`);
+  const res = await apiFetch(`${API_URL}/api/ingest/inbox/${encodeURIComponent(projectId)}`);
   if (!res.ok) throw new Error("Falha ao listar inbox");
   return res.json();
 }
 
 export async function deleteInboxFile(projectId: string, filename: string): Promise<{ status: string; deleted: string }> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_URL}/api/ingest/upload/${encodeURIComponent(projectId)}/${encodeURIComponent(filename)}`,
     { method: "DELETE" }
   );
@@ -605,7 +659,7 @@ export async function moveDocument(
   targetBusinessDomain: string,
   targetDocumentType: string
 ): Promise<MoveResult> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_URL}/api/documents/${encodeURIComponent(projectId)}/${encodeURIComponent(docId)}/move`,
     {
       method: "POST",
@@ -623,13 +677,13 @@ export async function moveDocument(
 /* ── Channels ── */
 
 export async function fetchChannelConfig(): Promise<ChannelConfig> {
-  const res = await fetch(`${API_URL}/api/channels/config`);
+  const res = await apiFetch(`${API_URL}/api/channels/config`);
   if (!res.ok) throw new Error("Falha ao carregar config de canais");
   return res.json();
 }
 
 export async function updateChannelConfig(config: ChannelConfig): Promise<ChannelConfig> {
-  const res = await fetch(`${API_URL}/api/channels/config`, {
+  const res = await apiFetch(`${API_URL}/api/channels/config`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
@@ -639,7 +693,7 @@ export async function updateChannelConfig(config: ChannelConfig): Promise<Channe
 }
 
 export async function fetchChannelStatus(): Promise<ChannelStatusResponse> {
-  const res = await fetch(`${API_URL}/api/channels/status`);
+  const res = await apiFetch(`${API_URL}/api/channels/status`);
   if (!res.ok) throw new Error("Falha ao carregar status dos canais");
   return res.json();
 }

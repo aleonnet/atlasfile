@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File as FastAPIFile, Header, HTTPException, Query, Response, UploadFile
+from fastapi import Depends, FastAPI, File as FastAPIFile, Header, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
@@ -79,6 +79,7 @@ from .models import (
     TrainingUsageSummary,
 )
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
+from .auth import AuthContext, enforce_project_scope, require_auth
 from .opensearch_client import ensure_chat_sessions_index, ensure_classification_usage_index, ensure_index, ensure_training_usage_index, get_client
 from .search_hybrid import (
     build_chunk_filters,
@@ -450,7 +451,9 @@ def _cors_origins() -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+# Autenticação global: com api_auth_enabled=false (default) tudo passa com escopo
+# irrestrito; /health e preflight CORS nunca exigem key (tratado dentro de require_auth).
+app = FastAPI(title=settings.app_name, lifespan=lifespan, dependencies=[Depends(require_auth)])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
@@ -996,7 +999,7 @@ def setup_status() -> dict[str, Any]:
 
 
 @app.get("/api/projects")
-def get_projects() -> list[dict[str, Any]]:
+def get_projects(auth: AuthContext = Depends(require_auth)) -> list[dict[str, Any]]:
     projects: list[dict[str, Any]] = []
     for root in list_project_roots(Path(settings.projects_root)):
         project_id = root.name
@@ -1009,6 +1012,8 @@ def get_projects() -> list[dict[str, Any]]:
             initialized = True
         except Exception:
             initialized = False
+        if not (auth.can_access_project(project_id) or auth.can_access_project(root.name)):
+            continue
         projects.append(
             {
                 "project_id": project_id,
@@ -1021,7 +1026,8 @@ def get_projects() -> list[dict[str, Any]]:
 
 
 @app.post("/api/projects/{project_ref}/initialize")
-def initialize_project(project_ref: str, template: str = Query("default")) -> dict[str, Any]:
+def initialize_project(project_ref: str, template: str = Query("default"), auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    enforce_project_scope(auth, project_ref)
     project_root = Path(settings.projects_root) / project_ref
     project_root.mkdir(parents=True, exist_ok=True)
     _, created = ensure_profile(
@@ -1304,7 +1310,8 @@ def delete_classifier_report(report_id: str) -> Response:
 
 
 @app.put("/api/classifier/override/{project_id}")
-def set_classifier_override(project_id: str, body: dict[str, Any]) -> dict[str, Any]:
+def set_classifier_override(project_id: str, body: dict[str, Any], auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    enforce_project_scope(auth, project_id)
     override_raw = str(body.get("override_mode") or "").strip()
     try:
         override_mode = OperationalClassifierMode(override_raw) if override_raw else None
@@ -1447,7 +1454,8 @@ def _run_reconcile_background(
 
 
 @app.post("/api/reconcile/{project_id}")
-def reconcile_project(project_id: str, reindex_search: bool = True):
+def reconcile_project(project_id: str, reindex_search: bool = True, auth: AuthContext = Depends(require_auth)):
+    enforce_project_scope(auth, project_id)
     if _reconcile_status.get("running"):
         raise HTTPException(status_code=409, detail="Reconcile already in progress")
     project_root = _resolve_project_root(project_id)
@@ -1477,7 +1485,8 @@ def reconcile_all_projects(reindex_search: bool = True):
 
 
 @app.post("/api/ingest/scan/{project_id}")
-def scan_project_inbox(project_id: str) -> dict[str, Any]:
+def scan_project_inbox(project_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    enforce_project_scope(auth, project_id)
     if _ingest_status.get("running"):
         raise HTTPException(status_code=409, detail="Ingest already in progress")
     project_root = _resolve_project_root(project_id)
@@ -1557,7 +1566,9 @@ def scan_project_inbox(project_id: str) -> dict[str, Any]:
 async def upload_to_inbox(
     project_id: str,
     files: list[UploadFile] = FastAPIFile(...),
+    auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
+    enforce_project_scope(auth, project_id)
     project_root = _resolve_project_root(project_id)
     profile = load_project_profile(project_root)
     inbox = project_root / inbox_rel(profile)
@@ -1582,7 +1593,8 @@ async def upload_to_inbox(
 
 
 @app.get("/api/ingest/inbox/{project_id}")
-def list_inbox_files(project_id: str) -> dict[str, Any]:
+def list_inbox_files(project_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    enforce_project_scope(auth, project_id)
     project_root = _resolve_project_root(project_id)
     profile = load_project_profile(project_root)
     inbox = project_root / inbox_rel(profile)
@@ -1597,7 +1609,8 @@ def list_inbox_files(project_id: str) -> dict[str, Any]:
 
 
 @app.delete("/api/ingest/upload/{project_id}/{filename:path}")
-def delete_inbox_file(project_id: str, filename: str) -> dict[str, Any]:
+def delete_inbox_file(project_id: str, filename: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    enforce_project_scope(auth, project_id)
     project_root = _resolve_project_root(project_id)
     profile = load_project_profile(project_root)
     inbox = project_root / inbox_rel(profile)
@@ -1612,21 +1625,28 @@ def delete_inbox_file(project_id: str, filename: str) -> dict[str, Any]:
 
 
 @app.get("/api/ingest/history/{project_id}")
-def get_ingest_history(project_id: str) -> dict[str, Any]:
+def get_ingest_history(project_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    enforce_project_scope(auth, project_id)
     project_root = _resolve_project_root(project_id)
     entries = load_ingest_history(project_root)
     return {"project_id": project_id, "entries": entries}
 
 
 @app.get("/api/files/download")
-def download_file(path: str = Query(..., description="Caminho do arquivo dentro do projects root")) -> FileResponse:
+def download_file(
+    path: str = Query(..., description="Caminho do arquivo dentro do projects root"),
+    auth: AuthContext = Depends(require_auth),
+) -> FileResponse:
     """Serve o arquivo para abrir no app associado à extensão (inline)."""
     base = Path(settings.projects_root).resolve()
     requested = Path(path).resolve()
     try:
-        requested.relative_to(base)
+        relative = requested.relative_to(base)
     except ValueError:
         raise HTTPException(status_code=403, detail="Caminho fora do diretorio de projetos")
+    # Escopo por projeto: o 1º segmento sob o projects root é a pasta do projeto.
+    if relative.parts:
+        enforce_project_scope(auth, relative.parts[0])
     if not requested.is_file():
         raise HTTPException(status_code=404, detail="Arquivo nao encontrado")
     media_type, _ = mimetypes.guess_type(str(requested), strict=False)
@@ -1677,7 +1697,7 @@ def _apply_get_document_limit(data: dict[str, Any], max_chars: int) -> dict[str,
 
 
 @app.get("/api/documents/{doc_id}")
-def get_document(doc_id: str) -> dict[str, Any]:
+def get_document(doc_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     """Return document by id: metadata + content_chunks (location + text) and content excerpt. Resposta limitada a get_document_max_chars para caber no contexto do modelo; quando truncada, inclui _truncated e _message."""
     try:
         hit = os_client.get(index=settings.opensearch_index, id=doc_id)
@@ -1686,6 +1706,7 @@ def get_document(doc_id: str) -> dict[str, Any]:
     src = hit.get("_source", {})
     if not src:
         raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    enforce_project_scope(auth, str(src.get("project_id") or ""))
     chunks = list(src.get("content_chunks") or [])
     content_from_chunks = "\n".join(c.get("text", "") for c in chunks)
     data = {
@@ -1710,7 +1731,11 @@ def get_document(doc_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/documents/{doc_id}/chunks")
-def get_document_chunks(doc_id: str, locations: list[str] = Query(..., min_length=1)) -> dict[str, Any]:
+def get_document_chunks(
+    doc_id: str,
+    locations: list[str] = Query(..., min_length=1),
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
     """Return only the requested chunks of a document. locations are chunk identifiers (e.g. from search_documents match_locations or evidences[].location). Returns metadata and content_chunks with only those locations. Use after search to get full text of matched chunks without loading the full document."""
     try:
         hit = os_client.get(index=settings.opensearch_index, id=doc_id)
@@ -1719,6 +1744,7 @@ def get_document_chunks(doc_id: str, locations: list[str] = Query(..., min_lengt
     src = hit.get("_source", {})
     if not src:
         raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    enforce_project_scope(auth, str(src.get("project_id") or ""))
     all_chunks = list(src.get("content_chunks") or [])
     want = {loc.strip() for loc in locations if (loc or "").strip()}
     filtered = [c for c in all_chunks if (c.get("location") or "").strip() in want]
@@ -1786,7 +1812,8 @@ def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate) -> di
 
 
 @app.post("/api/documents/{project_id}/{doc_id}/move")
-def move_document(project_id: str, doc_id: str, request: DocumentMoveRequest) -> dict[str, Any]:
+def move_document(project_id: str, doc_id: str, request: DocumentMoveRequest, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    enforce_project_scope(auth, project_id)
     project_root = _resolve_project_root(project_id)
     profile = load_project_profile(project_root)
 
@@ -1873,11 +1900,17 @@ def list_tags(project_id: str | None = Query(None, description="Filter by projec
 
 
 @app.get("/api/stats", response_model=StatsResponse)
-def get_stats(project_id: str | None = Query(None, description="Filter by project")) -> StatsResponse:
+def get_stats(
+    project_id: str | None = Query(None, description="Filter by project"),
+    auth: AuthContext = Depends(require_auth),
+) -> StatsResponse:
     """Aggregate document statistics: total count and breakdowns by doc_kind, business_domain, document_type, extension, tags."""
+    enforce_project_scope(auth, project_id)
     query: dict[str, Any] = {"match_all": {}}
     if project_id:
         query = {"bool": {"filter": [_project_scope_filter(project_id)]}}
+    elif not auth.unrestricted:
+        query = {"bool": {"filter": [{"terms": {"project_id": list(auth.allowed_projects)}}]}}
     aggs: dict[str, Any] = {
         "by_doc_kind": {"terms": {"field": "doc_kind", "size": 20}},
         "by_business_domain": {"terms": {"field": "business_domain", "size": 50}},
@@ -1931,8 +1964,10 @@ async def api_chat(
     body: ChatRequest,
     x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
     x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+    auth: AuthContext = Depends(require_auth),
 ) -> ChatResponse:
     """Send messages to the chat orchestrator (LLM + MCP tools)."""
+    enforce_project_scope(auth, body.project_id)
     provider, model = get_llm_config("chat")
     if body.provider:
         provider = body.provider
@@ -2660,7 +2695,8 @@ def get_training_usage(
 
 
 @app.get("/api/triage/{project_id}")
-def get_triage(project_id: str) -> list[dict[str, Any]]:
+def get_triage(project_id: str, auth: AuthContext = Depends(require_auth)) -> list[dict[str, Any]]:
+    enforce_project_scope(auth, project_id)
     project_root = _resolve_project_root(project_id)
     ensure_triage_dirs(project_root)
     return [item.model_dump() for item in list_pending(project_root)]
@@ -2836,7 +2872,8 @@ def _relocate_document(
 
 
 @app.post("/api/triage/{project_id}/{doc_id}/decision")
-def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest) -> dict[str, Any]:
+def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    enforce_project_scope(auth, project_id)
     project_root = _resolve_project_root(project_id)
     profile = load_project_profile(project_root)
     ensure_project_structure(project_root, profile)
@@ -2989,11 +3026,15 @@ def list_documents(
     business_domain: str | None = None,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    auth: AuthContext = Depends(require_auth),
 ) -> ListDocumentsResponse:
     """List/browse documents with optional filters. No text search required."""
+    enforce_project_scope(auth, project_id)
     filters: list[dict[str, Any]] = []
     if project_id:
         filters.append(_project_scope_filter(project_id))
+    elif not auth.unrestricted:
+        filters.append({"terms": {"project_id": list(auth.allowed_projects)}})
     if doc_kind:
         filters.append({"term": {"doc_kind": doc_kind}})
     if document_type:
@@ -3186,7 +3227,12 @@ def search(
     page: int = Query(1, ge=1),
     size: int | None = Query(None, ge=1, le=100),
     mode: str | None = Query(None, description="Search mode: hybrid (BM25+kNN+RRF, default) | lexical | semantic"),
+    auth: AuthContext = Depends(require_auth),
 ) -> SearchResponse:
+    enforce_project_scope(auth, project_id)
+    scope_filter: dict[str, Any] | None = (
+        None if (project_id or auth.unrestricted) else {"terms": {"project_id": list(auth.allowed_projects)}}
+    )
     page_size = size if size is not None else settings.search_page_size
     requested_mode = (mode or "").strip().lower()
     if requested_mode not in {"lexical", "hybrid", "semantic"}:
@@ -3203,6 +3249,8 @@ def search(
             date_from=date_from,
             date_to=date_to,
         )
+        if scope_filter:
+            chunk_filters.append(scope_filter)
         semantic_docs = semantic_search(os_client, q, filters=chunk_filters)
         if semantic_docs is None:
             # Degrade silencioso: braço semântico indisponível → lexical puro.
@@ -3336,6 +3384,8 @@ def search(
         filters.append({"range": {"ingested_at": {"gte": date_from}}})
     if date_to:
         filters.append({"range": {"ingested_at": {"lte": date_to}}})
+    if scope_filter:
+        filters.append(scope_filter)
 
     query = {"bool": {"should": should, "minimum_should_match": 2 if strict_mode else 1, "filter": filters}}
     # Híbrido: busca top-N fixo (search_knn_k) em cada braço e pagina após a fusão.
@@ -3472,14 +3522,18 @@ def search_semantic_chunks(
     document_type: str | None = None,
     doc_kind: str | None = None,
     k: int = Query(10, ge=1, le=50),
+    auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
     """Chunks crus por busca semântica (kNN) — base para RAG com citações via MCP."""
+    enforce_project_scope(auth, project_id)
     filters = build_chunk_filters(
         project_id=project_id,
         business_domain=business_domain,
         document_type=document_type,
         doc_kind=doc_kind,
     )
+    if not project_id and not auth.unrestricted:
+        filters.append({"terms": {"project_id": list(auth.allowed_projects)}})
     chunks = semantic_search_chunks(os_client, q, filters=filters, k=k)
     if chunks is None:
         return {

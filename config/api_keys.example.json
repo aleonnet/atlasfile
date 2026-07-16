@@ -1,0 +1,14 @@
+{
+  "keys": [
+    {
+      "key": "atlas_sk_troque-esta-chave-mcp",
+      "name": "mcp-server",
+      "projects": ["*"]
+    },
+    {
+      "key": "atlas_sk_troque-esta-chave-cliente",
+      "name": "cliente-x",
+      "projects": ["projeto-a", "projeto-b"]
+    }
+  ]
+}

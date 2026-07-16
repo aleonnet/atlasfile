@@ -5,6 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 vi.mock("./api", () => ({
+  setUnauthorizedHandler: vi.fn(),
+  getApiKey: vi.fn(() => ""),
+  setApiKey: vi.fn(),
   fetchHealth: vi.fn(() => Promise.resolve({ ok: true })),
   fetchSetupStatus: vi.fn(() =>
     Promise.resolve({

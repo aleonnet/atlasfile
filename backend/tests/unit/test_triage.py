@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import app.main as main_module
+from app.auth import AuthContext
 from app.ingestion import _append_index_md
 from app.models import TriageDecisionRequest
 from app.profile_store import create_default_profile, save_profile
@@ -161,6 +162,7 @@ def test_decide_triage_correct_recomputes_canonical_filename_and_upserts_index(
             target_business_domain="fiscal",
             target_document_type="relatorio",
         ),
+        auth=AuthContext(name="test", allowed_projects=("*",)),
     )
 
     assert result == {"status": "ok", "action": "corrected", "doc_id": doc_id}
@@ -227,6 +229,7 @@ def test_decide_triage_correct_updates_document_type_token_and_preserves_ingest_
             target_business_domain="fiscal",
             target_document_type="relatorio",
         ),
+        auth=AuthContext(name="test", allowed_projects=("*",)),
     )
 
     final_path = project_root / "02_AREAS" / "fiscal" / "relatorio" / expected_canonical
@@ -279,6 +282,7 @@ def test_decide_triage_skips_training_pool_when_document_overlaps_validation_set
         TriageDecisionRequest(
             action="approve",
         ),
+        auth=AuthContext(name="test", allowed_projects=("*",)),
     )
 
     assert result == {"status": "ok", "action": "approved", "doc_id": doc_id}

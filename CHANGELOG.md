@@ -15,6 +15,20 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.17.0] -- 2026-07-16
+
+### Permissões mínimas: API key + escopo de projeto (Fase 4 do plano rag_hibrido_permissoes_ui_v2)
+
+- **Novo `app/auth.py`**: `require_auth` como dependency global do app (Bearer/`X-API-Key`/query `api_key` para SSE e links de download), comparação em tempo constante (`secrets.compare_digest`, sem early-return), `AuthContext(name, allowed_projects)` e `enforce_project_scope` → 403
+- **`API_AUTH_ENABLED=false` por default** — backward compat total; `/health` e preflight CORS nunca exigem key
+- **Escopo por projeto aplicado** em: search (filtro `terms` quando a key é restrita), `/api/search/chunks`, `/api/projects` (lista filtrada), `/api/stats`, `/api/documents` (lista + get/chunks por doc), download (1º segmento do path), upload/inbox/scan/history, triagem, reconcile por projeto, move, chat (project_id do body), classifier override, initialize
+- **Keys em `config/api_keys.json`** (fora do git; template `config/api_keys.example.json`; cache por mtime); MCP usa `ATLASFILE_API_TOKEN` (api_client já enviava Bearer); porta 8001 do MCP não valida key — manter interna
+- **Frontend**: wrapper `apiFetch` injeta `Authorization: Bearer` de `localStorage("atlasfile_api_key")` (52 chamadas migradas); URLs de SSE/download anexam `api_key`; nova aba **Config → Acesso** para gravar a key; 401/403 exibem aviso via handler global
+- Validação live: sem key 401, key errada 401, key ok 200, projeto fora do escopo 403, busca sem projeto filtrada ao escopo da key
+- Testes: 8 novos de auth + 3 de triagem ajustados (AuthContext explícito)
+
+---
+
 ## [0.16.0] -- 2026-07-16
 
 ### Busca híbrida BM25 + kNN + RRF com rerank opcional (Fase 3 do plano rag_hibrido_permissoes_ui_v2)

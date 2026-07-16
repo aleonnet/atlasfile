@@ -108,6 +108,13 @@ class Settings(BaseSettings):
     channel_session_timeout_minutes: int = 30
     telegram_mirror_responses: bool = False
 
+    # --- Autenticação (API key + escopo de projeto) ---
+    # Default off = backward compat total (tudo passa com escopo irrestrito).
+    api_auth_enabled: bool = False
+    # JSON com as keys ({"keys": [{"key", "name", "projects": ["*"|ids]}]}).
+    # Real fora do git; template em config/api_keys.example.json.
+    api_keys_config_path: str = "/workspace/config/api_keys.json"
+
     # --- Embeddings (camada semântica / RAG) ---
     # Habilita geração de embeddings por chunk (índice separado atlasfile_chunk_vectors).
     # Falha de embedding nunca quebra a ingestão: o doc é indexado sem vetores e flagado.

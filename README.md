@@ -12,6 +12,7 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 - **Indexação** de conteúdo e metadados em OpenSearch com busca, suggest e highlight
 - **Embeddings por chunk** (OpenAI text-embedding-3-small ou fastembed local) em índice de vetores separado (`atlasfile_chunk_vectors`), base da busca semântica/RAG
 - **Busca híbrida** (BM25 + kNN com fusão RRF, default do `/api/search`) com fallback automático para lexical, rerank opcional por cross-encoder local e benchmark de retrieval contra golden set (`scripts/benchmark_retrieval.py`)
+- **Autenticação opcional por API key** (`API_AUTH_ENABLED`) com escopo por projeto — keys em `config/api_keys.json`, enforcement na API e no MCP via `ATLASFILE_API_TOKEN`
 - **Busca por nome exato** priorizada para `original_filename` e `title`
 - **Assistente LLM** com escopo por projeto, sessões persistentes, gráficos inline (8 tipos) e rastreamento de uso/custo
 - **Canais** com Telegram opcional e comando `/projeto` para fixar escopo do chat

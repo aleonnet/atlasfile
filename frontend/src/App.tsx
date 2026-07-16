@@ -24,7 +24,8 @@ import {
   fetchChannelConfig,
   fetchChannelStatus,
   updateChannelConfig,
-  getSessionEventsUrl
+  getSessionEventsUrl,
+  setUnauthorizedHandler
 } from "./api";
 import type { ChatAttachment } from "./components/ChatPanel";
 import { ToastProvider } from "./contexts/ToastContext";
@@ -189,6 +190,17 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", resolvedTheme);
   }, [resolvedTheme]);
+
+  useEffect(() => {
+    setUnauthorizedHandler((httpStatus, detail) => {
+      setStatus(
+        httpStatus === 401
+          ? `Autenticação necessária: configure a API key em Config → Acesso. ${detail}`.trim()
+          : `Acesso negado: ${detail || "API key sem permissão para este projeto."}`
+      );
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   useEffect(() => {
     try {

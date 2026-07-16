@@ -58,6 +58,9 @@ services:
       - CHANNELS_ENABLED=${CHANNELS_ENABLED:-false}
       - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      # Autenticação (API key + escopo de projeto). Keys em config/api_keys.json
+      # (fora do git; entra na imagem no build — mudou key, rebuild do api).
+      - API_AUTH_ENABLED=${API_AUTH_ENABLED:-false}
     volumes:
       - ${PROJECTS_HOST_ROOT}:/projects
     ports:

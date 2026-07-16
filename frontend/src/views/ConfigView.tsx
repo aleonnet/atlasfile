@@ -1,10 +1,43 @@
 import { useState } from "react";
+import { getApiKey, setApiKey } from "../api";
 import { IngestTriageCard } from "../features/ingest/IngestTriageCard";
 import { ProfileLayoutWorkspace } from "../features/profile-layout/ProfileLayoutWorkspace";
 import { TemplateEditorView } from "../features/templates/TemplateEditorView";
 import type { Project, TriageItem } from "../types";
 
-type ConfigTab = "perfil" | "classificador" | "templates";
+type ConfigTab = "perfil" | "classificador" | "templates" | "acesso";
+
+function ApiAccessCard({ onStatus }: { onStatus: (msg: string) => void }) {
+  const [keyValue, setKeyValue] = useState(getApiKey());
+
+  const handleSave = () => {
+    setApiKey(keyValue);
+    onStatus(keyValue.trim() ? "API key do AtlasFile salva neste navegador." : "API key removida.");
+  };
+
+  return (
+    <div className="card">
+      <h3>Acesso à API</h3>
+      <p className="sub">
+        Necessária apenas quando o backend está com <code>API_AUTH_ENABLED=true</code>. A key é
+        guardada somente neste navegador (localStorage) e enviada como <code>Authorization: Bearer</code>.
+      </p>
+      <div className="field-row" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+        <input
+          type="password"
+          value={keyValue}
+          onChange={(e) => setKeyValue(e.target.value)}
+          placeholder="atlas_sk_..."
+          autoComplete="off"
+          style={{ flex: 1 }}
+        />
+        <button type="button" className="btn" onClick={handleSave}>
+          Salvar
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type Props = {
   selectedProject: string;
@@ -72,6 +105,15 @@ export function ConfigView({
           >
             Templates
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "acesso"}
+            className={`assistente-tab${tab === "acesso" ? " assistente-tab--active" : ""}`}
+            onClick={() => setTab("acesso")}
+          >
+            Acesso
+          </button>
         </div>
       </nav>
 
@@ -105,6 +147,8 @@ export function ConfigView({
         {tab === "templates" && (
           <TemplateEditorView />
         )}
+
+        {tab === "acesso" && <ApiAccessCard onStatus={onStatus} />}
       </div>
     </section>
   );
