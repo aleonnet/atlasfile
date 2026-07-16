@@ -1,43 +1,14 @@
 import { useState } from "react";
+import { KeyRound } from "lucide-react";
 import { getApiKey, setApiKey } from "../api";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { IngestTriageCard } from "../features/ingest/IngestTriageCard";
 import { ProfileLayoutWorkspace } from "../features/profile-layout/ProfileLayoutWorkspace";
 import { TemplateEditorView } from "../features/templates/TemplateEditorView";
 import type { Project, TriageItem } from "../types";
-
-type ConfigTab = "perfil" | "classificador" | "templates" | "acesso";
-
-function ApiAccessCard({ onStatus }: { onStatus: (msg: string) => void }) {
-  const [keyValue, setKeyValue] = useState(getApiKey());
-
-  const handleSave = () => {
-    setApiKey(keyValue);
-    onStatus(keyValue.trim() ? "API key do AtlasFile salva neste navegador." : "API key removida.");
-  };
-
-  return (
-    <div className="card">
-      <h3>Acesso à API</h3>
-      <p className="sub">
-        Necessária apenas quando o backend está com <code>API_AUTH_ENABLED=true</code>. A key é
-        guardada somente neste navegador (localStorage) e enviada como <code>Authorization: Bearer</code>.
-      </p>
-      <div className="field-row" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-        <input
-          type="password"
-          value={keyValue}
-          onChange={(e) => setKeyValue(e.target.value)}
-          placeholder="atlas_sk_..."
-          autoComplete="off"
-          style={{ flex: 1 }}
-        />
-        <button type="button" className="btn" onClick={handleSave}>
-          Salvar
-        </button>
-      </div>
-    </div>
-  );
-}
 
 type Props = {
   selectedProject: string;
@@ -57,6 +28,50 @@ type Props = {
 
 const ALL_PROJECTS = "__all__";
 
+function ApiAccessCard({ onStatus }: { onStatus: (msg: string) => void }) {
+  const [keyValue, setKeyValue] = useState(getApiKey());
+
+  const handleSave = () => {
+    setApiKey(keyValue);
+    onStatus(keyValue.trim() ? "API key do AtlasFile salva neste navegador." : "API key removida.");
+  };
+
+  return (
+    <Card className="max-w-2xl">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <KeyRound className="size-4 text-accent" />
+          Acesso à API
+        </CardTitle>
+        <CardDescription>
+          Necessária apenas quando o backend está com{" "}
+          <code className="rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light">
+            API_AUTH_ENABLED=true
+          </code>
+          . A key fica somente neste navegador (localStorage) e é enviada como{" "}
+          <code className="rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light">
+            Authorization: Bearer
+          </code>
+          .
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-2">
+          <Input
+            type="password"
+            value={keyValue}
+            onChange={(e) => setKeyValue(e.target.value)}
+            placeholder="atlas_sk_..."
+            autoComplete="off"
+            className="flex-1 font-mono"
+          />
+          <Button onClick={handleSave}>Salvar</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function ConfigView({
   selectedProject,
   selectedProjectLabel,
@@ -72,61 +87,25 @@ export function ConfigView({
   selectedModelTriage,
   onChangeModelTriage,
 }: Props) {
-  const [tab, setTab] = useState<ConfigTab>("perfil");
-
   return (
     <section className="config-view">
-      <nav className="assistente-tabs" role="tablist">
-        <div className="assistente-tabs-pill">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "perfil"}
-            className={`assistente-tab${tab === "perfil" ? " assistente-tab--active" : ""}`}
-            onClick={() => setTab("perfil")}
-          >
-            Perfil do projeto
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "classificador"}
-            className={`assistente-tab${tab === "classificador" ? " assistente-tab--active" : ""}`}
-            onClick={() => setTab("classificador")}
-          >
-            Classificador
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "templates"}
-            className={`assistente-tab${tab === "templates" ? " assistente-tab--active" : ""}`}
-            onClick={() => setTab("templates")}
-          >
-            Templates
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "acesso"}
-            className={`assistente-tab${tab === "acesso" ? " assistente-tab--active" : ""}`}
-            onClick={() => setTab("acesso")}
-          >
-            Acesso
-          </button>
-        </div>
-      </nav>
+      <Tabs defaultValue="perfil">
+        <TabsList aria-label="Configurações">
+          <TabsTrigger value="perfil">Perfil do projeto</TabsTrigger>
+          <TabsTrigger value="classificador">Classificador</TabsTrigger>
+          <TabsTrigger value="templates">Templates</TabsTrigger>
+          <TabsTrigger value="acesso">Acesso</TabsTrigger>
+        </TabsList>
 
-      <div className="config-view-content">
-        {tab === "perfil" && (
+        <TabsContent value="perfil">
           <ProfileLayoutWorkspace
             projectRef={selectedProject}
             disabled={selectedProject === ALL_PROJECTS}
             onStatus={onStatus}
           />
-        )}
+        </TabsContent>
 
-        {tab === "classificador" && (
+        <TabsContent value="classificador">
           <IngestTriageCard
             selectedProject={selectedProject}
             selectedProjectLabel={selectedProjectLabel}
@@ -142,14 +121,16 @@ export function ConfigView({
             selectedModelTriage={selectedModelTriage}
             onChangeModelTriage={onChangeModelTriage}
           />
-        )}
+        </TabsContent>
 
-        {tab === "templates" && (
+        <TabsContent value="templates">
           <TemplateEditorView />
-        )}
+        </TabsContent>
 
-        {tab === "acesso" && <ApiAccessCard onStatus={onStatus} />}
-      </div>
+        <TabsContent value="acesso">
+          <ApiAccessCard onStatus={onStatus} />
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }

@@ -1,0 +1,95 @@
+/*
+ * Tema Tailwind do AtlasFile (Fase 5 do plano rag_hibrido_permissoes_ui_v2).
+ *
+ * - Preflight intencionalmente NÃO importado: o CSS legado (styles.css e afins)
+ *   convive com o Tailwind até o fim da Fase 6. Só utilities + tokens.
+ * - `@theme inline` faz os utilities resolverem em runtime para os CSS vars já
+ *   existentes em styles.css — fonte única de verdade e switch dark/light
+ *   automático via [data-theme] sem duplicar valores.
+ * - PROIBIDO o tema default do shadcn aparecer em qualquer tela: todo componente
+ *   ui/ consome exclusivamente estes tokens.
+ */
+
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme inline {
+  /* Superfícies */
+  --color-background: var(--bg);
+  --color-elevated: var(--bg-elevated);
+  --color-panel: var(--panel);
+  --color-panel-strong: var(--panel-strong);
+  --color-card: var(--card);
+
+  /* Texto */
+  --color-foreground: var(--text);
+  --color-foreground-strong: var(--text-strong);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-tertiary: var(--text-tertiary);
+
+  /* Bordas e foco */
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-subtle: var(--border-subtle);
+  --color-input: var(--border);
+  --color-ring: var(--ring);
+
+  /* Marca — a luz laranja é semântica de "vida" (ver direção de arte, Fase 6) */
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-purple: var(--accent-purple);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* Estado */
+  --color-destructive: var(--danger);
+  --color-success: var(--ok);
+  --color-success-subtle: var(--ok-subtle);
+
+  /* Gráficos (recharts/UsageView) — definidos em styles.css por tema */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+
+  /* Geometria e tipografia */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  /* Motion */
+  --ease-out: var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+}
+
+/* Keyframes compartilhados das primitivas ui/ */
+@keyframes atlas-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes atlas-pop-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes atlas-slide-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes atlas-shimmer {
+  100% { transform: translateX(100%); }
+}

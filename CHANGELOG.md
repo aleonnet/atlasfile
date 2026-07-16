@@ -15,6 +15,19 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.18.0] -- 2026-07-16
+
+### UI Foundation: Tailwind + primitivas temadas + quebra do App.tsx (Fase 5 do plano rag_hibrido_permissoes_ui_v2)
+
+- **Tailwind v4 (CSS-first)** via `@tailwindcss/vite`, **sem preflight** — o CSS legado convive intacto até o fim da Fase 6; só utilities + tokens
+- **Tema 100% custom desde o dia 1** (`src/styles/theme.css`): `@theme inline` referencia os CSS vars existentes (accent `#ff5a36`, superfícies dark, DM Sans/Fragment Mono, radius/easings) — fonte única de verdade, dark/light automático via `data-theme`; nova paleta de gráficos `--chart-1..8` na marca (dark + light)
+- **14 primitivas `components/ui/`** (copy-in estilo shadcn, temadas, zero cinza default): Button (cva, 6 variantes), Card, Dialog (glass overlay), DropdownMenu, Popover, Tooltip, Tabs (pill com accent), Input/Textarea, Select, Badge (inclui variante púrpura p/ semântico), Separator, Skeleton (shimmer na direção de leitura), ScrollArea, Command (cmdk) + Toaster (sonner) + `EmptyState`/`ErrorState` próprios
+- **Quebra do App.tsx** (1.379 → shell): `SettingsContext` (tema, modelos, LLM keys, persistência), `NavigationContext` (view + hash sync `#/painel` — deep-link sem react-router), `ProjectContext` (projects/selected/labels — mata prop-drilling), hooks `useSearch` (⌘K + busca completa) e `useChatSession` (mensagens, sessões, usage, SSE); App virou providers + AppShell
+- **Piloto migrado**: ConfigView agora em Tabs/Card/Input/Button temados (prova do tema); aba Acesso com a API key
+- Testes: +7 das primitivas ui; 111 frontend verdes; build Vite ok
+
+---
+
 ## [0.17.0] -- 2026-07-16
 
 ### Permissões mínimas: API key + escopo de projeto (Fase 4 do plano rag_hibrido_permissoes_ui_v2)

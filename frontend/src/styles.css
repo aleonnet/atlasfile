@@ -54,6 +54,15 @@
   --font-body: "Fragment Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
   --font-mono: "Fragment Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
   --font-display: "DM Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Paleta de gráficos na marca (ancorada no accent laranja + púrpura) */
+  --chart-1: #ff5a36;
+  --chart-2: #c97bff;
+  --chart-3: #ffb366;
+  --chart-4: #4dd4ac;
+  --chart-5: #6b9fff;
+  --chart-6: #ff6b9f;
+  --chart-7: #e8c468;
+  --chart-8: #8a84ff;
 }
 
 :root[data-theme="light"] {
@@ -98,6 +107,15 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.12);
+  /* Paleta de gráficos — variante light (hues da marca, escurecidos p/ contraste) */
+  --chart-1: #e8482a;
+  --chart-2: #9b59b6;
+  --chart-3: #d98a2b;
+  --chart-4: #199473;
+  --chart-5: #3b6fd4;
+  --chart-6: #d44a7a;
+  --chart-7: #b8923a;
+  --chart-8: #5f58d6;
 }
 
 * {
