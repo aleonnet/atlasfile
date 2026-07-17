@@ -146,8 +146,12 @@ else
 fi
 
 current_root="$(grep '^PROJECTS_HOST_ROOT=' .env | head -1 | cut -d= -f2- || true)"
+# Placeholders do .env.example não contam como configuração do usuário
+case "${current_root}" in
+  "/path/to/Projects"|"/Users/your-user/Documents/Projects") current_root="" ;;
+esac
 if [ -z "${PROJECTS_ROOT}" ]; then
-  if [ -n "${current_root}" ] && [ "${current_root}" != "/path/to/Projects" ]; then
+  if [ -n "${current_root}" ]; then
     PROJECTS_ROOT="${current_root}"
   elif [ "${ASSUME_YES}" = "1" ]; then
     PROJECTS_ROOT="${PROJECTS_ROOT_DEFAULT}"
