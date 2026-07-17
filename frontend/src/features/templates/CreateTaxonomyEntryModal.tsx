@@ -18,6 +18,19 @@ type Props = {
  * negócio): atualiza o template default e propaga aos profiles de todos os
  * projetos. Mesmo endpoint usado pelo fluxo de conflitos de rótulo.
  */
+const EXAMPLES = {
+  document_type: {
+    key: "ex: memorando",
+    label: "ex: Memorando",
+    aliases: "ex: memorando, memo, comunicado interno",
+  },
+  business_domain: {
+    key: "ex: compliance",
+    label: "ex: Compliance",
+    aliases: "ex: compliance, conformidade, auditoria interna, integridade",
+  },
+} as const;
+
 export function CreateTaxonomyEntryModal({ open, onClose, onCreated }: Props) {
   const [kind, setKind] = useState<"document_type" | "business_domain">("document_type");
   const [key, setKey] = useState("");
@@ -79,7 +92,7 @@ export function CreateTaxonomyEntryModal({ open, onClose, onCreated }: Props) {
         className={cn(nativeSelectClass, "font-mono")}
         value={key}
         onChange={(e) => setKey(e.target.value)}
-        placeholder="ex: memorando"
+        placeholder={EXAMPLES[kind].key}
         disabled={submitting}
       />
 
@@ -89,7 +102,7 @@ export function CreateTaxonomyEntryModal({ open, onClose, onCreated }: Props) {
         className={nativeSelectClass}
         value={label}
         onChange={(e) => setLabel(e.target.value)}
-        placeholder="ex: Memorando"
+        placeholder={EXAMPLES[kind].label}
         disabled={submitting}
       />
 
@@ -101,7 +114,7 @@ export function CreateTaxonomyEntryModal({ open, onClose, onCreated }: Props) {
         className={cn(nativeSelectClass, "font-mono")}
         value={aliases}
         onChange={(e) => setAliases(e.target.value)}
-        placeholder="ex: memorando, memo, comunicado interno"
+        placeholder={EXAMPLES[kind].aliases}
         disabled={submitting}
       />
 
