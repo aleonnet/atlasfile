@@ -1,5 +1,5 @@
 import { FileStack, Pencil, Plus, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createTemplate, deleteTemplate, getTemplate, listTemplates, saveTemplate } from "../../api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -23,6 +23,45 @@ type EditorState = {
 };
 
 const selectClass = nativeSelectClass;
+
+/**
+ * Input de lista (CSV) para células de tabela: edita o texto cru livremente
+ * (vírgulas e espaços preservados) e comita o array no blur/Enter — um input
+ * controlado que parseia a cada tecla "come" a vírgula digitada e impede
+ * múltiplos itens.
+ */
+function ListInput({ value, onCommit, className, placeholder }: {
+  value: string[];
+  onCommit: (items: string[]) => void;
+  className?: string;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState(value.join(", "));
+  const focusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(value.join(", "));
+  }, [value]);
+
+  function commit() {
+    onCommit(draft.split(",").map((s) => s.trim()).filter(Boolean));
+  }
+
+  return (
+    <input
+      className={className}
+      value={draft}
+      placeholder={placeholder}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => (focusedRef.current = true)}
+      onBlur={() => {
+        focusedRef.current = false;
+        commit();
+      }}
+      onKeyDown={(e) => e.key === "Enter" && commit()}
+    />
+  );
+}
 
 /** Overlay de edição (mantém details/labels/tabela — contrato dos testes). */
 function EditorOverlay({ label, children }: { label: string; children: React.ReactNode }) {
@@ -433,10 +472,10 @@ export function TemplateEditorView() {
                     <td><input className={tableInputClass} value={String(a.key ?? "")} onChange={(e) => updateArea(i, "key", e.target.value)} /></td>
                     <td><input className={tableInputClass} value={String(a.label ?? "")} onChange={(e) => updateArea(i, "label", e.target.value)} /></td>
                     <td>
-                      <input
+                      <ListInput
                         className={tableInputClass}
-                        value={Array.isArray(a.aliases) ? a.aliases.join(", ") : ""}
-                        onChange={(e) => updateArea(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                        value={Array.isArray(a.aliases) ? a.aliases.map(String) : []}
+                        onCommit={(items) => updateArea(i, "aliases", items)}
                       />
                     </td>
                     <td><input className={tableInputClass} value={String(a.folder ?? "")} onChange={(e) => updateArea(i, "folder", e.target.value)} /></td>
@@ -468,17 +507,18 @@ export function TemplateEditorView() {
                     <td><input className={tableInputClass} value={String(row.key ?? "")} onChange={(e) => updateDocumentType(i, "key", e.target.value)} /></td>
                     <td><input className={tableInputClass} value={String(row.label ?? "")} onChange={(e) => updateDocumentType(i, "label", e.target.value)} /></td>
                     <td>
-                      <input
+                      <ListInput
                         className={tableInputClass}
-                        value={Array.isArray(row.aliases) ? row.aliases.join(", ") : ""}
-                        onChange={(e) => updateDocumentType(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                        value={Array.isArray(row.aliases) ? row.aliases.map(String) : []}
+                        onCommit={(items) => updateDocumentType(i, "aliases", items)}
                       />
                     </td>
                     <td>
-                      <input
+                      <ListInput
                         className={tableInputClass}
-                        value={Array.isArray(row.extensions) ? row.extensions.join(", ") : ""}
-                        onChange={(e) => updateDocumentType(i, "extensions", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                        value={Array.isArray(row.extensions) ? row.extensions.map(String) : []}
+                        onCommit={(items) => updateDocumentType(i, "extensions", items.map((x) => x.toLowerCase()))}
+                        placeholder=".msg, .eml, .pdf"
                       />
                     </td>
                     <td><input className={tableInputClass} value={String(row.folder ?? "")} onChange={(e) => updateDocumentType(i, "folder", e.target.value)} /></td>
@@ -508,10 +548,10 @@ export function TemplateEditorView() {
                     <td><input className={tableInputClass} value={String(row.type ?? "")} onChange={(e) => updateEntity(i, "type", e.target.value)} /></td>
                     <td><input className={tableInputClass} value={String(row.value ?? "")} onChange={(e) => updateEntity(i, "value", e.target.value)} /></td>
                     <td>
-                      <input
+                      <ListInput
                         className={tableInputClass}
-                        value={Array.isArray(row.aliases) ? row.aliases.join(", ") : ""}
-                        onChange={(e) => updateEntity(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                        value={Array.isArray(row.aliases) ? row.aliases.map(String) : []}
+                        onCommit={(items) => updateEntity(i, "aliases", items)}
                       />
                     </td>
                     <td>{removeRowButton(() => removeEntity(i))}</td>
