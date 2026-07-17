@@ -1,14 +1,40 @@
 import { Command, FileUp, Search, Sparkles } from "lucide-react";
+import { useRef } from "react";
 import { Card, CardContent } from "../../components/ui/card";
 
 /**
  * Convite ao drag'n'drop global — o "estado pronto" do Painel quando não há
  * pendências: o mini-portal (mesmo anel cônico do overlay de upload) lembra
  * que soltar um arquivo em QUALQUER tela alimenta o pipeline inteiro.
+ * Clicar no card abre o file picker; os arquivos entram na mesma fila do
+ * portal global (evento atlas:pick-files consumido pelo GlobalDropPortal).
  */
 export function DropHintCard() {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function handlePicked(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length) {
+      window.dispatchEvent(new CustomEvent("atlas:pick-files", { detail: files }));
+    }
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
   return (
-    <Card className="overflow-hidden">
+    <Card
+      className="cursor-pointer overflow-hidden transition-[border-color,box-shadow] duration-200 hover:border-accent/40 hover:shadow-[0_0_24px_var(--accent-soft)]"
+      role="button"
+      tabIndex={0}
+      aria-label="Selecionar arquivos para enviar"
+      onClick={() => inputRef.current?.click()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          inputRef.current?.click();
+        }
+      }}
+    >
+      <input ref={inputRef} type="file" multiple className="hidden" onChange={handlePicked} data-testid="drop-hint-input" />
       <CardContent className="relative flex flex-col items-center gap-4 px-6 py-10 text-center sm:flex-row sm:text-left">
         {/* Mini-portal: anel cônico girando (assinatura do upload global) */}
         <div className="relative grid size-24 shrink-0 place-items-center">
@@ -32,7 +58,7 @@ export function DropHintCard() {
 
         <div className="min-w-0 flex-1">
           <h3 className="font-display text-base font-bold text-foreground-strong">
-            Solte arquivos em qualquer lugar
+            Solte arquivos em qualquer lugar — ou clique para selecionar
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Arraste PDF, DOCX, XLSX, PPTX, MSG ou EML para <strong className="text-foreground">qualquer tela</strong> —

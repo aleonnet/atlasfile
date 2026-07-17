@@ -628,17 +628,6 @@ export async function deleteChatSession(id: string): Promise<void> {
 
 /* ── Upload / Move ── */
 
-export async function uploadToInbox(projectId: string, files: File[]): Promise<UploadResult> {
-  const formData = new FormData();
-  for (const file of files) formData.append("files", file);
-  const res = await apiFetch(`${API_URL}/api/ingest/upload/${encodeURIComponent(projectId)}`, {
-    method: "POST",
-    body: formData,
-  });
-  if (!res.ok) throw new Error("Falha ao enviar arquivos");
-  return res.json();
-}
-
 /** Upload de 1 arquivo com progresso real (XHR — fetch não expõe upload progress). */
 export function uploadFileWithProgress(
   projectId: string,

@@ -109,6 +109,24 @@ describe("GlobalDropPortal", () => {
     expect(triggerScan).toHaveBeenCalledTimes(1);
   });
 
+  it("arquivos do file picker (atlas:pick-files) entram na mesma fila do portal", async () => {
+    uploadFileWithProgress.mockResolvedValue({ uploaded: [{ filename: "picked.pdf" }] });
+    triggerScan.mockResolvedValue({ processed_count: 1, failed_count: 0 });
+    renderPortal("p1");
+    await waitForSelection("p1");
+
+    const file = new File([new Uint8Array(10)], "picked.pdf", { type: "application/pdf" });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("atlas:pick-files", { detail: [file] }));
+    });
+
+    expect(await screen.findByTestId("upload-queue")).toBeInTheDocument();
+    expect(screen.getByText("picked.pdf")).toBeInTheDocument();
+    await waitFor(() => expect(uploadFileWithProgress).toHaveBeenCalledTimes(1));
+    expect(uploadFileWithProgress.mock.calls[0][0]).toBe("p1");
+    await waitFor(() => expect(triggerScan).toHaveBeenCalledWith("p1"));
+  });
+
   it("erro de upload aparece no item e não dispara scan sem sucesso", async () => {
     uploadFileWithProgress.mockRejectedValue(new Error("Upload falhou (500)"));
     renderPortal("p1");

@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { StatTile } from "../components/ui/stat-tile";
-import { FileUploadZone } from "../features/ingest/FileUploadZone";
 import { InboxScanCard } from "../features/ingest/InboxScanCard";
 import { IngestHistoryCard } from "../features/ingest/IngestHistoryCard";
 import { DropHintCard } from "../features/ingest/DropHintCard";
@@ -421,10 +420,6 @@ export function PainelView({
                 </div>
               )}
 
-              {isSingleProject && (
-                <FileUploadZone projectId={selectedProject} onUploadComplete={onScanComplete} disabled={!isSingleProject} />
-              )}
-
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4">
                 <div className="flex items-center gap-2">
                   <InboxScanCard
@@ -477,7 +472,7 @@ export function PainelView({
 
       <LabelConflictsCard />
 
-      {!isSingleProject && triageItems.length === 0 && <DropHintCard />}
+      {triageItems.length === 0 && <DropHintCard />}
 
       {isSingleProject && <IngestHistoryCard selectedProject={selectedProject} onStatus={onStatus} />}
 

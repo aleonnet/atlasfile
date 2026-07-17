@@ -186,15 +186,28 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
       }
     }
 
+    // Arquivos escolhidos via file picker (ex.: DropHintCard) entram na mesma fila
+    function onPickedFiles(event: Event) {
+      const files = (event as CustomEvent<File[]>).detail ?? [];
+      if (!files.length) return;
+      if (selectedProject === ALL_PROJECTS) {
+        setPendingFiles(files);
+      } else {
+        enqueue(selectedProject, files);
+      }
+    }
+
     window.addEventListener("dragenter", onDragEnter);
     window.addEventListener("dragover", onDragOver);
     window.addEventListener("dragleave", onDragLeave);
     window.addEventListener("drop", onDrop);
+    window.addEventListener("atlas:pick-files", onPickedFiles);
     return () => {
       window.removeEventListener("dragenter", onDragEnter);
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("dragleave", onDragLeave);
       window.removeEventListener("drop", onDrop);
+      window.removeEventListener("atlas:pick-files", onPickedFiles);
     };
   }, [disabled, selectedProject, enqueue]);
 

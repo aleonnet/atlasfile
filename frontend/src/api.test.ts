@@ -14,7 +14,6 @@ import {
   sendChatMessage,
   searchDocuments,
   updateProjectProfile,
-  uploadToInbox,
   validateProjectProfile
 } from "./api";
 
@@ -339,34 +338,6 @@ describe("profile/layout api", () => {
     const apply = await applyProjectLayout("p1", { profile: profilePayload, plan_id: "plan1", confirm: true, if_match_version: 2 });
     expect(apply.ok).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("uploadToInbox", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("sends multipart POST and returns uploaded list", async () => {
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ uploaded: [{ filename: "doc.pdf", saved_as: "doc.pdf" }] }),
-    } as Response);
-
-    const file = new File(["content"], "doc.pdf", { type: "application/pdf" });
-    const result = await uploadToInbox("proj1", [file]);
-    expect(result.uploaded).toHaveLength(1);
-    expect(result.uploaded[0].filename).toBe("doc.pdf");
-    expect(spy).toHaveBeenCalledTimes(1);
-    const [url, opts] = spy.mock.calls[0];
-    expect(url).toContain("/api/ingest/upload/proj1");
-    expect(opts?.method).toBe("POST");
-    expect(opts?.body).toBeInstanceOf(FormData);
-  });
-
-  it("throws on error response", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false, status: 404 } as Response);
-    await expect(uploadToInbox("proj1", [])).rejects.toThrow("Falha ao enviar arquivos");
   });
 });
 
