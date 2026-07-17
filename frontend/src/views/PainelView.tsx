@@ -477,7 +477,7 @@ export function PainelView({
 
       <LabelConflictsCard />
 
-      {triageItems.length === 0 && <DropHintCard />}
+      {!isSingleProject && triageItems.length === 0 && <DropHintCard />}
 
       {isSingleProject && <IngestHistoryCard selectedProject={selectedProject} onStatus={onStatus} />}
 
