@@ -1,4 +1,4 @@
-import { File, FileSpreadsheet, FileText, Presentation, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   fetchChannelConfig,
@@ -9,7 +9,6 @@ import {
   fetchSetupStatus,
   fetchStats,
   fetchTriage,
-  getFileDownloadUrl,
   getReconcileStatusStreamUrl,
   runReconcile,
   setUnauthorizedHandler,
@@ -23,7 +22,8 @@ import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectCon
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
 import { useChatSession } from "./hooks/useChatSession";
 import { useSearch } from "./hooks/useSearch";
-import { SearchModal } from "./layouts/SearchModal";
+import { CommandPalette } from "./layouts/CommandPalette";
+import { Sidebar } from "./layouts/Sidebar";
 import { Topbar } from "./layouts/Topbar";
 import { ConfigView } from "./views/ConfigView";
 import { PainelView } from "./views/PainelView";
@@ -43,61 +43,6 @@ import type {
 const ONBOARDING_DONE_KEY = "atlasfile-onboarding-done";
 const TG_TOKEN_STORAGE_KEY = "atlasfile-telegram-bot-token";
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
-
-function extractFolder(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  const workIdx = parts.indexOf("_WORK");
-  if (workIdx >= 0 && parts[workIdx + 1]) return parts[workIdx + 1];
-  const triageIdx = parts.indexOf("_TRIAGE_REVIEW");
-  if (triageIdx >= 0 && parts[triageIdx + 1]) return `_TRIAGE/${parts[triageIdx + 1]}`;
-  return parts.length >= 2 ? parts[parts.length - 2] : "-";
-}
-
-function cleanSnippetHtml(snippet: string): string {
-  return snippet
-    .replace(/\[[^\]]+\]\s*/g, "")
-    .replace(/\n+/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
-
-function bestSnippet(highlights: string[]): string {
-  if (!highlights.length) return "Sem trecho destacado para esta busca.";
-  const withEmphasis = highlights.find((h) => h.includes("<em>")) || highlights[0];
-  return cleanSnippetHtml(withEmphasis);
-}
-
-function extractSnippets(highlights: string[]): string[] {
-  return [bestSnippet(highlights)];
-}
-
-function highlightTerm(text: string, term: string) {
-  const tokens = term
-    .trim()
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 2);
-  if (!tokens.length) return [text];
-  const escaped = tokens
-    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .sort((a, b) => b.length - a.length)
-    .join("|");
-  const parts = text.split(new RegExp(`(${escaped})`, "ig"));
-  return parts.map((part, idx) => {
-    const isMatch = tokens.some((token) => token.toLowerCase() === part.toLowerCase());
-    return isMatch ? <em key={`${text}-${idx}`}>{part}</em> : part;
-  });
-}
-
-function getDocIcon(contentType?: string | null, filename?: string) {
-  const ext = (filename?.split(".").pop() || "").toLowerCase();
-  if (contentType === "xlsx" || ["xlsx", "xls", "xlsm", "csv"].includes(ext)) return <FileSpreadsheet size={16} />;
-  if (contentType === "pptx" || ["ppt", "pptx"].includes(ext)) return <Presentation size={16} />;
-  if (contentType === "docx" || contentType === "pdf" || ["doc", "docx", "pdf", "txt", "md"].includes(ext)) {
-    return <FileText size={16} />;
-  }
-  return <File size={16} />;
-}
 
 function AppShell() {
   const { view, setView } = useNavigation();
@@ -266,18 +211,6 @@ function AppShell() {
   };
 
   useEffect(() => {
-    const content = document.querySelector(".content");
-    if (!content) return;
-    const onScroll = () => {
-      const topbar = document.querySelector(".topbar");
-      if (topbar) topbar.classList.toggle("is-opaque", content.scrollTop > 0);
-    };
-    content.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => content.removeEventListener("scroll", onScroll);
-  }, []);
-
-  useEffect(() => {
     fetchSetupStatus()
       .then((s) => {
         setAppEnv(s.app_env);
@@ -385,11 +318,6 @@ function AppShell() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showOnboarding]);
-
-  function renderBreadcrumb(projectId: string, path: string): string {
-    const projectLabel = projectLabelById.get(projectId) || projectId;
-    return `${projectLabel} > ${extractFolder(path)}`;
-  }
 
   async function handleSelectProject(nextProject: string) {
     if (nextProject === ALL_PROJECTS) {
@@ -602,30 +530,27 @@ function AppShell() {
   }
 
   return (
-    <div className="shell">
-      <Topbar
+    <div className="flex h-screen max-w-[100vw] overflow-hidden bg-background text-foreground">
+      <Sidebar
         healthOk={healthOk}
-        projects={projects}
-        selectedProject={selectedProject}
-        onSelectProject={handleSelectProject}
-        view={view}
-        onChangeView={setView}
-        theme={theme}
-        onChangeTheme={setTheme}
-        onOpenSearch={() => search.setSearchModalOpen(true)}
+        onSelectProject={(projectId) => void handleSelectProject(projectId)}
         onNewProject={() => {
           setNewProjectModalOpen(true);
           setNewProjectName("");
         }}
+        onOpenSearch={() => search.setSearchModalOpen(true)}
       />
 
-      {appEnv === "dev" && (
-        <button type="button" className="dev-onboarding-btn" onClick={handleReplayOnboarding} title="Replay Onboarding (dev only)">
-          <RefreshCw size={14} /> Onboarding
-        </button>
-      )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Topbar>
+          {appEnv === "dev" && (
+            <button type="button" className="dev-onboarding-btn" onClick={handleReplayOnboarding} title="Replay Onboarding (dev only)">
+              <RefreshCw size={14} /> Onboarding
+            </button>
+          )}
+        </Topbar>
 
-      <main className="content">
+        <main className="content flex-1 overflow-y-auto">
         {view === "painel" && (
           <PainelView
             projects={projects}
@@ -707,8 +632,9 @@ function AppShell() {
           />
         )}
 
-        <footer className="status">{status}</footer>
-      </main>
+          <footer className="status">{status}</footer>
+        </main>
+      </div>
 
       {templateModalProject && (
         <TemplateSelectModal
@@ -724,24 +650,23 @@ function AppShell() {
         />
       )}
 
-      <SearchModal
+      <CommandPalette
         open={search.searchModalOpen}
+        onOpenChange={search.setSearchModalOpen}
         query={search.query}
         onQueryChange={search.setQuery}
-        modalHits={search.modalHits}
-        modalLoading={search.modalLoading}
-        onClose={() => search.setSearchModalOpen(false)}
-        onClearSearch={search.clearSearch}
+        hits={search.modalHits}
+        loading={search.modalLoading}
         onSubmitSearch={(q) => {
           search.setFullSearchInput(q);
           void search.runFullSearch(1, q);
-          search.setSearchModalOpen(false);
+          setView("painel");
         }}
-        renderBreadcrumb={renderBreadcrumb}
-        highlightTerm={highlightTerm}
-        extractSnippets={extractSnippets}
-        getDocIcon={getDocIcon}
-        getFileDownloadUrl={getFileDownloadUrl}
+        onSelectProject={(projectId) => void handleSelectProject(projectId)}
+        onNewProject={() => {
+          setNewProjectModalOpen(true);
+          setNewProjectName("");
+        }}
       />
 
       <AssistantSettingsModal

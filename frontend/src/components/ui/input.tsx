@@ -11,7 +11,7 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
         "placeholder:text-tertiary",
         "transition-[border-color,box-shadow] duration-150",
         "hover:border-border-strong",
-        "focus-visible:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent-soft",
+        "shadow-none focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
         className
@@ -31,7 +31,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttribu
         "placeholder:text-tertiary",
         "transition-[border-color,box-shadow] duration-150",
         "hover:border-border-strong",
-        "focus-visible:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent-soft",
+        "shadow-none focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}

@@ -50,6 +50,8 @@ const CommandInput = React.forwardRef<
       ref={ref}
       className={cn(
         "flex h-12 w-full bg-transparent py-3 text-sm text-foreground outline-none",
+        // Neutraliza estilos globais legados de input (borda/padding/focus-ring)
+        "rounded-none border-0 px-0 shadow-none focus:shadow-none",
         "placeholder:text-tertiary disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}

@@ -6,7 +6,12 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
-    host: true
+    host: true,
+    // Dev only: permite testar contra a API local sem CORS (VITE_API_URL same-origin)
+    proxy: {
+      "/api": "http://localhost:8000",
+      "/health": "http://localhost:8000"
+    }
   },
   test: {
     globals: true,
