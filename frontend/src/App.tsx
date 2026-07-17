@@ -31,6 +31,7 @@ import { AssistantSettingsModal } from "./features/settings/AssistantSettingsMod
 import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
 import { TemplateSelectModal } from "./features/templates/TemplateSelectModal";
 import { AssistenteView } from "./views/AssistenteView";
+import { GlobalDropPortal } from "./features/ingest/GlobalDropPortal";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import type {
   ProjectArea,
@@ -656,6 +657,13 @@ function AppShell() {
           }}
         />
       )}
+
+      <GlobalDropPortal
+        onScanComplete={() => {
+          void loadTriage();
+          fetchStats().then(setDashboardStats).catch(() => {});
+        }}
+      />
 
       <CommandPalette
         open={search.searchModalOpen}

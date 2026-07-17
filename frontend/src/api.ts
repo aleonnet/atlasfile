@@ -638,6 +638,38 @@ export async function uploadToInbox(projectId: string, files: File[]): Promise<U
   return res.json();
 }
 
+/** Upload de 1 arquivo com progresso real (XHR — fetch não expõe upload progress). */
+export function uploadFileWithProgress(
+  projectId: string,
+  file: File,
+  onProgress: (pct: number) => void
+): Promise<UploadResult> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}/api/ingest/upload/${encodeURIComponent(projectId)}`);
+    const key = getApiKey();
+    if (key) xhr.setRequestHeader("Authorization", `Bearer ${key}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as UploadResult);
+        } catch {
+          reject(new Error("Resposta inválida do upload"));
+        }
+      } else {
+        reject(new Error(`Upload falhou (${xhr.status})`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Erro de rede no upload"));
+    const formData = new FormData();
+    formData.append("files", file);
+    xhr.send(formData);
+  });
+}
+
 export async function fetchInboxFiles(projectId: string): Promise<{ files: Array<{ filename: string; size: number }> }> {
   const res = await apiFetch(`${API_URL}/api/ingest/inbox/${encodeURIComponent(projectId)}`);
   if (!res.ok) throw new Error("Falha ao listar inbox");

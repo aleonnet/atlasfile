@@ -102,3 +102,14 @@
 @keyframes atlas-shimmer {
   100% { transform: translateX(100%); }
 }
+
+/* Upload portal: anel girando e partículas convergindo ao centro */
+@keyframes atlas-portal-spin {
+  to { rotate: 360deg; }
+}
+
+@keyframes atlas-converge {
+  0% { translate: var(--from-x, 0) var(--from-y, 0); opacity: 0; scale: 1; }
+  20% { opacity: 0.9; }
+  100% { translate: 0 0; opacity: 0; scale: 0.4; }
+}
