@@ -13,20 +13,39 @@ import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
 import { toast } from "./ui/sonner";
 import { ChartBlock } from "./ChartBlock";
-import { CompanionOrb } from "./CompanionOrb";
+import { Orb } from "./OrbGL";
 import type { CompanionState } from "./CompanionOrb";
 import { useCompanionState } from "../hooks/useCompanionState";
 
 const _safeImgSrc = (src: string | undefined): boolean =>
   Boolean(src && /^(https?:|\/|data:image)/i.test(src));
 
+/** URLs fabricadas pelo LLM (ex.: https://path/to/document) — nunca navegáveis. */
+const PLACEHOLDER_LINK_RE = /^https?:\/\/(path|example|url|link|document|file|docs?)([/.]|$)/i;
+
+function childrenToText(children: React.ReactNode): string {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children)) return children.map(childrenToText).join("");
+  return "";
+}
+
 /** Stable reference — avoids ReactMarkdown full re-render on parent state changes. */
 const MARKDOWN_COMPONENTS = {
-  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a href={href} target="_blank" rel="noreferrer noopener" {...props}>
-      {children}
-    </a>
-  ),
+  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+    if (!href || PLACEHOLDER_LINK_RE.test(href)) {
+      // Link inventado: se o texto é um nome de arquivo, vira chip resolvível;
+      // senão, neutraliza para texto puro (nada de link morto).
+      const text = childrenToText(children).trim();
+      const looksLikeFile = new RegExp(`\\.(${DOC_EXTENSIONS})$`, "i").test(text);
+      if (looksLikeFile) return <CitationChip filename={text} />;
+      return <span>{children}</span>;
+    }
+    return (
+      <a href={href} target="_blank" rel="noreferrer noopener" {...props}>
+        {children}
+      </a>
+    );
+  },
   img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) =>
     _safeImgSrc(src) ? <img src={src} alt={alt ?? ""} {...props} /> : null,
   code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) => {
@@ -525,7 +544,7 @@ export function ChatPanel({
       <div className="min-h-[120px] flex-1 overflow-y-auto overflow-x-hidden px-5 py-3" ref={threadRef} role="log">
         {messages.length === 0 && !sending && (
           <div className="flex h-full flex-col items-center justify-center gap-5 py-10 text-center">
-            <CompanionOrb state="idle" size={56} />
+            <Orb state="idle" size={56} />
             <div>
               <p className="m-0 font-display text-lg font-bold text-foreground-strong">Como posso ajudar?</p>
               <p className="mt-1.5 text-xs text-muted-foreground">
@@ -698,7 +717,7 @@ function ChatMessageBubble({
         className="mb-1 block size-10 shrink-0 self-end rounded-lg object-cover object-center"
       />
     ) : (
-      <CompanionOrb state="idle" size={40} />
+      <Orb state="idle" size={40} />
     );
 
 
@@ -961,7 +980,7 @@ function ChatReadingIndicator({
 }) {
   return (
     <div className="mb-4 mr-4 flex items-center gap-3">
-      <CompanionOrb state={companionState} size={40} />
+      <Orb state={companionState} size={40} />
       <div className="flex flex-col gap-0.5">
         <div className="inline-flex items-center py-2" role="status" aria-label="Pensando">
           <span className="atlas-thinking-text font-mono text-xs tracking-wide">Pensando...</span>

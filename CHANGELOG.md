@@ -15,6 +15,20 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.20.0] -- 2026-07-17
+
+### Orb WebGL: o logo vivo (Fase 7 do plano rag_hibrido_permissoes_ui_v2 — encerra o plano)
+
+- **Novo `components/OrbGL/`** — WebGL2 cru (um quad + fragment shader, sem three.js): esfera com **aurora FBM domain-warped** (4 oitavas de value noise 3D nas cores da marca), **iluminação direcional real** (difuso + specular Blinn-Phong), **fresnel com dispersão cromática** tingido coral→púrpura, glow volumétrico analítico (sem multipass) e **anti-aliasing proporcional ao pixel** em todas as bordas
+- **Estados dirigem uniforms, nunca trocam shader** (`orbStates.ts`, puro e testado): idle respira; thinking acelera fluxo/pulso e luas 4×; **ingesting (novo)** — espiral de partículas convergindo ao núcleo, conectado de verdade ao portal de upload via evento `atlas:ingest-active`; success flash verde; error treme (no espaço do shader) e avermelha; transições sempre por lerp
+- **Mecânica kepleriana preservada**: Newton-Raphson extraído puro (`kepler.ts`) — a CPU resolve as órbitas e o shader desenha as luas com brilho de proximidade e oclusão atrás da esfera; testes de periapsis/apoapsis, convergência e fechamento de órbita
+- **Fallback integral**: sem WebGL2, prefers-reduced-motion ou queda do contexto GL → CompanionOrb SVG intacto; render loop pausa com aba oculta e fora do viewport (zero GPU idle); DPR ≤ 2
+- **Wordmark "AtlasFile"** com stroke draw-on (~1.5s) e fill emergindo no hero do onboarding (orb 112px), micro-interação de glow no hover
+- **Chat: fim das URLs fabricadas** — regra no system prompt do orchestrator (nunca inventar links; citar `original_filename` entre backticks) + safety net no renderer (links placeholder viram chip clicável quando o texto é um arquivo, ou texto puro) — validado E2E com resposta real
+- Testes: 135 frontend (9 novos do OrbGL) + 479 backend
+
+---
+
 ## [0.19.0] -- 2026-07-17
 
 ### UI reformulada "instrumento de precisão vivo" — 100% das telas, zero CSS legado (Fase 6 do plano rag_hibrido_permissoes_ui_v2)

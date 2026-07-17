@@ -91,6 +91,12 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
     ]);
   }, []);
 
+  // Sinaliza ingestão ativa para o resto do shell (orb da sidebar → "ingesting")
+  const ingestActive = scanning || queue.some((i) => i.status === "aguardando" || i.status === "enviando");
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("atlas:ingest-active", { detail: ingestActive }));
+  }, [ingestActive]);
+
   // Processa a fila sequencialmente; ao terminar, dispara o scan da inbox.
   useEffect(() => {
     if (processing.current || !queueProject) return;

@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.14.0 → 0.20.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [rag_hibrido_permissoes_ui_v2](rag_hibrido_permissoes_ui_v2.plan.md) | Plano de 7 fases (uma versão minor por fase, 0.14.0–0.20.0): remoção do modo setfit; embeddings + índice vetorial separado (`atlasfile_chunk_vectors`, backfill idempotente); busca híbrida BM25+kNN com RRF manual + rerank cross-encoder ONNX e golden-set benchmark (`benchmark_retrieval.py`); auth mínima por API key com escopo de projeto; UI Foundation (Tailwind v4 CSS-first + primitivas ui/ temadas + decomposição do App.tsx em contexts/hooks); redesign 100% das telas com zero CSS legado ("instrumento de precisão vivo"); Orb WebGL (FBM + fresnel + luas keplerianas, fallback SVG integral) |
+
+---
+
 ## Ferramental / PoCs (não versionado)
 
 | # | Plano | Escopo |

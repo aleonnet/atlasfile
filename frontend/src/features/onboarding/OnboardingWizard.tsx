@@ -2,7 +2,8 @@ import { Check, ChevronLeft, ChevronRight, FolderOpen, Info, Plus, Sparkles, X }
 import { useCallback, useEffect, useState } from "react";
 import { fetchProjects, fetchSetupStatus, initializeProject, listTemplates } from "../../api";
 import { AuroraField } from "../../components/AuroraField";
-import { CompanionOrb } from "../../components/CompanionOrb";
+import { Orb } from "../../components/OrbGL";
+import { Wordmark } from "../../components/Wordmark";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -149,9 +150,9 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
 
         {step === "welcome" && (
           <div>
-            <div className="flex flex-col items-center gap-3 text-center">
-              <CompanionOrb state="alive" size={72} />
-              <h1 className="font-display text-2xl font-bold tracking-tight text-foreground-strong">AtlasFile</h1>
+            <div className="flex flex-col items-center gap-2 text-center">
+              <Orb state="alive" size={112} />
+              <Wordmark className="h-14 w-80" />
             </div>
             <h2 className="mt-5 font-display text-lg font-bold text-foreground-strong">Bem-vindo ao AtlasFile</h2>
             <p className="mt-1 text-sm text-muted-foreground">

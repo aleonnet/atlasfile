@@ -14,8 +14,8 @@ import {
   Sun,
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useMemo, useState } from "react";
-import { CompanionOrb, type CompanionState } from "../components/CompanionOrb";
+import { useEffect, useMemo, useState } from "react";
+import { Orb, type OrbGLState } from "../components/OrbGL";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { ALL_PROJECTS, useProject } from "../contexts/ProjectContext";
@@ -203,7 +203,16 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const reducedMotion = useReducedMotion();
 
-  const orbState: CompanionState = healthOk === true ? "alive" : healthOk === false ? "error" : "idle";
+  // Ingestão ativa (upload/scan do portal global) leva o orb a "ingesting"
+  const [ingestActive, setIngestActive] = useState(false);
+  useEffect(() => {
+    const handler = (e: Event) => setIngestActive(Boolean((e as CustomEvent).detail));
+    window.addEventListener("atlas:ingest-active", handler);
+    return () => window.removeEventListener("atlas:ingest-active", handler);
+  }, []);
+
+  const orbState: OrbGLState =
+    healthOk === false ? "error" : ingestActive ? "ingesting" : healthOk === true ? "alive" : "idle";
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -237,7 +246,7 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
         )}
 
         <div className={cn("relative flex items-center gap-2.5 pt-4", collapsed ? "justify-center px-0" : "px-4")}>
-          <CompanionOrb state={orbState} size={collapsed ? 28 : 40} />
+          <Orb state={orbState} size={collapsed ? 28 : 40} />
           {!collapsed && (
             <h1 className="font-display text-lg font-bold tracking-tight text-foreground-strong">AtlasFile</h1>
           )}
