@@ -11,6 +11,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { cn } from "../../lib/utils";
 import type { TemplateMeta } from "../../types";
+import { CreateTaxonomyEntryModal } from "./CreateTaxonomyEntryModal";
 
 type EditorState = {
   slug: string;
@@ -48,6 +49,7 @@ export function TemplateEditorView() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [taxonomyModalOpen, setTaxonomyModalOpen] = useState(false);
 
   useEscapeKey(confirmDelete ? () => setConfirmDelete(null) : editor ? () => setEditor(null) : null);
 
@@ -573,10 +575,16 @@ export function TemplateEditorView() {
           <FileStack className="size-4 text-accent" aria-hidden />
           Templates de projeto
         </CardTitle>
-        <Button onClick={handleNew}>
-          <Plus />
-          Novo template
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setTaxonomyModalOpen(true)}>
+            <Plus />
+            Novo tipo/domínio
+          </Button>
+          <Button onClick={handleNew}>
+            <Plus />
+            Novo template
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {loading && (
@@ -651,6 +659,12 @@ export function TemplateEditorView() {
             </div>
           </EditorOverlay>
         )}
+
+        <CreateTaxonomyEntryModal
+          open={taxonomyModalOpen}
+          onClose={() => setTaxonomyModalOpen(false)}
+          onCreated={() => void reload()}
+        />
       </CardContent>
     </Card>
   );
