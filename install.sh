@@ -152,8 +152,14 @@ if [ -z "${PROJECTS_ROOT}" ]; then
   elif [ "${ASSUME_YES}" = "1" ]; then
     PROJECTS_ROOT="${PROJECTS_ROOT_DEFAULT}"
   else
+    # Via `curl | bash` o stdin é o próprio script — o prompt precisa ler do terminal
     printf '  %s?%s Pasta onde seus projetos/documentos vão morar %s[%s]%s: ' "$ORANGE" "$RESET" "$DIM" "${PROJECTS_ROOT_DEFAULT}" "$RESET"
-    read -r answer || true
+    answer=""
+    if [ -r /dev/tty ]; then
+      read -r answer < /dev/tty || answer=""
+    else
+      printf '(sem terminal interativo — usando o default)\n'
+    fi
     PROJECTS_ROOT="${answer:-${PROJECTS_ROOT_DEFAULT}}"
   fi
 fi
