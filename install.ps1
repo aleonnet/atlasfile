@@ -9,9 +9,13 @@
 
 $ErrorActionPreference = "Stop"
 
+# Banner: o orb (com carinha) e o wordmark — mesmo personagem do install.sh
 Write-Host ""
-Write-Host "  AtlasFile — gestão documental inteligente (Windows/WSL2)" -ForegroundColor Cyan
-Write-Host "  ─────────────────────────────────────────────────────────"
+Write-Host "        ▄▄▄▄▄        " -ForegroundColor DarkYellow -NoNewline; Write-Host "●" -ForegroundColor Magenta
+Write-Host "      ▄███████▄" -ForegroundColor DarkYellow
+Write-Host "     ▐██ " -ForegroundColor Yellow -NoNewline; Write-Host "● ●" -ForegroundColor White -NoNewline; Write-Host " ██▌" -ForegroundColor Yellow -NoNewline; Write-Host "   AtlasFile " -ForegroundColor DarkYellow -NoNewline; Write-Host "(Windows/WSL2)" -ForegroundColor DarkGray
+Write-Host "      ▀██ " -ForegroundColor DarkYellow -NoNewline; Write-Host "‿" -ForegroundColor White -NoNewline; Write-Host " ██▀" -ForegroundColor DarkYellow -NoNewline; Write-Host "    seus documentos, vivos" -ForegroundColor DarkGray
+Write-Host "   ●" -ForegroundColor Yellow -NoNewline; Write-Host "    ▀▀▀▀▀" -ForegroundColor DarkYellow
 Write-Host ""
 
 # 1. WSL2

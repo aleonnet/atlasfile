@@ -224,6 +224,25 @@ describe("App", () => {
     });
   });
 
+  it("opens onboarding on empty backend even with done-flag in localStorage (fresh install, same origin)", async () => {
+    const { fetchSetupStatus, fetchProjects } = await import("./api");
+    vi.mocked(fetchSetupStatus).mockResolvedValue({
+      app_env: "dev",
+      projects_root: "/projects",
+      total_project_dirs: 0,
+      initialized_projects: 0,
+      onboarding_suggested: true,
+    });
+    vi.mocked(fetchProjects).mockResolvedValue([]);
+    localStorage.setItem("atlasfile-onboarding-done", "true");
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText(/Bem-vindo ao AtlasFile/)).toBeInTheDocument();
+    });
+    localStorage.removeItem("atlasfile-onboarding-done");
+  });
+
   it("shows dashboard when projects exist", async () => {
     const { fetchSetupStatus } = await import("./api");
     vi.mocked(fetchSetupStatus).mockResolvedValue({

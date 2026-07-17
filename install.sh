@@ -95,12 +95,12 @@ fail() { printf '  %s✘%s %s\n' "$RED" "$RESET" "$*"; exit 1; }
 info() { printf '  %s·%s %s\n' "$PURPLE" "$RESET" "$*"; }
 title() { printf '\n%s%s[%s]%s %s%s%s\n' "$BOLD" "$ORANGE" "$1" "$RESET" "$BOLD" "$2" "$RESET"; }
 
-# ── Banner: o orb e o wordmark ──────────────────────────────────────────────
+# ── Banner: o orb (com carinha) e o wordmark ────────────────────────────────
 printf '\n'
 printf '%s        ▄▄▄▄▄%s        %s●%s\n' "$ORANGE" "$RESET" "$PURPLE" "$RESET"
 printf '%s      ▄███████▄%s\n' "$ORANGE" "$RESET"
-printf '%s     ▐█████████▌%s   %s%sAtlasFile%s\n' "$CORAL" "$RESET" "$BOLD" "$ORANGE" "$RESET"
-printf '%s      ▀███████▀%s    %sseus documentos, vivos%s\n' "$ORANGE" "$RESET" "$DIM" "$RESET"
+printf '%s     ▐██%s %s●%s %s●%s %s██▌%s   %s%sAtlasFile%s\n' "$CORAL" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET" "$CORAL" "$RESET" "$BOLD" "$ORANGE" "$RESET"
+printf '%s      ▀██%s ‿ %s██▀%s    %sseus documentos, vivos%s\n' "$ORANGE" "$RESET" "$ORANGE" "$RESET" "$DIM" "$RESET"
 printf '%s   ●%s    ▀▀▀▀▀\n' "$CORAL" "$RESET"
 
 # ── 1. Pré-requisitos ───────────────────────────────────────────────────────
@@ -114,6 +114,29 @@ check "docker $(docker --version 2>/dev/null | sed 's/Docker version //;s/,.*//'
   || fail "Docker instalado mas o daemon não está rodando — abra o Docker Desktop e tente de novo"
 check "docker compose $(docker compose version --short 2>/dev/null || echo v2)" docker compose version \
   || fail "Docker Compose v2 não encontrado — atualize o Docker Desktop"
+
+# O compose deriva o project name do nome da pasta — outra instância AtlasFile
+# cujo diretório tenha o mesmo nome compartilharia containers E VOLUMES (dados!).
+# Detectar e abortar antes de adotar silenciosamente a stack alheia.
+compose_project="$(basename "${INSTALL_DIR}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g')"
+other_dir="$(docker ps -a --filter "label=com.docker.compose.project=${compose_project}" \
+  --format '{{.Label "com.docker.compose.project.working_dir"}}' 2>/dev/null | grep -vx "${INSTALL_DIR}" | sort -u | head -1 || true)"
+if [ -n "${other_dir}" ]; then
+  info "instância existente encontrada em: ${other_dir}"
+  fail "o diretório ${INSTALL_DIR} geraria o mesmo project name docker ('${compose_project}') da instância acima — elas compartilhariam containers e volumes. Use --dir com outro nome (ex.: --dir ~/AtlasFileNovo) ou remova a outra instância antes."
+fi
+if [ ! -d "${INSTALL_DIR}/.git" ] && docker volume ls -q 2>/dev/null | grep -qx "${compose_project}_opensearch_data"; then
+  fail "instalação nova em ${INSTALL_DIR}, mas o volume '${compose_project}_opensearch_data' já existe com dados de outra instância. Use --dir com outro nome (ex.: --dir ~/AtlasFileNovo) ou remova o volume (docker volume rm) se tiver certeza de que não precisa dele."
+fi
+
+# Os container_name são fixos (atlasfile-*): mesmo com project name distinto,
+# só uma instância pode existir por vez. Se os containers pertencem a outro
+# diretório, a outra stack precisa ser parada e removida antes.
+name_owner="$(docker inspect atlasfile-api --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || true)"
+if [ -n "${name_owner}" ] && [ "${name_owner}" != "${INSTALL_DIR}" ]; then
+  info "os containers atlasfile-* pertencem à instância em: ${name_owner}"
+  fail "os nomes de container do AtlasFile são fixos — pare e remova a outra stack antes de instalar aqui: cd ${name_owner} && docker compose down (os dados dela ficam preservados nos volumes)."
+fi
 
 for port in 5173 8000 9200; do
   if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then

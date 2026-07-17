@@ -226,7 +226,10 @@ function AppShell() {
       .then((s) => {
         setAppEnv(s.app_env);
         const onboardingDone = localStorage.getItem(ONBOARDING_DONE_KEY) === "true";
-        if (s.onboarding_suggested && !onboardingDone) {
+        // Backend zerado = instalação nova: a flag do localStorage pode ser de
+        // outra instância servida na mesma origem (localhost:5173) — ignorá-la.
+        const backendEmpty = s.initialized_projects === 0;
+        if (s.onboarding_suggested && (!onboardingDone || backendEmpty)) {
           setShowOnboarding(true);
         }
       })

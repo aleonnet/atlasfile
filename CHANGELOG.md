@@ -15,6 +15,21 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.22.1] -- 2026-07-17
+
+### Corrigido
+
+- **Instalador — guards contra colisão de instâncias**: o compose deriva o project name do nome da pasta; instalar em um diretório com o mesmo nome de outra instância (ex.: `~/AtlasFile` vs `~/Development/AtlasFile`) fazia a nova stack adotar silenciosamente containers **e volumes** (dados!) da existente. Agora o `install.sh` detecta e aborta com orientação: (1) project name igual ao de containers de outro diretório; (2) volume `*_opensearch_data` pré-existente em instalação nova; (3) containers `atlasfile-*` (nomes fixos) pertencentes a outro diretório
+- **Instalador — prompt interativo**: via `curl | bash` o `read` lia do próprio script em vez do terminal (`/dev/tty`); e o placeholder real do `.env.example` não era reconhecido como "não configurado", pulando a pergunta da pasta de projetos
+- **Onboarding em instalação nova**: com backend zerado (`initialized_projects === 0`), o wizard abre mesmo com a flag `atlasfile-onboarding-done` no localStorage — a flag pode ser de outra instância servida na mesma origem (localhost:5173)
+- **UX pós-portal**: fila da INBOX visível no Classificador (chips com remoção por arquivo); dropzone redundante do Painel removida — o DropHintCard clicável (file picker → mesma fila do portal global) assume o convite de upload nas duas visões
+
+### Mudado
+
+- **Banner do instalador com carinha** 🙂 no orb (install.sh e install.ps1 alinhados)
+
+---
+
 ## [0.22.0] -- 2026-07-17
 
 ### UI de conflitos de rótulo + criação governada de taxonomia
