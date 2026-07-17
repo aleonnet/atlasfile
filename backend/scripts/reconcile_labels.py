@@ -529,8 +529,45 @@ def main() -> None:
     conflicts = {sha: group for sha, group in grouped.items() if len(distinct_options(group)) > 1}
     print(f"SHAs observados: {len(grouped)} | em conflito: {len(conflicts)}")
 
+    # Preserva resoluções já feitas (UI/humano/LLM) — re-executar nunca
+    # reabre nem re-arbitra o que já foi decidido.
+    prior_path = classifier_datasets_root() / "label_reconciliation.jsonl"
+    prior: dict[str, dict] = {}
+    if prior_path.exists():
+        for line in prior_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                entry = json.loads(line)
+                if entry.get("labeled_by") in {"human", "human_confirmed_llm", "llm_consensus"}:
+                    prior[entry["sha256"]] = entry
+
     llm_fn = make_llm_resolver(args.model, dry_run=args.dry_run)
-    resolutions = [resolve_sha(sha, group, llm_fn) for sha, group in sorted(grouped.items())]
+
+    def resolve_or_preserve(sha: str, group: list[LabelObservation]) -> ShaResolution:
+        kept = prior.get(sha)
+        if kept and kept.get("canonical_business_domain"):
+            res = ShaResolution(
+                sha256=sha,
+                refs=sorted({obs.ref for obs in group}),
+                options=distinct_options(group),
+                canonical_business_domain=kept["canonical_business_domain"],
+                canonical_document_type=kept["canonical_document_type"],
+                labeled_by=kept["labeled_by"],
+                llm_proposal=kept.get("llm_proposal", {}),
+                sources=[
+                    {
+                        "source": obs.source,
+                        "ref": obs.ref,
+                        "business_domain": obs.business_domain,
+                        "document_type": obs.document_type,
+                        "authoritative": obs.authoritative,
+                    }
+                    for obs in group
+                ],
+            )
+            return res
+        return resolve_sha(sha, group, llm_fn)
+
+    resolutions = [resolve_or_preserve(sha, group) for sha, group in sorted(grouped.items())]
 
     # Arbitragens humanas previamente preenchidas no relatório
     report_path = classifier_datasets_root() / "label_conflicts_report.md"
