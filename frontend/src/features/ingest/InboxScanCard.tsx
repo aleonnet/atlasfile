@@ -1,6 +1,7 @@
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { triggerScan } from "../../api";
+import { Button } from "../../components/ui/button";
 import type { Project, ScanResult } from "../../types";
 import { useIngestMonitor } from "./hooks/useIngestMonitor";
 
@@ -80,21 +81,17 @@ export function InboxScanCard({ selectedProject, projects, onStatus, onScanCompl
 
   return (
     <>
-      <button
-        className="btn primary"
-        disabled={loading || !selectedProject}
-        onClick={handleScan}
-      >
-        <RefreshCw size={14} className={loading ? "spin" : ""} />
+      <Button disabled={loading || !selectedProject} onClick={handleScan}>
+        <RefreshCw className={loading ? "animate-spin" : ""} />
         {loading ? "Processando..." : "Processar INBOX"}
-      </button>
+      </Button>
 
       {isRunning && (
-        <div className="itc-op-progress">
-          <p className="itc-op-phase">{formatPhaseLabel(ingestStatus?.phase) || "Iniciando..."}</p>
-          <div className="itc-op-bar-wrap">
+        <div className="min-w-44 space-y-1">
+          <p className="font-display text-xs font-semibold text-foreground-strong">{formatPhaseLabel(ingestStatus?.phase) || "Iniciando..."}</p>
+          <div className="h-1 overflow-hidden rounded-full bg-panel-strong">
             <div
-              className="itc-op-bar-fill"
+              className="h-full rounded-full bg-gradient-to-r from-accent to-accent-light shadow-[0_0_8px_var(--accent-soft)] transition-[width] duration-300"
               style={{
                 width: (ingestStatus?.progress_total ?? 0) > 0
                   ? `${Math.min(100, (100 * (ingestStatus?.progress_current ?? 0)) / ingestStatus!.progress_total!)}%`
@@ -102,19 +99,19 @@ export function InboxScanCard({ selectedProject, projects, onStatus, onScanCompl
               }}
             />
           </div>
-          <p className="itc-op-stats">
+          <p className="font-mono text-[0.65rem] text-tertiary">
             {ingestStatus?.progress_current ?? 0} / {ingestStatus?.progress_total ?? 0} arquivo{(ingestStatus?.progress_total ?? 0) !== 1 ? "s" : ""}
           </p>
           {ingestStatus?.progress_file && (
-            <p className="itc-op-file">{ingestStatus.progress_file}</p>
+            <p className="truncate font-mono text-[0.65rem] text-tertiary">{ingestStatus.progress_file}</p>
           )}
         </div>
       )}
 
       {ingestStatus?.phase === "failed" && !loading && !ingestStatus?.running && (
-        <div className="itc-op-progress itc-op-error">
-          <p className="itc-op-phase">Falhou</p>
-          {ingestStatus.last_error && <p className="itc-op-file">{ingestStatus.last_error}</p>}
+        <div className="min-w-44 space-y-0.5 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5">
+          <p className="font-display text-xs font-semibold text-destructive">Falhou</p>
+          {ingestStatus.last_error && <p className="truncate font-mono text-[0.65rem] text-destructive/80">{ingestStatus.last_error}</p>}
         </div>
       )}
     </>

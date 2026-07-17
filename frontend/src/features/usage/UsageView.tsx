@@ -1,8 +1,20 @@
-import { BarChart3, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import { EmptyState } from "../../components/EmptyState";
+import { differenceInCalendarDays, format, parseISO, startOfISOWeek, startOfMonth } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { BarChart3, ChevronLeft, ChevronRight, CircleDollarSign, Coins, GraduationCap, MessagesSquare, RefreshCw, Tags, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchClassificationUsage, fetchTrainingUsage, fetchUsageSessions, fetchUsageSummary } from "../../api";
+import { Button } from "../../components/ui/button";
+import { DataTable, TableWrap } from "../../components/ui/data-table";
+import { DateRangePicker } from "../../components/ui/date-range-picker";
+import { EmptyState, ErrorState } from "../../components/ui/empty-state";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { StatTile } from "../../components/ui/stat-tile";
+import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import type { ClassificationUsageSummary, TrainingUsageSummary, UsageByDayEntry, UsageByModelEntry, UsageSessionItem, UsageSummaryResponse } from "../../types";
+
+const chartCardClass = "flex flex-col rounded-lg border border-border bg-card p-4";
+const sectionTitleClass = "mt-5 mb-2 font-display text-sm font-bold text-foreground-strong";
+const legendDotClass = "inline-block size-2 rounded-full";
 const ALL_CHANNELS = "__all__";
 const CHANNEL_LABELS: Record<string, string> = { web: "Web", telegram: "TG" };
 const PAGE_SIZE = 10;
@@ -29,11 +41,37 @@ function toYyyyMmDd(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+type Granularity = "day" | "week" | "month";
 
+const GRANULARITY_LABELS: Record<Granularity, string> = { day: "Dia", week: "Semana", month: "Mês" };
 
-function formatDayLabel(dateStr: string): string {
-  const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
+/** Granularidade default calculada pelo tamanho do range: até 31 dias → dia;
+ * até 26 semanas → semana; acima → mês (mantém ≤ ~31 barras legíveis). */
+export function autoGranularity(start: string, end: string): Granularity {
+  const span = differenceInCalendarDays(parseISO(end), parseISO(start)) + 1;
+  if (span <= 31) return "day";
+  if (span <= 182) return "week";
+  return "month";
+}
+
+function bucketKey(date: string, g: Granularity): string {
+  if (g === "day") return date;
+  const d = parseISO(date);
+  return format(g === "week" ? startOfISOWeek(d) : startOfMonth(d), "yyyy-MM-dd");
+}
+
+function bucketLabel(key: string, g: Granularity): string {
+  const d = parseISO(key);
+  if (g === "month") return format(d, "MMM/yy", { locale: ptBR }).replace(".", "");
+  if (g === "week") return format(d, "dd/MM");
+  return format(d, "dd MMM", { locale: ptBR }).replace(".", "");
+}
+
+function bucketTooltip(key: string, g: Granularity): string {
+  const d = parseISO(key);
+  if (g === "month") return format(d, "MMMM 'de' yyyy", { locale: ptBR });
+  if (g === "week") return `semana de ${format(d, "dd/MM/yyyy")}`;
+  return format(d, "dd/MM/yyyy");
 }
 
 // Paleta de gráficos da marca (--chart-N em styles.css, dark + light)
@@ -121,6 +159,28 @@ function mergeDays(
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function aggregateByBucket(days: MergedDay[], g: Granularity): MergedDay[] {
+  if (g === "day") return days;
+  const map = new Map<string, MergedDay>();
+  for (const d of days) {
+    const key = bucketKey(d.date, g);
+    let m = map.get(key);
+    if (!m) {
+      m = { date: key, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, total_tokens: 0, assistant_tokens: 0, classification_tokens: 0, training_tokens: 0 };
+      map.set(key, m);
+    }
+    m.input_tokens += d.input_tokens;
+    m.output_tokens += d.output_tokens;
+    m.cache_read_tokens += d.cache_read_tokens;
+    m.cache_write_tokens += d.cache_write_tokens;
+    m.total_tokens += d.total_tokens;
+    m.assistant_tokens += d.assistant_tokens;
+    m.classification_tokens += d.classification_tokens;
+    m.training_tokens += d.training_tokens;
+  }
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 type ChartMode = "by-type" | "by-process";
 
 function DailyTokenChart({
@@ -129,95 +189,89 @@ function DailyTokenChart({
   trainingDays,
   chartMode,
   onChartModeChange,
+  granularity,
+  onGranularityChange,
 }: {
   assistantDays: UsageByDayEntry[];
   classificationDays: UsageByDayEntry[];
   trainingDays: UsageByDayEntry[];
   chartMode: ChartMode;
   onChartModeChange: (mode: ChartMode) => void;
+  granularity: Granularity;
+  onGranularityChange: (g: Granularity) => void;
 }) {
   const days = useMemo(() => mergeDays(assistantDays, classificationDays, trainingDays), [assistantDays, classificationDays, trainingDays]);
-  const maxTokens = useMemo(() => Math.max(...days.map((d) => d.total_tokens), 1), [days]);
-  const showLabels = days.length <= 14;
+  const buckets = useMemo(() => aggregateByBucket(days, granularity), [days, granularity]);
+  const maxTokens = useMemo(() => Math.max(...buckets.map((d) => d.total_tokens), 1), [buckets]);
+  const showValueLabels = buckets.length <= 14;
+  const labelEvery = Math.max(1, Math.ceil(buckets.length / 16));
 
-  if (days.length === 0) {
+  const granularityTabs = (
+    <Tabs value={granularity} onValueChange={(v) => onGranularityChange(v as Granularity)}>
+      <TabsList aria-label="Granularidade">
+        {(Object.keys(GRANULARITY_LABELS) as Granularity[]).map((g) => (
+          <TabsTrigger key={g} value={g} className="px-2.5 py-1 text-xs">{GRANULARITY_LABELS[g]}</TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
+  );
+
+  if (buckets.length === 0) {
     return (
-      <div className="usage-chart-card">
-        <div className="usage-chart-header">
-          <span className="usage-section-title" style={{ margin: 0 }}>Uso diario de tokens</span>
-        </div>
-        <EmptyState icon={<BarChart3 size={32} />} title="Nenhum dado no período" description="Ajuste o intervalo de datas ou use o assistente para gerar atividade." />
+      <div className={chartCardClass}>
+        <span className="font-display text-sm font-bold text-foreground-strong">Uso de tokens</span>
+        <EmptyState className="mt-3 border-0 py-8" icon={<BarChart3 aria-hidden />} title="Nenhum dado no período" description="Ajuste o intervalo de datas ou use o assistente para gerar atividade." />
       </div>
     );
   }
 
   return (
-    <div className="usage-chart-card">
-      <div className="usage-chart-header">
-        <div className="assistente-tabs-pill" style={{ marginRight: 8 }}>
-          <button
-            type="button"
-            className={`assistente-tab${chartMode === "by-type" ? " assistente-tab--active" : ""}`}
-            onClick={() => onChartModeChange("by-type")}
-          >Por tipo</button>
-          <button
-            type="button"
-            className={`assistente-tab${chartMode === "by-process" ? " assistente-tab--active" : ""}`}
-            onClick={() => onChartModeChange("by-process")}
-          >Por processo</button>
+    <div className={chartCardClass}>
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="font-display text-sm font-bold text-foreground-strong">Uso de tokens</span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Tabs value={chartMode} onValueChange={(v) => onChartModeChange(v as ChartMode)}>
+            <TabsList aria-label="Modo do gráfico">
+              <TabsTrigger value="by-type" className="px-2.5 py-1 text-xs">Por tipo</TabsTrigger>
+              <TabsTrigger value="by-process" className="px-2.5 py-1 text-xs">Por processo</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {granularityTabs}
         </div>
-        <span className="usage-section-title" style={{ margin: 0 }}>Uso diario de tokens</span>
       </div>
-      <div className="usage-daily-bars">
-        {days.map((d) => {
+      <div className="flex h-44 items-end gap-1.5">
+        {buckets.map((d, idx) => {
           const heightPct = (d.total_tokens / maxTokens) * 100;
-          if (chartMode === "by-type") {
-            const segments: { type: TokenType; value: number }[] = [
-              { type: "output", value: d.output_tokens },
-              { type: "input", value: d.input_tokens },
-              { type: "cache_write", value: d.cache_write_tokens },
-              { type: "cache_read", value: d.cache_read_tokens },
-            ];
-            const segTotal = segments.reduce((s, seg) => s + seg.value, 0) || 1;
-            return (
-              <div key={d.date} className="usage-daily-col" title={`${d.date}\n${formatTokens(d.total_tokens)} tokens`}>
-                {showLabels && <div className="usage-daily-total">{formatTokens(d.total_tokens)}</div>}
-                <div className="usage-daily-bar" style={{ height: `${heightPct.toFixed(1)}%` }}>
-                  {segments.map((seg) =>
-                    seg.value > 0 ? (
-                      <div
-                        key={seg.type}
-                        className="usage-bar-segment"
-                        style={{ height: `${(seg.value / segTotal) * 100}%`, background: TOKEN_COLORS[seg.type] }}
-                      />
-                    ) : null
-                  )}
-                </div>
-                <div className="usage-daily-label">{formatDayLabel(d.date)}</div>
-              </div>
-            );
-          }
-          const procSegments: { type: ProcessType; value: number }[] = [
-            { type: "assistant", value: d.assistant_tokens },
-            { type: "classification", value: d.classification_tokens },
-            { type: "training", value: d.training_tokens },
-          ];
-          const procTotal = procSegments.reduce((s, seg) => s + seg.value, 0) || 1;
+          const segments: { key: string; value: number; color: string }[] =
+            chartMode === "by-type"
+              ? (["output", "input", "cache_write", "cache_read"] as TokenType[]).map((t) => ({
+                  key: t,
+                  value: { output: d.output_tokens, input: d.input_tokens, cache_write: d.cache_write_tokens, cache_read: d.cache_read_tokens }[t],
+                  color: TOKEN_COLORS[t],
+                }))
+              : (["assistant", "classification", "training"] as ProcessType[]).map((t) => ({
+                  key: t,
+                  value: { assistant: d.assistant_tokens, classification: d.classification_tokens, training: d.training_tokens }[t],
+                  color: PROCESS_COLORS[t],
+                }));
+          const segTotal = segments.reduce((s, seg) => s + seg.value, 0) || 1;
           return (
-            <div key={d.date} className="usage-daily-col" title={`${d.date}\n${formatTokens(d.total_tokens)} tokens`}>
-              {showLabels && <div className="usage-daily-total">{formatTokens(d.total_tokens)}</div>}
-              <div className="usage-daily-bar" style={{ height: `${heightPct.toFixed(1)}%` }}>
-                {procSegments.map((seg) =>
+            <div
+              key={d.date}
+              className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1 self-stretch"
+              title={`${bucketTooltip(d.date, granularity)}\n${formatTokens(d.total_tokens)} tokens`}
+            >
+              {showValueLabels && <div className="font-mono text-[0.6rem] text-tertiary">{formatTokens(d.total_tokens)}</div>}
+              <div className="flex w-full max-w-8 origin-bottom animate-[atlas-grow-up_500ms_var(--ease-out)] flex-col justify-end overflow-hidden rounded-t-sm transition-[filter] group-hover:brightness-125 motion-reduce:animate-none" style={{ height: `${heightPct.toFixed(1)}%` }}>
+                {segments.map((seg) =>
                   seg.value > 0 ? (
-                    <div
-                      key={seg.type}
-                      className="usage-bar-segment"
-                      style={{ height: `${(seg.value / procTotal) * 100}%`, background: PROCESS_COLORS[seg.type] }}
-                    />
+                    <div key={seg.key} className="w-full" style={{ height: `${(seg.value / segTotal) * 100}%`, background: seg.color }} />
                   ) : null
                 )}
               </div>
-              <div className="usage-daily-label">{formatDayLabel(d.date)}</div>
+              <div className="h-3.5 font-mono text-[0.6rem] text-tertiary">
+                {idx % labelEvery === 0 ? bucketLabel(d.date, granularity) : ""}
+              </div>
             </div>
           );
         })}
@@ -243,29 +297,29 @@ function TokensByTypeBar({
     ];
     const total = items.reduce((s, i) => s + i.value, 0) || 1;
     return (
-      <div className="usage-chart-card">
-        <span className="usage-section-title" style={{ margin: "0 0 10px" }}>Tokens por processo</span>
-        <div className="usage-type-bar">
+      <div className={chartCardClass}>
+        <span className="mb-2.5 font-display text-sm font-bold text-foreground-strong">Tokens por processo</span>
+        <div className="flex h-3 w-full overflow-hidden rounded-full bg-panel-strong">
           {items.map((item) =>
             item.value > 0 ? (
               <div
                 key={item.type}
-                className="usage-type-segment"
+                className="h-full"
                 style={{ width: `${(item.value / total) * 100}%`, background: PROCESS_COLORS[item.type] }}
                 title={`${PROCESS_LABELS[item.type]}: ${formatTokens(item.value)}`}
               />
             ) : null
           )}
         </div>
-        <div className="usage-type-legend">
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
           {items.map((item) => (
-            <span key={item.type} className="usage-type-legend-item">
-              <span className="usage-type-dot" style={{ background: PROCESS_COLORS[item.type] }} />
+            <span key={item.type} className="flex items-center gap-1.5 font-mono text-[0.7rem] text-muted-foreground">
+              <span className={legendDotClass} style={{ background: PROCESS_COLORS[item.type] }} />
               {PROCESS_LABELS[item.type]} {formatTokens(item.value)}
             </span>
           ))}
         </div>
-        <div className="usage-type-total">Total: {formatTokens(total)}</div>
+        <div className="mt-2 font-mono text-[0.7rem] text-tertiary">Total: {formatTokens(total)}</div>
       </div>
     );
   }
@@ -279,29 +333,29 @@ function TokensByTypeBar({
   const total = items.reduce((s, i) => s + i.value, 0) || 1;
 
   return (
-    <div className="usage-chart-card">
-      <span className="usage-section-title" style={{ margin: "0 0 10px" }}>Tokens por tipo</span>
-      <div className="usage-type-bar">
+    <div className={chartCardClass}>
+      <span className="mb-2.5 font-display text-sm font-bold text-foreground-strong">Tokens por tipo</span>
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-panel-strong">
         {items.map((item) =>
           item.value > 0 ? (
             <div
               key={item.type}
-              className="usage-type-segment"
+              className="h-full"
               style={{ width: `${(item.value / total) * 100}%`, background: TOKEN_COLORS[item.type] }}
               title={`${TOKEN_LABELS[item.type]}: ${formatTokens(item.value)}`}
             />
           ) : null
         )}
       </div>
-      <div className="usage-type-legend">
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
         {items.map((item) => (
-          <span key={item.type} className="usage-type-legend-item">
-            <span className="usage-type-dot" style={{ background: TOKEN_COLORS[item.type] }} />
+          <span key={item.type} className="flex items-center gap-1.5 font-mono text-[0.7rem] text-muted-foreground">
+            <span className={legendDotClass} style={{ background: TOKEN_COLORS[item.type] }} />
             {TOKEN_LABELS[item.type]} {formatTokens(item.value)}
           </span>
         ))}
       </div>
-      <div className="usage-type-total">Total: {formatTokens(total)}</div>
+      <div className="mt-2 font-mono text-[0.7rem] text-tertiary">Total: {formatTokens(total)}</div>
     </div>
   );
 }
@@ -315,6 +369,8 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
   const [endDate, setEndDate] = useState(() => toYyyyMmDd(new Date()));
   const [channel, setChannel] = useState<string>(ALL_CHANNELS);
   const [chartMode, setChartMode] = useState<ChartMode>("by-type");
+  const [granularityOverride, setGranularityOverride] = useState<Granularity | null>(null);
+  const granularity = granularityOverride ?? autoGranularity(startDate, endDate);
   const [summary, setSummary] = useState<UsageSummaryResponse | null>(null);
   const [sessions, setSessions] = useState<UsageSessionItem[]>([]);
   const [classifUsage, setClassifUsage] = useState<ClassificationUsageSummary | null>(null);
@@ -354,74 +410,82 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
   }, [load]);
 
   return (
-    <section className="usage-view">
-      <div className="chat-panel-toolbar usage-toolbar">
-        <label>Período:</label>
-        <input type="date" lang="pt-BR" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        <span className="chat-controls__separator">até</span>
-        <input type="date" lang="pt-BR" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        <label>Canal:</label>
-        <select value={channel} onChange={(e) => setChannel(e.target.value)}>
-          <option value={ALL_CHANNELS}>Todos</option>
-          <option value="web">Web</option>
-          <option value="telegram">Telegram</option>
-        </select>
-        <button type="button" className="btn" onClick={load} disabled={loading}>
-          <RefreshCw size={16} style={loading ? { opacity: 0.6 } : undefined} />
+    <section className="flex flex-col">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">Período</label>
+        <DateRangePicker
+          start={startDate}
+          end={endDate}
+          onChange={(s, e) => {
+            setStartDate(s);
+            setEndDate(e);
+            setGranularityOverride(null);
+          }}
+        />
+        <label className="ml-2 font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">Canal</label>
+        <Select value={channel} onValueChange={setChannel}>
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_CHANNELS}>Todos</SelectItem>
+            <SelectItem value="web">Web</SelectItem>
+            <SelectItem value="telegram">Telegram</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="secondary" onClick={load} disabled={loading}>
+          <RefreshCw className={loading ? "animate-spin" : ""} />
           Atualizar
-        </button>
+        </Button>
       </div>
 
-      {error && <div className="callout danger">{error}</div>}
+      {error && <ErrorState className="mt-4" description={error} onRetry={load} />}
 
       {summary && (
         <>
-          <div className="usage-summary-cards">
-            <div className="usage-stat-card">
-              <span className="usage-stat-label">Total tokens</span>
-              <span className="usage-stat-value">{formatTokens(
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <StatTile
+              dense
+              icon={<Coins aria-hidden />}
+              value={
                 summary.total_tokens
                 + (classifUsage ? classifUsage.total_input_tokens + classifUsage.total_output_tokens : 0)
                 + (trainingUsage ? trainingUsage.total_input_tokens + trainingUsage.total_output_tokens : 0)
-              )}</span>
-            </div>
-            <div className="usage-stat-card">
-              <span className="usage-stat-label">Custo est.</span>
-              <span className="usage-stat-value">{formatUsd(summary.estimated_cost_usd + (classifUsage?.estimated_cost_usd ?? 0) + (trainingUsage?.estimated_cost_usd ?? 0))}</span>
-            </div>
-            <div className="usage-stat-card">
-              <span className="usage-stat-label">Chamadas API</span>
-              <span className="usage-stat-value">{
-                (summary.total_api_calls ?? 0)
-                + (classifUsage?.total_calls ?? 0)
-                + (trainingUsage?.total_api_calls ?? 0)
-              }</span>
-            </div>
-            <div className="usage-stat-card">
-              <span className="usage-stat-label">Sessões</span>
-              <span className="usage-stat-value">{summary.session_count}</span>
-            </div>
+              }
+              format={formatTokens}
+              label="total tokens"
+            />
+            <StatTile
+              dense
+              icon={<CircleDollarSign aria-hidden />}
+              value={summary.estimated_cost_usd + (classifUsage?.estimated_cost_usd ?? 0) + (trainingUsage?.estimated_cost_usd ?? 0)}
+              format={(n) => (n === 0 ? "—" : `$${n.toFixed(2)}`)}
+              label="custo estimado"
+            />
+            <StatTile
+              dense
+              icon={<Zap aria-hidden />}
+              value={(summary.total_api_calls ?? 0) + (classifUsage?.total_calls ?? 0) + (trainingUsage?.total_api_calls ?? 0)}
+              label="chamadas API"
+            />
+            <StatTile dense icon={<MessagesSquare aria-hidden />} value={summary.session_count} label="sessões" />
             {classifUsage && classifUsage.total_calls > 0 && (
-              <div className="usage-stat-card">
-                <span className="usage-stat-label">Classificações</span>
-                <span className="usage-stat-value">{classifUsage.total_calls}</span>
-              </div>
+              <StatTile dense icon={<Tags aria-hidden />} value={classifUsage.total_calls} label="classificações" />
             )}
             {trainingUsage && trainingUsage.total_calls > 0 && (
-              <div className="usage-stat-card">
-                <span className="usage-stat-label">Treinamento</span>
-                <span className="usage-stat-value">{trainingUsage.total_calls}</span>
-              </div>
+              <StatTile dense icon={<GraduationCap aria-hidden />} value={trainingUsage.total_calls} label="treinamento" />
             )}
           </div>
 
-          <div className="usage-charts-row">
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1.6fr_1fr]">
             <DailyTokenChart
               assistantDays={summary.by_day}
               classificationDays={classifUsage?.by_day ?? []}
               trainingDays={trainingUsage?.by_day ?? []}
               chartMode={chartMode}
               onChartModeChange={setChartMode}
+              granularity={granularity}
+              onGranularityChange={setGranularityOverride}
             />
             <TokensByTypeBar
               chartMode={chartMode}
@@ -435,9 +499,9 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
             />
           </div>
 
-          <h3 className="usage-section-title">Por modelo (Assistente)</h3>
-          <div className="usage-table-wrap">
-            <table className="usage-table">
+          <h3 className={sectionTitleClass}>Por modelo (Assistente)</h3>
+          <TableWrap>
+            <DataTable>
               <thead>
                 <tr>
                   <th className="left">Modelo</th>
@@ -468,7 +532,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
               </tbody>
               {summary.by_model.length > 0 && (
                 <tfoot>
-                  <tr className="usage-table-total">
+                  <tr className="">
                     <td className="left">Total</td>
                     <td>{formatTokens(summary.total_input_tokens)}</td>
                     <td>{formatTokens(summary.total_output_tokens)}</td>
@@ -479,14 +543,14 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                   </tr>
                 </tfoot>
               )}
-            </table>
-          </div>
+            </DataTable>
+          </TableWrap>
 
           {classifUsage && classifUsage.total_calls > 0 && (
             <>
-              <h3 className="usage-section-title">Classificação (uso LLM na ingestão)</h3>
-              <div className="usage-table-wrap">
-                <table className="usage-table usage-table--5col">
+              <h3 className={sectionTitleClass}>Classificação (uso LLM na ingestão)</h3>
+              <TableWrap>
+                <DataTable>
                   <thead>
                     <tr>
                       <th className="left">Modelo</th>
@@ -509,7 +573,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                   </tbody>
                   {classifUsage.by_model.length > 0 && (
                     <tfoot>
-                      <tr className="usage-table-total">
+                      <tr className="">
                         <td className="left">Total</td>
                         <td>{classifUsage.total_calls}</td>
                         <td>{formatTokens(classifUsage.total_input_tokens)}</td>
@@ -518,16 +582,16 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                       </tr>
                     </tfoot>
                   )}
-                </table>
-              </div>
+                </DataTable>
+              </TableWrap>
             </>
           )}
 
           {trainingUsage && trainingUsage.total_calls > 0 && (
             <>
-              <h3 className="usage-section-title">Treinamento / Pipeline</h3>
-              <div className="usage-table-wrap">
-                <table className="usage-table usage-table--5col">
+              <h3 className={sectionTitleClass}>Treinamento / Pipeline</h3>
+              <TableWrap>
+                <DataTable>
                   <thead>
                     <tr>
                       <th className="left">Script</th>
@@ -550,7 +614,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                   </tbody>
                   {trainingUsage.by_script.length > 0 && (
                     <tfoot>
-                      <tr className="usage-table-total">
+                      <tr className="">
                         <td className="left">Total</td>
                         <td>{trainingUsage.total_api_calls}</td>
                         <td>{formatTokens(trainingUsage.total_input_tokens)}</td>
@@ -559,14 +623,14 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                       </tr>
                     </tfoot>
                   )}
-                </table>
-              </div>
+                </DataTable>
+              </TableWrap>
             </>
           )}
 
-          <h3 className="usage-section-title">Sessões</h3>
-          <div className="usage-table-wrap">
-            <table className="usage-table">
+          <h3 className={sectionTitleClass}>Sessões</h3>
+          <TableWrap>
+            <DataTable>
               <thead>
                 <tr>
                   <th className="left">Título</th>
@@ -597,7 +661,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                     const channelLabel = s.channel ? (CHANNEL_LABELS[s.channel] ?? s.channel) : "—";
                     return (
                       <tr key={s.id}>
-                        <td className="left truncate" title={s.title || "Sem título"}>{s.title || "Sem título"}</td>
+                        <td className="left max-w-64 truncate" title={s.title || "Sem título"}>{s.title || "Sem título"}</td>
                         <td className="left">{dateStr}</td>
                         <td className="left">{s.project_id ?? "—"}</td>
                         <td className="left">{channelLabel}</td>
@@ -609,31 +673,21 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                   })
                 )}
               </tbody>
-            </table>
+            </DataTable>
             {sessions.length > PAGE_SIZE && (
-              <div className="usage-pagination">
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  disabled={sessionsPage === 0}
-                  onClick={() => setSessionsPage((p) => p - 1)}
-                >
-                  <ChevronLeft size={14} /> Anterior
-                </button>
-                <span className="usage-pagination-info">
+              <div className="flex items-center justify-between border-t border-border px-3 py-2">
+                <Button variant="ghost" size="sm" disabled={sessionsPage === 0} onClick={() => setSessionsPage((p) => p - 1)}>
+                  <ChevronLeft /> Anterior
+                </Button>
+                <span className="font-mono text-[0.7rem] text-tertiary">
                   {sessionsPage * PAGE_SIZE + 1}–{Math.min((sessionsPage + 1) * PAGE_SIZE, sessions.length)} de {sessions.length}
                 </span>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  disabled={(sessionsPage + 1) * PAGE_SIZE >= sessions.length}
-                  onClick={() => setSessionsPage((p) => p + 1)}
-                >
-                  Próxima <ChevronRight size={14} />
-                </button>
+                <Button variant="ghost" size="sm" disabled={(sessionsPage + 1) * PAGE_SIZE >= sessions.length} onClick={() => setSessionsPage((p) => p + 1)}>
+                  Próxima <ChevronRight />
+                </Button>
               </div>
             )}
-          </div>
+          </TableWrap>
         </>
       )}
     </section>

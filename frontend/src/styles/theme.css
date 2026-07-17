@@ -16,10 +16,35 @@
  * SEMPRE vence utilities em @layer, e os estilos globais legados de
  * button/input atropelariam qualquer componente novo.
  */
-@layer legacy, theme, utilities;
+@layer legacy, theme, base, utilities;
 @import "../styles.css" layer(legacy);
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+
+/* Preflight-lite: sem o preflight do Tailwind, <button> nativo herda
+   `background-color: buttonface` (cinza claro do UA) — invisível no light,
+   gritante no dark. Reset mínimo; qualquer utility ou CSS de componente
+   (não-layered) sobrescreve. */
+@layer base {
+  button {
+    background-color: transparent;
+    border: 0;
+    color: inherit;
+    font: inherit;
+  }
+
+  /* Margens UA de headings/parágrafos quebram o alinhamento de headers;
+     espaçamento tipográfico é sempre explícito via utilities. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p {
+    margin: 0;
+  }
+}
 
 @theme inline {
   /* Superfícies */
@@ -101,6 +126,88 @@
 
 @keyframes atlas-shimmer {
   100% { transform: translateX(100%); }
+}
+
+/* Aura do compose (estilo Apple Intelligence): conic-gradient girando via
+   @property — pseudo-elemento não é necessário, o JSX renderiza a div. */
+@property --atlas-aura-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.atlas-aura {
+  background: conic-gradient(
+    from var(--atlas-aura-angle),
+    var(--chart-1),
+    var(--chart-2),
+    var(--chart-5),
+    var(--chart-3),
+    var(--chart-1)
+  );
+  filter: blur(7px);
+  animation: atlas-aura-spin 2.8s linear infinite;
+}
+
+@keyframes atlas-aura-spin {
+  to {
+    --atlas-aura-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-aura {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* "Pensando..." com varredura de gradiente (shimmer de texto, Apple-like) */
+.atlas-thinking-text {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 0%,
+    var(--muted) 35%,
+    var(--accent) 50%,
+    var(--accent-purple) 58%,
+    var(--muted) 72%,
+    var(--muted) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: atlas-thinking-sweep 1.8s linear infinite;
+}
+
+@keyframes atlas-thinking-sweep {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-thinking-text {
+    animation: none;
+    background: none;
+    color: var(--muted);
+  }
+}
+
+/* Núcleo do medidor de contexto respirando (ver ContextGauge) */
+@keyframes atlas-orbit-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+/* Barras de gráfico crescem do eixo (Uso e custo) */
+@keyframes atlas-grow-up {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
 }
 
 /* Upload portal: anel girando e partículas convergindo ao centro */

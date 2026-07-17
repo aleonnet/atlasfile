@@ -15,6 +15,30 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.19.0] -- 2026-07-17
+
+### UI reformulada "instrumento de precisão vivo" — 100% das telas, zero CSS legado (Fase 6 do plano rag_hibrido_permissoes_ui_v2)
+
+- **Shell**: sidebar colapsável com spring (Framer Motion), project switcher rico (avatar/cor determinística, busca inline), luz do orb, indicador ativo deslizante; CommandPalette ⌘K (cmdk) absorve o SearchModal — docs com trecho/location, navegação, projetos, tema, ações; Topbar reduzida a breadcrumb
+- **Painel**: stat tiles com números que contam e cursor-glow; resultados de busca como tiles com aura por match_type (púrpura semântico/laranja lexical) e stagger; filtros como chips com contagem; barra de progresso com glow
+- **Assistente**: chips de citação clicáveis sob as respostas (resolve via suggest e abre o doc); gráficos (ChartBlock + UsageView) na paleta da marca --chart-1..8 por tema
+- **Triagem**: fila redesenhada (badge pulsante, tiles com barra accent, contexto do classificador em painel mono, ações Aprovar/Corrigir/Rejeitar temadas)
+- **Upload portal global**: drop em qualquer lugar escurece a UI e projeta o portal (anel conic girando + partículas convergindo); sem projeto ativo, dialog de escolha; fila com progresso XHR por arquivo e scan automático único por lote
+- **Toasts (sonner)** substituem o footer .status (toast único auto-atualizável; falhas de ingest com motivo por arquivo)
+- **Zero CSS legado**: `styles.css` 2.416 → ~150 linhas (só design tokens dark/light); `ChatPanel.css` (~780) e `ingestTriageCard.css` (818) **eliminados** — conversão integral para Tailwind com reuso das primitivas (CollapsibleSection com badge rico, Badge, DataTable, selects padrão); restam apenas 8 linhas de override do recharts e o fallback SVG do orb (Fase 7)
+- **Preflight-lite** em `@layer base`: reset de `button` (buttonface/borda nativos vazavam sem o preflight) e margens UA de headings/parágrafos — headers das 4 abas de Config **medidos idênticos (31px topo / 21px esquerda)** via getBoundingClientRect; `color-scheme` por tema (scrollbars e date pickers nativos acompanham dark/light)
+- **Uso e custo**: StatTiles com ícones e cursor-glow (mesmos do Painel), **DateRangePicker pt-BR** (react-day-picker v10 + date-fns, calendário duplo com presets) substituindo o input nativo que exibia datas em formato US, **granularidade Dia/Semana/Mês** com default calculado do tamanho do range (≤31d dia, ≤26sem semana, senão mês) e barras animando do eixo
+- **Chat**: empty state hero com starter prompts ancorados nas tools MCP; **aura Apple-Intelligence** (conic-gradient girando via @property) no compose durante streaming; "Pensando..." com shimmer de gradiente; compose reestruturado como container único (textarea + barra de ações interna, Enviar↔Parar contextuais); **órbita de contexto** — medidor na linguagem do orb (lua percorre órbita tracejada com rastro em gradiente, núcleo respira e esquenta accent→âmbar→vermelho, ≥90% pulsa e clique inicia nova sessão); popover de histórico redesenhado; markdown do assistente com tipografia completa via seletores arbitrários; **echo otimista corrigido** (refresh da sessão não engole mais a mensagem recém-enviada)
+- **Onboarding**: fundo AuroraField (canvas 2D, blobs da marca com mola seguindo o pointer; `multiply` no light / `lighter` no dark — contraste correto nos dois temas)
+- **Tabs com ícones** (Assistente e Config) e headers de card padronizados (CardTitle + ícone accent, min-h uniforme)
+- Cascade layers: CSS legado em @layer legacy (legacy < theme < base < utilities) durante a migração — camada legacy hoje contém apenas tokens
+- **Correções achadas em teste E2E real**: download de arquivos acentuados (RFC 6266), keyframes × propriedade translate do Tailwind v4, tokens @theme circulares, scan em loop na fila de upload, buttonface/borda nativos de button, scrollbar clara no dark, contraste light (--text-tertiary 3.4:1 → 4.55:1 AA)
+- prefers-reduced-motion respeitado em todas as animações; navegação 100% por teclado no shell
+- Novas deps frontend: react-day-picker, date-fns
+- Testes: 126 frontend (15 novos na fase) + 479 backend
+
+---
+
 ## [0.18.0] -- 2026-07-16
 
 ### UI Foundation: Tailwind + primitivas temadas + quebra do App.tsx (Fase 5 do plano rag_hibrido_permissoes_ui_v2)

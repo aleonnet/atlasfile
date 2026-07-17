@@ -1,8 +1,13 @@
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { getTemplate, initializeProject, listTemplates } from "../../api";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { ModalActions, ModalShell } from "../../components/ui/modal-shell";
+import { Skeleton } from "../../components/ui/skeleton";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { cn } from "../../lib/utils";
 import type { TemplateMeta } from "../../types";
-import "./templates.css";
 
 type Props = {
   open: boolean;
@@ -69,70 +74,83 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
     : [];
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Selecionar template">
-      <div className="modal tmpl-select-modal">
-        <h3 style={{ margin: 0, flexShrink: 0 }}>Inicializar projeto: {projectLabel}</h3>
+    <ModalShell label="Selecionar template" title={`Inicializar projeto: ${projectLabel}`}>
+      <p className="text-xs text-muted-foreground">
+        Selecione um template para configurar o projeto. Domínios, tipos documentais, layout e catálogo de entidades
+        podem ser ajustados depois.
+      </p>
 
-        <div className="tmpl-select-body">
-          <p className="tmpl-hint">
-            Selecione um template para configurar o projeto. Domínios, tipos documentais, layout e catálogo de entidades podem ser ajustados depois.
-          </p>
+      {loading && (
+        <div className="mt-3 space-y-2">
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+        </div>
+      )}
 
-          {loading && <p className="tmpl-loading">Carregando templates...</p>}
+      <div className="mt-3 flex max-h-64 flex-col gap-2 overflow-y-auto">
+        {templates.map((t) => (
+          <label
+            key={t.slug}
+            className={cn(
+              "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition-[border-color,box-shadow]",
+              selected === t.slug
+                ? "border-accent/50 bg-accent-soft/40 shadow-[0_0_16px_var(--accent-soft)]"
+                : "border-border bg-card hover:border-border-strong"
+            )}
+          >
+            <input
+              type="radio"
+              name="template"
+              className="mt-1 size-3.5 accent-[var(--accent)]"
+              value={t.slug}
+              checked={selected === t.slug}
+              onChange={() => setSelected(t.slug)}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <strong className="font-display text-sm font-semibold text-foreground-strong">{t.name}</strong>
+                {t.slug === "default" && <Badge>default</Badge>}
+                <span className="font-mono text-[0.68rem] text-tertiary">{t.areas_count} domínios</span>
+              </div>
+              {t.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{t.description}</p>}
+            </div>
+          </label>
+        ))}
+      </div>
 
-          <div className="tmpl-list">
-            {templates.map((t) => (
-              <label key={t.slug} className={`tmpl-item${selected === t.slug ? " selected" : ""}`}>
-                <input
-                  type="radio"
-                  name="template"
-                  value={t.slug}
-                  checked={selected === t.slug}
-                  onChange={() => setSelected(t.slug)}
-                />
-                <div className="tmpl-item-content">
-                  <div className="tmpl-item-title-row">
-                    <strong>{t.name}</strong>
-                    {t.slug === "default" && <span className="tmpl-badge-default">default</span>}
-                    <span className="tmpl-areas-count">{t.areas_count} domínios</span>
-                  </div>
-                  {t.description && <p className="tmpl-desc">{t.description}</p>}
-                </div>
-              </label>
+      {previewAreas.length > 0 && (
+        <details className="group mt-3 rounded-lg border border-border">
+          <summary className="cursor-pointer select-none px-3 py-2 font-display text-xs font-semibold text-foreground-strong [&::-webkit-details-marker]:hidden [&::marker]:content-none">
+            Preview do template selecionado
+          </summary>
+          <div className="max-h-40 space-y-1 overflow-y-auto border-t border-border px-3 py-2">
+            {previewAreas.map((a, i) => (
+              <div key={i} className="flex items-baseline gap-2 font-mono text-[0.72rem]">
+                <span className="text-accent">{String(a.key)}</span>
+                <span className="truncate text-tertiary">
+                  {(a.aliases as string[] | undefined)?.slice(0, 4).join(", ")}
+                  {((a.aliases as string[])?.length ?? 0) > 4 && "..."}
+                </span>
+              </div>
             ))}
           </div>
+        </details>
+      )}
 
-          {previewAreas.length > 0 && (
-            <details className="tmpl-preview">
-              <summary>Preview do template selecionado</summary>
-              <div className="tmpl-preview-list">
-                {previewAreas.map((a, i) => (
-                  <div key={i} className="tmpl-preview-area">
-                    <span className="tmpl-preview-key">{String(a.key)}</span>
-                    <span className="tmpl-preview-aliases">
-                      {(a.aliases as string[] | undefined)?.slice(0, 4).join(", ")}
-                      {((a.aliases as string[])?.length ?? 0) > 4 && "..."}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
-
-        <div className="modal-actions" style={{ flexShrink: 0 }}>
-          {onCreateTemplate && (
-            <button type="button" className="tmpl-create-link" onClick={onCreateTemplate}>
-              + Criar novo template
-            </button>
-          )}
-          <span style={{ flex: 1 }} />
-          <button className="btn" onClick={onClose} disabled={initializing}>Cancelar</button>
-          <button className="btn primary" onClick={handleInit} disabled={initializing || !selected}>
-            {initializing ? "Inicializando..." : "Inicializar com template"}
-          </button>
-        </div>
-      </div>
-    </div>
+      <ModalActions className="items-center">
+        {onCreateTemplate && (
+          <Button variant="link" className="mr-auto px-0" onClick={onCreateTemplate}>
+            <Plus />
+            Criar novo template
+          </Button>
+        )}
+        <Button variant="secondary" onClick={onClose} disabled={initializing}>
+          Cancelar
+        </Button>
+        <Button onClick={handleInit} disabled={initializing || !selected}>
+          {initializing ? "Inicializando..." : "Inicializar com template"}
+        </Button>
+      </ModalActions>
+    </ModalShell>
   );
 }

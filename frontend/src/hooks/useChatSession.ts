@@ -171,7 +171,8 @@ export function useChatSession() {
               model: m.model,
             }));
             baseMsgs = freshChat;
-            setChatMessages(freshChat);
+            // Mantém o echo otimista da mensagem recém-enviada ao absorver o refresh
+            setChatMessages([...freshChat, userMsg]);
           }
         } catch {
           /* usa estado local */

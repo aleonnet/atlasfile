@@ -1,9 +1,34 @@
-import { ArrowRightLeft, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, ChevronDown, ChevronRight, Clock, XCircle } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchIngestHistory, fetchProjectProfile, moveDocument } from "../../api";
 import { MoveDocumentModal } from "../../components/MoveDocumentModal";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
+import { CollapsibleSection } from "../../components/ui/collapsible-section";
+import { DataTable, TableWrap } from "../../components/ui/data-table";
 import type { IngestHistoryEntry, ProjectProfileV2 } from "../../types";
-import "./ingestTriageCard.css";
+
+function decisionBadge(decision: FlatRow["decision"]) {
+  switch (decision) {
+    case "auto":
+      return <Badge variant="success">auto</Badge>;
+    case "moved":
+      return <Badge variant="success">movido</Badge>;
+    case "duplicate":
+      return <Badge variant="outline">dup</Badge>;
+    case "error":
+      return <Badge variant="destructive">falha</Badge>;
+    default:
+      return <Badge>triagem</Badge>;
+  }
+}
+
+function decisionIcon(decision: FlatRow["decision"]) {
+  if (decision === "auto" || decision === "moved") return <CheckCircle2 size={13} className="text-success" aria-hidden />;
+  if (decision === "duplicate" || decision === "error") return <XCircle size={13} className="text-destructive" aria-hidden />;
+  return <Clock size={13} className="text-accent" aria-hidden />;
+}
 
 const ALL_PROJECTS = "__all__";
 const PAGE_SIZE = 10;
@@ -145,23 +170,19 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
 
   return (
     <>
-      <section className="panel card">
-        <details className="itc-collapsible" open>
-          <summary className="itc-collapsible-header">
-            Processamentos
-            <span className="itc-badge itc-badge-accent">{allRows.length} arquivo{allRows.length !== 1 ? "s" : ""}</span>
-          </summary>
-          <div className="itc-collapsible-body itc-proc-body">
-            <div className="itc-proc-table-wrap">
-              <table className="itc-scan-table">
+      <Card>
+        <CardContent className="pt-5">
+          <CollapsibleSection title="Processamentos" badge={`${allRows.length} arquivo${allRows.length !== 1 ? "s" : ""}`} defaultOpen className="border-0 bg-transparent [&>summary]:px-0 [&>div]:border-0 [&>div]:px-0">
+            <TableWrap>
+              <DataTable className="[&_td]:text-left [&_th]:text-left">
                 <thead>
                   <tr>
-                    <th className="itc-th-status" />
-                    <th className="itc-th-datetime">Data / Hora</th>
-                    <th className="itc-th-file">Arquivo</th>
-                    <th className="itc-th-area">Domínio / Tipo</th>
-                    <th className="itc-th-decision">Decisão</th>
-                    <th className="itc-th-conf">Conf.</th>
+                    <th style={{ width: 28 }} />
+                    <th>Data / Hora</th>
+                    <th>Arquivo</th>
+                    <th>Domínio / Tipo</th>
+                    <th>Decisão</th>
+                    <th>Conf.</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -180,56 +201,53 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                       row.rule_business_domain && row.rule_business_domain !== row.business_domain;
                     return (
                       <React.Fragment key={row.key}>
-                        <tr className={`itc-scan-row${hasLlmDetail ? " itc-row-clickable" : ""}`} onClick={hasLlmDetail ? () => toggleLlmRow(row.key) : undefined}>
-                          <td className={`itc-scan-icon ${row.decision}`}>
-                            {row.decision === "auto" || row.decision === "moved" ? "✓" : row.decision === "duplicate" ? "✕" : row.decision === "error" ? "✕" : "⏳"}
-                          </td>
-                          <td className="itc-scan-datetime">
+                        <tr className={hasLlmDetail ? "cursor-pointer" : undefined} onClick={hasLlmDetail ? () => toggleLlmRow(row.key) : undefined}>
+                          <td>{decisionIcon(row.decision)}</td>
+                          <td className="whitespace-nowrap">
                             {new Date(row.timestamp).toLocaleString("pt-BR", {
                               day: "2-digit", month: "2-digit", year: "2-digit",
                               hour: "2-digit", minute: "2-digit"
                             })}
                           </td>
-                          <td className="itc-scan-name" title={row.filename}>
+                          <td className="max-w-64 truncate font-body" title={row.filename}>
                             {row.filename}
                             {row.llm && (
-                              <span className="itc-scan-llm-indicator" title="Classificado com LLM">🤖</span>
+                              <span className="ml-1" title="Classificado com LLM">🤖</span>
                             )}
                           </td>
-                          <td className="itc-scan-area" title={row.business_domain}>
+                          <td className="max-w-44 truncate" title={row.business_domain}>
                             {row.business_domain}
                             {row.document_type ? ` / ${row.document_type}` : ""}
                             {businessDomainOverridden && (
-                              <span className="itc-area-override" title={`Regra: ${row.rule_business_domain}`}>
+                              <span className="ml-1 text-accent-light" title={`Regra: ${row.rule_business_domain}`}>
                                 ← {row.rule_business_domain}
                               </span>
                             )}
                           </td>
-                          <td>
-                            <span className={`itc-scan-badge ${row.decision}`}>
-                              {row.decision === "auto" ? "auto" : row.decision === "moved" ? "movido" : row.decision === "duplicate" ? "dup" : row.decision === "error" ? "falha" : "triagem"}
+                          <td>{decisionBadge(row.decision)}</td>
+                          <td className="whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1">
+                              {row.confidence !== null ? row.confidence.toFixed(2) : "-"}
+                              {hasLlmDetail && (isExpanded ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />)}
+                              {canMove(row) && (
+                                <button
+                                  type="button"
+                                  className="rounded border-0 bg-transparent p-0.5 text-tertiary shadow-none transition-colors hover:text-accent"
+                                  title="Mover para outro domínio/tipo"
+                                  aria-label="Mover para outro domínio/tipo"
+                                  onClick={(e) => { e.stopPropagation(); setMoveRow(row); }}
+                                >
+                                  <ArrowRightLeft size={12} aria-hidden />
+                                </button>
+                              )}
                             </span>
-                          </td>
-                          <td className="itc-scan-conf">
-                            {row.confidence !== null ? row.confidence.toFixed(2) : "-"}
-                            {hasLlmDetail && (isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
-                            {canMove(row) && (
-                              <button
-                                type="button"
-                                className="itc-move-btn"
-                                title="Mover para outro domínio/tipo"
-                                onClick={(e) => { e.stopPropagation(); setMoveRow(row); }}
-                              >
-                                <ArrowRightLeft size={12} />
-                              </button>
-                            )}
                           </td>
                         </tr>
                         {isExpanded && hasLlmDetail && (
-                          <tr className="itc-llm-detail-row">
+                          <tr>
                             <td colSpan={6}>
-                              <div className="itc-llm-detail-card">
-                                <strong>Detalhes da classificação LLM</strong>
+                              <div className="space-y-0.5 rounded-md bg-panel-strong p-2.5 font-mono text-[0.72rem] text-muted-foreground [&_code]:text-accent-light [&_em]:not-italic [&_em]:text-foreground/80">
+                                <strong className="font-display text-foreground-strong">Detalhes da classificação LLM</strong>
                                 <p>
                                   Classificador: <code>{formatClassifierModeLabel(row.classifier_mode)}</code>
                                   {row.classifier_requested_mode && row.classifier_requested_mode !== row.classifier_mode
@@ -248,7 +266,7 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                                 <p>LLM: <code>{row.business_domain}</code> (conf {(row.confidence ?? 0).toFixed(2)})</p>
                                 {row.llm_explanation && <p>Motivo: <em>{row.llm_explanation}</em></p>}
                                 {row.llm_proposed_business_domain && (
-                                  <p className="itc-proposed-area">Domínio proposto: <code>{row.llm_proposed_business_domain}</code></p>
+                                  <p>Domínio proposto: <code className="!text-accent-purple">{row.llm_proposed_business_domain}</code></p>
                                 )}
                               </div>
                             </td>
@@ -258,25 +276,25 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+              </DataTable>
+            </TableWrap>
 
             {totalPages > 1 && (
-              <div className="itc-proc-pagination">
-                <button disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>
+              <div className="mt-2 flex items-center justify-between">
+                <Button variant="ghost" size="sm" disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>
                   ← Anterior
-                </button>
-                <span>
+                </Button>
+                <span className="font-mono text-[0.7rem] text-tertiary">
                   {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, allRows.length)} de {allRows.length}
                 </span>
-                <button disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
+                <Button variant="ghost" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
                   Próxima →
-                </button>
+                </Button>
               </div>
             )}
-          </div>
-        </details>
-      </section>
+          </CollapsibleSection>
+        </CardContent>
+      </Card>
 
       {moveRow && fullProfile && (
         <MoveDocumentModal

@@ -1,7 +1,10 @@
-import { Upload } from "lucide-react";
+import { Loader2, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { deleteInboxFile, fetchInboxFiles, uploadToInbox } from "../../api";
+import { cn } from "../../lib/utils";
 import type { UploadedFile } from "../../types";
+
+const contentClass = "flex flex-col items-center gap-1.5 text-sm text-muted-foreground";
 
 type UploadState = "idle" | "dragover" | "uploading" | "done" | "error";
 
@@ -103,7 +106,16 @@ export function FileUploadZone({ projectId, onUploadComplete, disabled }: Props)
 
   return (
     <div
-      className={`file-upload-zone file-upload-zone--${state}${disabled ? " file-upload-zone--disabled" : ""}`}
+      className={cn(
+        "flex min-h-24 cursor-pointer items-center justify-center rounded-lg border border-dashed p-4 text-center",
+        "transition-[border-color,background-color,box-shadow] duration-200",
+        state === "idle" && "border-border hover:border-accent/50 hover:bg-accent-soft/20",
+        state === "dragover" && "border-accent bg-accent-soft/40 shadow-[0_0_24px_var(--accent-soft)]",
+        state === "uploading" && "border-accent/40",
+        state === "done" && "cursor-default border-border bg-panel-strong/40",
+        state === "error" && "border-destructive/50 bg-destructive/5",
+        disabled && "cursor-not-allowed opacity-60"
+      )}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -117,71 +129,77 @@ export function FileUploadZone({ projectId, onUploadComplete, disabled }: Props)
         ref={inputRef}
         type="file"
         multiple
-        className="file-upload-zone__input"
+        className="hidden"
         onChange={handleInputChange}
         disabled={disabled}
         data-testid="file-input"
       />
 
       {state === "idle" && !disabled && (
-        <div className="file-upload-zone__content">
-          <Upload size={20} />
-          <span>Arraste arquivos aqui ou clique para selecionar</span>
-          <span className="sub">PDF, DOCX, XLSX, PPTX, MSG...</span>
+        <div className={contentClass}>
+          <Upload size={20} className="text-accent" aria-hidden />
+          <span className="font-display font-medium text-foreground">Arraste arquivos aqui ou clique para selecionar</span>
+          <span className="font-mono text-[0.7rem] text-tertiary">PDF, DOCX, XLSX, PPTX, MSG...</span>
         </div>
       )}
 
       {state === "dragover" && (
-        <div className="file-upload-zone__content">
-          <Upload size={20} />
-          <span>Solte os arquivos para enviar</span>
+        <div className={contentClass}>
+          <Upload size={20} className="text-accent" aria-hidden />
+          <span className="font-display font-medium text-accent">Solte os arquivos para enviar</span>
         </div>
       )}
 
       {state === "uploading" && (
-        <div className="file-upload-zone__content">
-          <span className="file-upload-zone__spinner" />
+        <div className={contentClass}>
+          <Loader2 size={18} className="animate-spin text-accent" aria-hidden />
           <span>Enviando {fileNames.length} arquivo{fileNames.length !== 1 ? "s" : ""}...</span>
-          <ul className="file-upload-zone__list">
+          <ul className="m-0 list-none p-0 font-mono text-[0.7rem] text-tertiary">
             {fileNames.map((name) => (
-              <li key={name} className="sub">{name}</li>
+              <li key={name}>{name}</li>
             ))}
           </ul>
         </div>
       )}
 
       {state === "done" && (
-        <div className="file-upload-zone__content" onClick={(e) => e.stopPropagation()}>
-          <ul className="file-upload-zone__list file-upload-zone__list--done">
+        <div className="flex w-full flex-col items-start gap-1.5" onClick={(e) => e.stopPropagation()}>
+          <ul className="m-0 flex w-full list-none flex-col gap-1 p-0">
             {uploadedFiles.map((f) => (
-              <li key={f.saved_as} className="file-upload-zone__done-item">
+              <li key={f.saved_as} className="flex items-center gap-2 text-left text-xs text-foreground">
                 <button
                   type="button"
-                  className="btn danger"
-                  style={{ padding: "2px 6px", fontSize: "0.75rem" }}
+                  className="flex size-5 items-center justify-center rounded border-0 bg-destructive/10 p-0 text-destructive shadow-none transition-colors hover:bg-destructive/25"
                   title="Remover da inbox"
+                  aria-label={`Remover ${f.filename} da inbox`}
                   data-testid={`delete-${f.saved_as}`}
                   onClick={(e) => { e.stopPropagation(); void handleDeleteFile(f.saved_as); }}
-                >×</button>
-                <span className="file-upload-zone__done-name">{f.filename}</span>
+                ><X size={11} aria-hidden /></button>
+                <span className="truncate font-mono text-[0.75rem]">{f.filename}</span>
               </li>
             ))}
           </ul>
-          <span className="sub file-upload-zone__add-more" onClick={handleReset}>Enviar mais arquivos</span>
+          <button
+            type="button"
+            className="border-0 bg-transparent p-0 font-mono text-[0.7rem] text-accent shadow-none hover:underline"
+            onClick={handleReset}
+          >
+            Enviar mais arquivos
+          </button>
         </div>
       )}
 
       {state === "error" && (
-        <div className="file-upload-zone__content" onClick={(e) => { e.stopPropagation(); handleReset(); }}>
-          <span className="file-upload-zone__error">{errorMsg}</span>
-          <span className="sub">Clique para tentar novamente</span>
+        <div className={contentClass} onClick={(e) => { e.stopPropagation(); handleReset(); }}>
+          <span className="text-destructive">{errorMsg}</span>
+          <span className="font-mono text-[0.7rem] text-tertiary">Clique para tentar novamente</span>
         </div>
       )}
 
       {disabled && (
-        <div className="file-upload-zone__content">
-          <Upload size={20} />
-          <span className="sub">Selecione um projeto para enviar arquivos</span>
+        <div className={contentClass}>
+          <Upload size={20} aria-hidden />
+          <span className="font-mono text-[0.72rem] text-tertiary">Selecione um projeto para enviar arquivos</span>
         </div>
       )}
     </div>

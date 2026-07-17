@@ -1,8 +1,16 @@
+import { FileStack, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createTemplate, deleteTemplate, getTemplate, listTemplates, saveTemplate } from "../../api";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { CollapsibleSection, editTableClass, tableInputClass } from "../../components/ui/collapsible-section";
+import { EmptyState } from "../../components/ui/empty-state";
+import { Input, Textarea } from "../../components/ui/input";
+import { Skeleton } from "../../components/ui/skeleton";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { cn } from "../../lib/utils";
 import type { TemplateMeta } from "../../types";
-import "./templates.css";
 
 type EditorState = {
   slug: string;
@@ -11,6 +19,28 @@ type EditorState = {
   isNew: boolean;
   profileData: Record<string, unknown> | null;
 };
+
+const selectClass =
+  "flex h-9 w-full rounded-md border border-input bg-panel px-3 py-1 text-sm text-foreground shadow-none " +
+  "transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft";
+
+const fieldLabelClass = "mb-1 block font-mono text-[0.68rem] uppercase tracking-wide text-tertiary";
+
+/** Overlay de edição (mantém details/labels/tabela — contrato dos testes). */
+function EditorOverlay({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/55 p-6 backdrop-blur-[6px]"
+    >
+      <div className="w-full max-w-3xl rounded-xl border border-border-subtle bg-panel p-6 shadow-[0_12px_28px_rgba(0,0,0,0.35)] [animation:atlas-slide-in_200ms_var(--ease-out)] motion-reduce:animate-none">
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export function TemplateEditorView() {
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
@@ -325,284 +355,303 @@ export function TemplateEditorView() {
       updateClassification("entity_catalog", updated);
     }
 
-    const inputStyle = { width: "100%", padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg)", color: "var(--text)", fontSize: "0.85rem" } as const;
+    const removeRowButton = (onClick: () => void) => (
+      <Button variant="ghost" size="icon" className="size-7 text-tertiary hover:text-destructive" onClick={onClick} aria-label="Remover linha">
+        <X className="size-3.5" />
+      </Button>
+    );
 
     return (
-      <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Editar template">
-        <div className="modal tmpl-editor-modal">
-          <div className="modal-header">
-            <h3>{editor.isNew ? "Novo template" : `Editar template: ${editor.name}`}</h3>
+      <EditorOverlay label="Editar template">
+        <h3 className="font-display text-lg font-bold text-foreground-strong">
+          {editor.isNew ? "Novo template" : `Editar template: ${editor.name}`}
+        </h3>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className={fieldLabelClass} htmlFor="tmpl-name">Nome</label>
+            <Input id="tmpl-name" value={editor.name} onChange={(e) => setEditor({ ...editor, name: e.target.value })} />
           </div>
-
-          <div className="tmpl-editor-fields">
-            <div className="tmpl-editor-field">
-              <label htmlFor="tmpl-name">Nome</label>
-              <input id="tmpl-name" value={editor.name} onChange={(e) => setEditor({ ...editor, name: e.target.value })} />
-            </div>
-            <div className="tmpl-editor-field">
-              <label htmlFor="tmpl-slug">Slug</label>
-              <input
-                id="tmpl-slug"
-                value={editor.slug}
-                onChange={(e) => setEditor({ ...editor, slug: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") })}
-                readOnly={!editor.isNew}
-              />
-            </div>
-            <div className="tmpl-editor-field">
-              <label htmlFor="tmpl-desc">Descrição</label>
-              <textarea id="tmpl-desc" value={editor.description} onChange={(e) => setEditor({ ...editor, description: e.target.value })} />
-            </div>
+          <div>
+            <label className={fieldLabelClass} htmlFor="tmpl-slug">Slug</label>
+            <Input
+              id="tmpl-slug"
+              className="font-mono"
+              value={editor.slug}
+              onChange={(e) => setEditor({ ...editor, slug: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") })}
+              readOnly={!editor.isNew}
+            />
           </div>
-
-          {/* ── Naming ── */}
-          <details className="itc-collapsible" open>
-            <summary className="itc-collapsible-header">Naming (formato canônico)</summary>
-            <div className="itc-collapsible-body">
-              <div className="tmpl-grid-2">
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-naming-pattern">Canonical pattern</label>
-                  <input
-                    id="tmpl-naming-pattern"
-                    value={String(naming.canonical_pattern ?? "{date}__{project}__{original_name}")}
-                    onChange={(e) => updateNaming("canonical_pattern", e.target.value)}
-                    placeholder="{date}__{project}__{original_name}"
-                  />
-                  <p className="onboarding-hint" style={{ margin: "4px 0 0", fontSize: "0.75rem" }}>
-                    Campos: {"{date}"}, {"{project}"}, {"{business_domain}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext adicionado automaticamente.
-                  </p>
-                </div>
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-naming-datefmt">Date format</label>
-                  <input
-                    id="tmpl-naming-datefmt"
-                    value={String(naming.date_format ?? "%Y%m%d")}
-                    onChange={(e) => updateNaming("date_format", e.target.value)}
-                    placeholder="%Y%m%d"
-                  />
-                </div>
-              </div>
-            </div>
-          </details>
-
-          {/* ── Estrutura de Layout ── */}
-          <details className="itc-collapsible" open>
-            <summary className="itc-collapsible-header">
-              Estrutura de Layout
-              <span className="itc-badge-count">{domains.length} domínios</span>
-            </summary>
-            <div className="itc-collapsible-body">
-              <table className="itc-scan-table">
-                <thead>
-                  <tr>
-                    <th>BUSINESS_DOMAIN</th>
-                    <th>LABEL</th>
-                    <th>ALIASES</th>
-                    <th>PASTA</th>
-                    <th style={{ width: 40 }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {domains.map((a, i) => (
-                    <tr key={i}>
-                      <td><input style={inputStyle} value={String(a.key ?? "")} onChange={(e) => updateArea(i, "key", e.target.value)} /></td>
-                      <td><input style={inputStyle} value={String(a.label ?? "")} onChange={(e) => updateArea(i, "label", e.target.value)} /></td>
-                      <td>
-                        <input
-                          style={inputStyle}
-                          value={Array.isArray(a.aliases) ? a.aliases.join(", ") : ""}
-                          onChange={(e) => updateArea(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
-                        />
-                      </td>
-                      <td><input style={inputStyle} value={String(a.folder ?? "")} onChange={(e) => updateArea(i, "folder", e.target.value)} /></td>
-                      <td><button className="btn danger" style={{ padding: "2px 6px", fontSize: "0.75rem" }} onClick={() => removeArea(i)}>×</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button className="btn" style={{ marginTop: 8, fontSize: "0.82rem" }} onClick={addArea}>+ Adicionar domínio</button>
-            </div>
-          </details>
-
-          <details className="itc-collapsible" open>
-            <summary className="itc-collapsible-header">
-              Tipos documentais
-              <span className="itc-badge-count">{documentTypes.length} tipos</span>
-            </summary>
-            <div className="itc-collapsible-body">
-              <table className="itc-scan-table">
-                <thead>
-                  <tr>
-                    <th>KEY</th>
-                    <th>LABEL</th>
-                    <th>ALIASES</th>
-                    <th>EXTENSÕES</th>
-                    <th>PASTA</th>
-                    <th style={{ width: 40 }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {documentTypes.map((row, i) => (
-                    <tr key={i}>
-                      <td><input style={inputStyle} value={String(row.key ?? "")} onChange={(e) => updateDocumentType(i, "key", e.target.value)} /></td>
-                      <td><input style={inputStyle} value={String(row.label ?? "")} onChange={(e) => updateDocumentType(i, "label", e.target.value)} /></td>
-                      <td>
-                        <input
-                          style={inputStyle}
-                          value={Array.isArray(row.aliases) ? row.aliases.join(", ") : ""}
-                          onChange={(e) => updateDocumentType(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          style={inputStyle}
-                          value={Array.isArray(row.extensions) ? row.extensions.join(", ") : ""}
-                          onChange={(e) => updateDocumentType(i, "extensions", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
-                        />
-                      </td>
-                      <td><input style={inputStyle} value={String(row.folder ?? "")} onChange={(e) => updateDocumentType(i, "folder", e.target.value)} /></td>
-                      <td><button className="btn danger" style={{ padding: "2px 6px", fontSize: "0.75rem" }} onClick={() => removeDocumentType(i)}>×</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button className="btn" style={{ marginTop: 8, fontSize: "0.82rem" }} onClick={addDocumentType}>+ Adicionar tipo</button>
-            </div>
-          </details>
-
-          <details className="itc-collapsible">
-            <summary className="itc-collapsible-header">
-              Catálogo de entidades
-              <span className="itc-badge-count">{entityCatalog.length} entidades</span>
-            </summary>
-            <div className="itc-collapsible-body">
-              <table className="itc-scan-table">
-                <thead>
-                  <tr>
-                    <th>TIPO</th>
-                    <th>VALOR</th>
-                    <th>ALIASES</th>
-                    <th style={{ width: 36 }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {entityCatalog.map((row, i) => (
-                    <tr key={i}>
-                      <td><input style={inputStyle} value={String(row.type ?? "")} onChange={(e) => updateEntity(i, "type", e.target.value)} /></td>
-                      <td><input style={inputStyle} value={String(row.value ?? "")} onChange={(e) => updateEntity(i, "value", e.target.value)} /></td>
-                      <td>
-                        <input
-                          style={inputStyle}
-                          value={Array.isArray(row.aliases) ? row.aliases.join(", ") : ""}
-                          onChange={(e) => updateEntity(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
-                        />
-                      </td>
-                      <td><button className="btn danger" style={{ padding: "2px 6px", fontSize: "0.75rem" }} onClick={() => removeEntity(i)}>×</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button className="btn" style={{ marginTop: 8, fontSize: "0.82rem" }} onClick={addEntity}>+ Adicionar entidade</button>
-            </div>
-          </details>
-
-          {/* ── Indexação ── */}
-          <details className="itc-collapsible">
-            <summary className="itc-collapsible-header">Indexação</summary>
-            <div className="itc-collapsible-body">
-              <div className="tmpl-grid-2">
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-idx-topics">Topics path</label>
-                  <input id="tmpl-idx-topics" value={String(indexing.topics_path ?? "config/topics_v1.yaml")} onChange={(e) => updateIndexing("topics_path", e.target.value)} />
-                </div>
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-idx-mode">Modo extração</label>
-                  <select id="tmpl-idx-mode" value={String(indexing.extraction_mode ?? "all")} onChange={(e) => updateIndexing("extraction_mode", e.target.value)}>
-                    <option value="all">all</option>
-                    <option value="excerpt">excerpt</option>
-                  </select>
-                </div>
-              </div>
-              <div className="tmpl-grid-2" style={{ marginTop: 8 }}>
-                <div className="tmpl-field">
-                  <label htmlFor="tmpl-idx-maxchars">Max chars extração</label>
-                  <input
-                    id="tmpl-idx-maxchars"
-                    type="number"
-                    step="1000"
-                    min="1000"
-                    value={Number(indexing.extraction_max_chars ?? 50000)}
-                    onChange={(e) => updateIndexing("extraction_max_chars", parseInt(e.target.value) || 50000)}
-                  />
-                </div>
-              </div>
-            </div>
-          </details>
-
-          <div className="modal-actions" style={{ marginTop: 14 }}>
-            <button className="btn" onClick={() => setEditor(null)} disabled={saving}>Cancelar</button>
-            <button className="btn primary" onClick={handleSave} disabled={saving || !editor.slug || !editor.name}>
-              {saving ? "Salvando..." : "Salvar template"}
-            </button>
+          <div className="sm:col-span-2">
+            <label className={fieldLabelClass} htmlFor="tmpl-desc">Descrição</label>
+            <Textarea id="tmpl-desc" value={editor.description} onChange={(e) => setEditor({ ...editor, description: e.target.value })} />
           </div>
         </div>
-      </div>
+
+        <div className="mt-4 flex flex-col gap-2.5">
+          <CollapsibleSection title="Naming (formato canônico)" defaultOpen>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={fieldLabelClass} htmlFor="tmpl-naming-pattern">Canonical pattern</label>
+                <Input
+                  id="tmpl-naming-pattern"
+                  className="font-mono"
+                  value={String(naming.canonical_pattern ?? "{date}__{project}__{original_name}")}
+                  onChange={(e) => updateNaming("canonical_pattern", e.target.value)}
+                  placeholder="{date}__{project}__{original_name}"
+                />
+                <p className="mt-1 text-[0.7rem] text-tertiary">
+                  Campos: {"{date}"}, {"{project}"}, {"{business_domain}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext adicionado automaticamente.
+                </p>
+              </div>
+              <div>
+                <label className={fieldLabelClass} htmlFor="tmpl-naming-datefmt">Date format</label>
+                <Input
+                  id="tmpl-naming-datefmt"
+                  className="font-mono"
+                  value={String(naming.date_format ?? "%Y%m%d")}
+                  onChange={(e) => updateNaming("date_format", e.target.value)}
+                  placeholder="%Y%m%d"
+                />
+              </div>
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Estrutura de Layout" badge={`${domains.length} domínios`} defaultOpen>
+            <table className={editTableClass}>
+              <thead>
+                <tr>
+                  <th>BUSINESS_DOMAIN</th>
+                  <th>LABEL</th>
+                  <th>ALIASES</th>
+                  <th>PASTA</th>
+                  <th style={{ width: 40 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {domains.map((a, i) => (
+                  <tr key={i}>
+                    <td><input className={tableInputClass} value={String(a.key ?? "")} onChange={(e) => updateArea(i, "key", e.target.value)} /></td>
+                    <td><input className={tableInputClass} value={String(a.label ?? "")} onChange={(e) => updateArea(i, "label", e.target.value)} /></td>
+                    <td>
+                      <input
+                        className={tableInputClass}
+                        value={Array.isArray(a.aliases) ? a.aliases.join(", ") : ""}
+                        onChange={(e) => updateArea(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                      />
+                    </td>
+                    <td><input className={tableInputClass} value={String(a.folder ?? "")} onChange={(e) => updateArea(i, "folder", e.target.value)} /></td>
+                    <td>{removeRowButton(() => removeArea(i))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Button variant="outline" size="sm" className="mt-2" onClick={addArea}>
+              + Adicionar domínio
+            </Button>
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Tipos documentais" badge={`${documentTypes.length} tipos`} defaultOpen>
+            <table className={editTableClass}>
+              <thead>
+                <tr>
+                  <th>KEY</th>
+                  <th>LABEL</th>
+                  <th>ALIASES</th>
+                  <th>EXTENSÕES</th>
+                  <th>PASTA</th>
+                  <th style={{ width: 40 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {documentTypes.map((row, i) => (
+                  <tr key={i}>
+                    <td><input className={tableInputClass} value={String(row.key ?? "")} onChange={(e) => updateDocumentType(i, "key", e.target.value)} /></td>
+                    <td><input className={tableInputClass} value={String(row.label ?? "")} onChange={(e) => updateDocumentType(i, "label", e.target.value)} /></td>
+                    <td>
+                      <input
+                        className={tableInputClass}
+                        value={Array.isArray(row.aliases) ? row.aliases.join(", ") : ""}
+                        onChange={(e) => updateDocumentType(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className={tableInputClass}
+                        value={Array.isArray(row.extensions) ? row.extensions.join(", ") : ""}
+                        onChange={(e) => updateDocumentType(i, "extensions", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                      />
+                    </td>
+                    <td><input className={tableInputClass} value={String(row.folder ?? "")} onChange={(e) => updateDocumentType(i, "folder", e.target.value)} /></td>
+                    <td>{removeRowButton(() => removeDocumentType(i))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Button variant="outline" size="sm" className="mt-2" onClick={addDocumentType}>
+              + Adicionar tipo
+            </Button>
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Catálogo de entidades" badge={`${entityCatalog.length} entidades`}>
+            <table className={editTableClass}>
+              <thead>
+                <tr>
+                  <th>TIPO</th>
+                  <th>VALOR</th>
+                  <th>ALIASES</th>
+                  <th style={{ width: 36 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {entityCatalog.map((row, i) => (
+                  <tr key={i}>
+                    <td><input className={tableInputClass} value={String(row.type ?? "")} onChange={(e) => updateEntity(i, "type", e.target.value)} /></td>
+                    <td><input className={tableInputClass} value={String(row.value ?? "")} onChange={(e) => updateEntity(i, "value", e.target.value)} /></td>
+                    <td>
+                      <input
+                        className={tableInputClass}
+                        value={Array.isArray(row.aliases) ? row.aliases.join(", ") : ""}
+                        onChange={(e) => updateEntity(i, "aliases", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                      />
+                    </td>
+                    <td>{removeRowButton(() => removeEntity(i))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Button variant="outline" size="sm" className="mt-2" onClick={addEntity}>
+              + Adicionar entidade
+            </Button>
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Indexação">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={fieldLabelClass} htmlFor="tmpl-idx-topics">Topics path</label>
+                <Input id="tmpl-idx-topics" className="font-mono" value={String(indexing.topics_path ?? "config/topics_v1.yaml")} onChange={(e) => updateIndexing("topics_path", e.target.value)} />
+              </div>
+              <div>
+                <label className={fieldLabelClass} htmlFor="tmpl-idx-mode">Modo extração</label>
+                <select id="tmpl-idx-mode" className={selectClass} value={String(indexing.extraction_mode ?? "all")} onChange={(e) => updateIndexing("extraction_mode", e.target.value)}>
+                  <option value="all">all</option>
+                  <option value="excerpt">excerpt</option>
+                </select>
+              </div>
+              <div>
+                <label className={fieldLabelClass} htmlFor="tmpl-idx-maxchars">Max chars extração</label>
+                <Input
+                  id="tmpl-idx-maxchars"
+                  type="number"
+                  step="1000"
+                  min="1000"
+                  value={Number(indexing.extraction_max_chars ?? 50000)}
+                  onChange={(e) => updateIndexing("extraction_max_chars", parseInt(e.target.value) || 50000)}
+                />
+              </div>
+            </div>
+          </CollapsibleSection>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setEditor(null)} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={saving || !editor.slug || !editor.name}>
+            {saving ? "Salvando..." : "Salvar template"}
+          </Button>
+        </div>
+      </EditorOverlay>
     );
   }
 
   // Template list view
   return (
-    <section className="panel card tmpl-editor-view">
-      <div className="tmpl-editor-header">
-        <h2>Templates de projeto</h2>
-        <button className="btn primary" onClick={handleNew}>+ Novo template</button>
-      </div>
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle className="flex items-center gap-2">
+          <FileStack className="size-4 text-accent" aria-hidden />
+          Templates de projeto
+        </CardTitle>
+        <Button onClick={handleNew}>
+          <Plus />
+          Novo template
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {loading && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+          </div>
+        )}
 
-      {loading && <p className="tmpl-loading">Carregando...</p>}
+        {!loading && templates.length === 0 && (
+          <EmptyState
+            icon={<FileStack aria-hidden />}
+            title="Nenhum template"
+            description="Crie um template para padronizar a estrutura dos seus projetos."
+          />
+        )}
 
-      <div className="tmpl-card-list">
-        {templates.map((t) => (
-          <div key={t.slug} className="tmpl-card">
-            <div className="tmpl-card-info">
-              <strong>
-                {t.name}
-                {t.slug === "default" && <span className="tmpl-badge-default">default</span>}
-                <span className={`tmpl-badge-source tmpl-badge-source--${t.source ?? "builtin"}`}>
-                  {t.source === "user" ? "user" : "builtin"}
-                </span>
-              </strong>
-              <div className="tmpl-card-meta">
-                {t.areas_count} domínios | Atualizado em {t.updated_at ? new Date(t.updated_at).toLocaleDateString("pt-BR") : "—"}
-                <span className="tmpl-card-slug">{t.slug}.json</span>
-              </div>
-              {t.description && <div className="tmpl-card-desc">{t.description}</div>}
-            </div>
-            <div className="tmpl-card-actions">
-              <button className="btn" onClick={() => handleEdit(t.slug)}>Editar</button>
-              <button className="btn" onClick={() => handleDuplicate(t.slug)}>Duplicar</button>
-              {t.source === "user" && (
-                <button className="btn danger" onClick={() => setConfirmDelete(t.slug)}>Excluir</button>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {templates.map((t) => (
+            <div
+              key={t.slug}
+              className={cn(
+                "group flex flex-col gap-2 rounded-lg border border-border bg-card p-4",
+                "transition-[border-color,box-shadow] duration-200 hover:border-accent/40 hover:shadow-[0_0_20px_var(--accent-soft)]"
               )}
+            >
+              <div className="flex items-center gap-2">
+                <strong className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-foreground-strong">
+                  {t.name}
+                </strong>
+                {t.slug === "default" && <Badge>default</Badge>}
+                <Badge variant={t.source === "user" ? "purple" : "outline"}>{t.source === "user" ? "user" : "builtin"}</Badge>
+              </div>
+              <p className="font-mono text-[0.7rem] text-tertiary">
+                {t.areas_count} domínios · atualizado {t.updated_at ? new Date(t.updated_at).toLocaleDateString("pt-BR") : "—"} ·{" "}
+                <span className="text-muted-foreground">{t.slug}.json</span>
+              </p>
+              {t.description && <p className="line-clamp-2 text-xs text-muted-foreground">{t.description}</p>}
+              <div className="mt-auto flex gap-1.5 pt-1">
+                <Button variant="secondary" size="sm" onClick={() => handleEdit(t.slug)}>
+                  <Pencil />
+                  Editar
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleDuplicate(t.slug)}>
+                  Duplicar
+                </Button>
+                {t.source === "user" && (
+                  <Button variant="destructive" size="sm" className="ml-auto" onClick={() => setConfirmDelete(t.slug)}>
+                    <Trash2 />
+                    Excluir
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      {confirmDelete && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Confirmar exclusão">
-          <div className="modal tmpl-confirm-modal">
-            <div className="modal-header">
-              <h3>Excluir template</h3>
-            </div>
-            <p style={{ margin: "12px 0 18px", fontSize: "0.88rem", color: "var(--text)" }}>
-              Tem certeza que deseja excluir o template <strong>{confirmDelete}</strong>? Esta ação não pode ser desfeita.
-            </p>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setConfirmDelete(null)}>Cancelar</button>
-              <button className="btn danger" onClick={handleDeleteConfirmed}>Excluir</button>
-            </div>
-          </div>
+          ))}
         </div>
-      )}
-    </section>
+
+        {confirmDelete && (
+          <EditorOverlay label="Confirmar exclusão">
+            <h3 className="font-display text-lg font-bold text-foreground-strong">Excluir template</h3>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Tem certeza que deseja excluir o template <strong className="text-foreground">{confirmDelete}</strong>? Esta
+              ação não pode ser desfeita.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setConfirmDelete(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteConfirmed}>
+                Excluir
+              </Button>
+            </div>
+          </EditorOverlay>
+        )}
+      </CardContent>
+    </Card>
   );
 }

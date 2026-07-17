@@ -302,7 +302,7 @@ export const ChartBlock = React.memo(function ChartBlock({ jsonString }: { jsonS
   const spec = parseSpec(jsonString);
   if (!spec) {
     return (
-      <pre className="chart-block-fallback">
+      <pre className="chart-block-fallback my-2.5 overflow-x-auto rounded-md bg-black/20 px-3 py-2.5 text-[0.92em] [&_code]:bg-transparent [&_code]:p-0">
         <code>{jsonString}</code>
       </pre>
     );
@@ -311,15 +311,15 @@ export const ChartBlock = React.memo(function ChartBlock({ jsonString }: { jsonS
   const renderer = RENDERERS[spec.type];
   if (!renderer) {
     return (
-      <pre className="chart-block-fallback">
+      <pre className="chart-block-fallback my-2.5 overflow-x-auto rounded-md bg-black/20 px-3 py-2.5 text-[0.92em] [&_code]:bg-transparent [&_code]:p-0">
         <code>{jsonString}</code>
       </pre>
     );
   }
 
   return (
-    <div className="chart-block-container">
-      {spec.title && <div className="chart-block-title">{spec.title}</div>}
+    <div className="chart-block-container my-2.5 min-h-[280px] overflow-hidden rounded-md bg-gradient-to-br from-panel-strong to-card p-4">
+      {spec.title && <div className="mb-2.5 pl-1 font-display text-sm font-medium text-foreground">{spec.title}</div>}
       {renderer(spec)}
     </div>
   );

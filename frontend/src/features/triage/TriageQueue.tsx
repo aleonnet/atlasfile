@@ -1,3 +1,8 @@
+import { motion, useReducedMotion } from "framer-motion";
+import { Check, Inbox, Pencil, X } from "lucide-react";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import type { TriageItem } from "../../types";
 
 type Props = {
@@ -16,82 +21,118 @@ function formatClassifierModeLabel(mode?: string | null): string {
 }
 
 export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props) {
+  const reducedMotion = useReducedMotion();
   if (triageItems.length === 0) return null;
 
   return (
-    <section className="panel card triage-queue-card">
-      <div className="panel-head card-header">
-        <h2>Triagem pendente</h2>
-        <span className="triage-queue-badge">{triageItems.length}</span>
-      </div>
-      <p className="triage-queue-subtitle">
-        {triageItems.length} documento{triageItems.length !== 1 ? "s" : ""} aguardando decisão
-      </p>
-      <ul className="list triage-queue-list">
-        {triageItems.map((item) => {
-          const hasLlmContext =
-            item.classifier_mode ||
-            item.llm_explanation ||
-            item.rule_business_domain ||
-            item.llm_proposed_business_domain ||
-            item.business_domain_confidence != null ||
-            item.document_type_confidence != null ||
-            item.classifier_fallback_reason;
-          const suggestedBusinessDomain = item.suggested_business_domain;
-          return (
-            <li key={item.doc_id} className="list-item triage-queue-item">
-              <strong className="list-title">{item.filename}</strong>
-              <div className="sub list-meta">
-                projeto: {projectLabelById.get(item.project_id) || item.project_id} | sugestão:{" "}
-                {suggestedBusinessDomain || "sem sugestão"}
-                {item.suggested_document_type ? ` / ${item.suggested_document_type}` : ""}
-                {" "}| confiança: {item.confidence_score.toFixed(2)}
-              </div>
+    <Card className="triage-queue-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Inbox size={15} className="text-accent" aria-hidden />
+          Triagem pendente
+          {/* Luz laranja = semântica de vida: pendência "respira" pedindo atenção */}
+          <span className="relative inline-flex">
+            <Badge>{triageItems.length}</Badge>
+            <span
+              aria-hidden
+              className="absolute inset-0 rounded-full bg-accent-soft [animation:atlas-fade-in_1.6s_var(--ease-in-out)_infinite_alternate] motion-reduce:hidden"
+            />
+          </span>
+        </CardTitle>
+        <CardDescription>
+          {triageItems.length} documento{triageItems.length !== 1 ? "s" : ""} aguardando decisão
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
+          {triageItems.map((item, index) => {
+            const hasLlmContext =
+              item.classifier_mode ||
+              item.llm_explanation ||
+              item.rule_business_domain ||
+              item.llm_proposed_business_domain ||
+              item.business_domain_confidence != null ||
+              item.document_type_confidence != null ||
+              item.classifier_fallback_reason;
+            const suggestedBusinessDomain = item.suggested_business_domain;
+            return (
+              <motion.li
+                key={item.doc_id}
+                initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.03, 0.3) }}
+                className="rounded-lg border border-border bg-card p-4 shadow-[inset_2px_0_0_var(--accent)] transition-[border-color] hover:border-border-strong"
+              >
+                <p className="font-display text-sm font-semibold text-foreground-strong">{item.filename}</p>
+                <p className="mt-0.5 font-mono text-[0.7rem] text-tertiary">
+                  {projectLabelById.get(item.project_id) || item.project_id}
+                  {" · "}
+                  {suggestedBusinessDomain ? (
+                    <>
+                      sugestão: <span className="text-foreground">{suggestedBusinessDomain}</span>
+                      {item.suggested_document_type ? ` / ${item.suggested_document_type}` : ""}
+                    </>
+                  ) : (
+                    "sem sugestão"
+                  )}
+                  {" · "}confiança {item.confidence_score.toFixed(2)}
+                </p>
 
-              {hasLlmContext && (
-                <div className="itc-triage-llm-context">
-                  <p>
-                    Classificador: <code>{formatClassifierModeLabel(item.classifier_mode)}</code>
-                    {item.classifier_requested_mode && item.classifier_requested_mode !== item.classifier_mode
-                      ? ` (solicitado: ${formatClassifierModeLabel(item.classifier_requested_mode)})`
-                      : ""}
-                  </p>
-                  <p>
-                    Scores: domínio {formatPct(item.business_domain_confidence)} | tipo {formatPct(item.document_type_confidence)} | final {item.confidence_score.toFixed(2)}
-                  </p>
-                  {item.classifier_fallback_reason && (
-                    <p>Fallback: <code>{item.classifier_fallback_reason}</code></p>
-                  )}
-                  {item.rule_business_domain && (
-                    <p>Regra: <code>{item.rule_business_domain}</code> (conf {(item.rule_confidence ?? 0).toFixed(2)})</p>
-                  )}
-                  {item.llm_explanation && <p>LLM: <em>{item.llm_explanation}</em></p>}
-                  {item.llm_proposed_business_domain && (
-                    <p className="itc-proposed-area">Domínio proposto: <code>{item.llm_proposed_business_domain}</code></p>
-                  )}
+                {hasLlmContext && (
+                  <div className="mt-2 space-y-0.5 rounded-md bg-panel-strong p-2.5 font-mono text-[0.7rem] text-muted-foreground">
+                    <p>
+                      classificador: <span className="text-accent-light">{formatClassifierModeLabel(item.classifier_mode)}</span>
+                      {item.classifier_requested_mode && item.classifier_requested_mode !== item.classifier_mode
+                        ? ` (solicitado: ${formatClassifierModeLabel(item.classifier_requested_mode)})`
+                        : ""}
+                    </p>
+                    <p>
+                      scores: domínio {formatPct(item.business_domain_confidence)} | tipo {formatPct(item.document_type_confidence)} | final {item.confidence_score.toFixed(2)}
+                    </p>
+                    {item.classifier_fallback_reason && (
+                      <p>
+                        fallback: <span className="text-accent-light">{item.classifier_fallback_reason}</span>
+                      </p>
+                    )}
+                    {item.rule_business_domain && (
+                      <p>
+                        regra: <span className="text-accent-light">{item.rule_business_domain}</span> (conf{" "}
+                        {(item.rule_confidence ?? 0).toFixed(2)})
+                      </p>
+                    )}
+                    {item.llm_explanation && <p className="text-foreground/80">LLM: {item.llm_explanation}</p>}
+                    {item.llm_proposed_business_domain && (
+                      <p>
+                        domínio proposto: <span className="text-accent-purple">{item.llm_proposed_business_domain}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={!suggestedBusinessDomain}
+                    title={!suggestedBusinessDomain ? "Sem sugestão de domínio" : undefined}
+                    onClick={() => void onDecision(item, "approve")}
+                  >
+                    <Check />
+                    Aprovar
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => void onDecision(item, "correct")}>
+                    <Pencil />
+                    Corrigir
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => void onDecision(item, "reject")}>
+                    <X />
+                    Rejeitar
+                  </Button>
                 </div>
-              )}
-
-              <div className="row">
-                <button
-                  className="btn"
-                  disabled={!suggestedBusinessDomain}
-                  title={!suggestedBusinessDomain ? "Sem sugestão de domínio" : ""}
-                  onClick={() => void onDecision(item, "approve")}
-                >
-                  Aprovar
-                </button>
-                <button className="btn" onClick={() => void onDecision(item, "correct")}>
-                  Corrigir
-                </button>
-                <button className="btn danger" onClick={() => void onDecision(item, "reject")}>
-                  Rejeitar
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+              </motion.li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }

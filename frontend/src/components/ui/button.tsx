@@ -5,8 +5,8 @@ import { cn } from "../../lib/utils";
 const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2 whitespace-nowrap select-none",
-    // border-0/shadow-none neutralizam o CSS global legado de button
-    "border-0 shadow-none",
+    // border-0/shadow-none/bg-transparent neutralizam o CSS global legado e o buttonface nativo (sem preflight)
+    "border-0 shadow-none bg-transparent",
     "font-display font-semibold rounded-md text-sm leading-none",
     "transition-[background-color,border-color,box-shadow,transform,color] duration-150",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",

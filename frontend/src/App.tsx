@@ -15,8 +15,10 @@ import {
   triageDecision,
   updateChannelConfig,
 } from "./api";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { fieldLabelClass, ModalActions, ModalShell } from "./components/ui/modal-shell";
 import { Toaster, toast } from "./components/ui/sonner";
-import { ToastProvider } from "./contexts/ToastContext";
 import { NavigationProvider, useNavigation } from "./contexts/NavigationContext";
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
@@ -553,13 +555,13 @@ function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar>
           {appEnv === "dev" && (
-            <button type="button" className="dev-onboarding-btn" onClick={handleReplayOnboarding} title="Replay Onboarding (dev only)">
-              <RefreshCw size={14} /> Onboarding
-            </button>
+            <Button variant="secondary" size="sm" onClick={handleReplayOnboarding} title="Replay Onboarding (dev only)">
+              <RefreshCw /> Onboarding
+            </Button>
           )}
         </Topbar>
 
-        <main className="content flex-1 overflow-y-auto">
+        <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden px-7 pb-8 pt-6 [-webkit-overflow-scrolling:touch]">
         {view === "painel" && (
           <PainelView
             projects={projects}
@@ -718,37 +720,35 @@ function AppShell() {
       />
 
       {newProjectModalOpen && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Novo projeto">
-          <div className="modal">
-            <h3>Novo projeto</h3>
-            <label htmlFor="new-project-name">Nome do projeto (slug)</label>
-            <input
-              id="new-project-name"
-              type="text"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-              placeholder="meu_projeto"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleNewProjectConfirm();
-              }}
-            />
-            <p className="sub">Apenas letras minúsculas, números, _ e - (sem espaços ou acentos)</p>
-            {newProjectName && !SLUG_RE.test(newProjectName) && <p className="modal-move-error">Nome inválido</p>}
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setNewProjectModalOpen(false)}>
-                Cancelar
-              </button>
-              <button
-                className="btn primary"
-                disabled={!newProjectName || !SLUG_RE.test(newProjectName)}
-                onClick={handleNewProjectConfirm}
-              >
-                Continuar
-              </button>
-            </div>
-          </div>
-        </div>
+        <ModalShell label="Novo projeto" title="Novo projeto" size="sm">
+          <label className={fieldLabelClass} htmlFor="new-project-name">Nome do projeto (slug)</label>
+          <Input
+            id="new-project-name"
+            type="text"
+            className="font-mono"
+            value={newProjectName}
+            onChange={(e) => setNewProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
+            placeholder="meu_projeto"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleNewProjectConfirm();
+            }}
+          />
+          <p className="mt-1.5 text-[0.72rem] text-tertiary">Apenas letras minúsculas, números, _ e - (sem espaços ou acentos)</p>
+          {newProjectName && !SLUG_RE.test(newProjectName) && (
+            <p className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-[0.8rem] text-destructive">
+              Nome inválido
+            </p>
+          )}
+          <ModalActions>
+            <Button variant="secondary" onClick={() => setNewProjectModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button disabled={!newProjectName || !SLUG_RE.test(newProjectName)} onClick={handleNewProjectConfirm}>
+              Continuar
+            </Button>
+          </ModalActions>
+        </ModalShell>
       )}
     </div>
   );
@@ -756,16 +756,14 @@ function AppShell() {
 
 function App() {
   return (
-    <ToastProvider>
-      <SettingsProvider>
+    <SettingsProvider>
         <ProjectProvider>
           <NavigationProvider>
             <AppShell />
             <Toaster />
-          </NavigationProvider>
-        </ProjectProvider>
-      </SettingsProvider>
-    </ToastProvider>
+        </NavigationProvider>
+      </ProjectProvider>
+    </SettingsProvider>
   );
 }
 

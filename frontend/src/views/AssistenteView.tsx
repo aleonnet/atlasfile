@@ -1,8 +1,10 @@
+import { BarChart3, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { ChatPanel } from "../components/ChatPanel";
 import type { ChatAttachment } from "../components/ChatPanel";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { UsageView } from "../features/usage/UsageView";
-import type { ChatMessage as ChatMessageType, ChatSession, ModelOption, UsageTotals } from "../types";
+import type { ChatMessage as ChatMessageType, ChatSession, ModelOption } from "../types";
 
 const ALL_PROJECTS = "__all__";
 
@@ -65,78 +67,62 @@ export function AssistenteView({
   telegramConnected,
   onToggleTelegram,
 }: Props) {
-  const [assistenteTab, setAssistenteTab] = useState<"chat" | "usage">("chat");
+  const [assistenteTab, setAssistenteTab] = useState("chat");
 
   return (
-    <section className="config-view">
-      <nav className="assistente-tabs" role="tablist">
-        <div className="assistente-tabs-pill">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={assistenteTab === "chat"}
-            className={`assistente-tab${assistenteTab === "chat" ? " assistente-tab--active" : ""}`}
-            onClick={() => setAssistenteTab("chat")}
-          >
-            Chat
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={assistenteTab === "usage"}
-            className={`assistente-tab${assistenteTab === "usage" ? " assistente-tab--active" : ""}`}
-            onClick={() => setAssistenteTab("usage")}
-          >
-            Uso e custo
-          </button>
+    <section className="flex min-h-0 flex-1 flex-col gap-4">
+      <Tabs value={assistenteTab} onValueChange={setAssistenteTab} className="flex min-h-0 flex-1 flex-col">
+        <TabsList aria-label="Assistente">
+          <TabsTrigger value="chat"><MessageCircle aria-hidden /> Chat</TabsTrigger>
+          <TabsTrigger value="usage"><BarChart3 aria-hidden /> Uso e custo</TabsTrigger>
+        </TabsList>
+        <div className="mt-4 flex min-h-0 flex-1 flex-col">
+          {assistenteTab === "chat" ? (
+            <ChatPanel
+              agentName="Assistente"
+              agentAvatarUrl={null}
+              messages={chatMessages
+                .filter((m): m is ChatMessageType & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
+                .map((m) => ({
+                  role: m.role,
+                  content: typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" "),
+                  timestamp: m.timestamp,
+                  ...(m.role === "user" && Array.isArray(m.content) && { contentParts: m.content }),
+                  ...(m.model ? { model: m.model } : {}),
+                }))}
+              lastToolCalls={lastToolCalls}
+              sending={chatSending}
+              error={chatError}
+              canAbort={chatSending}
+              selectedModel={selectedModel}
+              models={models}
+              onModelChange={onModelChange}
+              onOpenSettings={onOpenSettings}
+              onSend={onSend}
+              onAbort={onAbort}
+              onNewSession={onNewSession}
+              showThinking={showThinking}
+              onShowThinkingChange={onShowThinkingChange}
+              disabled={models.length === 0 || !selectedModel}
+              sessions={sessions}
+              sessionsLoading={sessionsLoading}
+              activeSessionId={activeSessionId}
+              historyModalOpen={historyModalOpen}
+              onOpenHistory={onOpenHistory}
+              onCloseHistory={onCloseHistory}
+              onSelectSession={onSelectSession}
+              onEditSession={onEditSession}
+              onDeleteSession={onDeleteSession}
+              savingSession={savingSession}
+              telegramConnected={telegramConnected}
+              onToggleTelegram={onToggleTelegram}
+              contextPressureRatio={contextPressureRatio}
+            />
+          ) : (
+            <UsageView projectId={selectedProject === ALL_PROJECTS ? null : selectedProject} />
+          )}
         </div>
-      </nav>
-      <div className="config-view-content" style={{ flex: "1 1 0", minHeight: 0 }}>
-        {assistenteTab === "chat" ? (
-          <ChatPanel
-            agentName="Assistente"
-            agentAvatarUrl={null}
-            messages={chatMessages
-              .filter((m): m is ChatMessageType & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
-              .map((m) => ({
-                role: m.role,
-                content: typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" "),
-                timestamp: m.timestamp,
-                ...(m.role === "user" && Array.isArray(m.content) && { contentParts: m.content }),
-                ...(m.model ? { model: m.model } : {}),
-              }))}
-            lastToolCalls={lastToolCalls}
-            sending={chatSending}
-            error={chatError}
-            canAbort={chatSending}
-            selectedModel={selectedModel}
-            models={models}
-            onModelChange={onModelChange}
-            onOpenSettings={onOpenSettings}
-            onSend={onSend}
-            onAbort={onAbort}
-            onNewSession={onNewSession}
-            showThinking={showThinking}
-            onShowThinkingChange={onShowThinkingChange}
-            disabled={models.length === 0 || !selectedModel}
-            sessions={sessions}
-            sessionsLoading={sessionsLoading}
-            activeSessionId={activeSessionId}
-            historyModalOpen={historyModalOpen}
-            onOpenHistory={onOpenHistory}
-            onCloseHistory={onCloseHistory}
-            onSelectSession={onSelectSession}
-            onEditSession={onEditSession}
-            onDeleteSession={onDeleteSession}
-            savingSession={savingSession}
-            telegramConnected={telegramConnected}
-            onToggleTelegram={onToggleTelegram}
-            contextPressureRatio={contextPressureRatio}
-          />
-        ) : (
-          <UsageView projectId={selectedProject === ALL_PROJECTS ? null : selectedProject} />
-        )}
-      </div>
+      </Tabs>
     </section>
   );
 }

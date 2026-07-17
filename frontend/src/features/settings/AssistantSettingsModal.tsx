@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, ExternalLink } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, ExternalLink } from "lucide-react";
 import { fetchChannelConfig, fetchChannelStatus, updateChannelConfig } from "../../api";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { cn } from "../../lib/utils";
 import type { ChannelConfig, ChannelStatusResponse, ModelOption } from "../../types";
 
 type InputLikeEvent = { target: { value: string } };
@@ -38,6 +42,9 @@ function saveTgToken(token: string) {
     else localStorage.removeItem(TG_TOKEN_STORAGE_KEY);
   } catch { /* ignore */ }
 }
+
+const channelCardClass = "rounded-lg border border-border bg-card p-3.5";
+const hintClass = "mt-1 block text-[0.72rem] text-tertiary";
 
 export function AssistantSettingsModal({
   open,
@@ -109,15 +116,6 @@ export function AssistantSettingsModal({
     fetchChannelStatus().then(setChannelStatus).catch(() => {});
   }, [open, persistConfig]);
 
-  const updateCfg = useCallback(
-    (patch: Partial<ChannelConfig>) => {
-      const next = { ...channelCfg, ...patch };
-      setChannelCfg(next);
-      persistConfig(next);
-    },
-    [channelCfg, persistConfig]
-  );
-
   const updateTelegram = useCallback(
     (patch: Partial<ChannelConfig["telegram"]>) => {
       const merged = { ...channelCfg.telegram, ...patch };
@@ -144,188 +142,197 @@ export function AssistantSettingsModal({
   const tgStatus = channelStatus?.channels.find((c) => c.channel_id === "telegram");
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Configuração do Assistente" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxHeight: "85vh", overflowY: "auto" }}>
-        <h3>Configuração do Assistente</h3>
-        <p className="sub">
-          Modelo de triagem (classificação no ingest) e modelo de chat podem ser diferentes. Chaves são enviadas só na requisição e não ficam no servidor.
-        </p>
-        <div className="field">
-          <label htmlFor="settings-model-triage">Modelo triagem</label>
-          <select
-            id="settings-model-triage"
-            value={selectedModelTriage}
-            onChange={(e: InputLikeEvent) => onChangeModelTriage(e.target.value)}
-          >
-            {models.map((m) => (
-              <option key={`triage-${m.label}`} value={`${m.provider}/${m.model}`}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="settings-model-chat">Modelo chat</label>
-          <select
-            id="settings-model-chat"
-            value={selectedModel}
-            onChange={(e: InputLikeEvent) => onChangeModel(e.target.value)}
-          >
-            {models.map((m) => (
-              <option key={`chat-${m.label}`} value={`${m.provider}/${m.model}`}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {needOpenAI && (
-          <div className="field">
-            <label htmlFor="settings-openai-key">OpenAI API Key</label>
-            <input
-              id="settings-openai-key"
-              type="password"
-              value={openaiApiKey}
-              onChange={(e: InputLikeEvent) => onChangeOpenAiKey(e.target.value)}
-              placeholder="sk-..."
-              autoComplete="off"
-            />
-          </div>
-        )}
-        {needAnthropic && (
-          <div className="field">
-            <label htmlFor="settings-anthropic-key">Anthropic API Key</label>
-            <input
-              id="settings-anthropic-key"
-              type="password"
-              value={anthropicApiKey}
-              onChange={(e: InputLikeEvent) => onChangeAnthropicKey(e.target.value)}
-              placeholder="sk-ant-..."
-              autoComplete="off"
-            />
-          </div>
-        )}
-        <label className="checkbox-inline" style={{ marginTop: "0.5rem" }}>
-          <input
-            type="checkbox"
-            checked={autoTitleLLM}
-            onChange={(e) => onChangeAutoTitleLLM(e.target.checked)}
+    <ModalShell label="Configuração do Assistente" title="Configuração do Assistente" className="max-h-[85vh] overflow-y-auto">
+      <p className="text-xs text-muted-foreground">
+        Modelo de triagem (classificação no ingest) e modelo de chat podem ser diferentes. Chaves são enviadas só na
+        requisição e não ficam no servidor.
+      </p>
+
+      <label className={fieldLabelClass} htmlFor="settings-model-triage">Modelo triagem</label>
+      <select
+        id="settings-model-triage"
+        className={nativeSelectClass}
+        value={selectedModelTriage}
+        onChange={(e: InputLikeEvent) => onChangeModelTriage(e.target.value)}
+      >
+        {models.map((m) => (
+          <option key={`triage-${m.label}`} value={`${m.provider}/${m.model}`}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+
+      <label className={fieldLabelClass} htmlFor="settings-model-chat">Modelo chat</label>
+      <select
+        id="settings-model-chat"
+        className={nativeSelectClass}
+        value={selectedModel}
+        onChange={(e: InputLikeEvent) => onChangeModel(e.target.value)}
+      >
+        {models.map((m) => (
+          <option key={`chat-${m.label}`} value={`${m.provider}/${m.model}`}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+
+      {needOpenAI && (
+        <>
+          <label className={fieldLabelClass} htmlFor="settings-openai-key">OpenAI API Key</label>
+          <Input
+            id="settings-openai-key"
+            type="password"
+            className="font-mono"
+            value={openaiApiKey}
+            onChange={(e: InputLikeEvent) => onChangeOpenAiKey(e.target.value)}
+            placeholder="sk-..."
+            autoComplete="off"
           />
-          Gerar título da sessão via LLM (em background)
-        </label>
-        <span className="sub" style={{ fontSize: "0.8rem", marginTop: 2 }}>
-          Se desativado, o título será a primeira mensagem da conversa.
-        </span>
+        </>
+      )}
+      {needAnthropic && (
+        <>
+          <label className={fieldLabelClass} htmlFor="settings-anthropic-key">Anthropic API Key</label>
+          <Input
+            id="settings-anthropic-key"
+            type="password"
+            className="font-mono"
+            value={anthropicApiKey}
+            onChange={(e: InputLikeEvent) => onChangeAnthropicKey(e.target.value)}
+            placeholder="sk-ant-..."
+            autoComplete="off"
+          />
+        </>
+      )}
 
-        {/* ── Channels ── */}
-        <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "16px 0" }} />
-        <h4 style={{ margin: "0 0 4px" }}>Canais de comunicação</h4>
-        <p className="sub" style={{ marginBottom: 12 }}>
-          Conecte o assistente a canais de mensagem externos. Canais são opcionais e não afetam o chat web.
-        </p>
+      <label className="mt-4 flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="size-3.5 accent-[var(--accent)]"
+          checked={autoTitleLLM}
+          onChange={(e) => onChangeAutoTitleLLM(e.target.checked)}
+        />
+        Gerar título da sessão via LLM (em background)
+      </label>
+      <span className={hintClass}>Se desativado, o título será a primeira mensagem da conversa.</span>
 
-        {/* Telegram card */}
-        <div className="card" style={{ marginBottom: 8 }}>
-          <div
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
-            onClick={() => setExpandedChannel(expandedChannel === "telegram" ? null : "telegram")}
+      {/* ── Channels ── */}
+      <hr className="my-4 border-0 border-t border-border" />
+      <h4 className="font-display text-sm font-bold text-foreground-strong">Canais de comunicação</h4>
+      <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
+        Conecte o assistente a canais de mensagem externos. Canais são opcionais e não afetam o chat web.
+      </p>
+
+      {/* Telegram */}
+      <div className={cn(channelCardClass, "mb-2")}>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between border-0 bg-transparent p-0 text-left shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => setExpandedChannel(expandedChannel === "telegram" ? null : "telegram")}
+          aria-expanded={expandedChannel === "telegram"}
+        >
+          <strong className="flex items-center gap-1 font-display text-sm text-foreground-strong">
+            <ChevronRight
+              size={14}
+              aria-hidden
+              className={cn("text-tertiary transition-transform", expandedChannel === "telegram" && "rotate-90")}
+            />
+            Telegram
+          </strong>
+          <span
+            className={cn(
+              "flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 font-mono text-[0.68rem]",
+              tgStatus?.connected ? "text-success" : tgStatus?.error ? "text-destructive" : "text-tertiary"
+            )}
           >
-            <strong style={{ fontSize: "0.95rem" }}>
-              {expandedChannel === "telegram" ? "▼" : "▶"} Telegram
-            </strong>
-            <span className="pill" style={{
-              color: tgStatus?.connected ? "var(--accent)" : tgStatus?.error ? "var(--danger, red)" : undefined,
-              opacity: tgStatus?.connected || tgStatus?.error ? 1 : 0.6,
-            }}>
-              {tgStatus?.connected ? "● Conectado" : tgStatus?.error ? "● Erro" : channelCfg.telegram.bot_token ? "○ Desconectado" : "○ Sem token"}
-            </span>
-          </div>
-          {expandedChannel === "telegram" && (
-            <div style={{ marginTop: 10 }}>
-              <div className="field" style={{ marginBottom: 6 }}>
-                <label htmlFor="ch-tg-token" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  Bot Token
-                  <a
-                    href="https://t.me/BotFather"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Criar bot via @BotFather"
-                    style={{ display: "inline-flex", color: "var(--accent)" }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ExternalLink size={14} />
-                  </a>
-                </label>
-                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                  <input
-                    id="ch-tg-token"
-                    type={showToken ? "text" : "password"}
-                    value={channelCfg.telegram.bot_token}
-                    onChange={(e: InputLikeEvent) => updateTelegram({ bot_token: e.target.value, enabled: true })}
-                    placeholder="123456:ABC-DEF..."
-                    autoComplete="off"
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{ padding: "5px 6px", lineHeight: 1, display: "inline-flex" }}
-                    onClick={() => setShowToken(!showToken)}
-                    title={showToken ? "Ocultar token" : "Mostrar token"}
-                  >
-                    {showToken ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
-                </div>
-              </div>
-              <span className="sub" style={{ fontSize: "0.8rem" }}>
-                Crie um bot via{" "}
-                <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
-                  @BotFather
-                </a>
-                , copie o token e cole acima.
-              </span>
-              <label className="checkbox-inline" style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={channelCfg.telegram.mirror_responses}
-                  onChange={(e) => updateTelegram({ mirror_responses: e.target.checked })}
-                />
-                Espelhar respostas para o Telegram
-              </label>
-              <span className="sub" style={{ fontSize: "0.78rem", marginTop: 2 }}>
-                Quando ativado, respostas enviadas pelo chat web em sessões originadas no Telegram também são encaminhadas ao Telegram.
-              </span>
-              {tgStatus?.error && (
-                <p style={{ color: "var(--danger, red)", fontSize: "0.85rem", marginTop: 6 }}>
-                  Erro: {tgStatus.error}
-                </p>
+            <span
+              aria-hidden
+              className={cn(
+                "size-1.5 rounded-full",
+                tgStatus?.connected ? "bg-success" : tgStatus?.error ? "bg-destructive" : "bg-tertiary"
               )}
-              {saving && (
-                <p className="sub" style={{ fontSize: "0.8rem", marginTop: 4 }}>Salvando...</p>
-              )}
+            />
+            {tgStatus?.connected ? "Conectado" : tgStatus?.error ? "Erro" : channelCfg.telegram.bot_token ? "Desconectado" : "Sem token"}
+          </span>
+        </button>
+        {expandedChannel === "telegram" && (
+          <div className="mt-3">
+            <label className={cn(fieldLabelClass, "mt-0 flex items-center gap-1.5")} htmlFor="ch-tg-token">
+              Bot Token
+              <a
+                href="https://t.me/BotFather"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Criar bot via @BotFather"
+                className="inline-flex text-accent"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink size={13} />
+              </a>
+            </label>
+            <div className="flex items-center gap-1.5">
+              <Input
+                id="ch-tg-token"
+                type={showToken ? "text" : "password"}
+                className="flex-1 font-mono"
+                value={channelCfg.telegram.bot_token}
+                onChange={(e: InputLikeEvent) => updateTelegram({ bot_token: e.target.value, enabled: true })}
+                placeholder="123456:ABC-DEF..."
+                autoComplete="off"
+              />
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={() => setShowToken(!showToken)}
+                title={showToken ? "Ocultar token" : "Mostrar token"}
+                aria-label={showToken ? "Ocultar token" : "Mostrar token"}
+              >
+                {showToken ? <EyeOff /> : <Eye />}
+              </Button>
             </div>
-          )}
-        </div>
-
-        {/* Future channels (placeholder) */}
-        <div className="card" style={{ marginBottom: 8, opacity: 0.5 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong style={{ fontSize: "0.95rem" }}>▶ Discord</strong>
-            <span className="pill">Em breve</span>
+            <span className={hintClass}>
+              Crie um bot via{" "}
+              <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+                @BotFather
+              </a>
+              , copie o token e cole acima.
+            </span>
+            <label className="mt-3 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="size-3.5 accent-[var(--accent)]"
+                checked={channelCfg.telegram.mirror_responses}
+                onChange={(e) => updateTelegram({ mirror_responses: e.target.checked })}
+              />
+              Espelhar respostas para o Telegram
+            </label>
+            <span className={hintClass}>
+              Quando ativado, respostas enviadas pelo chat web em sessões originadas no Telegram também são encaminhadas
+              ao Telegram.
+            </span>
+            {tgStatus?.error && <p className="mt-2 text-[0.8rem] text-destructive">Erro: {tgStatus.error}</p>}
+            {saving && <p className={hintClass}>Salvando...</p>}
           </div>
-        </div>
-        <div className="card" style={{ marginBottom: 8, opacity: 0.5 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong style={{ fontSize: "0.95rem" }}>▶ Slack</strong>
-            <span className="pill">Em breve</span>
-          </div>
-        </div>
+        )}
+      </div>
 
-        <div className="modal-actions">
-          <button type="button" className="btn primary" onClick={onClose}>
-            Fechar
-          </button>
+      {/* Futuras integrações */}
+      <div className={cn(channelCardClass, "mb-2 opacity-50")}>
+        <div className="flex items-center justify-between">
+          <strong className="font-display text-sm text-foreground-strong">Discord</strong>
+          <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[0.68rem] text-tertiary">Em breve</span>
         </div>
       </div>
-    </div>
+      <div className={cn(channelCardClass, "opacity-50")}>
+        <div className="flex items-center justify-between">
+          <strong className="font-display text-sm text-foreground-strong">Slack</strong>
+          <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[0.68rem] text-tertiary">Em breve</span>
+        </div>
+      </div>
+
+      <ModalActions>
+        <Button onClick={onClose}>Fechar</Button>
+      </ModalActions>
+    </ModalShell>
   );
 }

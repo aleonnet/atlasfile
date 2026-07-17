@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { KeyRound } from "lucide-react";
+import { FolderTree, KeyRound, LayoutTemplate, Sparkles } from "lucide-react";
 import { getApiKey, setApiKey } from "../api";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -38,12 +38,14 @@ function ApiAccessCard({ onStatus }: { onStatus: (msg: string) => void }) {
 
   return (
     <Card className="max-w-2xl">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="flex min-h-9 items-center gap-2">
           <KeyRound className="size-4 text-accent" />
           Acesso à API
         </CardTitle>
-        <CardDescription>
+      </CardHeader>
+      <CardContent>
+        <CardDescription className="mb-3">
           Necessária apenas quando o backend está com{" "}
           <code className="rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light">
             API_AUTH_ENABLED=true
@@ -54,8 +56,6 @@ function ApiAccessCard({ onStatus }: { onStatus: (msg: string) => void }) {
           </code>
           .
         </CardDescription>
-      </CardHeader>
-      <CardContent>
         <div className="flex items-center gap-2">
           <Input
             type="password"
@@ -88,13 +88,13 @@ export function ConfigView({
   onChangeModelTriage,
 }: Props) {
   return (
-    <section className="config-view">
+    <section className="flex flex-col">
       <Tabs defaultValue="perfil">
         <TabsList aria-label="Configurações">
-          <TabsTrigger value="perfil">Perfil do projeto</TabsTrigger>
-          <TabsTrigger value="classificador">Classificador</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="acesso">Acesso</TabsTrigger>
+          <TabsTrigger value="perfil"><FolderTree aria-hidden /> Perfil do projeto</TabsTrigger>
+          <TabsTrigger value="classificador"><Sparkles aria-hidden /> Classificador</TabsTrigger>
+          <TabsTrigger value="templates"><LayoutTemplate aria-hidden /> Templates</TabsTrigger>
+          <TabsTrigger value="acesso"><KeyRound aria-hidden /> Acesso</TabsTrigger>
         </TabsList>
 
         <TabsContent value="perfil">

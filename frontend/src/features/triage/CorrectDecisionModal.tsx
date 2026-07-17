@@ -1,3 +1,5 @@
+import { Button } from "../../components/ui/button";
+import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import type { ProjectArea, ProjectDocumentType, TriageItem } from "../../types";
 
@@ -13,6 +15,9 @@ type Props = {
   onCancel: () => void;
   onSubmit: () => void;
 };
+
+const warningClass =
+  "mt-3 rounded-md border border-accent/30 bg-accent-soft px-3 py-2 text-[0.78rem] text-foreground [&_code]:font-mono [&_code]:text-accent";
 
 export function CorrectDecisionModal({
   item,
@@ -47,94 +52,87 @@ export function CorrectDecisionModal({
   }
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Aprovar com correcao">
-      <div className="modal">
-        <h3>Aprovar com correção</h3>
-        <p>
-          Arquivo: <strong>{item.filename}</strong>
-        </p>
+    <ModalShell label="Aprovar com correcao" title="Aprovar com correção">
+      <p className="text-sm">
+        Arquivo: <strong className="text-foreground-strong">{item.filename}</strong>
+      </p>
 
-        {item.llm_explanation && (
-          <div className="modal-llm-context">
-            {item.rule_business_domain && (
-              <p>Regra: <code>{item.rule_business_domain}</code> (conf {(item.rule_confidence ?? 0).toFixed(2)})</p>
-            )}
-            <p>LLM: <em>{item.llm_explanation}</em></p>
-            {item.llm_proposed_business_domain && (
-              <p>Domínio proposto: <code>{item.llm_proposed_business_domain}</code></p>
-            )}
-          </div>
-        )}
-
-        {suggestedBusinessDomainMissing && (
-          <p className="modal-new-area-warning">
-            A sugestão de domínio <code>{suggestedBusinessDomain}</code> não existe na taxonomia do projeto.
-            Selecione um domínio já configurado.
-          </p>
-        )}
-
-        {llmProposedBusinessDomainMissing && (
-          <p className="modal-new-area-warning">
-            O domínio proposto pelo LLM <code>{llmProposedBusinessDomain}</code> não está configurado no projeto.
-            Escolha um domínio válido do catálogo.
-          </p>
-        )}
-
-        {suggestedDocumentTypeMissing && (
-          <p className="modal-new-area-warning">
-            O tipo documental sugerido <code>{suggestedDocumentType}</code> não existe no profile atual.
-            Selecione um tipo já configurado.
-          </p>
-        )}
-
-        <label htmlFor="business-domain-select">Domínio destino</label>
-        <select
-          id="business-domain-select"
-          value={businessDomainValue}
-          onChange={(e) => onChangeBusinessDomain(e.target.value)}
-          disabled={submitting}
-        >
-          {businessDomainOptions.map((area) => (
-            <option key={area.key} value={area.key}>
-              {area.label} ({area.key})
-            </option>
-          ))}
-        </select>
-
-        <label htmlFor="document-type-select">Tipo documental</label>
-        <select
-          id="document-type-select"
-          value={documentTypeValue}
-          onChange={(e) => onChangeDocumentType(e.target.value)}
-          disabled={submitting}
-        >
-          {documentTypeOptions.map((item) => (
-            <option key={item.key} value={item.key}>
-              {item.label} ({item.key})
-            </option>
-          ))}
-        </select>
-
-        <div className="modal-actions">
-          <button
-            className="btn"
-            disabled={submitting}
-            onClick={() => {
-              onCancel();
-            }}
-          >
-            Cancelar
-          </button>
-          <button
-            className="btn primary"
-            disabled={submitting || !businessDomainValue || !documentTypeValue}
-            onClick={handleSubmit}
-          >
-            {submitting ? "Aprovando..." : "Aprovar e mover"}
-          </button>
+      {item.llm_explanation && (
+        <div className="mt-3 space-y-0.5 rounded-md bg-panel-strong p-2.5 font-mono text-[0.72rem] text-muted-foreground">
+          {item.rule_business_domain && (
+            <p>
+              regra: <span className="text-accent-light">{item.rule_business_domain}</span> (conf{" "}
+              {(item.rule_confidence ?? 0).toFixed(2)})
+            </p>
+          )}
+          <p className="text-foreground/80">LLM: {item.llm_explanation}</p>
+          {item.llm_proposed_business_domain && (
+            <p>
+              domínio proposto: <span className="text-accent-purple">{item.llm_proposed_business_domain}</span>
+            </p>
+          )}
         </div>
-      </div>
-    </div>
+      )}
+
+      {suggestedBusinessDomainMissing && (
+        <p className={warningClass}>
+          A sugestão de domínio <code>{suggestedBusinessDomain}</code> não existe na taxonomia do projeto.
+          Selecione um domínio já configurado.
+        </p>
+      )}
+
+      {llmProposedBusinessDomainMissing && (
+        <p className={warningClass}>
+          O domínio proposto pelo LLM <code>{llmProposedBusinessDomain}</code> não está configurado no projeto.
+          Escolha um domínio válido do catálogo.
+        </p>
+      )}
+
+      {suggestedDocumentTypeMissing && (
+        <p className={warningClass}>
+          O tipo documental sugerido <code>{suggestedDocumentType}</code> não existe no profile atual.
+          Selecione um tipo já configurado.
+        </p>
+      )}
+
+      <label className={fieldLabelClass} htmlFor="business-domain-select">Domínio destino</label>
+      <select
+        id="business-domain-select"
+        className={nativeSelectClass}
+        value={businessDomainValue}
+        onChange={(e) => onChangeBusinessDomain(e.target.value)}
+        disabled={submitting}
+      >
+        {businessDomainOptions.map((area) => (
+          <option key={area.key} value={area.key}>
+            {area.label} ({area.key})
+          </option>
+        ))}
+      </select>
+
+      <label className={fieldLabelClass} htmlFor="document-type-select">Tipo documental</label>
+      <select
+        id="document-type-select"
+        className={nativeSelectClass}
+        value={documentTypeValue}
+        onChange={(e) => onChangeDocumentType(e.target.value)}
+        disabled={submitting}
+      >
+        {documentTypeOptions.map((option) => (
+          <option key={option.key} value={option.key}>
+            {option.label} ({option.key})
+          </option>
+        ))}
+      </select>
+
+      <ModalActions>
+        <Button variant="secondary" disabled={submitting} onClick={onCancel}>
+          Cancelar
+        </Button>
+        <Button disabled={submitting || !businessDomainValue || !documentTypeValue} onClick={handleSubmit}>
+          {submitting ? "Aprovando..." : "Aprovar e mover"}
+        </Button>
+      </ModalActions>
+    </ModalShell>
   );
 }
-

@@ -1,12 +1,20 @@
+import { AlertTriangle, Download, FolderCog } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { createTemplate } from "../../api";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { CollapsibleSection } from "../../components/ui/collapsible-section";
+import { EmptyState } from "../../components/ui/empty-state";
+import { Input, Textarea } from "../../components/ui/input";
+import { fieldLabelClass, ModalActions, ModalShell } from "../../components/ui/modal-shell";
+import { Skeleton } from "../../components/ui/skeleton";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { applyLayout, getProfile, getProfileHistory, planLayout, saveProfile, validateProfile } from "./api";
 import { LayoutPlanPreview } from "./LayoutPlanPreview";
 import { ProfileLayoutEditor } from "./ProfileLayoutEditor";
 import type { LayoutPlanResponse, ProfileHistoryEntry, ProjectProfileV2 } from "./types";
-import "./profileLayout.css";
 
 type Props = {
   projectRef: string;
@@ -179,94 +187,117 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
 
   if (disabled) {
     return (
-      <section className="panel card">
-        <div className="panel-head card-header">
-          <h2>Perfil e Organização</h2>
-        </div>
-        <p className="pl-empty">Selecione um projeto específico para editar perfil e organização.</p>
-      </section>
+      <Card>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="flex min-h-9 items-center gap-2">
+            <FolderCog className="size-4 text-accent" aria-hidden />
+            Perfil e Organização
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <EmptyState
+            icon={<FolderCog aria-hidden />}
+            title="Nenhum projeto selecionado"
+            description="Selecione um projeto específico para editar perfil e organização."
+          />
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <section className="panel card pl-shell">
+    <Card>
       {/* ── Cabeçalho com metadados do projeto ── */}
       {draft && (
-        <div className="pl-project-header">
-          <div className="pl-project-header-main">
-            <h2 className="pl-project-title">
-              Projeto: {draft.project_label}
-              <span className="pl-project-meta-badge">Profile v2 JSON</span>
-            </h2>
+        <CardHeader className="flex-row flex-wrap items-center justify-between space-y-0 pb-0">
+          <CardTitle className="flex min-h-9 items-center gap-2">
+            <FolderCog className="size-4 text-accent" aria-hidden />
+            Projeto: {draft.project_label}
+            <Badge variant="outline">Profile v2 JSON</Badge>
+          </CardTitle>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[0.7rem] text-tertiary">
+            <span>ID: <span className="text-muted-foreground">{draft.project_id}</span></span>
+            <span>Versão: <span className="text-foreground">{draft.version}</span></span>
+            {draft.updated_by && <span>Última: <span className="text-foreground">{draft.updated_by}</span></span>}
           </div>
-          <div className="pl-project-header-meta">
-            <span>ID: <code>{draft.project_id}</code></span>
-            <span>Versão: <strong>{draft.version}</strong></span>
-            {draft.updated_by && <span>Última: <strong>{draft.updated_by}</strong></span>}
-          </div>
-        </div>
+        </CardHeader>
       )}
+      <CardContent className="space-y-4 pt-4">
 
       {/* ── Barra de ações ── */}
-      <div className="pl-toolbar">
-        <button className="btn" onClick={() => void loadWorkspace()} disabled={loading || saving}>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={() => void loadWorkspace()} disabled={loading || saving}>
           Recarregar
-        </button>
-        <button className="btn" onClick={() => void handleValidate()} disabled={!draft || loading || saving}>
+        </Button>
+        <Button variant="secondary" onClick={() => void handleValidate()} disabled={!draft || loading || saving}>
           Validar alterações
-        </button>
-        <button className="btn primary" onClick={() => void handleSave()} disabled={!draft || !isDirty || loading || saving}>
+        </Button>
+        <Button onClick={() => void handleSave()} disabled={!draft || !isDirty || loading || saving}>
           Salvar Profile
-        </button>
-        <button className="btn" onClick={() => setSaveAsTemplateOpen(true)} disabled={!profile || loading}>
+        </Button>
+        <Button variant="outline" onClick={() => setSaveAsTemplateOpen(true)} disabled={!profile || loading}>
           Salvar como Template
-        </button>
+        </Button>
       </div>
 
-      {loading && <p className="card-intro">Carregando profile...</p>}
-      {error && <p className="pl-msg-error">{error}</p>}
-      {validationMessage && <p className={validationMessage.startsWith("Profile válido") ? "pl-msg-ok" : "pl-msg-error"}>{validationMessage}</p>}
-      {!isDirty && draft && !error && <p className="pl-msg-muted pl-msg-idle">Sem alterações pendentes no profile.</p>}
+      {loading && <Skeleton className="h-24" />}
+      {error && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.8rem] text-destructive">{error}</p>
+      )}
+      {validationMessage && (
+        <p
+          className={
+            validationMessage.startsWith("Profile válido")
+              ? "rounded-md border border-success/30 bg-success-subtle px-3 py-2 text-[0.8rem] text-success"
+              : "rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.8rem] text-destructive"
+          }
+        >
+          {validationMessage}
+        </p>
+      )}
+      {!isDirty && draft && !error && (
+        <p className="font-mono text-[0.7rem] text-tertiary">Sem alterações pendentes no profile.</p>
+      )}
 
       {/* ── Editor (modo, raízes, áreas, geral) ── */}
       {draft && <ProfileLayoutEditor profile={draft} onChange={setDraft} />}
 
       {/* ── Seção: Migração ── */}
-      <section className="pl-section pl-migration-section">
+      <section className="rounded-lg border border-border p-4">
         {layoutChanged ? (
-          <>
-            <div className="pl-migration-warning">
-              <span className="pl-migration-icon">⚠</span>
+          <div className="space-y-3">
+            <div className="flex items-start gap-2.5 rounded-md border border-accent/30 bg-accent-soft px-3 py-2.5">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
               <div>
-                <p className="pl-migration-warn-text">Alterações detectadas em layout (areas_root/business_domain_folders)</p>
-                <p className="pl-migration-warn-sub">Salvar o profile NÃO move arquivos automaticamente.</p>
+                <p className="text-[0.82rem] font-medium text-foreground">Alterações detectadas em layout (areas_root/business_domain_folders)</p>
+                <p className="text-[0.72rem] text-muted-foreground">Salvar o profile NÃO move arquivos automaticamente.</p>
               </div>
             </div>
-            <div className="pl-migration-controls">
-              <div className="pl-migration-row-main">
-                <button className="btn" onClick={() => void handlePlan()} disabled={!draft || !layoutChanged || loading || saving}>
-                  Simular
-                </button>
-                <span className="pl-strategy-label">Estratégia conflito:</span>
-                <div className="pl-strategy-radios">
-                  {([["rename_with_suffix", "renomear"], ["skip", "pular"], ["overwrite", "sobrescrever"]] as const).map(([val, label]) => (
-                    <label key={val} className="pl-radio">
-                      <input
-                        type="radio"
-                        name="conflict-strategy"
-                        value={val}
-                        checked={conflictStrategy === val}
-                        onChange={() => setConflictStrategy(val)}
-                        disabled={loading || saving}
-                      />
-                      <span>{label}</span>
-                    </label>
-                  ))}
-                </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <Button variant="secondary" onClick={() => void handlePlan()} disabled={!draft || !layoutChanged || loading || saving}>
+                Simular
+              </Button>
+              <span className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">Estratégia conflito:</span>
+              <div className="flex gap-3">
+                {([["rename_with_suffix", "renomear"], ["skip", "pular"], ["overwrite", "sobrescrever"]] as const).map(([val, label]) => (
+                  <label key={val} className="flex items-center gap-1.5 text-sm">
+                    <input
+                      type="radio"
+                      name="conflict-strategy"
+                      className="size-3.5 accent-[var(--accent)]"
+                      value={val}
+                      checked={conflictStrategy === val}
+                      onChange={() => setConflictStrategy(val)}
+                      disabled={loading || saving}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
               </div>
-              <label className="pl-checkbox pl-cleanup-check">
+              <label className="flex items-center gap-1.5 text-sm">
                 <input
                   type="checkbox"
+                  className="size-3.5 accent-[var(--accent)]"
                   checked={cleanupEmptyDirs}
                   onChange={(e) => setCleanupEmptyDirs(e.target.checked)}
                   disabled={loading || saving}
@@ -274,9 +305,9 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
                 <span>Excluir pastas vazias</span>
               </label>
             </div>
-          </>
+          </div>
         ) : (
-          <p className="pl-msg-muted">Sem alterações de layout pendentes. Edite raízes ou mapeamento de áreas para simular.</p>
+          <p className="font-mono text-[0.7rem] text-tertiary">Sem alterações de layout pendentes. Edite raízes ou mapeamento de áreas para simular.</p>
         )}
       </section>
 
@@ -284,72 +315,60 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       <LayoutPlanPreview plan={plan} />
 
       {plan && (
-        <>
-          <div className="pl-plan-actions">
-            <button className="btn primary" onClick={() => void handleApply()} disabled={!applyConfirmed || loading || saving}>
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void handleApply()} disabled={!applyConfirmed || loading || saving}>
               Aplicar migração
-            </button>
-            <button type="button" className="btn" onClick={() => setPlan(null)}>
+            </Button>
+            <Button variant="secondary" onClick={() => setPlan(null)}>
               Cancelar
-            </button>
-            <button type="button" className="btn" onClick={handleDownloadPlan}>
+            </Button>
+            <Button variant="outline" onClick={handleDownloadPlan}>
+              <Download />
               Baixar plano (.json)
-            </button>
+            </Button>
           </div>
-          <label className="pl-checkbox pl-confirm-check">
+          <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
+              className="size-3.5 accent-[var(--accent)]"
               checked={applyConfirmed}
               onChange={(e) => setApplyConfirmed(e.target.checked)}
             />
             <span>Confirmo a aplicação do plano de layout no projeto selecionado.</span>
           </label>
-        </>
+        </div>
       )}
 
       {/* ── Histórico ── */}
       {history.length > 0 && (
-        <details className="pl-collapsible">
-          <summary className="pl-collapsible-header">Histórico ({history.length})</summary>
-          <div className="pl-collapsible-body">
-            <div className="pl-history-list">
-              {history.slice(0, 8).map((entry) => (
-                <div key={entry.entry} className="pl-history-row">
-                  <span>{entry.entry}</span>
-                  <small>v{entry.version} · {entry.updated_by || "—"}</small>
-                </div>
-              ))}
-            </div>
+        <CollapsibleSection title="Histórico" badge={String(history.length)}>
+          <div className="space-y-1">
+            {history.slice(0, 8).map((entry) => (
+              <div key={entry.entry} className="flex items-baseline justify-between gap-2 font-mono text-[0.72rem]">
+                <span className="truncate text-foreground">{entry.entry}</span>
+                <small className="shrink-0 text-tertiary">v{entry.version} · {entry.updated_by || "—"}</small>
+              </div>
+            ))}
           </div>
-        </details>
+        </CollapsibleSection>
       )}
       {saveAsTemplateOpen && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Salvar como template">
-          <div className="modal tmpl-save-as-modal">
-            <h3>Salvar profile como template</h3>
-            <div className="tmpl-editor-fields">
-              <div className="tmpl-editor-field">
-                <label htmlFor="tmpl-save-name">Nome</label>
-                <input id="tmpl-save-name" value={templateName} onChange={(e) => {
-                  setTemplateName(e.target.value);
-                  if (!templateSlug || templateSlug === templateName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) {
-                    setTemplateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""));
-                  }
-                }} />
-              </div>
-              <div className="tmpl-editor-field">
-                <label htmlFor="tmpl-save-slug">Slug</label>
-                <input id="tmpl-save-slug" value={templateSlug} onChange={(e) => setTemplateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} />
-              </div>
-              <div className="tmpl-editor-field">
-                <label htmlFor="tmpl-save-desc">Descrição</label>
-                <textarea id="tmpl-save-desc" value={templateDesc} onChange={(e) => setTemplateDesc(e.target.value)} />
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setSaveAsTemplateOpen(false)} disabled={templateSaving}>Cancelar</button>
-              <button
-                className="btn primary"
+        <ModalShell label="Salvar como template" title="Salvar profile como template">
+            <label className={fieldLabelClass} htmlFor="tmpl-save-name">Nome</label>
+            <Input id="tmpl-save-name" value={templateName} onChange={(e) => {
+              setTemplateName(e.target.value);
+              if (!templateSlug || templateSlug === templateName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) {
+                setTemplateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""));
+              }
+            }} />
+            <label className={fieldLabelClass} htmlFor="tmpl-save-slug">Slug</label>
+            <Input id="tmpl-save-slug" className="font-mono" value={templateSlug} onChange={(e) => setTemplateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} />
+            <label className={fieldLabelClass} htmlFor="tmpl-save-desc">Descrição</label>
+            <Textarea id="tmpl-save-desc" value={templateDesc} onChange={(e) => setTemplateDesc(e.target.value)} />
+            <ModalActions>
+              <Button variant="secondary" onClick={() => setSaveAsTemplateOpen(false)} disabled={templateSaving}>Cancelar</Button>
+              <Button
                 disabled={templateSaving || !templateSlug || !templateName}
                 onClick={async () => {
                   setTemplateSaving(true);
@@ -373,11 +392,11 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
                 }}
               >
                 {templateSaving ? "Salvando..." : "Salvar template"}
-              </button>
-            </div>
-          </div>
-        </div>
+              </Button>
+            </ModalActions>
+        </ModalShell>
       )}
-    </section>
+      </CardContent>
+    </Card>
   );
 }

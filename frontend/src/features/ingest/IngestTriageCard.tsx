@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, RefreshCw, Settings } from "lucide-react";
+import { ChevronDown, ChevronRight, Inbox, RefreshCw, Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   cancelClassifierCycle,
@@ -32,7 +32,22 @@ import type {
   ScanResult,
   TriageItem
 } from "../../types";
-import "./ingestTriageCard.css";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { CollapsibleSection } from "../../components/ui/collapsible-section";
+import { DataTable, TableWrap } from "../../components/ui/data-table";
+import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
+import { cn } from "../../lib/utils";
+
+/* Bloco de progresso de operação (ingest / ciclo do classificador) */
+const opProgressClass = "mb-2.5 flex flex-col gap-1 rounded-md border border-border bg-elevated px-3 py-2.5";
+const opPhaseClass = "m-0 text-[0.8rem] font-medium text-foreground";
+const opBarWrapClass = "my-0.5 h-1.5 overflow-hidden rounded-full bg-border";
+const opBarFillClass = "h-full rounded-full bg-accent transition-[width] duration-300 ease-out";
+const opStatsClass = "m-0 text-[0.78rem] text-muted-foreground";
+const opFileClass = "m-0 truncate text-xs text-muted-foreground";
+const checkboxLabelClass = "flex items-center gap-1.5 text-sm [&_input]:size-3.5 [&_input]:accent-[var(--accent)]";
 
 const ALL_PROJECTS = "__all__";
 const PAGE_SIZE = 10;
@@ -611,24 +626,27 @@ export function IngestTriageCard({
     (llmPolicy.provider === "anthropic" && !!anthropicApiKey);
 
   return (
-    <section className="panel card">
-      <div className="panel-head card-header">
-        <h2>Ingestão e triagem</h2>
-        <button
-          className="btn primary"
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle className="flex items-center gap-2">
+          <Inbox className="size-4 text-accent" aria-hidden />
+          Ingestão e triagem
+        </CardTitle>
+        <Button
           disabled={loading || !selectedProject || initializingProjectId === selectedProject}
           onClick={handleScan}
         >
-          <RefreshCw size={14} className={loading ? "spin" : ""} />
+          <RefreshCw className={loading ? "animate-spin" : ""} />
           {loading ? "Processando..." : "Processar INBOX"}
-        </button>
-      </div>
+        </Button>
+      </CardHeader>
+      <CardContent>
 
       {isSingleProject && selectedProjectLabel && (
-        <div className="itc-project-header">
-          <span className="itc-project-label">{selectedProjectLabel}</span>
+        <div className="mb-1 flex items-center gap-1.5 pb-1 text-[0.82rem] text-muted-foreground">
+          <span className="font-medium text-foreground">{selectedProjectLabel}</span>
           {triageItems.length > 0 && (
-            <span className="itc-project-pending">
+            <span className="text-accent">
               · {triageItems.length} pendente{triageItems.length !== 1 ? "s" : ""}
             </span>
           )}
@@ -639,11 +657,11 @@ export function IngestTriageCard({
         ingestStatus?.phase === "starting" ||
         ingestStatus?.phase === "extracting" ||
         ingestStatus?.phase === "processing") && (
-        <div className="itc-op-progress">
-          <p className="itc-op-phase">{formatPhaseLabel(ingestStatus?.phase) || "Iniciando..."}</p>
-          <div className="itc-op-bar-wrap">
+        <div className={opProgressClass}>
+          <p className={opPhaseClass}>{formatPhaseLabel(ingestStatus?.phase) || "Iniciando..."}</p>
+          <div className={opBarWrapClass}>
             <div
-              className="itc-op-bar-fill"
+              className={opBarFillClass}
               style={{
                 width: (ingestStatus?.progress_total ?? 0) > 0
                   ? `${Math.min(100, (100 * (ingestStatus?.progress_current ?? 0)) / ingestStatus!.progress_total!)}%`
@@ -651,73 +669,67 @@ export function IngestTriageCard({
               }}
             />
           </div>
-          <p className="itc-op-stats">
+          <p className={opStatsClass}>
             {ingestStatus?.progress_current ?? 0} / {ingestStatus?.progress_total ?? 0} arquivo{(ingestStatus?.progress_total ?? 0) !== 1 ? "s" : ""}
           </p>
           {ingestStatus?.progress_file && (
-            <p className="itc-op-file">{ingestStatus.progress_file}</p>
+            <p className={opFileClass}>{ingestStatus.progress_file}</p>
           )}
         </div>
       )}
 
       {ingestStatus?.phase === "failed" && !loading && !ingestStatus?.running && (
-        <div className="itc-op-progress itc-op-error">
-          <p className="itc-op-phase">Falhou</p>
-          {ingestStatus.last_error && <p className="itc-op-file">{ingestStatus.last_error}</p>}
+        <div className={opProgressClass}>
+          <p className={cn(opPhaseClass, "text-destructive")}>Falhou</p>
+          {ingestStatus.last_error && <p className={opFileClass}>{ingestStatus.last_error}</p>}
         </div>
       )}
 
       {isSingleProject && (
-        <details className="itc-collapsible">
-          <summary className="itc-collapsible-header">
-            Classificador operacional
-            <span className="itc-badge itc-badge-accent">
+        <CollapsibleSection
+          className="mt-2"
+          title="Classificador operacional"
+          badge={
+            <Badge className="ml-auto">
               {classifierStatus ? formatClassifierModeLabel(classifierStatus.effective_mode) : "carregando"}
-            </span>
-          </summary>
-          <div className="itc-collapsible-body">
+            </Badge>
+          }
+        >
             {classifierStatus && (
               <>
-                <div className="itc-classifier-stats">
-                  <div className="itc-classifier-stat">
-                    <span className="itc-classifier-stat-label">Campeão</span>
-                    <strong>{formatClassifierModeLabel(classifierStatus.champion_mode)}</strong>
-                  </div>
-                  <div className="itc-classifier-stat">
-                    <span className="itc-classifier-stat-label">Efetivo neste projeto</span>
-                    <strong>{formatClassifierModeLabel(classifierStatus.effective_mode)}</strong>
-                  </div>
-                  <div className="itc-classifier-stat">
-                    <span className="itc-classifier-stat-label">Override</span>
-                    <strong>{classifierStatus.override_mode ? formatClassifierModeLabel(classifierStatus.override_mode) : "auto"}</strong>
-                  </div>
-                  <div className="itc-classifier-stat">
-                    <span className="itc-classifier-stat-label">Último ciclo</span>
-                    <strong>{classifierStatus.latest_cycle_status}</strong>
-                  </div>
+                <div className="mb-2.5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+                  {[
+                    { label: "Campeão", value: formatClassifierModeLabel(classifierStatus.champion_mode) },
+                    { label: "Efetivo neste projeto", value: formatClassifierModeLabel(classifierStatus.effective_mode) },
+                    { label: "Override", value: classifierStatus.override_mode ? formatClassifierModeLabel(classifierStatus.override_mode) : "auto" },
+                    { label: "Último ciclo", value: classifierStatus.latest_cycle_status },
+                  ].map((stat) => (
+                    <div key={stat.label} className="flex flex-col gap-1 rounded-md border border-border bg-background p-2.5">
+                      <span className="font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">{stat.label}</span>
+                      <strong className="font-display text-sm text-foreground-strong">{stat.value}</strong>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="itc-classifier-controls">
-                  <div className="itc-llm-field">
-                    <select
-                      id="itc-classifier-override"
-                      aria-label="Override do classificador"
-                      value={classifierStatus.override_mode || AUTO_CLASSIFIER_OVERRIDE}
-                      onChange={(e) => void handleClassifierOverrideChange(e.target.value)}
-                      disabled={classifierSaving || !!classifierCycleStatus?.running}
-                    >
-                      <option value={AUTO_CLASSIFIER_OVERRIDE}>auto (usar campeão)</option>
-                      {classifierStatus.available_modes.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {formatClassifierModeLabel(mode)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="itc-cycle-btn-wrap">
-                    <button
-                      type="button"
-                      className={`btn${classifierCycleStatus?.running && !cancellingCycle ? " danger" : ""}`}
+                <div className="mb-2 flex flex-wrap items-end gap-2.5">
+                  <select
+                    id="itc-classifier-override"
+                    aria-label="Override do classificador"
+                    className={cn(nativeSelectClass, "w-auto min-w-52 flex-initial")}
+                    value={classifierStatus.override_mode || AUTO_CLASSIFIER_OVERRIDE}
+                    onChange={(e) => void handleClassifierOverrideChange(e.target.value)}
+                    disabled={classifierSaving || !!classifierCycleStatus?.running}
+                  >
+                    <option value={AUTO_CLASSIFIER_OVERRIDE}>auto (usar campeão)</option>
+                    {classifierStatus.available_modes.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {formatClassifierModeLabel(mode)}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="relative">
+                    <Button
+                      variant={classifierCycleStatus?.running && !cancellingCycle ? "destructive" : "secondary"}
                       disabled={cancellingCycle}
                       onClick={() => {
                         if (classifierCycleStatus?.running) {
@@ -727,25 +739,25 @@ export function IngestTriageCard({
                         }
                       }}
                     >
-                      {cancellingCycle ? "Cancelando..." : classifierCycleStatus?.running ? "Cancelar ciclo" : "Rodar ciclo"}
-                    </button>
+                      {cancellingCycle ? "Cancelando..." : classifierCycleStatus?.running ? "Cancelar ciclo" : (<><RefreshCw /> Rodar ciclo</>)}
+                    </Button>
                     {confirmCancelCycle && classifierCycleStatus?.running && (
-                      <div className="itc-confirm-popover">
-                        <p>Cancelar o ciclo em andamento?</p>
-                        <div className="itc-confirm-actions">
-                          <button type="button" className="btn danger" onClick={() => void handleCancelCycle()}>Confirmar</button>
-                          <button type="button" className="btn" onClick={() => setConfirmCancelCycle(false)}>Não</button>
+                      <div className="absolute right-0 top-[calc(100%+6px)] z-20 flex min-w-52 flex-col gap-2 rounded-md border border-border bg-panel p-3 shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
+                        <p className="m-0 text-[0.82rem] text-foreground">Cancelar o ciclo em andamento?</p>
+                        <div className="flex gap-1.5">
+                          <Button variant="destructive" size="sm" onClick={() => void handleCancelCycle()}>Confirmar</Button>
+                          <Button variant="secondary" size="sm" onClick={() => setConfirmCancelCycle(false)}>Não</Button>
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="itc-benchmark-modes">
+                <div className="mb-2 flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
                   {(["bootstrap", "sparse_logreg", "llm"] as const).map((mode) => {
                     const enabled = classifierStatus.benchmark_enabled_modes?.includes(mode) ?? (mode !== "llm");
                     return (
-                      <label key={mode} className="checkbox-inline">
+                      <label key={mode} className={checkboxLabelClass}>
                         <input
                           type="checkbox"
                           checked={enabled}
@@ -758,20 +770,22 @@ export function IngestTriageCard({
                   })}
                 </div>
 
-                <p className="itc-classifier-policy">
+                <p className="mb-2.5 text-[0.78rem] text-muted-foreground">
                   Promoção: {classifierStatus.promotion_policy === "auto_best_with_ui_override" ? "Automático — melhor score" : classifierStatus.promotion_policy} | gate: exact &ge; {formatPct(classifierStatus.promotion_gates.min_exact_match_accuracy)}
                 </p>
               </>
             )}
 
             {classifierCycleStatus && (classifierCycleStatus.running || classifierCycleStatus.phase === "failed" || classifierCycleStatus.phase === "cancelled") && (
-              <div className={`itc-op-progress${classifierCycleStatus.phase === "failed" ? " itc-op-error" : classifierCycleStatus.phase === "cancelled" ? " itc-op-cancelled" : ""}`}>
-                <p className="itc-op-phase">{cancellingCycle && classifierCycleStatus.running ? "Aguardando cancelamento..." : formatPhaseLabel(classifierCycleStatus.phase)}</p>
+              <div className={opProgressClass}>
+                <p className={cn(opPhaseClass, classifierCycleStatus.phase === "failed" && "text-destructive", classifierCycleStatus.phase === "cancelled" && "text-accent")}>
+                  {cancellingCycle && classifierCycleStatus.running ? "Aguardando cancelamento..." : formatPhaseLabel(classifierCycleStatus.phase)}
+                </p>
                 {classifierCycleStatus.running && (
                   <>
-                    <div className="itc-op-bar-wrap">
+                    <div className={opBarWrapClass}>
                       <div
-                        className="itc-op-bar-fill"
+                        className={opBarFillClass}
                         style={{
                           width: (classifierCycleStatus.progress_total ?? 0) > 0
                             ? `${Math.min(100, (100 * (classifierCycleStatus.progress_current ?? 0)) / classifierCycleStatus.progress_total!)}%`
@@ -779,13 +793,13 @@ export function IngestTriageCard({
                         }}
                       />
                     </div>
-                    <p className="itc-op-stats">
+                    <p className={opStatsClass}>
                       {classifierCycleStatus.progress_current} / {classifierCycleStatus.progress_total}
                     </p>
                   </>
                 )}
                 {classifierCycleStatus.last_error && (
-                  <p className="itc-op-file">{classifierCycleStatus.last_error}</p>
+                  <p className={opFileClass}>{classifierCycleStatus.last_error}</p>
                 )}
               </div>
             )}
@@ -796,18 +810,19 @@ export function IngestTriageCard({
               const source = liveBenchmarks || reportBenchmarks;
               if (!source && !liveBenchmarks) return null;
               return (
-                <div className="itc-classifier-benchmark">
-                  <div className="itc-classifier-benchmark-head">
-                    <strong>Benchmark oficial</strong>
+                <div>
+                  <div className="mb-1.5 mt-3.5 flex items-center gap-2.5">
+                    <strong className="font-display text-sm font-bold text-foreground-strong">Benchmark oficial</strong>
                   </div>
-                  <table className="itc-scan-table itc-classifier-table">
+                  <TableWrap>
+                  <DataTable>
                     <thead>
                       <tr>
-                        <th>Modo</th>
+                        <th className="left">Modo</th>
                         <th>Domínio</th>
                         <th>Tipo</th>
                         <th>Exact match</th>
-                        <th>Status</th>
+                        <th className="left">Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -824,21 +839,22 @@ export function IngestTriageCard({
                         const isChampion = !liveBenchmarks && classifierReport?.champion?.mode === mode;
                         const isLive = !!liveSummary && !liveIsSkipped;
                         return (
-                          <tr key={mode} style={{ opacity: isSkipped ? 0.45 : 1, color: isLive ? "var(--text)" : undefined }}>
-                            <td>
+                          <tr key={mode} className={cn(isSkipped && "opacity-45", isLive && "text-foreground")}>
+                            <td className="left">
                               {formatClassifierModeLabel(mode)}
-                              {isChampion && <span className="itc-classifier-champion">campeão</span>}
-                              {isSkipped && <span style={{ color: "var(--muted)", fontSize: "0.72rem", marginLeft: 4 }}>skip</span>}
+                              {isChampion && <Badge variant="success" className="ml-1.5 uppercase">campeão</Badge>}
+                              {isSkipped && <span className="ml-1 text-[0.72rem] text-muted-foreground">skip</span>}
                             </td>
                             <td>{formatPct(displaySummary.business_domain_accuracy)}</td>
                             <td>{formatPct(displaySummary.document_type_accuracy)}</td>
                             <td>{formatPct(displaySummary.exact_match_accuracy)}</td>
-                            <td>{isSkipped ? "skip" : "ok"}</td>
+                            <td className="left">{isSkipped ? "skip" : "ok"}</td>
                           </tr>
                         );
                       })}
                     </tbody>
-                  </table>
+                  </DataTable>
+                  </TableWrap>
                 </div>
               );
             })()}
@@ -851,9 +867,9 @@ export function IngestTriageCard({
               });
               if (!allWarnings.length) return null;
               return (
-                <div className="itc-gate-warnings">
-                  <strong>Gate warnings</strong>
-                  <ul className="list">
+                <div className="mt-3">
+                  <strong className="font-display text-sm font-bold text-foreground-strong">Gate warnings</strong>
+                  <ul className="m-0 flex list-none flex-col gap-1 p-0 font-mono text-[0.72rem]">
                     {allWarnings.map((w, i) => <li key={i}><code>{w}</code></li>)}
                   </ul>
                 </div>
@@ -861,13 +877,14 @@ export function IngestTriageCard({
             })()}
 
             {classifierReports.length > 0 && (
-              <div className="itc-classifier-history">
-                <strong>Evolução recente</strong>
-                <table className="itc-history-table">
+              <div className="mt-2.5">
+                <strong className="font-display text-sm font-bold text-foreground-strong">Evolução recente</strong>
+                <TableWrap className="mt-1.5">
+                <DataTable>
                   <thead>
                     <tr>
-                      <th>Ciclo</th>
-                      <th>Campeão</th>
+                      <th className="left">Ciclo</th>
+                      <th className="left">Campeão</th>
                       <th>exact</th>
                       <th>bd F1</th>
                       <th></th>
@@ -880,15 +897,14 @@ export function IngestTriageCard({
                         ? new Date(report.generated_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })
                         : report.report_id;
                       return (
-                        <tr key={report.report_id} className={isChampion ? "itc-history-champion" : ""}>
-                          <td className="itc-history-ts">{ts}</td>
-                          <td>{formatClassifierModeLabel(report.champion_mode)}</td>
+                        <tr key={report.report_id} className={isChampion ? "[&_td]:font-semibold" : ""}>
+                          <td className="left whitespace-nowrap text-muted-foreground">{ts}</td>
+                          <td className="left">{formatClassifierModeLabel(report.champion_mode)}</td>
                           <td>{formatPct(report.champion_summary?.exact_match_accuracy)}</td>
                           <td>{formatPct(report.champion_summary?.business_domain_macro_f1)}</td>
                           <td>
                             <button
-                              className="btn danger"
-                              style={{ padding: "2px 6px", fontSize: "0.75rem" }}
+                              className="inline-flex size-6 items-center justify-center rounded-md border-0 bg-destructive/10 text-xs font-semibold text-destructive shadow-none transition-colors hover:bg-destructive/20 disabled:pointer-events-none disabled:opacity-50"
                               disabled={isChampion || deletingReportId === report.report_id}
                               onClick={() => setConfirmDeleteReportId(report.report_id)}
                               title={isChampion ? "Campeão ativo — não pode ser deletado" : "Deletar relatório"}
@@ -898,42 +914,38 @@ export function IngestTriageCard({
                       );
                     })}
                   </tbody>
-                </table>
+                </DataTable>
+                </TableWrap>
               </div>
             )}
-          </div>
-        </details>
+        </CollapsibleSection>
       )}
 
       {confirmDeleteReportId && (
-        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Confirmar exclusão">
-          <div className="modal tmpl-confirm-modal">
-            <div className="modal-header">
-              <h3>Excluir relatório</h3>
-            </div>
-            <p style={{ margin: "12px 0 18px", fontSize: "0.88rem", color: "var(--text)" }}>
+        <ModalShell label="Confirmar exclusão" title="Excluir relatório" size="sm">
+            <p className="m-0 text-sm text-foreground">
               Tem certeza que deseja excluir o relatório <strong>{confirmDeleteReportId}</strong>? Esta ação não pode ser desfeita.
             </p>
-            <div className="modal-actions">
-              <button className="btn" onClick={() => setConfirmDeleteReportId(null)}>Cancelar</button>
-              <button className="btn danger" onClick={handleDeleteReport}>Excluir</button>
-            </div>
-          </div>
-        </div>
+            <ModalActions>
+              <Button variant="secondary" onClick={() => setConfirmDeleteReportId(null)}>Cancelar</Button>
+              <Button variant="destructive" onClick={handleDeleteReport}>Excluir</Button>
+            </ModalActions>
+        </ModalShell>
       )}
 
       {/* ── Classificação LLM ── */}
       {isSingleProject && (
-        <details className="itc-collapsible">
-          <summary className="itc-collapsible-header">
-            Classificação LLM
-            <span className={`itc-badge ${llmPolicy.enabled ? "itc-badge-on" : "itc-badge-off"}`}>
+        <CollapsibleSection
+          className="mt-2"
+          title="Classificação LLM"
+          badge={
+            <Badge variant={llmPolicy.enabled ? "success" : "destructive"} className="ml-auto">
               {llmPolicy.enabled ? "● ativado" : "○ desativado"}
-            </span>
-          </summary>
-          <div className="itc-collapsible-body">
-            <div className="itc-llm-row">
-              <label className="checkbox-inline">
+            </Badge>
+          }
+        >
+            <div className="mb-2.5 flex items-center gap-3">
+              <label className={checkboxLabelClass}>
                 <input
                   type="checkbox"
                   checked={llmPolicy.enabled}
@@ -942,16 +954,17 @@ export function IngestTriageCard({
                 />
                 LLM ativado
               </label>
-              {llmSaving && <span className="itc-llm-saving">salvando...</span>}
+              {llmSaving && <span className="text-[0.78rem] italic text-muted-foreground">salvando...</span>}
             </div>
 
             {llmPolicy.enabled && (
               <>
-                <div className="itc-llm-fields">
-                  <div className="itc-llm-field">
-                    <label htmlFor="itc-llm-mode">Modo</label>
+                <div className="mt-2 grid gap-2.5 lg:grid-cols-2">
+                  <div className="flex flex-col">
+                    <label htmlFor="itc-llm-mode" className={fieldLabelClass}>Modo</label>
                     <select
                       id="itc-llm-mode"
+                      className={nativeSelectClass}
                       value={llmPolicy.mode}
                       onChange={(e) => handleModeChange(e.target.value as LLMPolicy["mode"])}
                       disabled={llmSaving}
@@ -961,11 +974,12 @@ export function IngestTriageCard({
                       <option value="full_override">full_override — pode mudar domínio</option>
                     </select>
                   </div>
-                  <div className="itc-llm-field">
-                    <label htmlFor="itc-llm-model">Modelo triagem</label>
-                    <div className="itc-llm-model-row">
+                  <div className="flex flex-col">
+                    <label htmlFor="itc-llm-model" className={fieldLabelClass}>Modelo triagem</label>
+                    <div className="flex items-center gap-2">
                       <select
                         id="itc-llm-model"
+                        className={nativeSelectClass}
                         value={currentProviderModel}
                         onChange={(e) => handleProviderChange(e.target.value)}
                         disabled={llmSaving}
@@ -983,7 +997,7 @@ export function IngestTriageCard({
                       </select>
                       <button
                         type="button"
-                        className="itc-btn-gear"
+                        className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-transparent p-0 text-muted-foreground transition-colors hover:border-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         onClick={onOpenSettings}
                         title="Configurar modelos e chaves"
                       >
@@ -994,19 +1008,19 @@ export function IngestTriageCard({
                 </div>
 
                 {!hasKey && (
-                  <div className="itc-llm-warning">
+                  <div className="mt-2 flex items-center gap-2 rounded-md border border-[rgba(255,200,50,0.25)] bg-[rgba(255,200,50,0.1)] px-2.5 py-1.5 text-[0.82rem] text-foreground">
                     <span>⚠ API Key não configurada para {llmPolicy.provider}.</span>
-                    <button type="button" onClick={onOpenSettings}>
+                    <Button variant="outline" size="sm" onClick={onOpenSettings}>
                       Configurar
-                    </button>
+                    </Button>
                   </div>
                 )}
               </>
             )}
-          </div>
-        </details>
+        </CollapsibleSection>
       )}
 
-    </section>
+      </CardContent>
+    </Card>
   );
 }

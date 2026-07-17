@@ -8,10 +8,14 @@ type Props = {
   label: string;
   hint?: string;
   className?: string;
+  /** Formatação do valor (ex.: tokens abreviados, USD). */
+  format?: (n: number) => string;
+  /** Tamanho reduzido para grids densos (6 colunas). */
+  dense?: boolean;
 };
 
 /** Tile de estatística com cursor-glow (radial seguindo o mouse via CSS vars). */
-export function StatTile({ icon, value, label, hint, className }: Props) {
+export function StatTile({ icon, value, label, hint, className, format, dense }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
   function handleMouseMove(event: React.MouseEvent<HTMLDivElement>) {
@@ -27,7 +31,8 @@ export function StatTile({ icon, value, label, hint, className }: Props) {
       ref={ref}
       onMouseMove={handleMouseMove}
       className={cn(
-        "group relative overflow-hidden rounded-lg border border-border bg-card p-4",
+        "group relative overflow-hidden rounded-lg border border-border bg-card",
+        dense ? "p-3" : "p-4",
         "transition-[border-color,box-shadow] duration-200 hover:border-border-strong",
         className
       )}
@@ -40,11 +45,15 @@ export function StatTile({ icon, value, label, hint, className }: Props) {
         }}
       />
       <div className="relative flex items-start gap-3">
-        {icon && <span className="mt-1 text-accent [&_svg]:size-5">{icon}</span>}
+        {icon && <span className={cn("mt-1 text-accent", dense ? "[&_svg]:size-4" : "[&_svg]:size-5")}>{icon}</span>}
         <div className="min-w-0">
           <AnimatedNumber
             value={value}
-            className="block font-display text-3xl font-bold leading-none tracking-tight text-foreground-strong"
+            format={format}
+            className={cn(
+              "block font-display font-bold leading-none tracking-tight text-foreground-strong",
+              dense ? "text-xl" : "text-3xl"
+            )}
           />
           <p className="mt-1.5 text-xs text-muted-foreground">{label}</p>
           {hint && <p className="font-mono text-[0.65rem] text-tertiary">{hint}</p>}

@@ -5,15 +5,17 @@
  * Ref.: openclaw-main/ui/src/ui/views/chat.ts + grouped-render.ts + markdown.ts
  */
 import React, { useRef, useEffect, useState } from "react";
-import { Brain, Clock, FileText, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { Brain, Clock, FileSearch, FileText, Layers, Loader2, Pencil, Plus, Send, Settings, Sparkles, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { fetchSuggestions, getFileDownloadUrl } from "../api";
+import { cn } from "../lib/utils";
+import { Button } from "./ui/button";
+import { Input, Textarea } from "./ui/input";
 import { toast } from "./ui/sonner";
 import { ChartBlock } from "./ChartBlock";
 import { CompanionOrb } from "./CompanionOrb";
 import type { CompanionState } from "./CompanionOrb";
 import { useCompanionState } from "../hooks/useCompanionState";
-import "./ChatPanel.css";
 
 const _safeImgSrc = (src: string | undefined): boolean =>
   Boolean(src && /^(https?:|\/|data:image)/i.test(src));
@@ -38,6 +40,31 @@ const MARKDOWN_COMPONENTS = {
     return <code className={className} {...props}>{children}</code>;
   },
 };
+
+/** Tipografia do Markdown do assistente via seletores arbitrários (sem CSS de componente). */
+const MARKDOWN_PROSE_CLASS = cn(
+  "[&_p]:mb-2 [&_p:last-child]:mb-0",
+  "[&_ul]:my-1.5 [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:pl-5 [&_li]:my-0.5",
+  "[&_ul]:list-disc [&_ol]:list-decimal",
+  "[&_code]:rounded [&_code]:bg-black/20 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
+  "[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-black/20 [&_pre]:p-3",
+  "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
+  "[&_strong]:font-semibold",
+  "[&_a]:text-accent [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-accent-light",
+  "[&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-accent/50 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
+  "[&_h1]:mb-1.5 [&_h1]:mt-3 [&_h1]:font-display [&_h1]:text-[1.15em] [&_h1]:font-semibold",
+  "[&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:font-display [&_h2]:text-[1.08em] [&_h2]:font-semibold",
+  "[&_h3]:mb-1 [&_h3]:mt-2.5 [&_h3]:font-display [&_h3]:text-[1em] [&_h3]:font-semibold",
+  "[&_img]:h-auto [&_img]:max-w-full [&_img]:rounded",
+  "[&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_th]:border-b [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_td]:border-b [&_td]:border-border-subtle [&_td]:px-2 [&_td]:py-1"
+);
+
+const toolbarIconBtnClass = cn(
+  "inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-transparent p-0",
+  "text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  "disabled:pointer-events-none disabled:opacity-40"
+);
 
 /** Part for multimodal display (text or image in bubble). */
 export type ChatContentPartDisplay =
@@ -107,6 +134,13 @@ export interface ChatPanelProps {
   /** Context pressure ratio (0.0 to 1.0) from the last LLM response */
   contextPressureRatio?: number;
 }
+
+/** Starter prompts do empty state — cada um ancorado numa tool real do MCP. */
+const STARTER_PROMPTS: { label: string; prompt: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { label: "O que chegou de novo?", prompt: "Quais documentos foram adicionados recentemente ao projeto?", icon: Sparkles },
+  { label: "Panorama por área", prompt: "Me dê um panorama do acervo: quantos documentos por área de negócio?", icon: Layers },
+  { label: "Buscar propostas", prompt: "Encontre propostas comerciais no acervo e liste as principais.", icon: FileSearch },
+];
 
 function generateAttachmentId(): string {
   return `att-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -238,20 +272,36 @@ export function ChatPanel({
     : "Mensagem (↵ enviar, Shift+↵ quebra de linha, cole imagens)";
 
   return (
-    <section className="card chat chat-panel" aria-busy={savingSession}>
+    <section
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
+      aria-busy={savingSession}
+    >
       {savingSession && (
-        <div className="chat-panel-saving-overlay" role="status" aria-live="polite">
-          <Loader2 size={32} className="chat-panel-saving-spinner spin" aria-hidden />
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/50 text-sm text-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 size={32} className="shrink-0 animate-spin" aria-hidden />
           <span>Salvando sessão…</span>
         </div>
       )}
-      <div className="chat-toolbar chat-panel-toolbar">
-        <label htmlFor="chat-panel-model">Modelo</label>
+
+      {/* Toolbar */}
+      <div className="flex min-w-0 items-center gap-2 border-b border-border px-4 py-2.5 max-lg:flex-wrap">
+        <label htmlFor="chat-panel-model" className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">
+          Modelo
+        </label>
         <select
           id="chat-panel-model"
           value={selectedModel}
           onChange={(e) => onModelChange(e.target.value)}
           disabled={models.length === 0}
+          className={cn(
+            "h-8 min-w-0 max-w-full rounded-md border border-border bg-panel px-2.5 text-sm text-foreground shadow-none",
+            "transition-[border-color,box-shadow] hover:border-border-strong",
+            "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft"
+          )}
         >
           {models.map((m) => (
             <option key={m.label} value={`${m.provider}/${m.model}`}>
@@ -261,20 +311,20 @@ export function ChatPanel({
         </select>
         <button
           type="button"
-          className="chat-controls__icon-btn"
+          className={toolbarIconBtnClass}
           onClick={onOpenSettings}
           title="Configuração (modelo e API Key)"
           aria-label="Configuração (modelo e API Key)"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
+          <Settings size={16} strokeWidth={2} aria-hidden />
         </button>
-        <span className="chat-controls__separator">|</span>
+        <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />
         <button
           type="button"
-          className={`chat-controls__thinking-btn ${showThinking && reasoningSupported ? "chat-controls__thinking-btn--active" : ""}`}
+          className={cn(
+            toolbarIconBtnClass,
+            showThinking && reasoningSupported && "border-accent bg-accent-soft text-accent hover:border-accent hover:text-accent"
+          )}
           onClick={() => reasoningSupported && onShowThinkingChange(!showThinking)}
           title={reasoningSupported ? "Toggle assistant thinking/working output" : "Este modelo não suporta reasoning/thinking"}
           aria-pressed={showThinking}
@@ -285,17 +335,17 @@ export function ChatPanel({
         </button>
         <button
           type="button"
-          className="chat-controls__icon-btn"
+          className={toolbarIconBtnClass}
           onClick={onNewSession}
           title="Nova sessão"
           aria-label="Nova sessão"
         >
           <Plus size={18} strokeWidth={2} aria-hidden />
         </button>
-        <div className="chat-history-anchor" ref={timerAnchorRef}>
+        <div className="relative inline-flex shrink-0" ref={timerAnchorRef}>
           <button
             type="button"
-            className="chat-controls__icon-btn"
+            className={toolbarIconBtnClass}
             onClick={onOpenHistory}
             title="Histórico de sessões"
             aria-label="Histórico de sessões"
@@ -307,162 +357,202 @@ export function ChatPanel({
             <>
               <button
                 type="button"
-                className="chat-history-modal-backdrop"
+                className="fixed inset-0 z-[99] cursor-default border-0 bg-transparent p-0"
                 aria-label="Fechar histórico de sessões"
                 onClick={onCloseHistory}
               />
               <div
-                className="chat-history-modal"
+                className={cn(
+                  "absolute right-0 top-full z-[100] mt-1.5 flex max-h-[70vh] min-h-[380px] w-80 max-w-[420px] flex-col overflow-hidden",
+                  "rounded-lg border border-border bg-elevated shadow-[0_8px_24px_rgba(0,0,0,0.4)]",
+                  "animate-[atlas-pop-in_150ms_var(--ease-out)]"
+                )}
                 role="dialog"
                 aria-label="Histórico de sessões"
                 aria-modal="true"
               >
-              <div className="chat-history-modal__search">
-                <input
-                  type="text"
-                  placeholder="Search…"
-                  value={historySearch}
-                  onChange={(e) => setHistorySearch(e.target.value)}
-                  onKeyDown={(e) => e.key === "Escape" && onCloseHistory?.()}
-                  aria-label="Filtrar sessões por título"
-                />
-              </div>
-              <div className="chat-history-modal__list">
-                {sessionsLoading ? (
-                  <div className="chat-history-modal__loading">Carregando…</div>
-                ) : (() => {
-                  const q = historySearch.trim().toLowerCase();
-                  const filtered = q
-                    ? sessions.filter((s) => s.title.toLowerCase().includes(q))
-                    : sessions;
-                  const byGroup = new Map<string, ChatSessionSummary[]>();
-                  filtered.forEach((s) => {
-                    const label = getSessionGroupLabel(s.updatedAt);
-                    if (!byGroup.has(label)) byGroup.set(label, []);
-                    byGroup.get(label)!.push(s);
-                  });
-                  const order = SESSION_GROUP_BUCKETS.map((g) => g.label).concat("Anterior");
-                  const groups = order.filter((l) => byGroup.has(l)).map((l) => ({ label: l, items: byGroup.get(l)! }));
-                  if (groups.length === 0) {
-                    return <div className="chat-history-modal__empty">Nenhuma sessão encontrada.</div>;
-                  }
-                  return groups.map((g) => (
-                    <div key={g.label} className="chat-history-modal__group">
-                      <div className="chat-history-modal__group-title">{g.label}</div>
-                      {g.items.map((s) => (
-                        <div
-                          key={s.id}
-                          className="chat-history-modal__item"
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => {
-                            if (editingId === s.id) return;
-                            onSelectSession?.(s.id);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
+                <div className="shrink-0 border-b border-border p-2.5">
+                  <Input
+                    type="text"
+                    placeholder="Buscar…"
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                    onKeyDown={(e) => e.key === "Escape" && onCloseHistory?.()}
+                    aria-label="Filtrar sessões por título"
+                  />
+                </div>
+                <div className="min-h-60 flex-1 overflow-y-auto py-2">
+                  {sessionsLoading ? (
+                    <div className="p-4 text-center text-sm text-muted-foreground">Carregando…</div>
+                  ) : (() => {
+                    const q = historySearch.trim().toLowerCase();
+                    const filtered = q
+                      ? sessions.filter((s) => s.title.toLowerCase().includes(q))
+                      : sessions;
+                    const byGroup = new Map<string, ChatSessionSummary[]>();
+                    filtered.forEach((s) => {
+                      const label = getSessionGroupLabel(s.updatedAt);
+                      if (!byGroup.has(label)) byGroup.set(label, []);
+                      byGroup.get(label)!.push(s);
+                    });
+                    const order = SESSION_GROUP_BUCKETS.map((g) => g.label).concat("Anterior");
+                    const groups = order.filter((l) => byGroup.has(l)).map((l) => ({ label: l, items: byGroup.get(l)! }));
+                    if (groups.length === 0) {
+                      return <div className="p-4 text-center text-sm text-muted-foreground">Nenhuma sessão encontrada.</div>;
+                    }
+                    return groups.map((g) => (
+                      <div key={g.label} className="mb-3">
+                        <div className="px-3 pb-1.5 pt-1 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">{g.label}</div>
+                        {g.items.map((s) => (
+                          <div
+                            key={s.id}
+                            className={cn(
+                              "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-foreground",
+                              "transition-colors hover:bg-accent-soft",
+                              s.id === activeSessionId && "bg-accent-soft/60"
+                            )}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
                               if (editingId === s.id) return;
                               onSelectSession?.(s.id);
-                            }
-                            if (e.key === "Escape") {
-                              setEditingId(null);
-                              onCloseHistory?.();
-                            }
-                          }}
-                        >
-                          {editingId === s.id ? (
-                            <input
-                              type="text"
-                              className="chat-history-modal__item-title"
-                              value={editingTitle}
-                              onChange={(e) => setEditingTitle(e.target.value)}
-                              onBlur={() => {
-                                const t = editingTitle.trim();
-                                if (t && onEditSession) onEditSession(s.id, t);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                if (editingId === s.id) return;
+                                onSelectSession?.(s.id);
+                              }
+                              if (e.key === "Escape") {
                                 setEditingId(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
+                                onCloseHistory?.();
+                              }
+                            }}
+                          >
+                            {editingId === s.id ? (
+                              <Input
+                                type="text"
+                                className="h-7 flex-1"
+                                value={editingTitle}
+                                onChange={(e) => setEditingTitle(e.target.value)}
+                                onBlur={() => {
                                   const t = editingTitle.trim();
                                   if (t && onEditSession) onEditSession(s.id, t);
                                   setEditingId(null);
-                                }
-                                e.stopPropagation();
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              autoFocus
-                              aria-label="Editar título"
-                            />
-                          ) : (
-                            <>
-                              <span className="chat-history-modal__item-title">
-                                {s.title || "Sem título"}
-                              </span>
-                              <div className="chat-history-modal__item-actions" onClick={(e) => e.stopPropagation()}>
-                                <button
-                                  type="button"
-                                  title="Editar título"
-                                  aria-label="Editar título"
-                                  onClick={() => {
-                                    setEditingId(s.id);
-                                    setEditingTitle(s.title);
-                                  }}
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    const t = editingTitle.trim();
+                                    if (t && onEditSession) onEditSession(s.id, t);
+                                    setEditingId(null);
+                                  }
+                                  e.stopPropagation();
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                autoFocus
+                                aria-label="Editar título"
+                              />
+                            ) : (
+                              <>
+                                <span className="min-w-0 flex-1 truncate">
+                                  {s.title || "Sem título"}
+                                </span>
+                                <div
+                                  className="flex shrink-0 items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
-                                  <Pencil size={14} aria-hidden />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Excluir sessão"
-                                  aria-label="Excluir sessão"
-                                  onClick={() => onDeleteSession?.(s.id)}
-                                >
-                                  <Trash2 size={14} aria-hidden />
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ));
-                })()}
+                                  <button
+                                    type="button"
+                                    title="Editar título"
+                                    aria-label="Editar título"
+                                    className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent-soft hover:text-foreground"
+                                    onClick={() => {
+                                      setEditingId(s.id);
+                                      setEditingTitle(s.title);
+                                    }}
+                                  >
+                                    <Pencil size={14} aria-hidden />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Excluir sessão"
+                                    aria-label="Excluir sessão"
+                                    className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+                                    onClick={() => onDeleteSession?.(s.id)}
+                                  >
+                                    <Trash2 size={14} aria-hidden />
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ));
+                  })()}
+                </div>
               </div>
-            </div>
             </>
           )}
         </div>
         {onToggleTelegram && (
           <button
             type="button"
-            className="chat-controls__icon-btn"
+            className={cn(toolbarIconBtnClass, "relative")}
             onClick={onToggleTelegram}
             title={telegramConnected ? "Telegram conectado — clique para desconectar" : "Telegram desconectado — clique para conectar"}
             aria-label={telegramConnected ? "Desconectar Telegram" : "Conectar Telegram"}
-            style={{ position: "relative" }}
           >
             <Send size={16} strokeWidth={2} aria-hidden />
             <span
-              style={{
-                position: "absolute",
-                top: 2,
-                right: 2,
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: telegramConnected ? "var(--accent)" : "var(--muted, #aaa)",
-                border: "1.5px solid var(--bg)",
-              }}
+              aria-hidden
+              className={cn(
+                "absolute right-0.5 top-0.5 size-[7px] rounded-full border-[1.5px] border-background",
+                telegramConnected ? "bg-accent" : "bg-muted"
+              )}
             />
           </button>
         )}
       </div>
 
-      {error && <div className="callout danger chat-panel-error">{error}</div>}
+      {error && (
+        <div className="mx-4 mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
-      <div className="chat-thread chat-panel-thread" ref={threadRef} role="log">
+      {/* Thread */}
+      <div className="min-h-[120px] flex-1 overflow-y-auto overflow-x-hidden px-5 py-3" ref={threadRef} role="log">
         {messages.length === 0 && !sending && (
-          <p className="chat-panel-empty">Envie uma mensagem para o assistente. Use Config para modelo e API Key.</p>
+          <div className="flex h-full flex-col items-center justify-center gap-5 py-10 text-center">
+            <CompanionOrb state="idle" size={56} />
+            <div>
+              <p className="m-0 font-display text-lg font-bold text-foreground-strong">Como posso ajudar?</p>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Pergunto ao acervo do projeto e cito as fontes. Use Config para modelo e API Key.
+              </p>
+            </div>
+            <div className="flex max-w-lg flex-wrap justify-center gap-2">
+              {STARTER_PROMPTS.map((s) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onSend(s.prompt)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border border-border bg-panel px-3 py-1.5 text-xs text-muted-foreground",
+                    "transition-[border-color,color,box-shadow] duration-150",
+                    "hover:border-accent/40 hover:text-foreground hover:shadow-[0_0_14px_var(--accent-soft)]",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "disabled:pointer-events-none disabled:opacity-50"
+                  )}
+                >
+                  <s.icon className="size-3.5 text-accent" aria-hidden />
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {messages.map((msg, idx) => (
           <ChatMessageBubble
@@ -483,15 +573,19 @@ export function ChatPanel({
         )}
       </div>
 
-      <div className="chat-compose chat-panel-compose">
+      {/* Compose */}
+      <div className="shrink-0 border-t border-border p-4">
         {attachments.length > 0 && (
-          <div className="chat-attachments">
+          <div className="mb-2 inline-flex flex-wrap gap-2 rounded-lg border border-border bg-panel p-2">
             {attachments.map((att) => (
-              <div key={att.id} className="chat-attachment">
-                <img src={att.dataUrl} alt="Anexo" className="chat-attachment__img" />
+              <div key={att.id} className="relative size-20 overflow-hidden rounded-md border border-border bg-background">
+                <img src={att.dataUrl} alt="Anexo" className="size-full object-contain" />
                 <button
                   type="button"
-                  className="chat-attachment__remove"
+                  className={cn(
+                    "absolute right-1 top-1 flex size-[22px] items-center justify-center rounded-full border-0 p-0",
+                    "bg-black/70 text-base leading-none text-white opacity-80 transition-colors hover:bg-destructive"
+                  )}
                   aria-label="Remover anexo"
                   onClick={() => setAttachments((prev) => prev.filter((a) => a.id !== att.id))}
                 >
@@ -501,38 +595,52 @@ export function ChatPanel({
             ))}
           </div>
         )}
-        <div className="chat-compose__row">
-          <label className="field chat-compose__field">
-            <span className="visually-hidden">Mensagem</span>
-            <textarea
-              ref={textareaRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              placeholder={placeholder}
-              disabled={disabled}
-              rows={2}
-            />
-          </label>
-          <div className="chat-compose__actions">
-            <ContextRing ratio={contextPressureRatio} onNewSession={onNewSession} />
-            <button
-              type="button"
-              className="btn"
-              disabled={disabled}
-              onClick={canAbort && sending ? onAbort : onNewSession}
-            >
-              {canAbort && sending ? "Parar" : "Nova sessão"}
-            </button>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={disabled || sending || (!draft.trim() && !hasAttachments)}
-              onClick={handleSend}
-            >
-              {sending ? "Enviando…" : "Enviar"} <kbd className="btn-kbd">↵</kbd>
-            </button>
+        <div className="relative">
+          {/* Aura Apple-Intelligence enquanto o assistente pensa */}
+          {sending && (
+            <span aria-hidden className="atlas-aura pointer-events-none absolute -inset-[3px] rounded-[15px]" />
+          )}
+          <div
+            className={cn(
+              "relative flex flex-col rounded-xl border border-border bg-background",
+              "transition-[border-color,box-shadow] duration-150",
+              "focus-within:border-accent focus-within:ring-2 focus-within:ring-accent-soft"
+            )}
+          >
+            <label className="min-w-0">
+              <span className="sr-only">Mensagem</span>
+              <Textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                placeholder={placeholder}
+                disabled={disabled}
+                rows={2}
+                className="max-h-36 min-h-[48px] w-full resize-none rounded-none border-0 bg-transparent px-4 pb-0 pt-3 hover:border-0 focus:border-0 focus:ring-0"
+              />
+            </label>
+            <div className="flex items-center gap-2 px-2.5 pb-2.5 pt-1.5">
+              <ContextGauge ratio={contextPressureRatio} onNewSession={onNewSession} />
+              <span className="flex-1" />
+              <Button variant="ghost" size="sm" disabled={disabled || sending} onClick={onNewSession}>
+                <Plus /> Nova sessão
+              </Button>
+              {canAbort && sending ? (
+                <Button variant="destructive" size="sm" onClick={onAbort}>
+                  <Loader2 className="animate-spin" /> Parar
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  disabled={disabled || sending || (!draft.trim() && !hasAttachments)}
+                  onClick={handleSend}
+                >
+                  <Send /> Enviar <kbd className="rounded border border-white/25 px-1 font-mono text-[0.65rem]">↵</kbd>
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -580,16 +688,22 @@ function ChatMessageBubble({
 
   const avatarEl =
     isUser ? (
-      <div className="chat-avatar user">U</div>
+      <div className="mb-1 grid size-10 shrink-0 place-items-center self-end rounded-lg bg-accent-soft text-sm font-semibold text-accent">
+        U
+      </div>
     ) : agentAvatarUrl && /^(https?:|\/|data:image)/i.test(agentAvatarUrl) ? (
-      <img src={agentAvatarUrl} alt={agentName} className="chat-avatar assistant" />
+      <img
+        src={agentAvatarUrl}
+        alt={agentName}
+        className="mb-1 block size-10 shrink-0 self-end rounded-lg object-cover object-center"
+      />
     ) : (
       <CompanionOrb state="idle" size={40} />
     );
 
 
   const userContentEl = isUser && hasImageParts && contentParts ? (
-    <div className="chat-bubble-user-content">
+    <div className="flex flex-wrap items-start gap-2">
       {contentParts.map((p, i) =>
         p.type === "text" ? (
           p.text ? <span key={i}>{p.text}</span> : null
@@ -597,11 +711,15 @@ function ChatMessageBubble({
           <button
             key={i}
             type="button"
-            className="chat-bubble-inline-img"
+            className="block cursor-pointer overflow-hidden rounded-md border-0 bg-transparent p-0 hover:opacity-90"
             onClick={() => setImageModalUrl(p.image_url.url)}
             aria-label="Ver imagem em tamanho maior"
           >
-            <img src={p.image_url.url} alt="Anexo" className="chat-bubble-inline-img__thumb" />
+            <img
+              src={p.image_url.url}
+              alt="Anexo"
+              className="block h-auto max-h-28 w-auto max-w-52 rounded-md border border-border"
+            />
           </button>
         )
       )}
@@ -613,11 +731,19 @@ function ChatMessageBubble({
   const citations = !isUser && typeof content === "string" ? extractCitations(content) : [];
 
   return (
-    <div className={`chat-group ${isUser ? "user" : "assistant"}`}>
+    <div className={cn("mb-4 mr-4 flex items-start gap-3", isUser && "flex-row-reverse justify-start")}>
       {avatarEl}
-      <div className="chat-group-messages">
-        <div className="chat-bubble fade-in">
-          <div className={`chat-text ${!isUser ? "chat-text--markdown" : ""}`}>
+      <div className={cn("flex max-w-[min(900px,calc(100%-60px))] flex-col gap-0.5", isUser && "items-end")}>
+        <div
+          className={cn(
+            "relative inline-block max-w-full break-words rounded-lg px-3.5 py-2.5",
+            "animate-[atlas-slide-in_200ms_var(--ease-out)]",
+            isUser
+              ? "border border-accent/20 bg-accent-soft"
+              : "border border-border-subtle bg-panel-strong"
+          )}
+        >
+          <div className={cn("break-words", isUser ? "whitespace-pre-wrap" : MARKDOWN_PROSE_CLASS)}>
             {isUser ? (
               userContentEl
             ) : (
@@ -634,17 +760,23 @@ function ChatMessageBubble({
         )}
         {imageModalUrl !== null && (
           <div
-            className="chat-image-modal-overlay"
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/75 p-5"
             role="dialog"
             aria-modal="true"
             aria-label="Imagem em tamanho maior"
             onClick={() => setImageModalUrl(null)}
           >
-            <div className="chat-image-modal" onClick={(e) => e.stopPropagation()}>
-              <img src={imageModalUrl} alt="Imagem anexada" className="chat-image-modal__img" />
+            <div
+              className="relative max-h-[90vh] max-w-[90vw] rounded-lg bg-elevated p-2 shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img src={imageModalUrl} alt="Imagem anexada" className="block h-auto max-h-[85vh] w-auto max-w-[85vw] rounded-md" />
               <button
                 type="button"
-                className="chat-image-modal__close"
+                className={cn(
+                  "absolute right-1 top-1 flex size-8 items-center justify-center rounded-md border-0 p-0",
+                  "bg-background text-2xl leading-none text-foreground transition-colors hover:bg-panel-strong"
+                )}
                 onClick={() => setImageModalUrl(null)}
                 aria-label="Fechar"
               >
@@ -654,9 +786,9 @@ function ChatMessageBubble({
           </div>
         )}
         {isLastAssistant && lastToolCalls && lastToolCalls.length > 0 && (
-          <div className="tool-call-block">
-            <div className="tool-call-header">Ferramentas usadas</div>
-            <ul className="sub">
+          <div className="mt-2 rounded-md border border-border border-l-[3px] border-l-accent bg-panel px-3 py-2">
+            <div className="mb-1.5 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">Ferramentas usadas</div>
+            <ul className="m-0 list-none p-0 font-mono text-[0.7rem] text-tertiary">
               {lastToolCalls.map((tc, i) => (
                 <li key={i}>
                   <strong>{tc.name}</strong>
@@ -666,9 +798,9 @@ function ChatMessageBubble({
             </ul>
           </div>
         )}
-        <div className="chat-group-footer">
-          <span className="chat-sender-name">{who}</span>
-          {timeStr && <span className="chat-group-timestamp">{timeStr}</span>}
+        <div className={cn("mt-1.5 flex items-baseline gap-2", isUser && "justify-end")}>
+          <span className="text-xs font-medium text-muted-foreground">{who}</span>
+          {timeStr && <span className="text-[0.7rem] text-tertiary">{timeStr}</span>}
         </div>
       </div>
     </div>
@@ -737,49 +869,85 @@ function CitationChip({ filename }: { filename: string }) {
   );
 }
 
-function ContextRing({ ratio, onNewSession }: { ratio: number; onNewSession: () => void }) {
+/**
+ * Órbita de contexto — na linguagem do orb da marca: uma lua percorre a órbita
+ * tracejada conforme o contexto da sessão enche, deixando um rastro em
+ * gradiente. O núcleo respira e esquenta (accent → âmbar → vermelho); aos 90%
+ * o sistema pulsa e o clique "colapsa" para uma nova sessão. O % aparece ao
+ * lado no hover.
+ */
+function ContextGauge({ ratio, onNewSession }: { ratio: number; onNewSession: () => void }) {
   const r = Math.max(0, Math.min(ratio, 1));
   const pct = Math.round(r * 100);
-  const radius = 10;
+  const radius = 12;
   const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - r);
-  let strokeColor = "var(--muted, #aaa)";
-  if (r >= 0.75) strokeColor = "var(--danger, #e74c3c)";
-  else if (r >= 0.5) strokeColor = "var(--warning, #f39c12)";
+  const critical = r >= 0.9;
+  const warning = r >= 0.75;
+  const coreColor = critical ? "var(--danger)" : warning ? "var(--chart-3)" : "var(--accent)";
 
-  const tooltip = r >= 0.9
-    ? `Contexto: ${pct}% utilizado. Considere iniciar uma nova sessão.`
-    : `Contexto: ${pct}% utilizado`;
+  const tooltip = critical
+    ? `Contexto: ${pct}% utilizado — clique para iniciar uma nova sessão.`
+    : `Contexto da sessão: ${pct}% utilizado`;
 
   return (
     <button
       type="button"
-      className="context-ring-btn"
+      className={cn(
+        "group/gauge flex shrink-0 items-center gap-1.5 rounded-full border-0 bg-transparent p-0",
+        critical ? "cursor-pointer" : "cursor-default"
+      )}
       title={tooltip}
       aria-label={tooltip}
-      onClick={r >= 0.9 ? onNewSession : undefined}
-      style={{ cursor: r >= 0.9 ? "pointer" : "default" }}
+      onClick={critical ? onNewSession : undefined}
     >
-      <svg width="26" height="26" viewBox="0 0 26 26" className="context-ring-svg">
-        <circle
-          cx="13" cy="13" r={radius}
-          fill="none"
-          stroke="var(--border, #ddd)"
-          strokeWidth="2.5"
-        />
-        <circle
-          cx="13" cy="13" r={radius}
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth="2.5"
-          strokeDasharray={circumference}
-          strokeDashoffset={dashOffset}
-          strokeLinecap="round"
-          transform="rotate(-90 13 13)"
-          style={{ transition: "stroke-dashoffset 0.4s ease, stroke 0.3s ease" }}
-        />
-      </svg>
-      <span className="context-ring-label">{pct}%</span>
+      <span className={cn("relative block size-8", critical && "motion-safe:animate-pulse")}>
+        <svg width="32" height="32" viewBox="0 0 32 32" className="absolute inset-0">
+          <defs>
+            <linearGradient id="atlas-orbit-trail" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="var(--accent)" />
+              <stop offset="100%" stopColor="var(--accent-purple)" />
+            </linearGradient>
+          </defs>
+          {/* Órbita tracejada (diagrama astronômico) */}
+          <circle cx="16" cy="16" r={radius} fill="none" stroke="var(--border-strong)" strokeWidth="1" strokeDasharray="1.5 3.2" />
+          {/* Rastro da lua: arco em gradiente do início até a posição atual */}
+          <circle
+            cx="16" cy="16" r={radius}
+            fill="none"
+            stroke={warning ? "var(--danger)" : "url(#atlas-orbit-trail)"}
+            strokeWidth="2"
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference * (1 - r)}
+            strokeLinecap="round"
+            transform="rotate(-90 16 16)"
+            opacity={r > 0 ? 1 : 0}
+            style={{ transition: "stroke-dashoffset 0.8s var(--ease-out), stroke 0.3s ease, opacity 0.3s ease" }}
+          />
+          {/* Núcleo que respira e esquenta com a pressão */}
+          <circle
+            cx="16" cy="16" r={3 + r * 1.5}
+            fill={coreColor}
+            className="motion-safe:animate-[atlas-orbit-breathe_2.6s_ease-in-out_infinite]"
+            style={{ transformOrigin: "16px 16px", transition: "fill 0.3s ease, r 0.6s var(--ease-out)" }}
+          />
+          {/* Lua orbitando: ângulo = uso do contexto */}
+          <g
+            style={{ transform: `rotate(${r * 360}deg)`, transformOrigin: "16px 16px", transition: "transform 0.8s var(--ease-out)" }}
+          >
+            <circle cx="16" cy="4" r="2.2" fill={coreColor} style={{ transition: "fill 0.3s ease" }} />
+            <circle cx="16" cy="4" r="3.6" fill={coreColor} opacity="0.25" />
+          </g>
+        </svg>
+      </span>
+      <span
+        className={cn(
+          "font-mono text-[0.65rem] tabular-nums opacity-0 transition-opacity duration-200 group-hover/gauge:opacity-100",
+          warning ? "text-destructive" : "text-muted-foreground",
+          critical && "opacity-100"
+        )}
+      >
+        {pct}%
+      </span>
     </button>
   );
 }
@@ -792,11 +960,11 @@ function ChatReadingIndicator({
   companionState: CompanionState;
 }) {
   return (
-    <div className="chat-group assistant chat-group--thinking">
+    <div className="mb-4 mr-4 flex items-center gap-3">
       <CompanionOrb state={companionState} size={40} />
-      <div className="chat-group-messages">
-        <div className="chat-thinking-indicator" role="status" aria-label="Pensando">
-          <span className="chat-thinking-label">Pensando...</span>
+      <div className="flex flex-col gap-0.5">
+        <div className="inline-flex items-center py-2" role="status" aria-label="Pensando">
+          <span className="atlas-thinking-text font-mono text-xs tracking-wide">Pensando...</span>
         </div>
       </div>
     </div>
