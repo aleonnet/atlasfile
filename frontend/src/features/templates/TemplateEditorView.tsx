@@ -4,10 +4,11 @@ import { createTemplate, deleteTemplate, getTemplate, listTemplates, saveTemplat
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { CollapsibleSection, editTableClass, tableInputClass } from "../../components/ui/collapsible-section";
+import { CollapsibleSection, editTableClass, rowDeleteButtonClass, tableInputClass } from "../../components/ui/collapsible-section";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Input, Textarea } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
+import { fieldLabelClass, nativeSelectClass } from "../../components/ui/modal-shell";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { cn } from "../../lib/utils";
 import type { TemplateMeta } from "../../types";
@@ -21,11 +22,7 @@ type EditorState = {
   profileData: Record<string, unknown> | null;
 };
 
-const selectClass =
-  "flex h-9 w-full rounded-md border border-input bg-panel px-3 py-1 text-sm text-foreground shadow-none " +
-  "transition-[border-color,box-shadow] hover:border-border-strong focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft";
-
-const fieldLabelClass = "mb-1 block font-mono text-[0.68rem] uppercase tracking-wide text-tertiary";
+const selectClass = nativeSelectClass;
 
 /** Overlay de edição (mantém details/labels/tabela — contrato dos testes). */
 function EditorOverlay({ label, children }: { label: string; children: React.ReactNode }) {
@@ -358,9 +355,9 @@ export function TemplateEditorView() {
     }
 
     const removeRowButton = (onClick: () => void) => (
-      <Button variant="ghost" size="icon" className="size-7 text-tertiary hover:text-destructive" onClick={onClick} aria-label="Remover linha">
-        <X className="size-3.5" />
-      </Button>
+      <button type="button" className={rowDeleteButtonClass} onClick={onClick} aria-label="Remover linha">
+        ×
+      </button>
     );
 
     return (

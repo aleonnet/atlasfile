@@ -41,6 +41,13 @@ export function CollapsibleSection({ title, badge, defaultOpen = false, classNam
   );
 }
 
+/** Botão padrão de remover linha em tabelas (pill destructive suave com ×) —
+ * o mesmo em todas as tabelas de edição/histórico do app. */
+export const rowDeleteButtonClass =
+  "inline-flex size-6 items-center justify-center rounded-md border-0 bg-destructive/10 text-xs font-semibold " +
+  "text-destructive shadow-none transition-colors hover:bg-destructive/20 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
+
 /** Classes para inputs embutidos em células de tabela de edição. */
 export const tableInputClass =
   "w-full rounded border-0 bg-transparent px-1.5 py-1 text-[0.82rem] text-foreground shadow-none outline-none " +

@@ -35,7 +35,7 @@ import type {
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { CollapsibleSection } from "../../components/ui/collapsible-section";
+import { CollapsibleSection, rowDeleteButtonClass } from "../../components/ui/collapsible-section";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/utils";
@@ -904,7 +904,7 @@ export function IngestTriageCard({
                           <td>{formatPct(report.champion_summary?.business_domain_macro_f1)}</td>
                           <td>
                             <button
-                              className="inline-flex size-6 items-center justify-center rounded-md border-0 bg-destructive/10 text-xs font-semibold text-destructive shadow-none transition-colors hover:bg-destructive/20 disabled:pointer-events-none disabled:opacity-50"
+                              className={rowDeleteButtonClass}
                               disabled={isChampion || deletingReportId === report.report_id}
                               onClick={() => setConfirmDeleteReportId(report.report_id)}
                               title={isChampion ? "Campeão ativo — não pode ser deletado" : "Deletar relatório"}
