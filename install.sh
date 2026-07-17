@@ -163,7 +163,17 @@ cd "${INSTALL_DIR}"
 title "3/5" "Configurando"
 if [ ! -f .env ]; then
   cp .env.example .env
-  printf '  %s✔%s .env criado a partir do template\n' "$GREEN" "$RESET"
+  # Senha do OpenSearch única por instalação — o template traz um placeholder
+  # público; manter um default conhecido seria uma credencial vazada de fábrica.
+  # (Só na criação do .env: trocar depois do primeiro boot quebraria a auth.)
+  os_rand="$( (LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 20)"
+  [ -n "${os_rand}" ] || os_rand="$(openssl rand -hex 10 2>/dev/null || date +%s)"
+  os_pass="Af!${os_rand}9"
+  tmp_env="$(mktemp)"
+  sed -e "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${os_pass}|" \
+      -e "s|^OPENSEARCH_INITIAL_ADMIN_PASSWORD=.*|OPENSEARCH_INITIAL_ADMIN_PASSWORD=${os_pass}|" \
+      .env > "${tmp_env}" && mv "${tmp_env}" .env
+  printf '  %s✔%s .env criado (senha OpenSearch gerada para esta instalação)\n' "$GREEN" "$RESET"
 else
   info ".env já existe — preservado"
 fi

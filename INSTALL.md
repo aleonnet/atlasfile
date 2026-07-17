@@ -223,7 +223,8 @@ Resposta esperada: `{"status":"ok"}`
 ### OpenSearch
 
 ```bash
-curl -k -u "admin:Kaid0Search!2026X" https://localhost:9200
+# a senha está no seu .env (OPENSEARCH_PASSWORD)
+curl -k -u "admin:$(grep '^OPENSEARCH_PASSWORD=' .env | cut -d= -f2-)" https://localhost:9200
 ```
 
 ---
@@ -418,10 +419,10 @@ Para recriar índices com mapping atualizado (ex.: após upgrade):
 | Frontend | http://localhost:5173 | — |
 | Backend API | http://localhost:8000 | — |
 | MCP Server | http://localhost:8001 | — |
-| OpenSearch | https://localhost:9200 | admin / Kaid0Search!2026X |
-| Dashboards | http://localhost:5601 | admin / Kaid0Search!2026X |
+| OpenSearch | https://localhost:9200 | admin / `OPENSEARCH_PASSWORD` do seu `.env` |
+| Dashboards | http://localhost:5601 | admin / `OPENSEARCH_PASSWORD` do seu `.env` |
 
-> Ambiente local de desenvolvimento. Não usar credenciais fixas em produção.
+> A senha é única por instalação (gerada pelo install.sh na criação do `.env`).
 
 ---
 
@@ -437,10 +438,11 @@ Os saved objects estão em `dashboards/atlasfile.ndjson`.
 
 ## 17) Backup
 
-Para gerar um backup versionado do repositório (exclui `node_modules`, `.venv`, `dist`, etc.):
+O que precisa de backup fica **fora** do repositório: a pasta de projetos (`PROJECTS_HOST_ROOT`, que inclui `_ATLASFILE/` com datasets e templates) e, se quiser preservar o índice, o volume `atlasfile_opensearch_data`. O código é recuperável do GitHub.
 
 ```bash
-./backup-atlasfile.sh
+# Pasta de projetos (documentos + datasets + templates)
+tar -czf AtlasFileProjects_$(date +%Y%m%d).tar.gz -C "$(dirname <PROJECTS_HOST_ROOT>)" "$(basename <PROJECTS_HOST_ROOT>)"
 ```
 
-Saída: `AtlasFile_v<versão>_YYYYMMDD.tar.gz` no diretório pai do projeto.
+O índice OpenSearch pode ser reconstruído a qualquer momento com **Reconciliar INDEX** no Painel.

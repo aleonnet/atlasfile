@@ -5,7 +5,7 @@ services:
     environment:
       - discovery.type=single-node
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-Kaid0Search!2026X}
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?defina OPENSEARCH_INITIAL_ADMIN_PASSWORD no .env (o install.sh gera automaticamente)}
     ulimits:
       memlock:
         soft: -1
@@ -22,7 +22,7 @@ services:
     environment:
       - OPENSEARCH_HOSTS=["https://opensearch:9200"]
       - OPENSEARCH_USERNAME=admin
-      - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-Kaid0Search!2026X}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?defina OPENSEARCH_INITIAL_ADMIN_PASSWORD no .env (o install.sh gera automaticamente)}
       - OPENSEARCH_SSL_VERIFICATIONMODE=none
     volumes:
       # Permite header securitytenant no import (tenant Global); conexão segue das env acima.
@@ -42,7 +42,7 @@ services:
       - OPENSEARCH_HOST=https://opensearch:9200
       - OPENSEARCH_INDEX=atlasfile_documents
       - OPENSEARCH_USER=admin
-      - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-Kaid0Search!2026X}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?defina OPENSEARCH_INITIAL_ADMIN_PASSWORD no .env (o install.sh gera automaticamente)}
       - PROJECTS_ROOT=/projects
       - CLASSIFIER_DATASETS_ROOT=${CLASSIFIER_DATASETS_ROOT:-/projects/_ATLASFILE/classifier/datasets}
       - AUTO_RECONCILE_INTERVAL_SECONDS=${AUTO_RECONCILE_INTERVAL_SECONDS:-600}

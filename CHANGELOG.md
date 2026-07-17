@@ -15,6 +15,15 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.22.2] -- 2026-07-17
+
+### Segurança
+
+- **Senha OpenSearch única por instalação**: o `install.sh` gera uma senha aleatória forte ao criar o `.env` (só na criação — trocar após o primeiro boot quebraria a auth). O default público hardcoded (`Kaid0Search!2026X`) saiu do `docker-compose.yml` (variável agora obrigatória via `:?` com mensagem clara) e do `.env.example` (placeholder com instrução para instalação manual). Docs (INSTALL/README) passam a referenciar a senha do `.env` em vez do valor fixo
+- **Scripts legados removidos**: `atlasfile_install.sh` (substituído pelo `install.sh` one-liner) e `backup-atlasfile.sh` (INSTALL.md agora orienta backup do que importa: `PROJECTS_HOST_ROOT`; o índice é reconstruível via Reconciliar INDEX)
+
+---
+
 ## [0.22.1] -- 2026-07-17
 
 ### Corrigido

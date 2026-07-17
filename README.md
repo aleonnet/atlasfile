@@ -170,7 +170,7 @@ Para a função de cada script operacional e técnico, veja `docs/11_scripts_and
 | Frontend | http://localhost:5173 | Interface web (tema claro/escuro) |
 | API | http://localhost:8000 | FastAPI (REST + SSE) |
 | MCP Server | http://localhost:8001 | Tools para chat/classificação |
-| OpenSearch | https://localhost:9200 | Motor de busca (admin/Kaid0Search!2026X) |
+| OpenSearch | https://localhost:9200 | Motor de busca (admin / `OPENSEARCH_PASSWORD` do `.env`) |
 | Dashboards | http://localhost:5601 | OpenSearch Dashboards |
 
 ### Makefile
