@@ -4,9 +4,11 @@
  * Conteúdo do assistente é renderizado como Markdown (GFM), como no OpenClaw (marked + DOMPurify).
  * Ref.: openclaw-main/ui/src/ui/views/chat.ts + grouped-render.ts + markdown.ts
  */
-import React, { useRef, useEffect } from "react";
-import { Brain, Clock, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
+import React, { useRef, useEffect, useState } from "react";
+import { Brain, Clock, FileText, Loader2, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { fetchSuggestions, getFileDownloadUrl } from "../api";
+import { toast } from "./ui/sonner";
 import { ChartBlock } from "./ChartBlock";
 import { CompanionOrb } from "./CompanionOrb";
 import type { CompanionState } from "./CompanionOrb";
@@ -608,6 +610,8 @@ function ChatMessageBubble({
     content
   );
 
+  const citations = !isUser && typeof content === "string" ? extractCitations(content) : [];
+
   return (
     <div className={`chat-group ${isUser ? "user" : "assistant"}`}>
       {avatarEl}
@@ -621,6 +625,13 @@ function ChatMessageBubble({
             )}
           </div>
         </div>
+        {citations.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {citations.map((filename) => (
+              <CitationChip key={filename} filename={filename} />
+            ))}
+          </div>
+        )}
         {imageModalUrl !== null && (
           <div
             className="chat-image-modal-overlay"
@@ -661,6 +672,68 @@ function ChatMessageBubble({
         </div>
       </div>
     </div>
+  );
+}
+
+const DOC_EXTENSIONS = "pdf|docx?|xlsx?|xlsm|pptx?|msg|eml|csv|txt|md";
+// 1º padrão: nome entre aspas/backticks (permite espaços); 2º: token sem espaços
+const QUOTED_DOC_RE = new RegExp(`[\`"“']([^\`"“”'\\n]{3,120}?\\.(?:${DOC_EXTENSIONS}))[\`"”']`, "gi");
+const BARE_DOC_RE = new RegExp(`(?:^|[\\s(])([^\\s\`"'()\\[\\]{},;]{3,120}?\\.(?:${DOC_EXTENSIONS}))(?=[\\s).,;:]|$)`, "gim");
+
+/** Nomes de documentos citados pelo assistente (para os chips de citação). */
+export function extractCitations(text: string): string[] {
+  const seen = new Map<string, string>();
+  for (const re of [QUOTED_DOC_RE, BARE_DOC_RE]) {
+    re.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null && seen.size < 6) {
+      const name = match[1].trim();
+      const key = name.toLowerCase();
+      if (!seen.has(key)) seen.set(key, name);
+    }
+  }
+  return [...seen.values()];
+}
+
+/** Citação clicável: resolve o doc via suggest e abre na location (direção de arte: a citação "acende"). */
+function CitationChip({ filename }: { filename: string }) {
+  const [resolving, setResolving] = useState(false);
+
+  async function handleOpen() {
+    if (resolving) return;
+    setResolving(true);
+    try {
+      const res = await fetchSuggestions(filename);
+      const item =
+        res.items.find((s) => s.original_filename.toLowerCase() === filename.toLowerCase()) ?? res.items[0];
+      if (!item) {
+        toast.error(`Documento citado não encontrado no índice: ${filename}`);
+        return;
+      }
+      window.open(getFileDownloadUrl(item.path), "_blank", "noreferrer");
+    } catch {
+      toast.error("Falha ao localizar o documento citado");
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleOpen}
+      disabled={resolving}
+      title={`Abrir ${filename}`}
+      className={
+        "inline-flex max-w-72 items-center gap-1.5 rounded-full border border-accent-soft bg-accent-soft/40 " +
+        "px-2.5 py-1 font-mono text-[0.7rem] text-accent shadow-none transition-[box-shadow,border-color] " +
+        "hover:border-accent/50 hover:shadow-[0_0_14px_var(--accent-soft)] disabled:opacity-60 " +
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      }
+    >
+      {resolving ? <Loader2 size={11} className="animate-spin" aria-hidden /> : <FileText size={11} aria-hidden />}
+      <span className="truncate">{filename}</span>
+    </button>
   );
 }
 

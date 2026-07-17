@@ -36,11 +36,12 @@ function formatDayLabel(dateStr: string): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
 }
 
+// Paleta de gráficos da marca (--chart-N em styles.css, dark + light)
 const TOKEN_COLORS = {
-  output: "var(--chart-output, #e74c3c)",
-  input: "var(--chart-input, #f39c12)",
-  cache_write: "var(--chart-cache-write, #2ecc71)",
-  cache_read: "var(--chart-cache-read, #00bcd4)",
+  output: "var(--chart-1)",
+  input: "var(--chart-3)",
+  cache_write: "var(--chart-4)",
+  cache_read: "var(--chart-5)",
 } as const;
 
 type TokenType = keyof typeof TOKEN_COLORS;
@@ -53,9 +54,9 @@ const TOKEN_LABELS: Record<TokenType, string> = {
 };
 
 const PROCESS_COLORS = {
-  assistant: "#f39c12",
-  classification: "#9b59b6",
-  training: "#3498db",
+  assistant: "var(--chart-3)",
+  classification: "var(--chart-2)",
+  training: "var(--chart-5)",
 } as const;
 
 type ProcessType = keyof typeof PROCESS_COLORS;

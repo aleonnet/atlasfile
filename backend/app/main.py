@@ -4,6 +4,8 @@ import asyncio
 import html as html_module
 import json
 import mimetypes
+import unicodedata
+import urllib.parse
 import re
 import shutil
 import threading
@@ -1650,11 +1652,14 @@ def download_file(
     if not requested.is_file():
         raise HTTPException(status_code=404, detail="Arquivo nao encontrado")
     media_type, _ = mimetypes.guess_type(str(requested), strict=False)
+    # Headers HTTP são latin-1: nomes acentuados vão via filename* (RFC 6266)
+    # com fallback ASCII — filename= direto com UTF-8 estoura 500 no Starlette.
+    ascii_name = unicodedata.normalize("NFKD", requested.name).encode("ascii", "ignore").decode() or "download"
+    utf8_name = urllib.parse.quote(requested.name)
     return FileResponse(
         path=str(requested),
-        filename=requested.name,
         media_type=media_type or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="{requested.name}"'},
+        headers={"Content-Disposition": f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_name}"},
     )
 
 

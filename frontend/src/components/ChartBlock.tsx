@@ -20,23 +20,23 @@ import {
   YAxis,
 } from "recharts";
 
-/** Paleta de 8 cores harmônicas com o tema dark do app */
+/** Paleta de gráficos da marca (--chart-N, definida por tema em styles.css) */
 const CHART_PALETTE = [
-  "#ff5a36", // accent
-  "#c97bff", // accent-purple
-  "#f39c12", // chart-input (orange)
-  "#00bcd4", // chart-cache-read (cyan)
-  "#2ecc71", // chart-cache-write (green)
-  "#e74c3c", // chart-output (red)
-  "#7dd3fc", // link blue
-  "#fbbf24", // amber
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--chart-6)",
+  "var(--chart-7)",
+  "var(--chart-8)",
 ];
 
 const TOOLTIP_STYLE = {
-  backgroundColor: "#1d1a20",
-  border: "1px solid #2a2630",
+  backgroundColor: "var(--panel-strong)",
+  border: "1px solid var(--border)",
   borderRadius: 6,
-  color: "#f5f4f8",
+  color: "var(--text)",
   fontSize: 12,
 };
 
