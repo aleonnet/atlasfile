@@ -15,6 +15,19 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.21.0] -- 2026-07-17
+
+### Instalador one-liner + reconciliação de rótulos por consenso
+
+- **`install.sh`** — instalação em um comando (`curl -fsSL .../install.sh | bash`): verifica pré-requisitos (Docker/Compose v2/git, daemon, portas), clona/atualiza em `~/AtlasFile`, cria `.env` perguntando só a pasta de projetos, sobe a stack, aguarda `/health` e abre a UI — o onboarding guia o primeiro projeto. Idempotente; flags `--dir/--projects-root/--yes/--no-open`. **`install.ps1`** (Windows) verifica WSL2 + Docker Desktop e delega ao instalador Linux dentro do WSL. Seção "Instalação rápida" no README e INSTALL
+- **`backend/scripts/reconcile_labels.py`** — reconciliação de rótulos por SHA256 com proveniência: agrupa training_pool + validation_set + árvores `02_AREAS` dos projetos (observacional), detecta conflitos (antes resolvidos silenciosamente por "último ganha"), resolve por unanimidade (`consensus`), LLM forte como **proponente** com justificativa (`llm_consensus` quando concorda com uma fonte; default `gpt-5.1`) e arbitragem humana só no resíduo (`label_conflicts_report.md` editável + `--apply`); `--rehome-projects` (dry-run) e `--rehome-apply` realinham os arquivos dos projetos ao canônico via API de move
+- **Guardrail permanente**: `compute_dataset_integrity` agora reporta `label_conflicts` (divergência de rótulo por SHA) como warning no relatório do ciclo
+- Execução real: 24 SHAs, 9 conflitos detectados — 4 resolvidos por consenso-LLM, 4 pendentes de arbitragem, 1 por fonte autoritativa única
+- Primeiro push do repositório para `github.com/aleonnet/atlasfile`
+- Testes: +8 unit (núcleo de consenso + guardrail) — 487 backend
+
+---
+
 ## [0.20.0] -- 2026-07-17
 
 ### Orb WebGL: o logo vivo (Fase 7 do plano rag_hibrido_permissoes_ui_v2 — encerra o plano)

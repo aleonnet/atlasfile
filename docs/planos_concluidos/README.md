@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.21.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [instalador_e_reconciliacao_rotulos_v0210](instalador_e_reconciliacao_rotulos_v0210.plan.md) | Instalador one-liner (`install.sh` + `install.ps1` via WSL2, docs, primeiro push para github.com/aleonnet/atlasfile, teste de instalação do zero com onboarding); reconciliação de rótulos por SHA256 (consenso + LLM proponente + arbitragem humana no resíduo, guardrail `label_conflicts` no ciclo); limpeza de screenshots de revisão |
+
+---
+
 ## 0.14.0 → 0.20.0
 
 | # | Plano | Escopo |

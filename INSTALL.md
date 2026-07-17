@@ -1,5 +1,25 @@
 # AtlasFile - Guia de Instalação (Mac, Linux e Windows)
 
+## Instalação rápida (recomendada)
+
+Com o [Docker Desktop](https://docs.docker.com/get-docker/) rodando:
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell; usa WSL2 + Docker Desktop)
+irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1 | iex
+```
+
+O instalador verifica pré-requisitos, clona em `~/AtlasFile`, cria o `.env` (perguntando só a pasta de projetos), sobe a stack e abre a interface — o onboarding guia o resto. Flags úteis: `--dir`, `--projects-root`, `--yes` (não-interativo), `--no-open`. Re-executar atualiza a instalação.
+
+O restante deste guia cobre a **instalação manual** e a operação completa.
+
+---
+
 Este guia cobre o setup completo para qualquer pessoa rodar o AtlasFile localmente.
 
 Para uma visão consolidada dos scripts do repositório e de quando cada um entra no processo, veja `docs/11_scripts_and_operations.md`.

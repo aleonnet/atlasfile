@@ -166,12 +166,19 @@ def compute_dataset_integrity(
 ) -> dict[str, Any]:
     validation_by_sha: dict[str, list[str]] = defaultdict(list)
     validation_by_name: dict[str, list[str]] = defaultdict(list)
+    # Rótulos por SHA (validation + training) para detectar divergências —
+    # antes disso, conflitos eram resolvidos silenciosamente no build_corpus.
+    labels_by_sha: dict[str, dict[str, set[tuple[str, str]]]] = defaultdict(lambda: defaultdict(set))
     for example in validation_examples:
         entry = example["entry"]
         file_path = Path(example["file_path"])
         validation_digest = str(example.get("sha256") or sha256_file(file_path))
         validation_by_sha[validation_digest].append(entry.file)
         validation_by_name[_normalized_file_key(entry.file)].append(entry.file)
+        if entry.business_domain and entry.document_type:
+            labels_by_sha[validation_digest][f"validation:{entry.file}"].add(
+                (entry.business_domain, entry.document_type)
+            )
 
     overlap_sha256: list[dict[str, Any]] = []
     name_collisions: list[dict[str, Any]] = []
@@ -201,6 +208,10 @@ def compute_dataset_integrity(
             continue
 
         training_sha = str(record.sha256 or sha256_file(path))
+        if record.business_domain and record.document_type:
+            labels_by_sha[training_sha][f"training:{record.original_filename or path.name}"].add(
+                (record.business_domain, record.document_type)
+            )
         overlapping_validation_files = sorted(validation_by_sha.get(training_sha, []))
         if overlapping_validation_files:
             overlap_sha256.append(
@@ -222,7 +233,24 @@ def compute_dataset_integrity(
                 }
             )
 
-    status = "error" if overlap_sha256 else "warning" if (name_collisions or unresolved_training_paths) else "ok"
+    label_conflicts: list[dict[str, Any]] = []
+    for sha, by_ref in sorted(labels_by_sha.items()):
+        distinct = {pair for pairs in by_ref.values() for pair in pairs}
+        if len(distinct) > 1:
+            label_conflicts.append(
+                {
+                    "sha256": sha,
+                    "labels": {ref: sorted(f"{bd}/{dt}" for bd, dt in pairs) for ref, pairs in sorted(by_ref.items())},
+                }
+            )
+
+    status = (
+        "error"
+        if overlap_sha256
+        else "warning"
+        if (name_collisions or unresolved_training_paths or label_conflicts)
+        else "ok"
+    )
     return {
         "status": status,
         "validation_files": len(validation_examples),
@@ -230,6 +258,7 @@ def compute_dataset_integrity(
         "overlap_sha256": overlap_sha256,
         "name_collisions": name_collisions,
         "unresolved_training_paths": unresolved_training_paths,
+        "label_conflicts": label_conflicts,
     }
 
 

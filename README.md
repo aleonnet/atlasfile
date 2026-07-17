@@ -2,6 +2,24 @@
 
 Sistema local de organização documental por projeto, com ciclo operacional de classificador, classificação por `business_domain` + `document_type`, triagem humana, indexação full-text, benchmark supervisionado e assistente conversacional.
 
+## Instalação rápida
+
+Pré-requisito: [Docker Desktop](https://docs.docker.com/get-docker/) rodando.
+
+**macOS / Linux:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash
+```
+
+**Windows (via WSL2):**
+
+```powershell
+irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1 | iex
+```
+
+O instalador clona o projeto, configura o `.env`, sobe a stack Docker e abre `http://localhost:5173` — o assistente de primeiros passos guia a criação do primeiro projeto. Instalação manual e detalhes: [INSTALL.md](INSTALL.md).
+
 ## Visão geral
 
 - **Ingestão automática** via pasta `_INBOX_DROP` por projeto
@@ -26,11 +44,14 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 | Camada | Tecnologia |
 |--------|------------|
 | Backend | FastAPI (Python 3.12) |
-| Busca | OpenSearch 2.17 (BM25) |
+| Busca | OpenSearch 2.17 (BM25 + kNN, fusão RRF manual) |
 | Frontend | Vite + React + TypeScript |
+| UI | Tailwind v4 (CSS-first) + primitivas próprias estilo shadcn (copy-in sobre Radix UI + cva + cmdk + sonner) — tokens da marca em `src/styles.css`/`src/styles/theme.css`, sem tema default; orb WebGL (`components/OrbGL/`) com fallback SVG |
 | LLM | OpenAI / Anthropic (multi-modelo) |
 | MCP | FastMCP server (tools de busca, tags, stats) |
 | Runtime | Docker Compose (5 serviços) |
+
+O workflow completo de um documento (drop → dedup → extração → classificação → roteamento → indexação → embeddings → busca → chat), com os pontos de observação de cada etapa, está descrito em [`docs/workflow_documento.md`](docs/workflow_documento.md). O roteiro de validação com score por etapa está em [`docs/plano_teste_e2e_v0.20.0.md`](docs/plano_teste_e2e_v0.20.0.md).
 
 ## Estrutura do monorepo
 
