@@ -481,28 +481,33 @@ def rehome_projects(resolutions: list[ShaResolution], projects_root: Path, api_b
         return
 
     for move in moves:
-        # resolve doc_id pelo índice e usa o endpoint move (atualiza índice + training pool)
+        # resolve doc_id pelo índice (basename do path canônico) e usa o endpoint
+        # move (atualiza filesystem + índice + training pool)
         query = urllib.parse.urlencode({"project_id": move["project_id"], "page_size": 200})
         with urllib.request.urlopen(f"{api_base}/api/documents?{query}") as resp:
             docs = json.load(resp)
+        target_name = Path(move["file"]).name
         doc = next(
-            (d for d in docs.get("items", []) if d.get("sha256") == move["sha256"] or Path(d.get("path", "")).name in move["file"]),
+            (d for d in docs.get("items", []) if Path(d.get("path", "")).name == target_name),
             None,
         )
         if not doc:
             print(f"  SKIP (doc não indexado): {move['file']}")
             continue
         bd, dt = move["to"].split("/", 1)
-        payload = json.dumps({"business_domain": bd, "document_type": dt, "add_to_training_pool": False}).encode()
+        payload = json.dumps({"target_business_domain": bd, "target_document_type": dt}).encode()
         req = urllib.request.Request(
             f"{api_base}/api/documents/{move['project_id']}/{doc['doc_id']}/move",
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req) as resp:
-            result = json.load(resp)
-        print(f"  MOVED {move['file']} → {move['to']} ({result.get('status', '?')})")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                result = json.load(resp)
+            print(f"  MOVED {move['file']} → {move['to']} ({result.get('status', '?')})")
+        except Exception as exc:  # noqa: BLE001 — reporta e segue para os demais
+            print(f"  ERRO  {move['file']}: {exc}")
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────

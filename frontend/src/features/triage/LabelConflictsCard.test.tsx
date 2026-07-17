@@ -23,13 +23,21 @@ const mockConflict = {
 vi.mock("../../api", () => ({
   fetchLabelConflicts: vi.fn(),
   resolveLabelConflict: vi.fn(),
+  fetchTaxonomy: vi.fn(),
+  createTaxonomyEntry: vi.fn(),
 }));
 
-import { fetchLabelConflicts, resolveLabelConflict } from "../../api";
+import { createTaxonomyEntry, fetchLabelConflicts, fetchTaxonomy, resolveLabelConflict } from "../../api";
+
+const TAXONOMY = {
+  business_domains: ["operacoes", "juridico", "societario"],
+  document_types: ["contrato", "apresentacao", "plano"],
+};
 
 describe("LabelConflictsCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fetchTaxonomy).mockResolvedValue(TAXONOMY);
   });
 
   it("não renderiza nada sem conflitos", async () => {
@@ -72,6 +80,34 @@ describe("LabelConflictsCard", () => {
     fireEvent.click(screen.getByText("Aplicar canônico"));
     await waitFor(() =>
       expect(resolveLabelConflict).toHaveBeenCalledWith("abc123", "operacoes", "apresentacao")
+    );
+  });
+
+  it("escolha fora da taxonomia abre o fluxo de criação e cria antes de resolver", async () => {
+    const conflictNovoTipo = {
+      ...mockConflict,
+      llm_proposal: { ...mockConflict.llm_proposal, document_type: "memorando" },
+    };
+    vi.mocked(fetchLabelConflicts).mockResolvedValue({ total: 1, items: [conflictNovoTipo] });
+    vi.mocked(createTaxonomyEntry).mockResolvedValue({ status: "ok", key: "memorando", updated_projects: ["p1"] });
+    vi.mocked(resolveLabelConflict).mockResolvedValue({ status: "ok", labeled_by: "human_confirmed_llm" });
+    render(<LabelConflictsCard />);
+
+    expect(await screen.findByText(/usa taxonomia nova/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Aceitar proposta"));
+
+    // diálogo de criação aparece com o tipo faltante
+    expect(await screen.findByText("Criar no template e aplicar")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Aliases/), { target: { value: "memorando, memo" } });
+    fireEvent.click(screen.getByText("Criar e aplicar"));
+
+    await waitFor(() =>
+      expect(createTaxonomyEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: "document_type", key: "memorando", aliases: ["memorando", "memo"] })
+      )
+    );
+    await waitFor(() =>
+      expect(resolveLabelConflict).toHaveBeenCalledWith("abc123", "operacoes", "memorando")
     );
   });
 });

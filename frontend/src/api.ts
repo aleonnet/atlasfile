@@ -751,3 +751,27 @@ export async function resolveLabelConflict(
   if (!res.ok) throw new Error("Falha ao resolver conflito de rótulo");
   return res.json();
 }
+
+/** Taxonomia vigente do template default (keys) — validação de sugestões na UI. */
+export async function fetchTaxonomy(): Promise<{ business_domains: string[]; document_types: string[] }> {
+  const res = await apiFetch(`${API_URL}/api/taxonomy`);
+  if (!res.ok) throw new Error("Falha ao carregar taxonomia");
+  return res.json();
+}
+
+/** Cria um document_type/business_domain no template default e propaga aos profiles. */
+export async function createTaxonomyEntry(input: {
+  kind: "document_type" | "business_domain";
+  key: string;
+  label?: string;
+  aliases?: string[];
+  created_from?: string;
+}): Promise<{ status: string; key: string; updated_projects: string[] }> {
+  const res = await apiFetch(`${API_URL}/api/taxonomy/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error("Falha ao criar entrada de taxonomia");
+  return res.json();
+}

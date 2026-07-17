@@ -15,6 +15,17 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.22.0] -- 2026-07-17
+
+### UI de conflitos de rótulo + criação governada de taxonomia
+
+- **Card "Conflitos de rótulo"** no Painel (junto à Triagem): pendências da reconciliação com fontes divergentes em chips, proposta do LLM em painel púrpura (confiança + justificativa) e arbitragem em um clique — Aceitar proposta ou Corrigir (fontes/proposta/personalizado). Endpoints `GET /api/classifier/label-conflicts` e `POST .../{sha}/resolve`; a resolução propaga o canônico por SHA às fontes (validation/training, nota `reconciled:ui`) e derivados (corpus/splits), com proveniência `human`/`human_confirmed_llm`
+- **Criação governada de taxonomia** (`app/taxonomy.py` + `POST /api/taxonomy/create` + `GET /api/taxonomy`): quando a sugestão aprovada usa um `document_type`/`business_domain` inexistente, a UI avisa ("usa taxonomia nova") e oferece **"Criar no template e aplicar"** — diálogo com label/aliases editáveis; a criação atualiza o template `default` (persistido em `_ATLASFILE/templates/`, com proveniência no `template_meta`) e propaga aos profiles de todos os projetos. **Só aprovação humana cria** (chave `outro` bloqueada). Efeito imediato: `bootstrap` e `llm` leem a taxonomia em runtime — o tipo novo com aliases classifica na próxima ingestão; `sparse_logreg` aprende no ciclo seguinte
+- Rehome aplicado: 20/20 arquivos dos projetos realinhados ao canônico (dataset ↔ filesystem sem descasamento); reconcile preserva resoluções prévias em re-execuções
+- Testes: 495 backend (+8) e 140 frontend (+5)
+
+---
+
 ## [0.21.0] -- 2026-07-17
 
 ### Instalador one-liner + reconciliação de rótulos por consenso

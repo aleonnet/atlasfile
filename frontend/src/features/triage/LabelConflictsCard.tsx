@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { Check, GitCompareArrows, Pencil, Sparkles } from "lucide-react";
+import { Check, GitCompareArrows, Pencil, PlusCircle, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { fetchLabelConflicts, resolveLabelConflict } from "../../api";
+import { createTaxonomyEntry, fetchLabelConflicts, fetchTaxonomy, resolveLabelConflict } from "../../api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -36,6 +36,14 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
   const [choice, setChoice] = useState<string>("");
   const [customBd, setCustomBd] = useState("");
   const [customDt, setCustomDt] = useState("");
+  const [taxonomy, setTaxonomy] = useState<{ business_domains: string[]; document_types: string[] } | null>(null);
+  // Fluxo "criar taxonomia e aplicar": itens faltantes + campos editáveis
+  const [creating, setCreating] = useState<{
+    conflict: LabelConflict;
+    businessDomain: string;
+    documentType: string;
+    missing: { kind: "business_domain" | "document_type"; key: string; label: string; aliases: string }[];
+  } | null>(null);
 
   const load = useCallback(() => {
     fetchLabelConflicts()
@@ -45,7 +53,61 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
 
   useEffect(() => {
     load();
+    fetchTaxonomy()
+      .then(setTaxonomy)
+      .catch(() => setTaxonomy(null));
   }, [load]);
+
+  /** Itens da escolha que ainda não existem na taxonomia do template. */
+  function missingEntries(businessDomain: string, documentType: string) {
+    if (!taxonomy) return [];
+    const missing: { kind: "business_domain" | "document_type"; key: string; label: string; aliases: string }[] = [];
+    if (businessDomain && !taxonomy.business_domains.includes(businessDomain)) {
+      missing.push({ kind: "business_domain", key: businessDomain, label: businessDomain, aliases: businessDomain });
+    }
+    if (documentType && !taxonomy.document_types.includes(documentType)) {
+      missing.push({ kind: "document_type", key: documentType, label: documentType, aliases: documentType });
+    }
+    return missing;
+  }
+
+  /** Resolve direto, ou abre o fluxo de criação quando a taxonomia não cobre a escolha. */
+  function resolveOrCreate(conflict: LabelConflict, businessDomain: string, documentType: string) {
+    const missing = missingEntries(businessDomain, documentType);
+    if (missing.length > 0) {
+      setCorrecting(null);
+      setCreating({ conflict, businessDomain, documentType, missing });
+      return;
+    }
+    void resolve(conflict, businessDomain, documentType);
+  }
+
+  async function confirmCreateAndResolve() {
+    if (!creating) return;
+    setSubmitting(creating.conflict.sha256);
+    try {
+      for (const item of creating.missing) {
+        const result = await createTaxonomyEntry({
+          kind: item.kind,
+          key: item.key,
+          label: item.label.trim() || item.key,
+          aliases: item.aliases.split(",").map((a) => a.trim()).filter(Boolean),
+          created_from: `conflito:${creating.conflict.sha256.slice(0, 12)}`,
+        });
+        toast.success(
+          `${item.kind === "document_type" ? "Tipo" : "Domínio"} \`${result.key}\` criado no template` +
+            (result.updated_projects.length ? ` e em ${result.updated_projects.length} projeto(s)` : "")
+        );
+      }
+      setTaxonomy(await fetchTaxonomy());
+      const { conflict, businessDomain, documentType } = creating;
+      setCreating(null);
+      await resolve(conflict, businessDomain, documentType);
+    } catch {
+      toast.error("Falha ao criar entrada de taxonomia");
+      setSubmitting(null);
+    }
+  }
 
   async function resolve(conflict: LabelConflict, businessDomain: string, documentType: string) {
     setSubmitting(conflict.sha256);
@@ -139,6 +201,12 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                       {proposal.justificativa && (
                         <p className="mt-1 text-[0.78rem] leading-relaxed text-muted-foreground">{proposal.justificativa}</p>
                       )}
+                      {missingEntries(proposal.business_domain!, proposal.document_type!).length > 0 && (
+                        <p className="mt-1.5 flex items-center gap-1.5 font-mono text-[0.68rem] text-accent">
+                          <PlusCircle size={11} aria-hidden />
+                          usa taxonomia nova — aceitar vai propor a criação no template
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -146,7 +214,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                     <Button
                       size="sm"
                       disabled={!hasProposal || busy}
-                      onClick={() => void resolve(conflict, proposal.business_domain!, proposal.document_type!)}
+                      onClick={() => resolveOrCreate(conflict, proposal.business_domain!, proposal.document_type!)}
                     >
                       <Check />
                       {busy ? "Aplicando..." : "Aceitar proposta"}
@@ -226,10 +294,78 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
               onClick={() => {
                 const [bd, dt] =
                   choice === CUSTOM ? [customBd.trim(), customDt.trim()] : (choice.split("/", 2) as [string, string]);
-                void resolve(correcting, bd, dt);
+                resolveOrCreate(correcting, bd, dt);
               }}
             >
               {submitting !== null ? "Aplicando..." : "Aplicar canônico"}
+            </Button>
+          </ModalActions>
+        </ModalShell>
+      )}
+
+      {creating && (
+        <ModalShell label="Criar taxonomia" title="Criar no template e aplicar">
+          <p className="text-sm text-muted-foreground">
+            A escolha{" "}
+            <strong className="font-mono text-foreground-strong">
+              {creating.businessDomain}/{creating.documentType}
+            </strong>{" "}
+            usa {creating.missing.length === 1 ? "uma entrada que não existe" : "entradas que não existem"} na
+            taxonomia. Criar agora atualiza o template <code className="font-mono text-accent">default</code> e os
+            profiles de todos os projetos — o classificador bootstrap passa a reconhecer imediatamente pelos aliases.
+          </p>
+
+          {creating.missing.map((item, idx) => (
+            <div key={item.kind} className="mt-4 rounded-md border border-border bg-panel-strong/40 p-3">
+              <p className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">
+                {item.kind === "document_type" ? "Novo tipo documental" : "Novo domínio de negócio"}:{" "}
+                <span className="text-accent">{item.key}</span>
+              </p>
+              <label className={fieldLabelClass} htmlFor={`tax-label-${idx}`}>Label</label>
+              <input
+                id={`tax-label-${idx}`}
+                className={cn(nativeSelectClass)}
+                value={item.label}
+                onChange={(e) =>
+                  setCreating((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          missing: prev.missing.map((m, i) => (i === idx ? { ...m, label: e.target.value } : m)),
+                        }
+                      : prev
+                  )
+                }
+              />
+              <label className={fieldLabelClass} htmlFor={`tax-aliases-${idx}`}>
+                Aliases (vírgula) — é o que o bootstrap usa para classificar
+              </label>
+              <input
+                id={`tax-aliases-${idx}`}
+                className={cn(nativeSelectClass, "font-mono")}
+                value={item.aliases}
+                onChange={(e) =>
+                  setCreating((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          missing: prev.missing.map((m, i) => (i === idx ? { ...m, aliases: e.target.value } : m)),
+                        }
+                      : prev
+                  )
+                }
+                placeholder="ex: plano, plano de trabalho, cronograma"
+              />
+            </div>
+          ))}
+
+          <ModalActions>
+            <Button variant="secondary" disabled={submitting !== null} onClick={() => setCreating(null)}>
+              Cancelar
+            </Button>
+            <Button disabled={submitting !== null} onClick={() => void confirmCreateAndResolve()}>
+              <PlusCircle />
+              {submitting !== null ? "Criando..." : "Criar e aplicar"}
             </Button>
           </ModalActions>
         </ModalShell>

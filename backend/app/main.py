@@ -1289,6 +1289,51 @@ class LabelConflictResolution(BaseModel):
     document_type: str
 
 
+class TaxonomyCreateRequest(BaseModel):
+    kind: str  # document_type | business_domain
+    key: str
+    label: str = ""
+    aliases: list[str] = []
+    extensions: list[str] = []
+    created_from: str = ""
+
+
+@app.post("/api/taxonomy/create")
+def create_taxonomy(request: TaxonomyCreateRequest, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Cria um document_type/business_domain no template default e propaga aos
+    profiles dos projetos — usado quando uma sugestão aprovada usa taxonomia nova.
+    Bootstrap e LLM reconhecem o novo tipo imediatamente (taxonomia em runtime)."""
+    from app.taxonomy import create_taxonomy_entry
+
+    try:
+        result = create_taxonomy_entry(
+            kind=request.kind,
+            key=request.key,
+            label=request.label,
+            aliases=request.aliases,
+            extensions=request.extensions,
+            created_from=request.created_from,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", **result}
+
+
+@app.get("/api/taxonomy")
+def get_taxonomy(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Taxonomia vigente do template default (keys de domínios e tipos) — usada
+    pela UI para validar sugestões antes de aplicar."""
+    from app.template_store import get_template
+
+    # get_template retorna {meta..., profile: raw} — a taxonomia vive no profile
+    raw = get_template("default")["profile"]
+    classification = raw.get("classification", {})
+    return {
+        "business_domains": [d.get("key") for d in classification.get("business_domains", []) if d.get("key")],
+        "document_types": [t.get("key") for t in classification.get("document_types", []) if t.get("key")],
+    }
+
+
 @app.post("/api/classifier/label-conflicts/{sha256}/resolve")
 def resolve_label_conflict(
     sha256: str, request: LabelConflictResolution, auth: AuthContext = Depends(require_auth)

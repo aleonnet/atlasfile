@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.22.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [ui_conflitos_e_taxonomia_governada_v0220](ui_conflitos_e_taxonomia_governada_v0220.plan.md) | Card "Conflitos de rótulo" no Painel (arbitragem em um clique com proveniência, propagação por SHA a fontes e derivados) + criação governada de taxonomia a partir de sugestão aprovada (template default + propagação a profiles; bootstrap/llm reconhecem em runtime); rehome 20/20 aplicado |
+
+---
+
 ## 0.21.0
 
 | # | Plano | Escopo |

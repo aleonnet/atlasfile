@@ -36,6 +36,8 @@ vi.mock("./api", () => ({
   fetchTriage: vi.fn(() => Promise.resolve([])),
   fetchLabelConflicts: vi.fn(() => Promise.resolve({ total: 0, items: [] })),
   resolveLabelConflict: vi.fn(() => Promise.resolve({ status: "ok", labeled_by: "human" })),
+  fetchTaxonomy: vi.fn(() => Promise.resolve({ business_domains: [], document_types: [] })),
+  createTaxonomyEntry: vi.fn(() => Promise.resolve({ status: "ok", key: "x", updated_projects: [] })),
   fetchClassifierStatus: vi.fn(() =>
     Promise.resolve({
       available_modes: ["bootstrap", "sparse_logreg"],
