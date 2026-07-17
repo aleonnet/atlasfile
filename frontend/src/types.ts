@@ -703,3 +703,27 @@ export interface ChannelStatusResponse {
   channels_enabled: boolean;
   channels: ChannelStatusItem[];
 }
+
+/** Conflito de rótulo por SHA256 (reconciliação — pendente de arbitragem humana). */
+export interface LabelConflictSource {
+  source: "training_pool" | "validation_set" | "project_tree";
+  ref: string;
+  business_domain: string;
+  document_type: string;
+  authoritative: boolean;
+}
+
+export interface LabelConflict {
+  sha256: string;
+  refs: string[];
+  canonical_business_domain: string;
+  canonical_document_type: string;
+  labeled_by: string;
+  llm_proposal: {
+    business_domain?: string;
+    document_type?: string;
+    confidence?: number;
+    justificativa?: string;
+  };
+  sources: LabelConflictSource[];
+}

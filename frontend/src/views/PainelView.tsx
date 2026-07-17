@@ -13,6 +13,7 @@ import { StatTile } from "../components/ui/stat-tile";
 import { FileUploadZone } from "../features/ingest/FileUploadZone";
 import { InboxScanCard } from "../features/ingest/InboxScanCard";
 import { IngestHistoryCard } from "../features/ingest/IngestHistoryCard";
+import { LabelConflictsCard } from "../features/triage/LabelConflictsCard";
 import { TriageQueue } from "../features/triage/TriageQueue";
 import { buildEvidenceGroups, topLocations } from "../features/search/searchFormatters";
 import { cn } from "../lib/utils";
@@ -472,6 +473,8 @@ export function PainelView({
       </Card>
 
       <TriageQueue triageItems={triageItems} projectLabelById={projectLabelById} onDecision={onDecision} />
+
+      <LabelConflictsCard />
 
       {isSingleProject && <IngestHistoryCard selectedProject={selectedProject} onStatus={onStatus} />}
 

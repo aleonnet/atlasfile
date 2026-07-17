@@ -12,6 +12,7 @@ import type {
   TrainingUsageSummary,
   IngestHistoryResponse,
   IngestOperationStatus,
+  LabelConflict,
   ModelOption,
   OperationalClassifierMode,
   LayoutPlanResponse,
@@ -727,5 +728,26 @@ export async function updateChannelConfig(config: ChannelConfig): Promise<Channe
 export async function fetchChannelStatus(): Promise<ChannelStatusResponse> {
   const res = await apiFetch(`${API_URL}/api/channels/status`);
   if (!res.ok) throw new Error("Falha ao carregar status dos canais");
+  return res.json();
+}
+
+/** Conflitos de rótulo pendentes de arbitragem (reconciliação por SHA). */
+export async function fetchLabelConflicts(): Promise<{ total: number; items: LabelConflict[] }> {
+  const res = await apiFetch(`${API_URL}/api/classifier/label-conflicts`);
+  if (!res.ok) throw new Error("Falha ao carregar conflitos de rótulo");
+  return res.json();
+}
+
+export async function resolveLabelConflict(
+  sha256: string,
+  businessDomain: string,
+  documentType: string
+): Promise<{ status: string; labeled_by: string }> {
+  const res = await apiFetch(`${API_URL}/api/classifier/label-conflicts/${sha256}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ business_domain: businessDomain, document_type: documentType }),
+  });
+  if (!res.ok) throw new Error("Falha ao resolver conflito de rótulo");
   return res.json();
 }

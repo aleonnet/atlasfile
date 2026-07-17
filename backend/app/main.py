@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, File as FastAPIFile, Header, HTTPException, Query, Response, UploadFile
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
@@ -1272,6 +1273,38 @@ def _run_classifier_cycle_background(
 @app.get("/api/classifier/status")
 def get_classifier_status(project_id: str | None = Query(None, description="Projeto para calcular override efetivo")) -> dict[str, Any]:
     return _classifier_status_payload(project_id)
+
+
+@app.get("/api/classifier/label-conflicts")
+def get_label_conflicts(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Conflitos de rótulo pendentes de arbitragem humana (reconciliação por SHA)."""
+    from app.label_conflicts import list_pending_conflicts
+
+    items = list_pending_conflicts()
+    return {"total": len(items), "items": items}
+
+
+class LabelConflictResolution(BaseModel):
+    business_domain: str
+    document_type: str
+
+
+@app.post("/api/classifier/label-conflicts/{sha256}/resolve")
+def resolve_label_conflict(
+    sha256: str, request: LabelConflictResolution, auth: AuthContext = Depends(require_auth)
+) -> dict[str, Any]:
+    """Aplica a arbitragem humana: rótulo canônico propagado a fontes e derivados."""
+    from app.label_conflicts import resolve_conflict
+
+    bd = request.business_domain.strip()
+    dt = request.document_type.strip()
+    if not bd or not dt:
+        raise HTTPException(status_code=422, detail="business_domain e document_type são obrigatórios")
+    try:
+        result = resolve_conflict(sha256, bd, dt)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"status": "ok", **result}
 
 
 @app.get("/api/classifier/report/latest")
