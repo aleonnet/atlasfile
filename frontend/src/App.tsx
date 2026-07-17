@@ -15,7 +15,7 @@ import {
   triageDecision,
   updateChannelConfig,
 } from "./api";
-import { Toaster } from "./components/ui/sonner";
+import { Toaster, toast } from "./components/ui/sonner";
 import { ToastProvider } from "./contexts/ToastContext";
 import { NavigationProvider, useNavigation } from "./contexts/NavigationContext";
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
@@ -76,6 +76,14 @@ function AppShell() {
 
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
   const [status, setStatus] = useState("Pronto");
+
+  // O footer .status morreu: mensagens de status viram um toast único que se
+  // atualiza in-place (id fixo) — progresso contínuo não vira spam de toasts.
+  useEffect(() => {
+    if (!status || status === "Pronto") return;
+    const isError = /falha|erro|negado|inválid/i.test(status);
+    toast[isError ? "error" : "message"](status, { id: "app-status" });
+  }, [status]);
   const [triageItems, setTriageItems] = useState<TriageItem[]>([]);
   const [reconcileStatus, setReconcileStatus] = useState<ReconcileStatus | null>(null);
   const [dashboardStats, setDashboardStats] = useState<StatsResponse | null>(null);
@@ -632,7 +640,6 @@ function AppShell() {
           />
         )}
 
-          <footer className="status">{status}</footer>
         </main>
       </div>
 
