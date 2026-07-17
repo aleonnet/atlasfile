@@ -175,6 +175,8 @@ vi.mock("../../api", () => ({
   triggerScan: vi.fn(() => Promise.resolve(mockScanResult)),
   fetchIngestHistory: vi.fn(() => Promise.resolve({ project_id: "p1", entries: [] })),
   fetchIngestStatus: vi.fn(() => Promise.resolve({ last_run_started_at: null, last_run_finished_at: null, duration_seconds: null, project_id: null, running: false, phase: "idle", progress_current: 0, progress_total: 0, progress_file: null, processed_count: 0, failed_count: 0, last_error: null })),
+  fetchInboxFiles: vi.fn(() => Promise.resolve({ files: [] })),
+  deleteInboxFile: vi.fn(() => Promise.resolve({ status: "ok", deleted: "" })),
   getIngestStatusStreamUrl: vi.fn(() => "http://localhost/api/ingest/status/stream"),
   fetchModels: vi.fn(() =>
     Promise.resolve([

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   cancelClassifierCycle,
   deleteClassifierReport,
+  deleteInboxFile,
+  fetchInboxFiles,
   fetchClassifierCycleStatus,
   fetchClassifierReportLatest,
   fetchClassifierReports,
@@ -197,6 +199,7 @@ export function IngestTriageCard({
   const [cancellingCycle, setCancellingCycle] = useState(false);
   const [classifierCycleStatus, setClassifierCycleStatus] = useState<ClassifierCycleStatus | null>(null);
   const [ingestStatus, setIngestStatus] = useState<IngestOperationStatus | null>(null);
+  const [inboxFiles, setInboxFiles] = useState<{ filename: string; size: number }[]>([]);
   const ingestMonitorStopRef = useRef<(() => void) | null>(null);
   const classifierCycleMonitorStopRef = useRef<(() => void) | null>(null);
 
@@ -276,6 +279,21 @@ export function IngestTriageCard({
   useEffect(() => {
     void loadClassifierState();
   }, [loadClassifierState]);
+
+  // Fila da INBOX visível: o usuário vê O QUE será processado antes de clicar
+  const loadInbox = useCallback(() => {
+    if (!isSingleProject) {
+      setInboxFiles([]);
+      return;
+    }
+    fetchInboxFiles(selectedProject)
+      .then((res) => setInboxFiles(res.files))
+      .catch(() => setInboxFiles([]));
+  }, [isSingleProject, selectedProject]);
+
+  useEffect(() => {
+    loadInbox();
+  }, [loadInbox]);
 
   useEffect(() => {
     if (models.length === 0) {
@@ -615,6 +633,7 @@ export function IngestTriageCard({
     } finally {
       stopIngestMonitor();
       void fetchIngestStatus().then(setIngestStatus).catch(() => {});
+      loadInbox();
       setLoading(false);
     }
   }
@@ -650,6 +669,39 @@ export function IngestTriageCard({
               · {triageItems.length} pendente{triageItems.length !== 1 ? "s" : ""}
             </span>
           )}
+        </div>
+      )}
+
+      {/* Fila da INBOX: o que o Processar INBOX vai processar */}
+      {isSingleProject && inboxFiles.length > 0 && (
+        <div className="mb-2.5 rounded-md border border-border bg-elevated px-3 py-2.5">
+          <p className="font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">
+            Na fila da INBOX ({inboxFiles.length})
+          </p>
+          <ul className="m-0 mt-1.5 flex list-none flex-wrap gap-1.5 p-0">
+            {inboxFiles.map((file) => (
+              <li
+                key={file.filename}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-panel py-1 pl-2.5 pr-1 font-mono text-[0.7rem] text-foreground"
+                title={file.filename}
+              >
+                <span className="max-w-56 truncate">{file.filename}</span>
+                <span className="text-tertiary">{(file.size / 1024).toFixed(0)}kb</span>
+                <button
+                  type="button"
+                  className={rowDeleteButtonClass}
+                  aria-label={`Remover ${file.filename} da inbox`}
+                  onClick={() => {
+                    void deleteInboxFile(selectedProject, file.filename)
+                      .then(() => loadInbox())
+                      .catch(() => onStatus("Falha ao remover arquivo da inbox"));
+                  }}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
