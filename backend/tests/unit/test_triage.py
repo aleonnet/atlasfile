@@ -374,3 +374,33 @@ def test_rejeitados_listar_restaurar_excluir(monkeypatch, tmp_path: Path) -> Non
     rejected_dir = project_root / "_TRIAGE_REVIEW" / "rejected"
     assert list(rejected_dir.glob("*.json")) == []
     assert not any(p.suffix == ".txt" for p in rejected_dir.iterdir())
+
+
+def test_excluir_rejeitado_marca_deleted_no_historico(monkeypatch, tmp_path: Path) -> None:
+    """A linha do Processamentos vira trilha de auditoria: rejeitar grava
+    'rejected' e excluir grava 'deleted' — a UI mostra o badge fiel."""
+    from app.ingest_history import append_ingest_entry, load_ingest_history
+
+    project_id = "triage_hist"
+    doc_id = "doc-hist"
+    project_root, _source = _prepare_pending_triage_item(
+        tmp_path=tmp_path, project_id=project_id, doc_id=doc_id,
+        naming_pattern="{date}__{project}__{business_domain}__{original_name}",
+        original_filename="auditavel.txt", canonical_filename="auditavel.txt",
+        suggested_business_domain="juridico", suggested_document_type="contrato",
+    )
+    _patch_triage_dependencies(monkeypatch, tmp_path)
+    auth = AuthContext(name="t", allowed_projects=("*",))
+    append_ingest_entry(project_root, scan_result={
+        "project_id": project_id, "processed_count": 1, "failed_count": 0,
+        "items": [{"doc_id": doc_id, "original_filename": "auditavel.txt", "decision": "triage_pending"}],
+        "errors": [],
+    })
+
+    main_module.decide_triage(project_id, doc_id, TriageDecisionRequest(action="reject"), auth=auth)
+    entries = load_ingest_history(project_root)
+    assert entries[0]["items"][0]["decision"] == "rejected"
+
+    main_module.delete_rejected_triage(project_id, doc_id, auth=auth)
+    entries = load_ingest_history(project_root)
+    assert entries[0]["items"][0]["decision"] == "deleted"

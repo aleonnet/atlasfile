@@ -3295,6 +3295,7 @@ def delete_rejected_triage(project_id: str, doc_id: str, auth: AuthContext = Dep
     if file_path.is_file() and file_path.parent == triage_rejected_dir(project_root):
         file_path.unlink(missing_ok=True)
     meta_path.unlink(missing_ok=True)
+    update_history_item(project_root, doc_id, {"decision": "deleted"})
     return {"status": "ok", "action": "deleted", "doc_id": doc_id}
 
 

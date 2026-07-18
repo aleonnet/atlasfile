@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, RefreshCw, Settings, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   cancelClassifierCycle,
   deleteClassifierReport,
@@ -171,6 +171,7 @@ export function IngestTriageCard({
   const [classifierStatus, setClassifierStatus] = useState<ClassifierStatusResponse | null>(null);
   const [classifierReport, setClassifierReport] = useState<ClassifierReport | null>(null);
   const [classifierReports, setClassifierReports] = useState<ClassifierReportSummary[]>([]);
+  const [expandedBenchmarkMode, setExpandedBenchmarkMode] = useState<string | null>(null);
   const [confirmDeleteReportId, setConfirmDeleteReportId] = useState<string | null>(null);
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
   const [classifierSaving, setClassifierSaving] = useState(false);
@@ -699,20 +700,55 @@ export function IngestTriageCard({
                         const isLive = !!liveSummary && !liveIsSkipped;
                         const skipReasons = (liveIsSkipped ? liveSummary?.skip_reason : reportSummary?.skip_reason) ?? [];
                         const skipLabel = formatSkipReason(skipReasons);
+                        const modeResults = reportBenchmarks?.[mode]?.results ?? [];
+                        const isModeExpanded = expandedBenchmarkMode === mode && modeResults.length > 0;
                         return (
-                          <tr key={mode} className={cn(isSkipped && "opacity-45", isLive && "text-foreground")}>
-                            <td className="left">
-                              {formatClassifierModeLabel(mode)}
-                              {isChampion && <Badge variant="success" className="ml-1.5 uppercase">campeão</Badge>}
-                              {isSkipped && <span className="ml-1 text-[0.72rem] text-muted-foreground">skip</span>}
-                            </td>
-                            <td>{formatPct(displaySummary.business_domain_accuracy)}</td>
-                            <td>{formatPct(displaySummary.document_type_accuracy)}</td>
-                            <td>{formatPct(displaySummary.exact_match_accuracy)}</td>
-                            <td className="left" title={skipReasons.join("; ") || undefined}>
-                              {isSkipped ? (skipLabel ? `skip — ${skipLabel}` : "skip") : "ok"}
-                            </td>
-                          </tr>
+                          <Fragment key={mode}>
+                            <tr
+                              className={cn(isSkipped && "opacity-45", isLive && "text-foreground", modeResults.length > 0 && "cursor-pointer")}
+                              onClick={modeResults.length > 0 ? () => setExpandedBenchmarkMode((cur) => (cur === mode ? null : mode)) : undefined}
+                            >
+                              <td className="left">
+                                <span className="inline-flex items-center gap-1">
+                                  {modeResults.length > 0 &&
+                                    (isModeExpanded ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />)}
+                                  {formatClassifierModeLabel(mode)}
+                                </span>
+                                {isChampion && <Badge variant="success" className="ml-1.5 uppercase">campeão</Badge>}
+                                {isSkipped && <span className="ml-1 text-[0.72rem] text-muted-foreground">skip</span>}
+                              </td>
+                              <td>{formatPct(displaySummary.business_domain_accuracy)}</td>
+                              <td>{formatPct(displaySummary.document_type_accuracy)}</td>
+                              <td>{formatPct(displaySummary.exact_match_accuracy)}</td>
+                              <td className="left" title={skipReasons.join("; ") || undefined}>
+                                {isSkipped ? (skipLabel ? `skip — ${skipLabel}` : "skip") : "ok"}
+                              </td>
+                            </tr>
+                            {isModeExpanded && (
+                              <tr>
+                                <td colSpan={5} className="left">
+                                  <div className="space-y-1.5 rounded-md bg-panel-strong p-2.5 font-mono text-[0.72rem] text-muted-foreground [&_code]:text-accent-light">
+                                    {modeResults.map((r) => (
+                                      <div key={r.file}>
+                                        <p className="m-0 truncate text-foreground/90" title={r.file}>{r.file}</p>
+                                        <p className="m-0">
+                                          esperado: <code>{r.expected_business_domain} / {r.expected_document_type}</code>
+                                          {"   "}previsto: <code>{r.predicted_business_domain} / {r.predicted_document_type}</code>
+                                          {"   "}
+                                          <span className={r.business_domain_ok ? "text-success" : "text-destructive"}>
+                                            {r.business_domain_ok ? "✓" : "✗"} domínio
+                                          </span>{" "}
+                                          <span className={r.document_type_ok ? "text-success" : "text-destructive"}>
+                                            {r.document_type_ok ? "✓" : "✗"} tipo
+                                          </span>
+                                        </p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
                         );
                       })}
                     </tbody>

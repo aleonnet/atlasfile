@@ -15,6 +15,19 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.27.3] -- 2026-07-18
+
+### Corrigido
+
+- **Processamentos com badge fiel ao ciclo de vida**: o histórico já gravava `approved`/`corrected`/`rejected`, mas a UI mostrava "triagem" para tudo. Agora: `aprovado`, `corrigido`, `rejeitado` e — após o Excluir de um rejeitado — `excluído` (o endpoint marca o histórico via `update_history_item`). A linha nunca some: trilha de auditoria. Linhas rejeitadas/excluídas não oferecem mais a ação de mover.
+- **Painel de detalhes enxuto e honesto**: título "Detalhes da classificação" (sem "LLM" quando não há LLM) e **uma linha por classificador** — `bootstrap: domínio X | tipo Y | final Z` e, quando o LLM participou, `llm: domínio A · tipo B (conf C)`. A linha "Regra:" saiu (a seta `← regra` na própria linha já mostra override).
+
+### Adicionado
+
+- **Benchmark oficial expansível**: clicar num modo (bootstrap/llm) abre o detalhe por documento do validation set — arquivo, esperado vs previsto com ✓/✗ por eixo. É onde se vê, por exemplo, que o LLM previu `plano` para o pptx "Plano convênio bancário" (foi no nome do arquivo).
+
+---
+
 ## [0.27.2] -- 2026-07-18
 
 ### Corrigido

@@ -416,7 +416,7 @@ export interface ScanFileResult {
   original_filename: string;
   canonical_filename: string;
   path: string;
-  decision: "auto" | "triage_pending" | "duplicate";
+  decision: "auto" | "triage_pending" | "duplicate" | "error" | "moved" | "approved" | "corrected" | "rejected" | "deleted";
   confidence_score: number;
   business_domain_confidence?: number;
   document_type_confidence?: number;

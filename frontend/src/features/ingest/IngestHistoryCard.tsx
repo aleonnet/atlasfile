@@ -20,14 +20,22 @@ function decisionBadge(decision: FlatRow["decision"]) {
       return <Badge variant="outline">dup</Badge>;
     case "error":
       return <Badge variant="destructive">falha</Badge>;
+    case "approved":
+      return <Badge variant="success">aprovado</Badge>;
+    case "corrected":
+      return <Badge variant="success">corrigido</Badge>;
+    case "rejected":
+      return <Badge variant="destructive">rejeitado</Badge>;
+    case "deleted":
+      return <Badge variant="outline">excluído</Badge>;
     default:
       return <Badge>triagem</Badge>;
   }
 }
 
 function decisionIcon(decision: FlatRow["decision"]) {
-  if (decision === "auto" || decision === "moved") return <CheckCircle2 size={13} className="text-success" aria-hidden />;
-  if (decision === "duplicate" || decision === "error") return <XCircle size={13} className="text-destructive" aria-hidden />;
+  if (decision === "auto" || decision === "moved" || decision === "approved" || decision === "corrected") return <CheckCircle2 size={13} className="text-success" aria-hidden />;
+  if (decision === "duplicate" || decision === "error" || decision === "rejected" || decision === "deleted") return <XCircle size={13} className="text-destructive" aria-hidden />;
   return <Clock size={13} className="text-accent" aria-hidden />;
 }
 
@@ -42,13 +50,12 @@ type FlatRow = {
   filename: string;
   business_domain: string;
   document_type?: string;
-  decision: "auto" | "triage_pending" | "duplicate" | "error" | "moved";
+  decision: "auto" | "triage_pending" | "duplicate" | "error" | "moved" | "approved" | "corrected" | "rejected" | "deleted";
   confidence: number | null;
   business_domain_confidence?: number;
   document_type_confidence?: number;
   llm: boolean;
   rule_business_domain?: string;
-  rule_confidence?: number;
   llm_explanation?: string;
   llm_proposed_business_domain?: string;
   llm_business_domain?: string;
@@ -88,7 +95,6 @@ function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
         document_type_confidence: item.document_type_confidence,
         llm: item.topics_source === "llm_policy" || !!item.llm_explanation || !!item.rule_business_domain || !!item.llm_business_domain,
         rule_business_domain: item.rule_business_domain,
-        rule_confidence: item.rule_confidence,
         llm_explanation: item.llm_explanation,
         llm_proposed_business_domain: item.llm_proposed_business_domain,
         llm_business_domain: item.llm_business_domain,
@@ -174,7 +180,11 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
   }
 
   const canMove = (row: FlatRow) =>
-    row.doc_id && row.decision !== "duplicate" && row.decision !== "error";
+    row.doc_id &&
+    row.decision !== "duplicate" &&
+    row.decision !== "error" &&
+    row.decision !== "rejected" &&
+    row.decision !== "deleted";
 
   if (allRows.length === 0) return null;
 
@@ -257,29 +267,24 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                           <tr>
                             <td colSpan={6}>
                               <div className="space-y-0.5 rounded-md bg-panel-strong p-2.5 font-mono text-[0.72rem] text-muted-foreground [&_code]:text-accent-light [&_em]:not-italic [&_em]:text-foreground/80">
-                                <strong className="font-display text-foreground-strong">Detalhes da classificação LLM</strong>
+                                <strong className="font-display text-foreground-strong">Detalhes da classificação</strong>
                                 <p>
-                                  Classificador: <code>{formatClassifierModeLabel(row.classifier_mode)}</code>
+                                  <code>{formatClassifierModeLabel(row.classifier_mode)}</code>
                                   {row.classifier_requested_mode && row.classifier_requested_mode !== row.classifier_mode
                                     ? ` (solicitado: ${formatClassifierModeLabel(row.classifier_requested_mode)})`
                                     : ""}
+                                  : domínio {formatPct(row.business_domain_confidence)} | tipo {formatPct(row.document_type_confidence)} | final {row.confidence !== null ? row.confidence.toFixed(2) : "—"}
                                 </p>
-                                <p>
-                                  Scores: domínio {formatPct(row.business_domain_confidence)} | tipo {formatPct(row.document_type_confidence)} | final {row.confidence !== null ? row.confidence.toFixed(2) : "—"}
-                                </p>
-                                {row.classifier_fallback_reason && (
-                                  <p>Fallback: <code>{row.classifier_fallback_reason}</code></p>
-                                )}
-                                {row.rule_business_domain && (
-                                  <p>Regra: <code>{row.rule_business_domain}</code> (conf {(row.rule_confidence ?? 0).toFixed(2)})</p>
-                                )}
                                 {(row.llm_business_domain || row.llm_document_type) && (
                                   <p>
-                                    LLM:{row.llm_business_domain && <> domínio <code>{row.llm_business_domain}</code></>}
+                                    <code>llm</code>:{row.llm_business_domain && <> domínio <code>{row.llm_business_domain}</code></>}
                                     {row.llm_business_domain && row.llm_document_type ? " ·" : ""}
                                     {row.llm_document_type && <> tipo <code>{row.llm_document_type}</code></>}
                                     {row.llm_confidence !== undefined && <> (conf {row.llm_confidence.toFixed(2)})</>}
                                   </p>
+                                )}
+                                {row.classifier_fallback_reason && (
+                                  <p>Fallback: <code>{row.classifier_fallback_reason}</code></p>
                                 )}
                                 {row.llm_explanation && <p>Motivo: <em>{row.llm_explanation}</em></p>}
                                 {row.llm_proposed_business_domain && (
