@@ -203,16 +203,37 @@ def _sparse_champion_has_class(kind: str, key: str) -> bool:
         return False
 
 
+def _canonical_destination_entry(kind: str, to_key: str) -> dict[str, Any]:
+    """Definição canônica do destino em QUALQUER template ou profile (multi-template:
+    o destino pode existir só no template do projeto, não no default)."""
+    for meta in list_templates():
+        slug = str(meta.get("slug") or "")
+        if not slug:
+            continue
+        try:
+            entry = _find_entry(get_template(slug)["profile"], kind, to_key)
+        except Exception:
+            continue
+        if entry is not None:
+            return entry
+    for project_root in list_project_roots(Path(settings.projects_root)):
+        try:
+            entry = _find_entry(load_profile(project_root).model_dump(mode="json"), kind, to_key)
+        except Exception:
+            continue
+        if entry is not None:
+            return entry
+    raise TaxonomyMigrationError(
+        f"destino '{to_key}' não existe em nenhum template ou projeto — crie primeiro (Novo tipo/domínio)"
+    )
+
+
 def plan_taxonomy_migration(
     *, kind: str, from_key: str, to_key: str, os_client: Any
 ) -> dict[str, Any]:
     """Dry-run: valida e conta tudo que a migração tocaria. Não muta nada."""
     from_key, to_key = _validate_kind_and_keys(kind, from_key, to_key)
-    default_raw = _default_template_raw()
-    if _find_entry(default_raw, kind, to_key) is None:
-        raise TaxonomyMigrationError(
-            f"destino '{to_key}' não existe na taxonomia — crie primeiro (Novo tipo/domínio)"
-        )
+    _canonical_destination_entry(kind, to_key)  # valida existência (qualquer template/profile)
     templates = _templates_containing(kind, from_key)
     documents = _count_index_docs(os_client, kind, from_key)
     total_docs = sum(documents.values())
@@ -320,15 +341,33 @@ def rewrite_pending_suggestions(kind: str, from_key: str, to_key: str) -> int:
 
 
 def _rename_in_raw(
-    raw: dict[str, Any], kind: str, from_key: str, to_key: str, *, remove_old: bool
+    raw: dict[str, Any],
+    kind: str,
+    from_key: str,
+    to_key: str,
+    *,
+    remove_old: bool,
+    canonical_to_entry: dict[str, Any] | None = None,
 ) -> bool:
     """Remove a entrada antiga (herdando aliases no destino), ajusta layout e
-    routing_rules. Retorna True se algo mudou."""
+    routing_rules. Se o raw tem a origem mas NÃO o destino (multi-template),
+    insere a definição canônica do destino — senão o move falharia no
+    _ensure_*_in_profile. Retorna True se algo mudou."""
     classification = raw.get("classification") or {}
     bucket = classification.get(_bucket_name(kind), []) or []
     from_entry = next((i for i in bucket if i.get("key") == from_key), None)
     to_entry = next((i for i in bucket if i.get("key") == to_key), None)
     changed = False
+
+    if from_entry is not None and to_entry is None and canonical_to_entry is not None:
+        to_entry = json.loads(json.dumps(canonical_to_entry))  # deepcopy simples
+        bucket.append(to_entry)
+        if kind == "business_domain":
+            layout = raw.setdefault("layout", {})
+            folders = layout.setdefault("business_domain_folders", [])
+            if not any(f.get("business_domain") == to_key for f in folders):
+                folders.append({"business_domain": to_key, "folder": to_entry.get("folder") or to_key})
+        changed = True
 
     if from_entry is not None and to_entry is not None:
         # Destino herda aliases da origem (a própria key antiga incluída):
@@ -368,7 +407,7 @@ def _rename_in_raw(
 
 
 def rename_in_templates_and_profiles(
-    kind: str, from_key: str, to_key: str, *, remove_old: bool
+    kind: str, from_key: str, to_key: str, *, remove_old: bool, canonical_to_entry: dict[str, Any] | None = None
 ) -> dict[str, list[str]]:
     provenance = f"taxonomy:migrate:{kind}:{from_key}->{to_key} em {utc_now_iso()}"
     updated_templates: list[str] = []
@@ -380,7 +419,7 @@ def rename_in_templates_and_profiles(
             raw = get_template(slug)["profile"]
         except Exception:
             continue
-        if _rename_in_raw(raw, kind, from_key, to_key, remove_old=remove_old):
+        if _rename_in_raw(raw, kind, from_key, to_key, remove_old=remove_old, canonical_to_entry=canonical_to_entry):
             template_meta = raw.setdefault("template_meta", {})
             template_meta["updated_at"] = utc_now_iso()
             template_meta["notes"] = ((template_meta.get("notes") or "") + " | " + provenance).strip(" |")
@@ -394,7 +433,7 @@ def rename_in_templates_and_profiles(
         except Exception:
             continue
         raw = profile.model_dump(mode="json")
-        if _rename_in_raw(raw, kind, from_key, to_key, remove_old=remove_old):
+        if _rename_in_raw(raw, kind, from_key, to_key, remove_old=remove_old, canonical_to_entry=canonical_to_entry):
             save_profile(project_root=project_root, profile=raw, updated_by=f"taxonomy:migrate:{from_key}->{to_key}")
             updated_projects.append(raw.get("project_id") or project_root.name)
     return {"templates": updated_templates, "projects": updated_projects}
@@ -456,10 +495,33 @@ def apply_taxonomy_migration(
     `load_project_context(project_id) -> (project_root, profile_dict)`."""
     plan = plan_taxonomy_migration(kind=kind, from_key=from_key, to_key=to_key, os_client=os_client)
     from_key, to_key = plan["from_key"], plan["to_key"]
+    canonical_to_entry = _canonical_destination_entry(kind, to_key)
+
+    # Snapshot dos folder names da ORIGEM por projeto ANTES do rename (depois a
+    # entrada some do profile e o folder fica irrecuperável) — usado na limpeza
+    # de pastas vazias ao final.
+    from_folders: dict[str, tuple[Path, str, str]] = {}
+    for project_root in list_project_roots(Path(settings.projects_root)):
+        try:
+            raw = load_profile(project_root).model_dump(mode="json")
+        except Exception:
+            continue
+        entry = _find_entry(raw, kind, from_key)
+        if entry is None:
+            continue
+        areas_root = str((raw.get("layout") or {}).get("areas_root") or "02_AREAS")
+        folder = str(entry.get("folder") or from_key)
+        if kind == "business_domain":
+            for row in (raw.get("layout") or {}).get("business_domain_folders", []) or []:
+                if row.get("business_domain") == from_key and row.get("folder"):
+                    folder = str(row["folder"])
+        from_folders[project_root.name] = (project_root, areas_root, folder)
 
     # 1. Taxonomia primeiro: o destino precisa existir em cada profile antes do
     # move (o _ensure_*_in_profile valida) e as regras/aliases já migram juntas.
-    taxonomy_result = rename_in_templates_and_profiles(kind, from_key, to_key, remove_old=remove_old)
+    taxonomy_result = rename_in_templates_and_profiles(
+        kind, from_key, to_key, remove_old=remove_old, canonical_to_entry=canonical_to_entry
+    )
 
     # 2. Documentos: move físico + reindex, sem hold-out
     moved: dict[str, int] = {}
@@ -531,6 +593,27 @@ def apply_taxonomy_migration(
     # 4. Sugestões pendentes de triagem
     pending_rewritten = rewrite_pending_suggestions(kind, from_key, to_key)
 
+    # 5. Pastas de origem esvaziadas pelo move: rmdir SÓ de vazias, nunca forçado
+    removed_dirs = 0
+    for _, (project_root, areas_root, folder) in from_folders.items():
+        areas = project_root / areas_root
+        candidates: list[Path] = []
+        if kind == "document_type":
+            # o folder do tipo existe sob cada domínio: 02_AREAS/{bd}/{folder}
+            if areas.is_dir():
+                candidates = [bd_dir / folder for bd_dir in areas.iterdir() if bd_dir.is_dir()]
+        else:
+            bd_dir = areas / folder
+            if bd_dir.is_dir():
+                candidates = [d for d in bd_dir.iterdir() if d.is_dir()] + [bd_dir]
+        for candidate in candidates:
+            try:
+                if candidate.is_dir() and not any(candidate.iterdir()):
+                    candidate.rmdir()
+                    removed_dirs += 1
+            except OSError:
+                continue
+
     warnings = list(plan["warnings"])
     if index_only:
         warnings.append(
@@ -544,6 +627,7 @@ def apply_taxonomy_migration(
         "to_key": to_key,
         "moved_by_project": moved,
         "moved_total": sum(moved.values()),
+        "removed_dirs": removed_dirs,
         "index_only": len(index_only),
         "errors": errors,
         "datasets": dataset_counts,

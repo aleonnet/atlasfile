@@ -271,3 +271,75 @@ def test_remove_limpa_templates_quando_sem_uso(roots):
     assert "default" in result["templates_updated"]
     raw = get_template("default")["profile"]
     assert all(d["key"] != "parecer" for d in raw["classification"]["document_types"])
+
+
+def test_destino_valido_em_qualquer_template_ou_profile(roots, monkeypatch):
+    # destino existe SÓ num template de usuário (multi-template), não no default
+    from app.template_store import save_template
+
+    save_template("custom_tpl", {
+        "template_meta": {"name": "Custom"},
+        "classification": {"document_types": [
+            {"key": "tipo_custom", "label": "Tipo Custom", "aliases": ["tipo_custom"], "folder": "tipo_custom"},
+        ], "business_domains": [{"key": "geral", "label": "Geral", "aliases": ["geral"]}]},
+    })
+    client = _fake_os(count_by_project={})
+    plan = plan_taxonomy_migration(
+        kind="document_type", from_key="parecer", to_key="tipo_custom", os_client=client
+    )
+    assert plan["to_key"] == "tipo_custom"
+
+
+def test_rename_insere_destino_canonico_quando_ausente():
+    canonical = {"key": "novo", "label": "Novo", "aliases": ["novo"], "folder": "novo"}
+    raw = {"classification": {"document_types": [
+        {"key": "velho", "label": "Velho", "aliases": ["velho"], "folder": "velho"},
+    ]}}
+    changed = _rename_in_raw(
+        raw, "document_type", "velho", "novo", remove_old=True, canonical_to_entry=canonical
+    )
+    assert changed is True
+    dts = raw["classification"]["document_types"]
+    assert [d["key"] for d in dts] == ["novo"]
+    assert "velho" in dts[0]["aliases"]  # alias herdado mesmo com destino inserido na hora
+
+
+def test_apply_remove_pastas_vazias_da_origem(roots):
+    project = roots / "proj_a"
+    from_dir = project / "02_AREAS" / "juridico" / "parecer"
+    from_dir.mkdir(parents=True)
+    doc_file = from_dir / "doc.pdf"
+    doc_file.write_text("conteudo", encoding="utf-8")
+    # profile real mínimo para o snapshot de folders (via profile_store)
+    from app.profile_store import save_profile
+
+    save_profile(project_root=project, profile={
+        "profile_version": 2, "project_id": "proj_a", "project_label": "A", "project_root": str(project),
+        "classification": {"document_types": [
+            {"key": "parecer", "label": "Parecer", "aliases": ["parecer"], "folder": "parecer"},
+            {"key": "contrato", "label": "Contrato", "aliases": ["contrato"], "folder": "contrato"},
+        ], "business_domains": [{"key": "juridico", "label": "Jurídico", "aliases": ["juridico"]}]},
+        "layout": {"areas_root": "02_AREAS", "business_domain_folders": [{"business_domain": "juridico", "folder": "juridico"}]},
+    }, updated_by="teste")
+
+    def fake_relocate(**kwargs):
+        # simula o move físico que o _relocate_document real faria
+        dest = project / "02_AREAS" / "juridico" / "contrato"
+        dest.mkdir(parents=True, exist_ok=True)
+        Path(kwargs["source_path"]).rename(dest / Path(kwargs["source_path"]).name)
+        return {"doc_id": kwargs["doc_id"]}
+
+    hits = [{"_id": "d1", "_source": {
+        "project_id": "proj_a", "path": str(doc_file), "original_filename": "doc.pdf",
+        "business_domain": "juridico", "document_type": "parecer",
+    }}]
+    client = _fake_os(count_by_project={"proj_a": 1}, hits=hits)
+    result = apply_taxonomy_migration(
+        kind="document_type", from_key="parecer", to_key="contrato",
+        os_client=client, relocate=fake_relocate,
+        load_project_context=lambda pid: (project, {"layout": {"areas_root": "02_AREAS"}}),
+    )
+    assert result["moved_total"] == 1
+    assert result["removed_dirs"] >= 1
+    assert not from_dir.exists()  # pasta vazia da origem removida
+    assert (project / "02_AREAS" / "juridico" / "contrato" / "doc.pdf").exists()

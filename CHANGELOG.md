@@ -15,6 +15,15 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.26.1] -- 2026-07-18
+
+### Corrigido
+
+- **Migração multi-template**: o destino é válido se existir em QUALQUER template ou profile (antes exigia o default); profiles/templates que têm a origem mas não o destino ganham a definição canônica inserida na hora — sem isso o move falharia no `_ensure_*_in_profile`.
+- **Pastas vazias da origem removidas** após a migração (`rmdir` só de vazias, nunca forçado; folder names capturados ANTES do rename, que apaga a entrada do profile); `removed_dirs` no resultado.
+
+---
+
 ## [0.26.0] -- 2026-07-18
 
 ### Adicionado
