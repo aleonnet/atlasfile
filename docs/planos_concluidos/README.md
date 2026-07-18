@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.26.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [migracao_e_remocao_governada_de_taxonomia_v0260](migracao_e_remocao_governada_de_taxonomia_v0260.plan.md) | Migrar key de taxonomia (origem→destino) cobrindo os 9 lugares onde ela vive: docs movidos sem disparar o hold-out (`dataset_routing=False`), datasets reescritos por rótulo, pendências, templates+profiles com origem virando alias; dry-run com contagens; remoção pura guardada (409 com uso ativo); modal "Migrar / remover" no editor de templates |
+
+---
+
 ## 0.23.0
 
 | # | Plano | Escopo |

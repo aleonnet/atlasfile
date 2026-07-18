@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.26.0] -- 2026-07-18
+
+### Adicionado
+
+- **Migração e remoção governada de taxonomia** (`POST /api/taxonomy/migrate`, `DELETE /api/taxonomy/{kind}/{key}` + modal "Migrar / remover" no editor de templates): aponta um tipo/domínio antigo → novo cobrindo os 9 lugares onde uma key vive — documentos movidos no filesystem + reindexados (docs fora de `02_AREAS` só metadados, com aviso), datasets reescritos **por rótulo antigo** (treino, validação, corpus, splits — zero registros novos), sugestões pendentes de triagem, todos os templates + profiles (a origem **vira alias** do destino: bootstrap segue reconhecendo o legado; routing_rules reapontadas antes do filtro silencioso; `layout.business_domain_folders` ajustado). **Dry-run primeiro** (contagens por projeto/dataset/pendência + avisos, incluindo "champion sparse contém a classe antiga — rode um ciclo"). Crucial: o move em massa usa `_relocate_document(dataset_routing=False)` — **não dispara o hold-out** (moves em lote não são decisões humanas novas). Remoção pura é **guardada**: 409 com contagens quando documentos/datasets/pendências ainda usam a key. 11 testes unit backend + 3 de componente novos.
+
+---
+
 ## [0.25.2] -- 2026-07-18
 
 ### Segurança

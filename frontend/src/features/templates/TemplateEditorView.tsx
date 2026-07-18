@@ -1,4 +1,4 @@
-import { FileStack, Pencil, Plus, Trash2, X } from "lucide-react";
+import { FileStack, Pencil, Plus, Replace, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createTemplate, deleteTemplate, getTemplate, listTemplates, saveTemplate } from "../../api";
 import { Badge } from "../../components/ui/badge";
@@ -13,6 +13,7 @@ import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { cn } from "../../lib/utils";
 import type { TemplateMeta } from "../../types";
 import { CreateTaxonomyEntryModal } from "./CreateTaxonomyEntryModal";
+import { TaxonomyMigrateModal } from "./TaxonomyMigrateModal";
 
 type EditorState = {
   slug: string;
@@ -86,6 +87,7 @@ export function TemplateEditorView() {
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [taxonomyModalOpen, setTaxonomyModalOpen] = useState(false);
+  const [migrateModalOpen, setMigrateModalOpen] = useState(false);
 
   useEscapeKey(confirmDelete ? () => setConfirmDelete(null) : editor ? () => setEditor(null) : null);
 
@@ -613,6 +615,10 @@ export function TemplateEditorView() {
           Templates de projeto
         </CardTitle>
         <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setMigrateModalOpen(true)}>
+            <Replace />
+            Migrar / remover
+          </Button>
           <Button variant="secondary" onClick={() => setTaxonomyModalOpen(true)}>
             <Plus />
             Novo tipo/domínio
@@ -701,6 +707,11 @@ export function TemplateEditorView() {
           open={taxonomyModalOpen}
           onClose={() => setTaxonomyModalOpen(false)}
           onCreated={() => void reload()}
+        />
+        <TaxonomyMigrateModal
+          open={migrateModalOpen}
+          onClose={() => setMigrateModalOpen(false)}
+          onChanged={() => void reload()}
         />
       </CardContent>
     </Card>

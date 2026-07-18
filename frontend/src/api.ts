@@ -855,6 +855,68 @@ export async function fetchTaxonomy(): Promise<{ business_domains: string[]; doc
   return res.json();
 }
 
+
+export interface TaxonomyMigrationPlan {
+  kind: string;
+  from_key: string;
+  to_key: string;
+  documents_by_project: Record<string, number>;
+  documents_total: number;
+  datasets: Record<string, number>;
+  pending_triage: number;
+  templates: string[];
+  routing_rules_pointing: number;
+  warnings: string[];
+}
+
+export interface TaxonomyMigrationResult {
+  kind: string;
+  from_key: string;
+  to_key: string;
+  moved_by_project: Record<string, number>;
+  moved_total: number;
+  index_only: number;
+  errors: { doc_id: string; error: string }[];
+  datasets: Record<string, number>;
+  pending_rewritten: number;
+  templates_updated: string[];
+  projects_updated: string[];
+  warnings: string[];
+}
+
+/** Migra uma key de taxonomia (dry_run conta tudo; apply move e reescreve). */
+export async function migrateTaxonomy(payload: {
+  kind: "document_type" | "business_domain";
+  from_key: string;
+  to_key: string;
+  dry_run: boolean;
+  remove_old?: boolean;
+}): Promise<TaxonomyMigrationPlan | TaxonomyMigrationResult> {
+  const res = await apiFetch(`${API_URL}/api/taxonomy/migrate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const detail = await res.json().then((d) => d.detail).catch(() => null);
+    throw new Error(detail || "Falha na migração de taxonomia");
+  }
+  return res.json();
+}
+
+/** Remove uma entrada de taxonomia — o backend recusa (409) se algo ainda a usa. */
+export async function deleteTaxonomyEntry(
+  kind: "document_type" | "business_domain",
+  key: string
+): Promise<{ templates_updated: string[]; projects_updated: string[] }> {
+  const res = await apiFetch(`${API_URL}/api/taxonomy/${kind}/${encodeURIComponent(key)}`, { method: "DELETE" });
+  if (!res.ok) {
+    const detail = await res.json().then((d) => d.detail).catch(() => null);
+    throw new Error(detail || "Falha ao remover entrada de taxonomia");
+  }
+  return res.json();
+}
+
 /** Cria um document_type/business_domain no template default e propaga aos profiles. */
 export async function createTaxonomyEntry(input: {
   kind: "document_type" | "business_domain";

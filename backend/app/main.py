@@ -37,6 +37,8 @@ from .classifier_registry import (
 )
 from .classifier_runtime import resolve_classifier_mode
 from .config import settings
+from functools import partial
+
 from .dataset_holdout import (
     backfill_validation_from_training_pool,
     dataset_readiness,
@@ -115,6 +117,12 @@ from .llm_catalog_refresh import (
     get_catalog_source_url,
     refresh_catalog,
     set_catalog_source_url,
+)
+from .taxonomy_migration import (
+    TaxonomyMigrationError,
+    apply_taxonomy_migration,
+    plan_taxonomy_migration,
+    remove_taxonomy_entry,
 )
 from .spreadsheet_query import (
     SpreadsheetQueryError,
@@ -1309,6 +1317,59 @@ class TaxonomyCreateRequest(BaseModel):
     aliases: list[str] = []
     extensions: list[str] = []
     created_from: str = ""
+
+
+class TaxonomyMigrateRequest(BaseModel):
+    kind: str
+    from_key: str
+    to_key: str
+    dry_run: bool = True
+    remove_old: bool = True
+
+
+def _taxonomy_project_context(project_id: str) -> tuple[Path, dict[str, Any]]:
+    project_root = _resolve_project_root(project_id)
+    profile = load_project_profile(project_root)
+    return project_root, profile
+
+
+@app.post("/api/taxonomy/migrate")
+def migrate_taxonomy(request: TaxonomyMigrateRequest, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Migra uma key de taxonomia (origem → destino): dry_run conta tudo;
+    apply move documentos (sem disparar o hold-out), reescreve datasets por
+    rótulo, pendências de triagem, templates e profiles (origem vira alias)."""
+    if _classifier_cycle_status.get("running"):
+        raise HTTPException(status_code=409, detail="Aguarde o ciclo do classificador terminar")
+    if _reconcile_status.get("running"):
+        raise HTTPException(status_code=409, detail="Aguarde a reconciliação terminar")
+    try:
+        if request.dry_run:
+            return plan_taxonomy_migration(
+                kind=request.kind, from_key=request.from_key, to_key=request.to_key, os_client=os_client
+            )
+        return apply_taxonomy_migration(
+            kind=request.kind,
+            from_key=request.from_key,
+            to_key=request.to_key,
+            remove_old=request.remove_old,
+            os_client=os_client,
+            relocate=partial(_relocate_document, dataset_routing=False),
+            load_project_context=_taxonomy_project_context,
+        )
+    except TaxonomyMigrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.delete("/api/taxonomy/{kind}/{key}")
+def delete_taxonomy_entry(kind: str, key: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Remove a entrada dos templates e profiles — APENAS quando nenhum
+    documento, dataset ou pendência de triagem ainda a usa (senão 409 com
+    orientação para migrar antes)."""
+    try:
+        return remove_taxonomy_entry(kind=kind, key=key, os_client=os_client)
+    except TaxonomyMigrationError as exc:
+        code = 409 if "ainda é usada" in str(exc) else 400
+        raise HTTPException(status_code=code, detail=str(exc))
 
 
 @app.post("/api/taxonomy/create")
@@ -3065,9 +3126,13 @@ def _relocate_document(
     sha256: str = "",
     extra_metadata: dict[str, Any] | None = None,
     note: str = "",
+    dataset_routing: bool = True,
 ) -> dict[str, Any]:
     """Move arquivo para 02_AREAS/{bd}/{dt}, reindexar, e append training pool.
 
+    dataset_routing=False (migração de taxonomia em massa): pula o hold-out —
+    moves em lote NÃO são decisões humanas novas; os datasets são reescritos
+    por rótulo antigo separadamente (taxonomy_migration.rewrite_dataset_labels).
     Returns the indexed payload dict with training_pool_status.
     """
     profile = _ensure_business_domain_in_profile(project_root, profile, target_business_domain)
@@ -3136,21 +3201,22 @@ def _relocate_document(
     index_document(os_client, indexed_payload, profile=profile)
     _append_index_md(project_root, indexed_payload)
 
-    # Datasets do classificador: decisão humana roteia treino OU validação
-    # (hold-out determinístico + regra semente + warm-up — ver dataset_holdout.py)
-    dataset_result = route_labeled_document(
-        source_path=dest_path,
-        doc_id=doc_id,
-        project_id=project_id,
-        original_filename=original_filename,
-        business_domain=target_business_domain,
-        document_type=target_document_type,
-        decision=decision,
-        topics=list((extra_metadata or {}).get("topics", []) or []),
-        entities=list((extra_metadata or {}).get("entities", []) or []),
-        notes=note,
-    )
-    indexed_payload.update(dataset_result)
+    if dataset_routing:
+        # Datasets do classificador: decisão humana roteia treino OU validação
+        # (hold-out determinístico + regra semente + warm-up — ver dataset_holdout.py)
+        dataset_result = route_labeled_document(
+            source_path=dest_path,
+            doc_id=doc_id,
+            project_id=project_id,
+            original_filename=original_filename,
+            business_domain=target_business_domain,
+            document_type=target_document_type,
+            decision=decision,
+            topics=list((extra_metadata or {}).get("topics", []) or []),
+            entities=list((extra_metadata or {}).get("entities", []) or []),
+            notes=note,
+        )
+        indexed_payload.update(dataset_result)
     return indexed_payload
 
 
