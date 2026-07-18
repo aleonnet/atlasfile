@@ -68,6 +68,16 @@ function formatPct(value?: number | null): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+/** Motivo do skip legível — o "skip" mudo já custou uma investigação. */
+function formatSkipReason(reasons: string[]): string {
+  const first = reasons[0] ?? "";
+  if (!first) return "";
+  if (first === "llm_api_key_not_configured") return "sem key OpenAI (configure no assistente)";
+  if (first.startsWith("training_pool_total_below_min")) return "treino insuficiente";
+  if (first.startsWith("sklearn_unavailable")) return "sklearn indisponível";
+  return first.replace(/_/g, " ").slice(0, 48);
+}
+
 function formatClassifierModeLabel(mode?: string | null): string {
   switch (mode) {
     case "bootstrap":
@@ -449,7 +459,8 @@ export function IngestTriageCard({
   async function handleStartClassifierCycle() {
     setClassifierCycleStatus((previous) => buildPendingClassifierCycleStatus(previous));
     try {
-      const started = await startClassifierCycle();
+      // Key do navegador viaja no header — o benchmark llm roda no servidor sem key persistida
+      const started = await startClassifierCycle({ openaiApiKey: openaiApiKey || undefined });
       startClassifierCycleMonitor();
       const moved = started.auto_backfill_moved ?? 0;
       onStatus(
@@ -686,6 +697,8 @@ export function IngestTriageCard({
                         if (!displaySummary) return null;
                         const isChampion = !liveBenchmarks && classifierReport?.champion?.mode === mode;
                         const isLive = !!liveSummary && !liveIsSkipped;
+                        const skipReasons = (liveIsSkipped ? liveSummary?.skip_reason : reportSummary?.skip_reason) ?? [];
+                        const skipLabel = formatSkipReason(skipReasons);
                         return (
                           <tr key={mode} className={cn(isSkipped && "opacity-45", isLive && "text-foreground")}>
                             <td className="left">
@@ -696,7 +709,9 @@ export function IngestTriageCard({
                             <td>{formatPct(displaySummary.business_domain_accuracy)}</td>
                             <td>{formatPct(displaySummary.document_type_accuracy)}</td>
                             <td>{formatPct(displaySummary.exact_match_accuracy)}</td>
-                            <td className="left">{isSkipped ? "skip" : "ok"}</td>
+                            <td className="left" title={skipReasons.join("; ") || undefined}>
+                              {isSkipped ? (skipLabel ? `skip — ${skipLabel}` : "skip") : "ok"}
+                            </td>
                           </tr>
                         );
                       })}

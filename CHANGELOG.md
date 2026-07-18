@@ -15,6 +15,15 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.25.1] -- 2026-07-18
+
+### Corrigido
+
+- **Combobox de modelos imune ao gerenciador de senhas**: no Firefox, o datalist nativo era sequestrado pelo "Manage Passwords" (heurística: input de texto adjacente a campo password vira "usuário", e o browser suprime a lista). O combobox agora tem **dropdown próprio** no design system (type="search", lista estilizada com filtro, teclado ↑↓/Enter/Esc, seleção por mousedown) — melhor que o nativo e à prova de heurística de browser.
+- **Benchmark LLM não roda mais silenciosamente sem key**: o benchmark lia `OPENAI_API_KEY` só do ambiente do servidor — em instalações novas a key vive no navegador (por design), então o modo `llm` marcado era pulado sem explicação. Agora a key do navegador viaja no header do "Rodar ciclo" (transiente, como no chat; fallback: env). E o **motivo do skip aparece na tabela** de benchmark ("skip — sem key OpenAI (configure no assistente)", "treino insuficiente", etc.) — o skip mudo já custou uma investigação.
+
+---
+
 ## [0.25.0] -- 2026-07-18
 
 ### Adicionado

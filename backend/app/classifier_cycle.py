@@ -395,17 +395,19 @@ def benchmark_llm_candidate(
     *,
     profile: dict[str, Any],
     validation_examples: list[dict[str, Any]],
+    api_key: str | None = None,
 ) -> dict[str, Any]:
     """Benchmark LLM classification against validation set.
 
     Calls OpenAI API directly (no MCP dependency). Each document gets
     full text extraction (up to 20000 chars) matching the ingestion path.
-    Skips gracefully if API key is not configured.
+    api_key: key transiente vinda do navegador (as keys não ficam no servidor);
+    fallback para OPENAI_API_KEY do ambiente. Skips gracefully sem key.
     """
     import os
     import time
 
-    api_key = os.environ.get("OPENAI_API_KEY", "")
+    api_key = (api_key or "").strip() or os.environ.get("OPENAI_API_KEY", "")
     if not api_key:
         return {
             "summary": {
@@ -845,6 +847,7 @@ def evaluate_classifier_cycle(
     include_artifacts: bool = False,
     benchmark_enabled_modes: list[str] | None = None,
     progress_callback: ProgressCallback | None = None,
+    openai_api_key: str | None = None,
 ) -> dict[str, Any]:
     _enabled_modes = set(benchmark_enabled_modes) if benchmark_enabled_modes else set(SUPPORTED_CLASSIFIER_MODES)
     sparse_enabled = bool(_enabled_modes & set(SPARSE_MODEL_FAMILIES))
@@ -985,7 +988,9 @@ def evaluate_classifier_cycle(
     if llm_enabled:
         _step += 1
         _emit_progress(progress_callback, phase="benchmark:llm", progress_current=_step, progress_total=_total_steps)
-        llm_result = benchmark_llm_candidate(profile=profile, validation_examples=validation_examples)
+        llm_result = benchmark_llm_candidate(
+            profile=profile, validation_examples=validation_examples, api_key=openai_api_key
+        )
         llm_summary = llm_result.get("summary")
         if llm_summary:
             _partial_benchmarks["llm"] = {"summary": llm_summary}
@@ -1042,6 +1047,7 @@ def run_classifier_cycle(
     min_docs_per_class: int = SPARSE_MIN_DOCS_PER_CLASS,
     benchmark_enabled_modes: list[str] | None = None,
     progress_callback: ProgressCallback | None = None,
+    openai_api_key: str | None = None,
 ) -> dict[str, Any]:
     repo = Path(__file__).resolve().parents[2]
     profile_path_obj = (repo / profile_path).resolve() if not Path(profile_path).is_absolute() else Path(profile_path)
@@ -1062,6 +1068,7 @@ def run_classifier_cycle(
             include_artifacts=True,
             benchmark_enabled_modes=benchmark_enabled_modes,
             progress_callback=progress_callback,
+            openai_api_key=openai_api_key,
         )
         if (report.get("dataset_integrity") or {}).get("status") == "error":
             registry.latest_dataset_manifest = report.get("dataset_manifest")

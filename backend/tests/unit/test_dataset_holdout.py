@@ -219,3 +219,16 @@ def test_backfill_emergency_fallback_for_tiny_pools(datasets_root, monkeypatch):
     # idempotente: validação deixou de estar vazia → fallback não repete
     again = backfill_validation_from_training_pool()
     assert again["moved"] == 0
+
+
+def test_benchmark_llm_uses_transient_api_key(monkeypatch):
+    """A key do navegador (header) deve valer para o benchmark llm; sem ela e sem env → skip."""
+    from app.classifier_cycle import benchmark_llm_candidate
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    skipped = benchmark_llm_candidate(profile={}, validation_examples=[])
+    assert skipped["summary"]["skipped"] is True
+    assert "llm_api_key_not_configured" in skipped["summary"]["skip_reason"]
+
+    with_key = benchmark_llm_candidate(profile={}, validation_examples=[], api_key="sk-transiente")
+    assert with_key["summary"].get("skipped") is not True

@@ -331,11 +331,15 @@ export async function updateBenchmarkEnabledModes(modes: string[]): Promise<Clas
 export async function startClassifierCycle(params?: {
   min_training_docs?: number;
   min_docs_per_class?: number;
+  /** Key transiente do navegador para o benchmark llm (não fica no servidor). */
+  openaiApiKey?: string;
 }): Promise<{ status: string; message?: string; auto_backfill_moved?: number }> {
   const url = new URL(`${API_URL}/api/classifier/cycle`);
   if (params?.min_training_docs != null) url.searchParams.set("min_training_docs", String(params.min_training_docs));
   if (params?.min_docs_per_class != null) url.searchParams.set("min_docs_per_class", String(params.min_docs_per_class));
-  const res = await apiFetch(url.toString(), { method: "POST" });
+  const headers: Record<string, string> = {};
+  if (params?.openaiApiKey) headers["X-OpenAI-API-Key"] = params.openaiApiKey;
+  const res = await apiFetch(url.toString(), { method: "POST", headers });
   if (res.status === 409) throw new Error("Ciclo do classificador já em andamento");
   if (!res.ok) throw new Error("Falha ao iniciar ciclo do classificador");
   return res.json();

@@ -215,7 +215,10 @@ function CatalogTab({ onCatalogChanged }: { onCatalogChanged: () => Promise<void
   );
 }
 
-/** Combobox de modelo: catálogo + custom no datalist, texto livre com validação no provedor.
+/** Combobox de modelo com dropdown PRÓPRIO (não datalist): o nativo é sequestrado
+ *  pelo gerenciador de senhas do Firefox quando o input fica adjacente a um campo
+ *  password ("Manage Passwords" no lugar da lista). type="search" + lista nossa =
+ *  imune à heurística e estilizada no design system.
  *  O valor ATIVO só muda ao escolher um modelo conhecido ou validar um custom —
  *  digitação parcial fica no draft (nunca persistir "gpt-9" pela metade). */
 function ModelCombobox({
@@ -237,10 +240,31 @@ function ModelCombobox({
 }) {
   const [validation, setValidation] = useState<ValidationState>({ status: "idle" });
   const [draft, setDraft] = useState(value);
+  const [listOpen, setListOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
   useEffect(() => setDraft(value), [value]);
   const knownValues = new Set([...models.map((m) => `${m.provider}/${m.model}`), ...customModels]);
   const normalized = normalizeModelValue(draft);
   const isCustom = normalized.length > 0 && !knownValues.has(normalized);
+
+  const allOptions = [
+    ...models.map((m) => ({ value: `${m.provider}/${m.model}`, label: m.label })),
+    ...customModels
+      .filter((c) => !models.some((m) => `${m.provider}/${m.model}` === c))
+      .map((c) => ({ value: c, label: `${c} (validado por você)` })),
+  ];
+  // Com o valor ativo intacto no campo, mostrar a lista inteira; filtrar só ao digitar
+  const filter = draft.trim() === value.trim() ? "" : draft.trim().toLowerCase();
+  const visibleOptions = filter
+    ? allOptions.filter((o) => o.value.toLowerCase().includes(filter) || o.label.toLowerCase().includes(filter))
+    : allOptions;
+
+  function choose(optionValue: string) {
+    setValidation({ status: "idle" });
+    setDraft(optionValue);
+    onChange(optionValue);
+    setListOpen(false);
+  }
 
   async function handleValidate() {
     const [provider, ...rest] = normalized.split("/");
@@ -264,20 +288,83 @@ function ModelCombobox({
   return (
     <div>
       <div className="flex items-center gap-1.5">
-        <input
-          id={id}
-          list={`${id}-list`}
-          className={cn(nativeSelectClass, "flex-1 font-mono text-[0.8rem]")}
-          value={draft}
-          placeholder="provider/modelo — digite para modelos novos"
-          onChange={(e: InputLikeEvent) => {
-            setValidation({ status: "idle" });
-            setDraft(e.target.value);
-            const candidate = normalizeModelValue(e.target.value);
-            if (knownValues.has(candidate)) onChange(candidate);
-          }}
-          autoComplete="off"
-        />
+        <div className="relative flex-1">
+          <input
+            id={id}
+            type="search"
+            name={`atlasfile-model-${id}`}
+            role="combobox"
+            aria-expanded={listOpen}
+            aria-controls={`${id}-listbox`}
+            className={cn(
+              nativeSelectClass,
+              "w-full font-mono text-[0.8rem] [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+            )}
+            value={draft}
+            placeholder="provider/modelo — digite para modelos novos"
+            onFocus={() => {
+              setListOpen(true);
+              setHighlighted(0);
+            }}
+            onBlur={() => setListOpen(false)}
+            onChange={(e: InputLikeEvent) => {
+              setValidation({ status: "idle" });
+              setDraft(e.target.value);
+              setListOpen(true);
+              setHighlighted(0);
+              const candidate = normalizeModelValue(e.target.value);
+              if (knownValues.has(candidate)) onChange(candidate);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setListOpen(true);
+                setHighlighted((h) => Math.min(h + 1, visibleOptions.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setHighlighted((h) => Math.max(h - 1, 0));
+              } else if (e.key === "Enter") {
+                if (listOpen && visibleOptions[highlighted]) {
+                  e.preventDefault();
+                  choose(visibleOptions[highlighted].value);
+                }
+              } else if (e.key === "Escape") {
+                setListOpen(false);
+              }
+            }}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {listOpen && visibleOptions.length > 0 && (
+            <ul
+              id={`${id}-listbox`}
+              role="listbox"
+              className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 m-0 max-h-60 list-none overflow-y-auto rounded-md border border-border bg-panel p-1 shadow-[0_10px_28px_rgba(0,0,0,0.4)]"
+            >
+              {visibleOptions.map((option, index) => (
+                <li
+                  key={option.value}
+                  role="option"
+                  aria-selected={option.value === value}
+                  className={cn(
+                    "cursor-pointer rounded px-2 py-1.5 text-[0.8rem]",
+                    index === highlighted ? "bg-accent-soft text-accent" : "text-foreground hover:bg-panel-strong",
+                    option.value === value && "font-semibold"
+                  )}
+                  onMouseEnter={() => setHighlighted(index)}
+                  onMouseDown={(e) => {
+                    // mousedown: escolher antes do blur fechar a lista
+                    e.preventDefault();
+                    choose(option.value);
+                  }}
+                >
+                  <span className="font-mono">{option.value}</span>
+                  <span className="ml-2 text-[0.7rem] text-tertiary">{option.label}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {isCustom && (
           <Button
             variant="secondary"
@@ -291,18 +378,6 @@ function ModelCombobox({
           </Button>
         )}
       </div>
-      <datalist id={`${id}-list`}>
-        {models.map((m) => (
-          <option key={`${m.provider}/${m.model}`} value={`${m.provider}/${m.model}`}>
-            {m.label}
-          </option>
-        ))}
-        {customModels
-          .filter((c) => !models.some((m) => `${m.provider}/${m.model}` === c))
-          .map((c) => (
-            <option key={c} value={c}>{`${c} (validado por você)`}</option>
-          ))}
-      </datalist>
       {isCustom && validation.status === "idle" && (
         <span className={hintClass}>Modelo fora do catálogo — valide antes de usar.</span>
       )}

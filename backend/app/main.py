@@ -1228,6 +1228,7 @@ def _run_classifier_cycle_background(
     min_training_docs: int,
     min_docs_per_class: int,
     benchmark_enabled_modes: list[str] | None = None,
+    openai_api_key: str | None = None,
 ) -> None:
     _cycle_cancel_event.clear()
     started_at = time.time()
@@ -1243,6 +1244,7 @@ def _run_classifier_cycle_background(
             min_docs_per_class=min_docs_per_class,
             benchmark_enabled_modes=benchmark_enabled_modes,
             progress_callback=_progress,
+            openai_api_key=openai_api_key,
         )
         champion = (report.get("champion") or {}).get("mode")
         total = _classifier_cycle_status.get("progress_total") or 1
@@ -1482,6 +1484,7 @@ def backfill_validation(
 def start_classifier_cycle(
     min_training_docs: int = Query(100, ge=0),
     min_docs_per_class: int = Query(5, ge=1),
+    x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
 ) -> JSONResponse:
     if _classifier_cycle_status.get("running"):
         raise HTTPException(status_code=409, detail="Classifier cycle already in progress")
@@ -1513,7 +1516,8 @@ def start_classifier_cycle(
     )
     thread = threading.Thread(
         target=_run_classifier_cycle_background,
-        args=(min_training_docs, min_docs_per_class, registry.benchmark_enabled_modes),
+        # Key do navegador transiente (benchmark llm); fallback: OPENAI_API_KEY do ambiente
+        args=(min_training_docs, min_docs_per_class, registry.benchmark_enabled_modes, x_openai_api_key),
         name="atlasfile-classifier-cycle",
         daemon=True,
     )
