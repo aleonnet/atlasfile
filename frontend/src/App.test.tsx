@@ -351,3 +351,28 @@ describe("App", () => {
     expect(miniTable!.textContent).toContain("Projeto 1");
   });
 });
+
+describe("AuthGate", () => {
+  it("shows the auth gate as first screen when the API returns 401", async () => {
+    const { setUnauthorizedHandler } = await import("./api");
+    let capturedHandler: ((status: number, detail: string) => void) | null = null;
+    vi.mocked(setUnauthorizedHandler).mockImplementation((handler) => {
+      capturedHandler = handler as typeof capturedHandler;
+    });
+
+    const { act } = await import("@testing-library/react");
+    render(<App />);
+    await waitFor(() => expect(capturedHandler).not.toBeNull());
+
+    act(() => {
+      capturedHandler!(401, "invalid api key");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Esta instalação exige uma API key/)).toBeInTheDocument();
+    });
+    expect(screen.getByPlaceholderText("atlas_sk_...")).toBeInTheDocument();
+    // o gate assume a tela inteira — nada do app por trás
+    expect(screen.queryByText(/documentos indexados/)).not.toBeInTheDocument();
+  });
+});

@@ -15,6 +15,19 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.24.0] -- 2026-07-18
+
+### Adicionado
+
+- **Gráficos de 3 variáveis no chat**: tipo `heatmap` (matriz de cruzamento com intensidade na paleta da marca — o melhor formato para domínio × tipo), `grouped_bar` (séries lado a lado) e **`facets`** (small multiples: um mini-gráfico por valor da 3ª dimensão, funciona com qualquer tipo). System prompt ensina o pivot e a coleta (`list_documents` traz business_domain + document_type + doc_kind). Validado E2E: "domínio vs tipo vs formato" → heatmaps facetados renderizados no chat. A base recharts permanece (mainstream sólida) — o gap era vocabulário de tipos + instrução ao LLM, não a biblioteca.
+
+### Corrigido
+
+- **API key é a primeira coisa quando auth está ligada**: novo AuthGate — qualquer 401 faz a tela inteira virar o gate (orb + campo de key + validação na API na hora); key válida → boot normal (onboarding incluído). Antes o site abria "quebrado" e o usuário tinha que achar Configuração → Acesso antes do wizard.
+- **Painel atualiza sozinho após decisões de triagem**: aprovar/corrigir/rejeitar agora refaz stats do painel na hora (a decisão indexa sincronamente) — sem refresh manual.
+
+---
+
 ## [0.23.0] -- 2026-07-18
 
 ### Adicionado

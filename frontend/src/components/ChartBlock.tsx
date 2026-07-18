@@ -40,6 +40,11 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 };
 
+interface ChartFacet {
+  title?: string;
+  data: Record<string, unknown>[];
+}
+
 interface ChartSpec {
   type: string;
   title?: string;
@@ -47,13 +52,21 @@ interface ChartSpec {
   series?: string[];
   xKey?: string;
   yKey?: string;
+  /** Small multiples: um mini-gráfico por facet (3ª dimensão categórica) */
+  facets?: ChartFacet[];
 }
 
 function parseSpec(jsonString: string): ChartSpec | null {
   try {
     const raw = typeof jsonString === "string" ? jsonString : String(jsonString);
     const spec = JSON.parse(raw.trim()) as ChartSpec;
-    if (!spec.type || !Array.isArray(spec.data) || spec.data.length === 0) return null;
+    if (!spec.type) return null;
+    const hasData = Array.isArray(spec.data) && spec.data.length > 0;
+    const hasFacets =
+      Array.isArray(spec.facets) &&
+      spec.facets.length > 0 &&
+      spec.facets.every((f) => Array.isArray(f?.data) && f.data.length > 0);
+    if (!hasData && !hasFacets) return null;
     return spec;
   } catch {
     return null;
@@ -287,8 +300,62 @@ function renderTreemap(spec: ChartSpec) {
   );
 }
 
+/** Matriz de calor: linhas = data[].name, colunas = series; intensidade na paleta da marca. */
+function renderHeatmap(spec: ChartSpec) {
+  const xKey = spec.xKey ?? "name";
+  const cols = getSeriesKeys(spec);
+  const values = spec.data.flatMap((row) => cols.map((c) => Number(row[c]) || 0));
+  const max = Math.max(...values, 1);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-separate [border-spacing:3px]">
+        <thead>
+          <tr>
+            <th className="p-1 text-left font-mono text-[0.65rem] font-normal uppercase tracking-wide text-tertiary" />
+            {cols.map((c) => (
+              <th key={c} className="p-1 text-center font-mono text-[0.65rem] font-normal text-tertiary">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {spec.data.map((row) => (
+            <tr key={String(row[xKey])}>
+              <td className="whitespace-nowrap p-1 pr-2 text-right font-mono text-[0.7rem] text-muted-foreground">
+                {String(row[xKey] ?? "")}
+              </td>
+              {cols.map((c) => {
+                const value = Number(row[c]) || 0;
+                const intensity = value === 0 ? 0 : 12 + Math.round(68 * (value / max));
+                return (
+                  <td
+                    key={c}
+                    title={`${row[xKey]} × ${c}: ${value}`}
+                    className="min-w-11 rounded p-1.5 text-center font-mono text-[0.72rem] transition-colors"
+                    style={{
+                      background:
+                        value === 0
+                          ? "color-mix(in oklab, var(--border) 30%, transparent)"
+                          : `color-mix(in oklab, var(--chart-1) ${intensity}%, transparent)`,
+                      color: value === 0 ? "var(--text-tertiary)" : "var(--text)",
+                    }}
+                  >
+                    {value === 0 ? "·" : formatValue(value)}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 const RENDERERS: Record<string, (spec: ChartSpec) => JSX.Element> = {
   bar: renderBar,
+  grouped_bar: renderBar, // multi-series lado a lado (renderBar já agrupa quando há series)
   stacked_bar: renderStackedBar,
   horizontal_bar: renderHorizontalBar,
   pie: renderPie,
@@ -296,6 +363,7 @@ const RENDERERS: Record<string, (spec: ChartSpec) => JSX.Element> = {
   area: renderArea,
   composed: renderComposed,
   treemap: renderTreemap,
+  heatmap: renderHeatmap,
 };
 
 export const ChartBlock = React.memo(function ChartBlock({ jsonString }: { jsonString: string }) {
@@ -317,6 +385,25 @@ export const ChartBlock = React.memo(function ChartBlock({ jsonString }: { jsonS
     );
   }
 
+  // Small multiples: um mini-gráfico por facet (3ª dimensão categórica)
+  if (spec.facets && spec.facets.length > 0) {
+    return (
+      <div className="chart-block-container my-2.5 overflow-hidden rounded-md bg-gradient-to-br from-panel-strong to-card p-4">
+        {spec.title && <div className="mb-2.5 pl-1 font-display text-sm font-medium text-foreground">{spec.title}</div>}
+        <div className={cnFacetGrid(spec.facets.length)}>
+          {spec.facets.map((facet, i) => (
+            <div key={facet.title ?? i} className="min-w-0">
+              {facet.title && (
+                <div className="mb-1 pl-1 font-mono text-[0.68rem] uppercase tracking-wide text-tertiary">{facet.title}</div>
+              )}
+              {renderer({ ...spec, data: facet.data, facets: undefined, title: undefined })}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="chart-block-container my-2.5 min-h-[280px] overflow-hidden rounded-md bg-gradient-to-br from-panel-strong to-card p-4">
       {spec.title && <div className="mb-2.5 pl-1 font-display text-sm font-medium text-foreground">{spec.title}</div>}
@@ -324,3 +411,7 @@ export const ChartBlock = React.memo(function ChartBlock({ jsonString }: { jsonS
     </div>
   );
 });
+
+function cnFacetGrid(count: number): string {
+  return count > 1 ? "grid grid-cols-1 gap-4 sm:grid-cols-2" : "grid grid-cols-1 gap-4";
+}

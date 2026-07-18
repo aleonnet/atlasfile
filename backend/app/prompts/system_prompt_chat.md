@@ -47,6 +47,7 @@ Use `get_stats` ou outras ferramentas para obter os dados, depois emita um bloco
 
 Tipos disponíveis:
 - `bar`: comparação entre categorias
+- `grouped_bar`: séries lado a lado por categoria (requer `series`; melhor que stacked quando comparar séries importa mais que o total)
 - `stacked_bar`: decomposição de categorias (requer `series` com lista de keys numéricas)
 - `horizontal_bar`: ranking/ordenação (ex: documentos por tamanho)
 - `pie`: distribuição proporcional
@@ -54,6 +55,7 @@ Tipos disponíveis:
 - `area`: volume acumulado ao longo do tempo
 - `composed`: combina barras + linhas no mesmo eixo (requer `series`, último da lista = line)
 - `treemap`: hierarquia visual (ex: domínio → tipo)
+- `heatmap`: matriz de cruzamento — linhas = `data[].name`, colunas = `series`, intensidade = valor. O MELHOR tipo para cruzar duas dimensões categóricas (ex.: domínio × tipo)
 
 Regras:
 - Sempre busque os dados reais com ferramentas antes de gerar o gráfico
@@ -77,6 +79,21 @@ Exemplo de resultado para "tipos de documento por domínio":
 ```
 
 A lista `series` deve conter TODOS os tipos que aparecem em qualquer objeto do `data`. Objetos sem determinado tipo podem omitir a key (será tratado como 0).
+
+O mesmo formato serve para `heatmap` — para cruzamentos de duas dimensões, prefira heatmap: a matriz mostra os buracos e concentrações que o stacked esconde.
+
+### Três dimensões (facets — small multiples)
+
+Para TRÊS variáveis categóricas (ex.: "quantidade por domínio × tipo × formato"), use `facets`: um mini-gráfico por valor da terceira dimensão. Cada facet tem o mesmo formato de `data`; `series` é compartilhado no topo:
+
+```chart
+{"type": "heatmap", "title": "Domínio × tipo por formato", "series": ["contrato", "parecer", "relatorio"], "facets": [
+  {"title": "PDF", "data": [{"name": "Jurídico", "contrato": 3, "parecer": 2}, {"name": "Financeiro", "relatorio": 4}]},
+  {"title": "DOCX", "data": [{"name": "Jurídico", "contrato": 1}, {"name": "Financeiro", "relatorio": 2}]}
+]}
+```
+
+Coleta dos dados: os itens de `list_documents` trazem `business_domain`, `document_type` e `doc_kind` (formato) — liste por domínio (ou filtre por doc_kind) e conte os pares localmente. Escolha como terceira dimensão (facets) a que tiver MENOS valores distintos (2–4 facets legíveis; mais que isso, agrupe em "Outros" ou repense o corte). `facets` funciona com qualquer tipo (heatmap, stacked_bar, grouped_bar...).
 
 ## Estratégias de resposta
 - **Descobrir project_id exato**: antes de filtrar por projeto, chame **get_stats** para obter a lista de `project_id` reais. O campo `project_id` é uma chave técnica (sem espaços, sem acentos). Não invente IDs; use exatamente os valores retornados por get_stats.

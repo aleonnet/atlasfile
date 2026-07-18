@@ -34,6 +34,7 @@ import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
 import { TemplateSelectModal } from "./features/templates/TemplateSelectModal";
 import { AssistenteView } from "./views/AssistenteView";
 import { GlobalDropPortal } from "./features/ingest/GlobalDropPortal";
+import { AuthGate } from "./features/onboarding/AuthGate";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import type {
   ProjectArea,
@@ -103,6 +104,7 @@ function AppShell() {
   const [newProjectName, setNewProjectName] = useState("");
   const [telegramConnected, setTelegramConnected] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
   const [appEnv, setAppEnv] = useState("production");
   const reconcileEsRef = useRef<EventSource | null>(null);
 
@@ -111,11 +113,13 @@ function AppShell() {
 
   useEffect(() => {
     setUnauthorizedHandler((httpStatus, detail) => {
-      setStatus(
-        httpStatus === 401
-          ? `Autenticação necessária: configure a API key em Config → Acesso. ${detail}`.trim()
-          : `Acesso negado: ${detail || "API key sem permissão para este projeto."}`
-      );
+      if (httpStatus === 401) {
+        // Sem key válida: o gate de autenticação assume a tela inteira —
+        // capturar a key é a PRIMEIRA coisa, antes de onboarding ou dados.
+        setAuthRequired(true);
+        return;
+      }
+      setStatus(`Acesso negado: ${detail || "API key sem permissão para este projeto."}`);
     });
     return () => setUnauthorizedHandler(null);
   }, []);
@@ -480,6 +484,8 @@ function AppShell() {
     triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
       .then(() => loadTriage())
       .then(() => {
+        // A decisão indexa o documento na hora — painel reflete sem refresh manual
+        fetchStats().then(setDashboardStats).catch(() => {});
         setStatus(`Documento aprovado por correção e movido para ${businessDomainValue}/${documentTypeValue}`);
       })
       .catch(() => {
@@ -496,6 +502,8 @@ function AppShell() {
     try {
       await triageDecision(item.project_id, item.doc_id, action);
       await loadTriage();
+      // A decisão indexa (approve) ou remove (reject) na hora — painel acompanha
+      fetchStats().then(setDashboardStats).catch(() => {});
       if (action === "reject") {
         setStatus("Documento rejeitado e movido para rejected com nome original");
       } else {
@@ -525,6 +533,10 @@ function AppShell() {
     setNewProjectModalOpen(false);
     setNewProjectName("");
     setTemplateModalProject({ ref: name, label: name });
+  }
+
+  if (authRequired) {
+    return <AuthGate />;
   }
 
   if (showOnboarding) {

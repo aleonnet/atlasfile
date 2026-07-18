@@ -158,4 +158,38 @@ describe("ChartBlock", () => {
     expect(container.querySelector(".chart-block-container")).toBeInTheDocument();
     expect(container.querySelector(".chart-block-title")).not.toBeInTheDocument();
   });
+
+  it("renders heatmap matrix with values and zero placeholders", () => {
+    const json = JSON.stringify({
+      type: "heatmap",
+      title: "Domínio × tipo",
+      series: ["contrato", "parecer"],
+      data: [
+        { name: "Jurídico", contrato: 3, parecer: 2 },
+        { name: "Financeiro", contrato: 0 },
+      ],
+    });
+    render(<ChartBlock jsonString={json} />);
+    expect(screen.getByText("Domínio × tipo")).toBeInTheDocument();
+    expect(screen.getByText("Jurídico")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+    // células zero/ausentes viram placeholder "·"
+    expect(screen.getAllByText("·").length).toBeGreaterThan(0);
+  });
+
+  it("renders facets as small multiples (3 variáveis)", () => {
+    const json = JSON.stringify({
+      type: "heatmap",
+      title: "Domínio × tipo por formato",
+      series: ["contrato"],
+      facets: [
+        { title: "PDF", data: [{ name: "Jurídico", contrato: 3 }] },
+        { title: "DOCX", data: [{ name: "Jurídico", contrato: 1 }] },
+      ],
+    });
+    render(<ChartBlock jsonString={json} />);
+    expect(screen.getByText("PDF")).toBeInTheDocument();
+    expect(screen.getByText("DOCX")).toBeInTheDocument();
+    expect(screen.getAllByText("Jurídico")).toHaveLength(2);
+  });
 });
