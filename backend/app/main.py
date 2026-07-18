@@ -3220,6 +3220,84 @@ def _relocate_document(
     return indexed_payload
 
 
+@app.get("/api/triage/{project_id}/rejected")
+def list_rejected_triage(project_id: str, auth: AuthContext = Depends(require_auth)) -> list[dict[str, Any]]:
+    """Documentos rejeitados (e registros órfãos) — visibilidade e ações de restaurar/excluir."""
+    enforce_project_scope(auth, project_id)
+    project_root = _resolve_project_root(project_id)
+    rejected_dir = triage_rejected_dir(project_root)
+    items: list[dict[str, Any]] = []
+    if rejected_dir.exists():
+        for meta_path in rejected_dir.glob("*.json"):
+            try:
+                data = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            file_path = Path(str(data.get("source_path") or data.get("path") or ""))
+            items.append({
+                "doc_id": meta_path.stem,
+                "original_filename": data.get("original_filename") or data.get("filename") or "",
+                "decision": data.get("decision") or "rejected",
+                "decision_note": data.get("decision_note") or data.get("reason") or "",
+                "processed_at": data.get("processed_at") or "",
+                "suggested_business_domain": data.get("suggested_business_domain") or "",
+                "suggested_document_type": data.get("suggested_document_type") or "",
+                "file_exists": file_path.is_file(),
+            })
+    items.sort(key=lambda i: i["processed_at"], reverse=True)
+    return items
+
+
+@app.post("/api/triage/{project_id}/{doc_id}/restore")
+def restore_rejected_triage(project_id: str, doc_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Devolve um rejeitado à fila de triagem (arquivo volta ao pending, meta recriado)."""
+    enforce_project_scope(auth, project_id)
+    project_root = _resolve_project_root(project_id)
+    rejected_dir = triage_rejected_dir(project_root)
+    meta_path = rejected_dir / f"{doc_id}.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail=f"Rejeitado nao encontrado: {doc_id}")
+    data = json.loads(meta_path.read_text(encoding="utf-8"))
+    file_path = Path(str(data.get("source_path") or data.get("path") or ""))
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=400,
+            detail="Registro sem arquivo físico (órfão) — use excluir para limpar o registro",
+        )
+    original_filename = str(data.get("original_filename") or file_path.name)
+    pending_dir = triage_pending_dir(project_root)
+    pending_dir.mkdir(parents=True, exist_ok=True)
+    pending_file = pending_dir / f"{doc_id[:8]}__{original_filename}"
+    shutil.move(str(file_path), str(pending_file))
+    data["decision"] = "triage_pending"
+    data["decision_note"] = ""
+    data["source_path"] = str(pending_file)
+    data["path"] = str(pending_file)
+    data["filename"] = pending_file.name
+    data["restored_at"] = utc_now_iso()
+    (pending_dir / f"{doc_id}.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    meta_path.unlink(missing_ok=True)
+    update_history_item(project_root, doc_id, {"decision": "triage_pending"})
+    return {"status": "ok", "action": "restored", "doc_id": doc_id}
+
+
+@app.delete("/api/triage/{project_id}/{doc_id}/rejected")
+def delete_rejected_triage(project_id: str, doc_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Exclui definitivamente um rejeitado (arquivo + registro)."""
+    enforce_project_scope(auth, project_id)
+    project_root = _resolve_project_root(project_id)
+    meta_path = triage_rejected_dir(project_root) / f"{doc_id}.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail=f"Rejeitado nao encontrado: {doc_id}")
+    data = json.loads(meta_path.read_text(encoding="utf-8"))
+    file_path = Path(str(data.get("source_path") or data.get("path") or ""))
+    # segurança: só apaga arquivo DENTRO da pasta rejected
+    if file_path.is_file() and file_path.parent == triage_rejected_dir(project_root):
+        file_path.unlink(missing_ok=True)
+    meta_path.unlink(missing_ok=True)
+    return {"status": "ok", "action": "deleted", "doc_id": doc_id}
+
+
 @app.post("/api/triage/{project_id}/{doc_id}/decision")
 def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     enforce_project_scope(auth, project_id)
@@ -3227,10 +3305,52 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest, 
     profile = load_project_profile(project_root)
     ensure_project_structure(project_root, profile)
 
-    pending_meta = triage_pending_dir(project_root) / f"{doc_id}.json"
-    if not pending_meta.exists():
+    pending_dir = triage_pending_dir(project_root)
+    original_meta = pending_dir / f"{doc_id}.json"
+    # Claim atômico do pending: o fluxo de aprovação move o arquivo cedo e só
+    # apagava o meta no final — uma decisão concorrente (duplo clique, retry)
+    # nessa janela via "pending sem arquivo" e fabricava um órfão fantasma.
+    # O rename garante exclusividade; a concorrente recebe 409 amigável.
+    pending_meta = pending_dir / f"{doc_id}.json.processing"
+    try:
+        original_meta.rename(pending_meta)
+    except FileNotFoundError:
+        if pending_meta.exists():
+            raise HTTPException(status_code=409, detail="Decisão já em andamento para este documento")
+        if (triage_resolved_dir(project_root) / f"{doc_id}.json").exists() or (
+            triage_rejected_dir(project_root) / f"{doc_id}.json"
+        ).exists():
+            raise HTTPException(status_code=409, detail="Este documento já foi decidido")
         raise HTTPException(status_code=404, detail=f"Triage item nao encontrado: {doc_id}")
 
+    try:
+        return _process_claimed_triage_decision(
+            project_root=project_root,
+            profile=profile,
+            project_id=project_id,
+            doc_id=doc_id,
+            request=request,
+            pending_meta=pending_meta,
+        )
+    except BaseException:
+        # Falha de validação/processamento: o item volta à fila (o sucesso apaga o claim)
+        if pending_meta.exists():
+            try:
+                pending_meta.rename(original_meta)
+            except OSError:
+                pass
+        raise
+
+
+def _process_claimed_triage_decision(
+    *,
+    project_root: Path,
+    profile: dict[str, Any],
+    project_id: str,
+    doc_id: str,
+    request: TriageDecisionRequest,
+    pending_meta: Path,
+) -> dict[str, Any]:
     data = json.loads(pending_meta.read_text(encoding="utf-8"))
     source_path = Path(data["source_path"])
     if not source_path.exists():

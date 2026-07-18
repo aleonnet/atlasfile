@@ -15,6 +15,7 @@ import { InboxScanCard } from "../features/ingest/InboxScanCard";
 import { IngestHistoryCard } from "../features/ingest/IngestHistoryCard";
 import { DropHintCard } from "../features/ingest/DropHintCard";
 import { LabelConflictsCard } from "../features/triage/LabelConflictsCard";
+import { RejectedCard } from "../features/triage/RejectedCard";
 import { TriageQueue } from "../features/triage/TriageQueue";
 import { buildEvidenceGroups, topLocations } from "../features/search/searchFormatters";
 import { cn } from "../lib/utils";
@@ -324,7 +325,6 @@ export function PainelView({
   }
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
-  const [inboxRefreshToken, setInboxRefreshToken] = useState(0);
   const initializedCount = projects.filter((p) => p.initialized).length;
 
   function applyFilter(patch: Partial<SearchFilters>) {
@@ -423,11 +423,7 @@ export function PainelView({
               )}
 
               {isSingleProject && (
-                <InboxQueueChips
-                  projectId={selectedProject}
-                  onStatus={onStatus}
-                  refreshToken={inboxRefreshToken}
-                />
+                <InboxQueueChips projectId={selectedProject} onStatus={onStatus} />
               )}
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4">
@@ -436,10 +432,7 @@ export function PainelView({
                     selectedProject={selectedProject}
                     projects={projects}
                     onStatus={onStatus}
-                    onScanComplete={() => {
-                      setInboxRefreshToken((t) => t + 1);
-                      onScanComplete();
-                    }}
+                    onScanComplete={onScanComplete}
                   />
                   <Button disabled={reconcilingNow} onClick={onReconcile}>
                     <RefreshCw className={reconcilingNow ? "animate-spin" : ""} />
@@ -484,6 +477,10 @@ export function PainelView({
       <TriageQueue triageItems={triageItems} projectLabelById={projectLabelById} onDecision={onDecision} />
 
       <LabelConflictsCard />
+
+      {isSingleProject && (
+        <RejectedCard projectId={selectedProject} onStatus={onStatus} onChanged={onScanComplete} />
+      )}
 
       {triageItems.length === 0 && <DropHintCard />}
 

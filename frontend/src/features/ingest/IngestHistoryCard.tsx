@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { CollapsibleSection } from "../../components/ui/collapsible-section";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
+import { onDataRefresh } from "../../lib/refreshBus";
 import type { IngestHistoryEntry, ProjectProfileV2 } from "../../types";
 
 function decisionBadge(decision: FlatRow["decision"]) {
@@ -142,6 +143,9 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
     void loadHistory();
     setPage(0);
   }, [loadHistory]);
+
+  // Reativo: scans/decisões emitem no bus — o histórico aparece sem reload
+  useEffect(() => onDataRefresh(() => void loadHistory()), [loadHistory]);
 
   useEffect(() => {
     if (!isSingleProject) return;

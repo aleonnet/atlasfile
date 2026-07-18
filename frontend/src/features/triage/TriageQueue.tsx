@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Check, Inbox, Pencil, X } from "lucide-react";
+import { useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -8,7 +9,7 @@ import type { TriageItem } from "../../types";
 type Props = {
   triageItems: TriageItem[];
   projectLabelById: Map<string, string>;
-  onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => void;
+  onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => void | Promise<void>;
 };
 
 function formatPct(value?: number | null): string {
@@ -22,6 +23,20 @@ function formatClassifierModeLabel(mode?: string | null): string {
 
 export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props) {
   const reducedMotion = useReducedMotion();
+  // Trava de duplo clique: uma decisão em voo por item — o backend também tem
+  // claim atômico (409), mas a UI nem deve deixar a segunda requisição sair.
+  const [busyDocId, setBusyDocId] = useState<string | null>(null);
+
+  async function decide(item: TriageItem, action: "approve" | "correct" | "reject") {
+    if (busyDocId) return;
+    setBusyDocId(item.doc_id);
+    try {
+      await onDecision(item, action);
+    } finally {
+      setBusyDocId(null);
+    }
+  }
+
   if (triageItems.length === 0) return null;
 
   return (
@@ -112,18 +127,18 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                 <div className="mt-3 flex gap-2">
                   <Button
                     size="sm"
-                    disabled={!suggestedBusinessDomain}
+                    disabled={!suggestedBusinessDomain || busyDocId === item.doc_id}
                     title={!suggestedBusinessDomain ? "Sem sugestão de domínio" : undefined}
-                    onClick={() => void onDecision(item, "approve")}
+                    onClick={() => void decide(item, "approve")}
                   >
                     <Check />
                     Aprovar
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => void onDecision(item, "correct")}>
+                  <Button size="sm" variant="secondary" disabled={busyDocId === item.doc_id} onClick={() => void decide(item, "correct")}>
                     <Pencil />
                     Corrigir
                   </Button>
-                  <Button size="sm" variant="destructive" onClick={() => void onDecision(item, "reject")}>
+                  <Button size="sm" variant="destructive" disabled={busyDocId === item.doc_id} onClick={() => void decide(item, "reject")}>
                     <X />
                     Rejeitar
                   </Button>

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 import app.dataset_holdout as holdout_module
 import app.main as main_module
 from app.auth import AuthContext
@@ -303,3 +305,72 @@ def test_decide_triage_skips_training_pool_when_document_overlaps_validation_set
     )
     assert resolved_meta["training_pool_status"] == "skipped_overlap_with_validation_set"
     assert resolved_meta["training_pool_validation_files"] == ["validation.pdf"]
+
+
+def test_decisao_concorrente_recebe_409_e_claim_restaura_em_erro(monkeypatch, tmp_path: Path) -> None:
+    project_id = "triage_race"
+    doc_id = "doc-race"
+    project_root, _source = _prepare_pending_triage_item(
+        tmp_path=tmp_path, project_id=project_id, doc_id=doc_id,
+        naming_pattern="{date}__{project}__{business_domain}__{original_name}",
+        original_filename="a.txt", canonical_filename="a.txt",
+        suggested_business_domain="juridico", suggested_document_type="contrato",
+    )
+    _patch_triage_dependencies(monkeypatch, tmp_path)
+    pending = project_root / "_TRIAGE_REVIEW" / "pending"
+
+    # Simula claim em andamento por outra requisição
+    (pending / f"{doc_id}.json").rename(pending / f"{doc_id}.json.processing")
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        main_module.decide_triage(project_id, doc_id, TriageDecisionRequest(action="approve"),
+                                  auth=AuthContext(name="t", allowed_projects=("*",)))
+    assert exc.value.status_code == 409
+    # desfaz para o próximo cenário
+    (pending / f"{doc_id}.json.processing").rename(pending / f"{doc_id}.json")
+
+    # Ação inválida: o claim deve ser DEVOLVIDO à fila (item não some)
+    with pytest.raises(HTTPException) as exc2:
+        main_module.decide_triage(project_id, doc_id, TriageDecisionRequest(action="banana"),
+                                  auth=AuthContext(name="t", allowed_projects=("*",)))
+    assert exc2.value.status_code == 400
+    assert (pending / f"{doc_id}.json").exists()
+    assert not (pending / f"{doc_id}.json.processing").exists()
+
+
+def test_rejeitados_listar_restaurar_excluir(monkeypatch, tmp_path: Path) -> None:
+    project_id = "triage_rej"
+    doc_id = "doc-rej"
+    project_root, _source = _prepare_pending_triage_item(
+        tmp_path=tmp_path, project_id=project_id, doc_id=doc_id,
+        naming_pattern="{date}__{project}__{business_domain}__{original_name}",
+        original_filename="rejeitavel.txt", canonical_filename="rejeitavel.txt",
+        suggested_business_domain="juridico", suggested_document_type="contrato",
+    )
+    _patch_triage_dependencies(monkeypatch, tmp_path)
+    auth = AuthContext(name="t", allowed_projects=("*",))
+
+    result = main_module.decide_triage(project_id, doc_id, TriageDecisionRequest(action="reject", note="teste"), auth=auth)
+    assert result["action"] == "rejected"
+
+    listed = main_module.list_rejected_triage(project_id, auth=auth)
+    assert len(listed) == 1
+    assert listed[0]["doc_id"] == doc_id
+    assert listed[0]["decision"] == "rejected"
+    assert listed[0]["file_exists"] is True
+
+    restored = main_module.restore_rejected_triage(project_id, doc_id, auth=auth)
+    assert restored["action"] == "restored"
+    pending = project_root / "_TRIAGE_REVIEW" / "pending"
+    assert (pending / f"{doc_id}.json").exists()
+    assert any(p.name.startswith(doc_id[:8]) for p in pending.iterdir() if p.suffix == ".txt")
+    assert main_module.list_rejected_triage(project_id, auth=auth) == []
+
+    # rejeita de novo e exclui definitivamente
+    main_module.decide_triage(project_id, doc_id, TriageDecisionRequest(action="reject"), auth=auth)
+    deleted = main_module.delete_rejected_triage(project_id, doc_id, auth=auth)
+    assert deleted["action"] == "deleted"
+    rejected_dir = project_root / "_TRIAGE_REVIEW" / "rejected"
+    assert list(rejected_dir.glob("*.json")) == []
+    assert not any(p.suffix == ".txt" for p in rejected_dir.iterdir())

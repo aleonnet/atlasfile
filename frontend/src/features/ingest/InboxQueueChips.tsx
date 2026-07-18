@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { deleteInboxFile, fetchInboxFiles } from "../../api";
+import { onDataRefresh } from "../../lib/refreshBus";
 import { rowDeleteButtonClass } from "../../components/ui/collapsible-section";
 
 type Props = {
   projectId: string;
   onStatus: (msg: string) => void;
-  /** Bump para recarregar a fila (ex.: após um Processar INBOX). */
-  refreshToken?: number;
 };
 
 /** Fila da INBOX visível: o usuário vê O QUE o Processar INBOX vai processar,
  *  com remoção por arquivo — nada de scans misteriosos de sobras invisíveis. */
-export function InboxQueueChips({ projectId, onStatus, refreshToken = 0 }: Props) {
+export function InboxQueueChips({ projectId, onStatus }: Props) {
   const [files, setFiles] = useState<{ filename: string; size: number }[]>([]);
 
   const load = useCallback(() => {
@@ -26,7 +25,10 @@ export function InboxQueueChips({ projectId, onStatus, refreshToken = 0 }: Props
 
   useEffect(() => {
     load();
-  }, [load, refreshToken]);
+  }, [load]);
+
+  // Reativo via bus: scans (portal ou botão) recarregam a fila sem reload
+  useEffect(() => onDataRefresh(load), [load]);
 
   if (files.length === 0) return null;
 

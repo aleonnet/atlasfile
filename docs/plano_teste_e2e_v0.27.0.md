@@ -1,6 +1,6 @@
-# Plano de teste E2E — AtlasFile v0.26.x (instância zerada, com autenticação)
+# Plano de teste E2E — AtlasFile v0.27.x (instância zerada, com autenticação)
 
-> Roteiro canônico de regressão fim-a-fim. Cada estágio vale 1 ponto (total **24**).
+> Roteiro canônico de regressão fim-a-fim. Cada estágio vale 1 ponto (total **27**).
 > Pré-requisito: 6 arquivos reais — **4 do mesmo tipo/área** (ex.: 4 contratos jurídicos)
 > + **2 planilhas XLSX** com colunas categóricas (ex.: CMDB e status de contratos).
 > Numa máquina que também roda o repo dev: parar a dev antes (`docker compose down`)
@@ -59,6 +59,14 @@
 | 22 | Migração dry-run + apply | Templates → "Migrar / remover": criar tipo novo, migrar um tipo com docs | Simulação com contagens exatas; apply move arquivo físico + índice + datasets; origem vira alias; **pasta vazia da origem removida** |
 | 23 | Remoção guardada | Tentar remover tipo com uso ativo; depois um vazio | Com uso: recusa com contagens; vazio: remove |
 | 24 | Bootstrap reconhece alias | Ingerir doc com termos do tipo antigo migrado | Classifica no tipo NOVO (via alias herdado) |
+
+## Fase G — Rejeitados e concorrência (3 pts)
+
+| # | Estágio | Como testar | Passa se |
+|---|---------|-------------|----------|
+| 25 | Seção Rejeitados | Rejeitar um doc na triagem | Card "Rejeitados (N)" aparece no Painel **sem reload**; expandir mostra arquivo, motivo e data |
+| 26 | Restaurar e excluir | "Restaurar" o rejeitado; rejeitar de novo; "Excluir" (confirma popover) | Restaurar devolve à fila de triagem na hora; excluir apaga arquivo + registro; órfão (sem arquivo) só oferece Excluir |
+| 27 | Duplo-clique seguro | Clicar 2x rápido em Aprovar (ou 2 abas na mesma decisão) | Uma só decisão processa; a 2ª recebe 409; **nunca** aparece registro órfão fantasma em rejeitados |
 
 ## Encerramento
 

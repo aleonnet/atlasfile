@@ -917,6 +917,48 @@ export async function deleteTaxonomyEntry(
   return res.json();
 }
 
+
+export interface RejectedTriageItem {
+  doc_id: string;
+  original_filename: string;
+  decision: string;
+  decision_note: string;
+  processed_at: string;
+  suggested_business_domain: string;
+  suggested_document_type: string;
+  file_exists: boolean;
+}
+
+/** Documentos rejeitados na triagem (inclui registros órfãos). */
+export async function fetchRejectedTriage(projectId: string): Promise<RejectedTriageItem[]> {
+  const res = await apiFetch(`${API_URL}/api/triage/${encodeURIComponent(projectId)}/rejected`);
+  if (!res.ok) throw new Error("Falha ao listar rejeitados");
+  return res.json();
+}
+
+/** Devolve um rejeitado à fila de triagem. */
+export async function restoreRejectedTriage(projectId: string, docId: string): Promise<{ status: string }> {
+  const res = await apiFetch(
+    `${API_URL}/api/triage/${encodeURIComponent(projectId)}/${encodeURIComponent(docId)}/restore`,
+    { method: "POST" }
+  );
+  if (!res.ok) {
+    const detail = await res.json().then((d) => d.detail).catch(() => null);
+    throw new Error(detail || "Falha ao restaurar rejeitado");
+  }
+  return res.json();
+}
+
+/** Exclui definitivamente um rejeitado (arquivo + registro). */
+export async function deleteRejectedTriage(projectId: string, docId: string): Promise<{ status: string }> {
+  const res = await apiFetch(
+    `${API_URL}/api/triage/${encodeURIComponent(projectId)}/${encodeURIComponent(docId)}/rejected`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw new Error("Falha ao excluir rejeitado");
+  return res.json();
+}
+
 /** Cria um document_type/business_domain no template default e propaga aos profiles. */
 export async function createTaxonomyEntry(input: {
   kind: "document_type" | "business_domain";

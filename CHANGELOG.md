@@ -15,6 +15,23 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.27.0] -- 2026-07-18
+
+### Adicionado
+
+- **Seção "Rejeitados" no Painel** (projeto único): card colapsável lista os documentos rejeitados na triagem (arquivo, motivo, data) com ações **Restaurar** (devolve à fila de triagem, com arquivo e metadados) e **Excluir** (popover de confirmação; apaga arquivo + registro). Registros órfãos (sem arquivo físico) só oferecem Excluir. Antes, rejeitar um doc o fazia sumir da UI sem nenhum caminho de recuperação.
+- **Endpoints de rejeitados**: `GET /api/triage/{project_id}/rejected`, `POST /api/triage/{project_id}/{doc_id}/restore`, `DELETE /api/triage/{project_id}/{doc_id}/rejected`.
+
+### Corrigido
+
+- **Corrida na decisão de triagem** (registro órfão fantasma): aprovar movia o arquivo no início e só removia o meta pendente ao final (~14s com extração/indexação) — uma requisição concorrente via "pendente sem arquivo" e gravava `orphaned_missing_source` em rejeitados. Agora a decisão faz **claim atômico** (rename do meta para `.processing`): a concorrente recebe 409; falha no processamento restaura o claim. Na UI, os botões de decisão ficam desabilitados enquanto uma decisão está em voo.
+
+### Mudado
+
+- **Reatividade sem reload em todo o Painel**: novo bus de eventos (`atlas:data-refresh`) — qualquer scan (portal ou botão) ou decisão de triagem notifica os cards derivados (Processamentos, fila da INBOX, Rejeitados), que recarregam sozinhos. O colapsável de Processamentos agora aparece/atualiza imediatamente após o processamento, sem F5.
+
+---
+
 ## [0.26.2] -- 2026-07-18
 
 ### Corrigido

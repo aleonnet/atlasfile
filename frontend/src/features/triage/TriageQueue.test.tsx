@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { TriageItem } from "../../types";
 import { TriageQueue } from "./TriageQueue";
@@ -35,7 +35,7 @@ describe("TriageQueue", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("renderiza item com sugestão, scores e dispara as três decisões", () => {
+  it("renderiza item com sugestão, scores e dispara as três decisões", async () => {
     const onDecision = vi.fn();
     render(
       <TriageQueue
@@ -50,12 +50,14 @@ describe("TriageQueue", () => {
     expect(screen.getByText(/Projeto 1/)).toBeInTheDocument();
     expect(screen.getByText(/domínio 50.0%/)).toBeInTheDocument();
 
+    // O guard anti duplo-clique bloqueia decisões enquanto uma está em voo —
+    // aguardar cada decisão concluir antes do próximo clique
     fireEvent.click(screen.getByRole("button", { name: /Aprovar/ }));
+    await waitFor(() => expect(onDecision).toHaveBeenNthCalledWith(1, baseItem, "approve"));
     fireEvent.click(screen.getByRole("button", { name: /Corrigir/ }));
+    await waitFor(() => expect(onDecision).toHaveBeenNthCalledWith(2, baseItem, "correct"));
     fireEvent.click(screen.getByRole("button", { name: /Rejeitar/ }));
-    expect(onDecision).toHaveBeenNthCalledWith(1, baseItem, "approve");
-    expect(onDecision).toHaveBeenNthCalledWith(2, baseItem, "correct");
-    expect(onDecision).toHaveBeenNthCalledWith(3, baseItem, "reject");
+    await waitFor(() => expect(onDecision).toHaveBeenNthCalledWith(3, baseItem, "reject"));
   });
 
   it("desabilita Aprovar sem sugestão de domínio", () => {

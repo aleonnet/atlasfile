@@ -264,7 +264,7 @@ export function TaxonomyMigrateModal({ open, onClose, onChanged }: Props) {
               {Object.entries(result.datasets ?? {}).filter(([, n]) => n > 0).map(([k, n]) => `${DATASET_LABELS[k] ?? k} (${n})`).join(", ") || "nenhum"}
             </li>
             <li>Pendências reescritas: {result.pending_rewritten}</li>
-            <li>Templates: {result.templates_updated.join(", ") || "—"} · Projetos: {result.projects_updated.join(", ") || "—"}</li>
+            <li>Templates: {(result.templates_updated ?? []).join(", ") || "—"} · Projetos: {(result.projects_updated ?? []).join(", ") || "—"}</li>
           </ul>
           {(result.errors ?? []).map((e) => (
             <p key={e.doc_id} className="m-0 mt-1 font-mono text-[0.72rem] text-destructive">{e.doc_id}: {e.error}</p>

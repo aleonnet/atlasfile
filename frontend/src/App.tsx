@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchChannelConfig,
   fetchChannelStatus,
@@ -19,6 +19,7 @@ import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { fieldLabelClass, ModalActions, ModalShell } from "./components/ui/modal-shell";
 import { Toaster, toast } from "./components/ui/sonner";
+import { emitDataRefresh } from "./lib/refreshBus";
 import { NavigationProvider, useNavigation } from "./contexts/NavigationContext";
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
@@ -497,6 +498,7 @@ function AppShell() {
       .then(() => {
         // A decisão indexa o documento na hora — painel reflete sem refresh manual
         fetchStats().then(setDashboardStats).catch(() => {});
+        emitDataRefresh();
         setStatus(`Documento aprovado por correção e movido para ${businessDomainValue}/${documentTypeValue}`);
       })
       .catch(() => {
@@ -504,6 +506,14 @@ function AppShell() {
         void loadTriage();
       });
   }
+
+  /** Ponto único pós-mutação: triagem + stats recarregam e o bus notifica os
+   *  cards derivados (histórico, fila da INBOX, rejeitados) — zero reloads. */
+  const handleDataChanged = useCallback(() => {
+    void loadTriage();
+    fetchStats().then(setDashboardStats).catch(() => {});
+    emitDataRefresh();
+  }, [loadTriage]);
 
   async function handleDecision(item: TriageItem, action: "approve" | "correct" | "reject") {
     if (action === "correct") {
@@ -515,6 +525,7 @@ function AppShell() {
       await loadTriage();
       // A decisão indexa (approve) ou remove (reject) na hora — painel acompanha
       fetchStats().then(setDashboardStats).catch(() => {});
+      emitDataRefresh();
       if (action === "reject") {
         setStatus("Documento rejeitado e movido para rejected com nome original");
       } else {
@@ -600,9 +611,7 @@ function AppShell() {
             onReconcile={handleReconcileNow}
             onDecision={handleDecision}
             onStatus={setStatus}
-            onScanComplete={() => {
-              void loadTriage();
-            }}
+            onScanComplete={handleDataChanged}
             fullQuery={search.fullQuery}
             fullResults={search.fullResults}
             fullPage={search.fullPage}
@@ -682,12 +691,7 @@ function AppShell() {
         />
       )}
 
-      <GlobalDropPortal
-        onScanComplete={() => {
-          void loadTriage();
-          fetchStats().then(setDashboardStats).catch(() => {});
-        }}
-      />
+      <GlobalDropPortal onScanComplete={handleDataChanged} />
 
       <CommandPalette
         open={search.searchModalOpen}
