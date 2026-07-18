@@ -89,18 +89,33 @@ A lista `series` deve conter TODOS os tipos que aparecem em qualquer objeto do `
 
 O mesmo formato serve para `heatmap` — para cruzamentos de duas dimensões, prefira heatmap: a matriz mostra os buracos e concentrações que o stacked esconde.
 
-### Três dimensões (facets — small multiples)
+### Três dimensões — DEFAULT: bubble
 
-Para TRÊS variáveis categóricas (ex.: "quantidade por domínio × tipo × formato"), use `facets`: um mini-gráfico por valor da terceira dimensão. Cada facet tem o mesmo formato de `data`; `series` é compartilhado no topo:
+Para TRÊS variáveis categóricas + quantidade (ex.: "quantidade por domínio × tipo × formato"), o
+DEFAULT é `bubble` — um painel só com as 4 dimensões (x, y, cor, tamanho+rótulo):
 
 ```chart
-{"type": "heatmap", "title": "Domínio × tipo por formato", "series": ["contrato", "parecer", "relatorio"], "facets": [
-  {"title": "PDF", "data": [{"name": "Jurídico", "contrato": 3, "parecer": 2}, {"name": "Financeiro", "relatorio": 4}]},
-  {"title": "DOCX", "data": [{"name": "Jurídico", "contrato": 1}, {"name": "Financeiro", "relatorio": 2}]}
+{"type": "bubble", "title": "Domínio × tipo × formato", "data": [
+  {"x": "juridico", "y": "contrato", "group": "pdf", "value": 2},
+  {"x": "juridico", "y": "memorando", "group": "pdf", "value": 1},
+  {"x": "financeiro", "y": "apresentacao", "group": "pptx", "value": 1}
 ]}
 ```
 
-Coleta dos dados: os itens de `list_documents` trazem `business_domain`, `document_type` e `doc_kind` (formato) — liste por domínio (ou filtre por doc_kind) e conte os pares localmente. Escolha como terceira dimensão (facets) a que tiver MENOS valores distintos (2–4 facets legíveis; mais que isso, agrupe em "Outros" ou repense o corte). `facets` funciona com qualquer tipo (heatmap, stacked_bar, grouped_bar...).
+Use `facets` (small multiples — um mini-gráfico por valor da 3ª dimensão) APENAS quando a matriz é
+densa (muitas células preenchidas por facet) ou o usuário pedir comparação painel a painel:
+
+```chart
+{"type": "heatmap", "title": "Domínio × tipo por formato", "series": ["contrato", "parecer"], "facets": [
+  {"title": "PDF", "data": [{"name": "Jurídico", "contrato": 3, "parecer": 2}]},
+  {"title": "DOCX", "data": [{"name": "Jurídico", "contrato": 1}]}
+]}
+```
+
+Com dados esparsos (poucos documentos), facets viram grades quase vazias — bubble sempre.
+Coleta dos dados: os itens de `list_documents` trazem `business_domain`, `document_type` e `doc_kind`
+(formato) — liste por domínio (ou filtre por doc_kind) e conte os pares localmente. Nos facets, use
+como 3ª dimensão a de MENOS valores distintos (2–4 painéis). `facets` funciona com qualquer tipo.
 
 ## Estratégias de resposta
 - **Descobrir project_id exato**: antes de filtrar por projeto, chame **get_stats** para obter a lista de `project_id` reais. O campo `project_id` é uma chave técnica (sem espaços, sem acentos). Não invente IDs; use exatamente os valores retornados por get_stats.
