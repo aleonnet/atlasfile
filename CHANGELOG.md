@@ -15,6 +15,20 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.27.2] -- 2026-07-18
+
+### Corrigido
+
+- **Benchmark do ciclo com a taxonomia real dos projetos**: o ciclo avaliava bootstrap/LLM contra a taxonomia do template default — tipos/domínios criados pelo usuário (ex.: `memorando` via triagem) não eram opções possíveis, condenando o rótulo esperado a 0% por construção. Agora `merge_project_taxonomies` une business_domains e document_types de todos os profiles reais ao profile do benchmark; o report registra `taxonomy_sources`.
+- **Estado do classificador sobrevive a rebuilds**: dentro do container, `PROJECTS_HOST_ROOT` (path do host, inexistente lá) era escolhido como raiz do estado — registry, campeão e reports iam para o filesystem efêmero do container e sumiam a cada rebuild. O resolvedor agora prefere o primeiro candidato que existe (o `/projects` montado). Datasets já estavam no lugar certo.
+- **Linha "LLM:" do histórico honesta**: o painel de detalhes imprimia o domínio FINAL da classificação rotulado como "LLM". Agora a ingestão persiste a resposta crua do LLM (`llm_business_domain`, `llm_document_type`, `llm_confidence`) e a UI mostra a contribuição genuína (domínio e tipo sugeridos pelo LLM, com a confiança dele); a linha some em entradas antigas sem os campos.
+
+### Mudado
+
+- **Painel: "Rejeitados" abaixo da caixa "Solte arquivos"**: a caixa de drop é perene; blocos condicionais (Rejeitados) ficam abaixo dela — o layout não salta quando o card aparece/some.
+
+---
+
 ## [0.27.1] -- 2026-07-18
 
 ### Corrigido

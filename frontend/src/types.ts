@@ -132,6 +132,9 @@ export interface TriageItem {
   classifier_fallback_reason?: string | null;
   llm_explanation?: string;
   llm_proposed_business_domain?: string;
+  llm_business_domain?: string;
+  llm_document_type?: string;
+  llm_confidence?: number;
   rule_business_domain?: string;
   rule_confidence?: number;
 }
@@ -431,6 +434,9 @@ export interface ScanFileResult {
   rule_confidence?: number;
   llm_explanation?: string;
   llm_proposed_business_domain?: string;
+  llm_business_domain?: string;
+  llm_document_type?: string;
+  llm_confidence?: number;
   classification_reason?: string;
 }
 

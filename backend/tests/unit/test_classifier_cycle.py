@@ -184,3 +184,44 @@ def test_build_dataset_manifest_tracks_operational_validation_and_training_pool(
     assert manifest["training_pool"]["jsonl_records"] == 1
     assert manifest["training_pool"]["resolved_examples"] == 1
     assert manifest["training_pool"]["skipped_examples"] == 1
+
+
+def test_merge_project_taxonomies_incorpora_tipos_criados_pelo_usuario(tmp_path, monkeypatch) -> None:
+    """O benchmark deve poder prever domínios/tipos que só existem no profile
+    do projeto (ex.: "memorando" criado na triagem) — sem a união, o rótulo
+    esperado é impossível por construção e o score trava em 0%."""
+    from app.classifier_cycle import load_profile_runtime, merge_project_taxonomies
+    from app.classifier_registry import repo_root
+    from app.profile_schema_v2 import BusinessDomain, BusinessDomainFolder, DocumentType
+    from app.profile_store import create_default_profile, save_profile
+
+    projects_root = tmp_path / "projects"
+    project_root = projects_root / "proj_x"
+    project_root.mkdir(parents=True)
+    profile = create_default_profile(project_root=project_root, project_id="proj_x", project_label="Proj X")
+    profile.classification.document_types.append(DocumentType(key="memorando", folder="Memorandos"))
+    profile.classification.business_domains.append(BusinessDomain(key="operacoes_x"))
+    profile.layout.business_domain_folders.append(
+        BusinessDomainFolder(business_domain="operacoes_x", folder="OperacoesX")
+    )
+    save_profile(project_root=project_root, profile=profile, updated_by="tests")
+
+    import app.config as config_module
+
+    monkeypatch.setattr(config_module.settings, "projects_root", str(projects_root))
+
+    base = load_profile_runtime(repo_root() / "config" / "templates" / "default.json")
+    type_keys_before = {t["key"] for t in base["classification"]["document_types"]}
+    assert "memorando" not in type_keys_before
+
+    sources = merge_project_taxonomies(base)
+
+    assert sources == ["proj_x"]
+    type_keys = {t["key"] for t in base["classification"]["document_types"]}
+    assert "memorando" in type_keys
+    domain_keys_runtime = {d["key"] for d in base["business_domains"]}
+    domain_keys_class = {d["key"] for d in base["classification"]["business_domains"]}
+    assert "operacoes_x" in domain_keys_runtime and "operacoes_x" in domain_keys_class
+    # Idempotente: segunda união não duplica nada
+    assert merge_project_taxonomies(base) == []
+    assert len([t for t in base["classification"]["document_types"] if t["key"] == "memorando"]) == 1

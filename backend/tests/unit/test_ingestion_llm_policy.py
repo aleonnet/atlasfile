@@ -83,3 +83,23 @@ def test_llm_policy_full_override_blocked_without_explanation() -> None:
     assert merged["reason"] == "llm_override_guardrail_blocked"
     assert force_triage is True
 
+
+
+def test_llm_policy_persiste_resposta_crua_do_llm_para_visibilidade() -> None:
+    """O histórico mostra o que o LLM respondeu de fato (domínio, tipo, conf),
+    não o resultado final relabelado como 'LLM'."""
+    classification = {"business_domain": "juridica", "confidence": 0.7, "reason": "rule"}
+    llm_result = {
+        "business_domain": "financeiro",
+        "confidence": 0.92,
+        "document_type": "memo",
+        "explanation": "parece financeiro",
+    }
+    merged, _ = _apply_llm_policy(
+        profile=_profile_with_mode("tag_only"),
+        classification=classification,
+        llm_result=llm_result,
+    )
+    assert merged["llm_business_domain"] == "financeiro"
+    assert merged["llm_document_type"] == "memo"
+    assert merged["llm_confidence"] == 0.92

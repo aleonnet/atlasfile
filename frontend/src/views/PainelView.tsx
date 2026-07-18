@@ -478,11 +478,11 @@ export function PainelView({
 
       <LabelConflictsCard />
 
+      {triageItems.length === 0 && <DropHintCard />}
+
       {isSingleProject && (
         <RejectedCard projectId={selectedProject} onStatus={onStatus} onChanged={onScanComplete} />
       )}
-
-      {triageItems.length === 0 && <DropHintCard />}
 
       {isSingleProject && <IngestHistoryCard selectedProject={selectedProject} onStatus={onStatus} />}
 

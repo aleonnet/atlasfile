@@ -271,6 +271,67 @@ def load_profile_runtime(path: Path) -> dict[str, Any]:
     return profile_v2_to_runtime(profile, Path(profile.project_root))
 
 
+def merge_project_taxonomies(profile: dict[str, Any]) -> list[str]:
+    """Une business_domains e document_types dos profiles reais dos projetos ao
+    profile base do benchmark.
+
+    Domínios/tipos criados pelo usuário (ex.: "memorando" via triagem) existem
+    apenas no profile do projeto — sem esta união o benchmark avalia contra uma
+    taxonomia que não contém o rótulo esperado e o acerto é impossível por
+    construção. Retorna os project_ids que contribuíram com entradas novas.
+    """
+    from .config import settings
+    from .profile_store import PROFILE_DIR, PROFILE_FILE, load_profile
+
+    classification = profile.setdefault("classification", {})
+    runtime_domains: list[dict[str, Any]] = profile.setdefault("business_domains", [])
+    class_domains: list[dict[str, Any]] = classification.setdefault("business_domains", [])
+    class_types: list[dict[str, Any]] = classification.setdefault("document_types", [])
+    domain_keys = {str(d.get("key") or "") for d in runtime_domains} | {
+        str(d.get("key") or "") for d in class_domains
+    }
+    type_keys = {str(t.get("key") or "") for t in class_types}
+
+    sources: list[str] = []
+    projects_root = Path(str(settings.projects_root)).expanduser()
+    if not projects_root.exists():
+        return sources
+    for project_dir in sorted(p for p in projects_root.iterdir() if p.is_dir()):
+        if not (project_dir / PROFILE_DIR / PROFILE_FILE).exists():
+            continue
+        try:
+            project_profile = load_profile(project_dir)
+        except Exception:
+            continue
+        added = False
+        for domain in project_profile.classification.business_domains:
+            if not domain.key or domain.key in domain_keys:
+                continue
+            domain_keys.add(domain.key)
+            dumped = domain.model_dump(mode="json")
+            class_domains.append(dumped)
+            runtime_domains.append(
+                {
+                    "key": domain.key,
+                    "label": domain.label,
+                    "aliases": list(domain.aliases),
+                    "primary_scope": domain.primary_scope,
+                    "subfunction_topics": list(domain.subfunction_topics),
+                    "folder": None,
+                }
+            )
+            added = True
+        for doc_type in project_profile.classification.document_types:
+            if not doc_type.key or doc_type.key in type_keys:
+                continue
+            type_keys.add(doc_type.key)
+            class_types.append(doc_type.model_dump(mode="json"))
+            added = True
+        if added:
+            sources.append(project_profile.project_id)
+    return sources
+
+
 def extract_feature_text(file_path: Path, *, original_name: str | None = None) -> str:
     extracted = extract_document_content(file_path, max_chars=_MAX_EXTRACT_CHARS)
     parts = [original_name or file_path.name, extracted.text_excerpt]
@@ -868,6 +929,7 @@ def evaluate_classifier_cycle(
         _total_steps = 1  # safety fallback
 
     profile = load_profile_runtime(profile_path)
+    taxonomy_sources = merge_project_taxonomies(profile)
     use_corpus = splits_available()
     if use_corpus:
         labeled_entries = [e for e in load_split_as_validation_entries("validation") if e.is_labeled()]
@@ -1024,6 +1086,7 @@ def evaluate_classifier_cycle(
         "operational_classifier_mode": DEFAULT_CLASSIFIER_MODE,
         "dataset_integrity": dataset_integrity,
         "dataset_manifest": dataset_manifest,
+        "taxonomy_sources": taxonomy_sources,
         "gates": {
             "supervised": supervised["gate"],
         },

@@ -51,6 +51,9 @@ type FlatRow = {
   rule_confidence?: number;
   llm_explanation?: string;
   llm_proposed_business_domain?: string;
+  llm_business_domain?: string;
+  llm_document_type?: string;
+  llm_confidence?: number;
   classification_reason?: string;
   classifier_mode?: string;
   classifier_requested_mode?: string;
@@ -83,11 +86,14 @@ function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
         confidence: item.confidence_score,
         business_domain_confidence: item.business_domain_confidence,
         document_type_confidence: item.document_type_confidence,
-        llm: item.topics_source === "llm_policy" || !!item.llm_explanation || !!item.rule_business_domain,
+        llm: item.topics_source === "llm_policy" || !!item.llm_explanation || !!item.rule_business_domain || !!item.llm_business_domain,
         rule_business_domain: item.rule_business_domain,
         rule_confidence: item.rule_confidence,
         llm_explanation: item.llm_explanation,
         llm_proposed_business_domain: item.llm_proposed_business_domain,
+        llm_business_domain: item.llm_business_domain,
+        llm_document_type: item.llm_document_type,
+        llm_confidence: item.llm_confidence,
         classification_reason: item.classification_reason,
         classifier_mode: item.classifier_mode,
         classifier_requested_mode: item.classifier_requested_mode,
@@ -267,7 +273,14 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                                 {row.rule_business_domain && (
                                   <p>Regra: <code>{row.rule_business_domain}</code> (conf {(row.rule_confidence ?? 0).toFixed(2)})</p>
                                 )}
-                                <p>LLM: <code>{row.business_domain}</code> (conf {(row.confidence ?? 0).toFixed(2)})</p>
+                                {(row.llm_business_domain || row.llm_document_type) && (
+                                  <p>
+                                    LLM:{row.llm_business_domain && <> domínio <code>{row.llm_business_domain}</code></>}
+                                    {row.llm_business_domain && row.llm_document_type ? " ·" : ""}
+                                    {row.llm_document_type && <> tipo <code>{row.llm_document_type}</code></>}
+                                    {row.llm_confidence !== undefined && <> (conf {row.llm_confidence.toFixed(2)})</>}
+                                  </p>
+                                )}
                                 {row.llm_explanation && <p>Motivo: <em>{row.llm_explanation}</em></p>}
                                 {row.llm_proposed_business_domain && (
                                   <p>Domínio proposto: <code className="!text-accent-purple">{row.llm_proposed_business_domain}</code></p>

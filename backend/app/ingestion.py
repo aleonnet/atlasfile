@@ -105,6 +105,15 @@ def _apply_llm_policy(
     classification["_rule_business_domain"] = classification.get("business_domain")
     classification["_rule_confidence"] = rule_conf
 
+    # Visibilidade: o que o LLM realmente respondeu, independente do que a
+    # política deixou aplicar — o histórico mostra a contribuição genuína
+    classification["llm_confidence"] = llm_conf
+    if raw_llm_business_domain:
+        classification["llm_business_domain"] = raw_llm_business_domain
+    llm_document_type = str(llm_result.get("document_type") or "").strip() or None
+    if llm_document_type:
+        classification["llm_document_type"] = llm_document_type
+
     # Always preserve explanation
     if explanation:
         classification["llm_explanation"] = explanation
@@ -464,6 +473,12 @@ def process_inbox_file(
             meta["llm_explanation"] = classification["llm_explanation"]
         if classification.get("llm_proposed_business_domain"):
             meta["llm_proposed_business_domain"] = classification["llm_proposed_business_domain"]
+        if classification.get("llm_business_domain"):
+            meta["llm_business_domain"] = classification["llm_business_domain"]
+        if classification.get("llm_document_type"):
+            meta["llm_document_type"] = classification["llm_document_type"]
+        if classification.get("llm_confidence") is not None:
+            meta["llm_confidence"] = classification["llm_confidence"]
         meta_path = save_pending_metadata(project_root, doc_id, meta)
         meta["metadata_path"] = str(meta_path)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -513,6 +528,12 @@ def process_inbox_file(
             meta["llm_explanation"] = classification["llm_explanation"]
         if classification.get("llm_proposed_business_domain"):
             meta["llm_proposed_business_domain"] = classification["llm_proposed_business_domain"]
+        if classification.get("llm_business_domain"):
+            meta["llm_business_domain"] = classification["llm_business_domain"]
+        if classification.get("llm_document_type"):
+            meta["llm_document_type"] = classification["llm_document_type"]
+        if classification.get("llm_confidence") is not None:
+            meta["llm_confidence"] = classification["llm_confidence"]
         meta_path = save_pending_metadata(project_root, doc_id, meta)
         meta["metadata_path"] = str(meta_path)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -569,6 +590,12 @@ def process_inbox_file(
         payload["llm_explanation"] = classification["llm_explanation"]
     if classification.get("llm_proposed_business_domain"):
         payload["llm_proposed_business_domain"] = classification["llm_proposed_business_domain"]
+    if classification.get("llm_business_domain"):
+        payload["llm_business_domain"] = classification["llm_business_domain"]
+    if classification.get("llm_document_type"):
+        payload["llm_document_type"] = classification["llm_document_type"]
+    if classification.get("llm_confidence") is not None:
+        payload["llm_confidence"] = classification["llm_confidence"]
     payload["classification_reason"] = classification.get("reason", "")
 
     if decision == "auto":

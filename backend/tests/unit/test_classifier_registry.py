@@ -127,3 +127,21 @@ def test_load_classifier_registry_persists_dataset_manifest_fields(tmp_path, mon
 
     assert reloaded.latest_dataset_manifest["datasets_root"].endswith("/_ATLASFILE/classifier/datasets")
     assert reloaded.champion_dataset_manifest["training_pool"]["jsonl_records"] == 10
+
+
+def test_classifier_state_base_root_prefere_candidato_existente(tmp_path, monkeypatch) -> None:
+    """Dentro do container, PROJECTS_HOST_ROOT (path do host) não existe — o
+    estado deve ir para o caminho montado que existe, senão registry/campeão
+    são gravados no filesystem efêmero do container e somem a cada rebuild."""
+    from app.classifier_registry import classifier_state_base_root
+
+    host_path = tmp_path / "host-only-inexistente"
+    mounted = tmp_path / "projects"
+    mounted.mkdir()
+    monkeypatch.setenv("PROJECTS_HOST_ROOT", str(host_path))
+    monkeypatch.setenv("PROJECTS_ROOT", str(mounted))
+    assert classifier_state_base_root() == mounted
+
+    # Quando o primeiro candidato existe (execução no host), ele continua valendo
+    host_path.mkdir()
+    assert classifier_state_base_root() == host_path

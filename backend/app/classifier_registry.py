@@ -17,8 +17,6 @@ SUPPORTED_CLASSIFIER_MODES = ("bootstrap", "sparse_logreg", "llm")
 DEFAULT_CLASSIFIER_MODE = "bootstrap"
 DEFAULT_PROMOTION_POLICY = "auto_best_with_ui_override"
 DEFAULT_BENCHMARK_ENABLED_MODES = ["bootstrap", "sparse_logreg"]
-_DEFAULT_PROJECTS_ROOT = "/projects"
-
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -48,10 +46,16 @@ def _candidate_projects_roots() -> list[Path]:
 
 
 def classifier_state_base_root() -> Path:
-    for candidate in _candidate_projects_roots():
-        if str(candidate) == _DEFAULT_PROJECTS_ROOT and not candidate.exists():
-            continue
-        return candidate
+    # Preferir um candidato que EXISTE: dentro do container, PROJECTS_HOST_ROOT
+    # (path do host) vaza no ambiente mas não existe — usá-lo gravaria registry,
+    # campeão e reports no filesystem efêmero do container (perdidos a cada
+    # rebuild). O caminho montado (/projects) existe e persiste no host.
+    candidates = _candidate_projects_roots()
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    if candidates:
+        return candidates[0]
     return repo_root()
 
 
