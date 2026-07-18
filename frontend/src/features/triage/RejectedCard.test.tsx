@@ -45,10 +45,10 @@ describe("RejectedCard", () => {
     expect(container.textContent).toBe("");
   });
 
-  it("lista rejeitados ao expandir; órfão não tem Restaurar", async () => {
+  it("usa o CollapsibleSection padrão com contagem; órfão não tem Restaurar", async () => {
     render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={() => {}} />);
     await screen.findByText("Rejeitados");
-    fireEvent.click(screen.getByText("Rejeitados"));
+    expect(screen.getByText("2 arquivos")).toBeInTheDocument();
     expect(screen.getByText("contrato_ruim.pdf")).toBeInTheDocument();
     expect(screen.getByText("fantasma.pdf")).toBeInTheDocument();
     expect(screen.getByText(/registro órfão/)).toBeInTheDocument();
@@ -60,7 +60,6 @@ describe("RejectedCard", () => {
     const onChanged = vi.fn();
     render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={onChanged} />);
     await screen.findByText("Rejeitados");
-    fireEvent.click(screen.getByText("Rejeitados"));
     fireEvent.click(screen.getByText("Restaurar"));
     await waitFor(() => expect(restoreRejectedTriage).toHaveBeenCalledWith("p1", "abc123"));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
@@ -69,7 +68,6 @@ describe("RejectedCard", () => {
   it("Excluir exige confirmação e só então chama a API", async () => {
     render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={() => {}} />);
     await screen.findByText("Rejeitados");
-    fireEvent.click(screen.getByText("Rejeitados"));
     fireEvent.click(screen.getByLabelText("Excluir contrato_ruim.pdf definitivamente"));
     expect(deleteRejectedTriage).not.toHaveBeenCalled();
     expect(screen.getByText(/apagado do disco/)).toBeInTheDocument();

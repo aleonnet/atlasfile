@@ -15,6 +15,19 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.27.1] -- 2026-07-18
+
+### Corrigido
+
+- **Card "Rejeitados" no padrão do design system**: agora usa o `CollapsibleSection` canônico (chevron + chip "N arquivos"), idêntico ao card Processamentos — a versão anterior tinha header próprio (ícone + "mostrar"), fora do guia.
+- **Label do projeto reativo**: salvar o profile (ex.: renomear o project label) atualiza o switcher da sidebar na hora — o `ProjectContext` agora assina o bus `atlas:data-refresh`, e o editor de profile emite após salvar e após aplicar layout. Antes exigia reload de página.
+
+### Nota
+
+- O **project label** é o nome de exibição e é persistido em `_PROFILE/profile.json`; a **pasta física** do projeto é o `project_id` (identificador imutável) e não é renomeada — renomear a pasta exigiria migração de todos os paths indexados.
+
+---
+
 ## [0.27.0] -- 2026-07-18
 
 ### Adicionado

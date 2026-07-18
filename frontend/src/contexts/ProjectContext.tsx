@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchProjects } from "../api";
+import { onDataRefresh } from "../lib/refreshBus";
 import type { Project } from "../types";
 
 export const ALL_PROJECTS = "__all__";
@@ -29,6 +30,10 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       current !== ALL_PROJECTS && !data.some((p) => p.project_id === current) ? ALL_PROJECTS : current
     );
   }, []);
+
+  // Reativo via bus: salvar profile (label), scans e decisões recarregam a
+  // lista de projetos — o switcher da sidebar reflete sem reload de página
+  useEffect(() => onDataRefresh(() => void refreshProjects().catch(() => {})), [refreshProjects]);
 
   const selectedProjectLabel = useMemo(
     () =>

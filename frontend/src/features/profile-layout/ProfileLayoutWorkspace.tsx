@@ -11,6 +11,7 @@ import { Input, Textarea } from "../../components/ui/input";
 import { fieldLabelClass, ModalActions, ModalShell } from "../../components/ui/modal-shell";
 import { Skeleton } from "../../components/ui/skeleton";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { emitDataRefresh } from "../../lib/refreshBus";
 import { applyLayout, getProfile, getProfileHistory, planLayout, saveProfile, validateProfile } from "./api";
 import { LayoutPlanPreview } from "./LayoutPlanPreview";
 import { ProfileLayoutEditor } from "./ProfileLayoutEditor";
@@ -125,6 +126,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       setProfile(saved.profile);
       setDraft(saved.profile);
       onStatus?.(saved.version === profile.version ? "Sem alterações no profile" : "Profile salvo");
+      emitDataRefresh();
       await loadWorkspace();
     } catch {
       onStatus?.("Falha ao salvar profile");
@@ -165,6 +167,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
         cleanup_empty_dirs: cleanupEmptyDirs
       });
       onStatus?.("Layout aplicado com sucesso");
+      emitDataRefresh();
       await loadWorkspace();
     } catch {
       onStatus?.("Falha ao aplicar layout");

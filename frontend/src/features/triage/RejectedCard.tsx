@@ -1,11 +1,10 @@
-import { ArchiveX, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { deleteRejectedTriage, fetchRejectedTriage, restoreRejectedTriage, type RejectedTriageItem } from "../../api";
 import { onDataRefresh } from "../../lib/refreshBus";
-import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
-import { rowDeleteButtonClass } from "../../components/ui/collapsible-section";
+import { Card, CardContent } from "../../components/ui/card";
+import { CollapsibleSection, rowDeleteButtonClass } from "../../components/ui/collapsible-section";
 import { cn } from "../../lib/utils";
 
 type Props = {
@@ -28,7 +27,6 @@ function formatWhen(iso: string): string {
  *  só o fazia sumir da fila — o arquivo ficava invisível em _TRIAGE_REVIEW/rejected. */
 export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
   const [items, setItems] = useState<RejectedTriageItem[]>([]);
-  const [expanded, setExpanded] = useState(false);
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
@@ -81,18 +79,12 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
 
   return (
     <Card>
-      <CardHeader className="cursor-pointer" onClick={() => setExpanded((v) => !v)}>
-        <CardTitle className="flex items-center gap-2">
-          <ArchiveX size={15} className="text-tertiary" aria-hidden />
-          Rejeitados
-          <Badge variant="outline">{items.length}</Badge>
-          <span className="ml-auto font-mono text-[0.68rem] font-normal text-tertiary">
-            {expanded ? "ocultar" : "mostrar"}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      {expanded && (
-        <CardContent>
+      <CardContent className="pt-5">
+        <CollapsibleSection
+          title="Rejeitados"
+          badge={`${items.length} arquivo${items.length !== 1 ? "s" : ""}`}
+          className="border-0 bg-transparent [&>summary]:px-0 [&>div]:border-0 [&>div]:px-0"
+        >
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
             {items.map((item) => {
               const isOrphan = item.decision === "orphaned_missing_source" || !item.file_exists;
@@ -149,8 +141,8 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
               );
             })}
           </ul>
-        </CardContent>
-      )}
+        </CollapsibleSection>
+      </CardContent>
     </Card>
   );
 }
