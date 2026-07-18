@@ -993,7 +993,7 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/setup/status")
-def setup_status() -> dict[str, Any]:
+def setup_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     roots = list_project_roots(Path(settings.projects_root))
     initialized_count = 0
     for r in roots:
@@ -1067,12 +1067,12 @@ def initialize_project(project_ref: str, template: str = Query("default"), auth:
 # ── Template CRUD ──
 
 @app.get("/api/templates")
-def api_list_templates() -> list[dict[str, Any]]:
+def api_list_templates(auth: AuthContext = Depends(require_auth)) -> list[dict[str, Any]]:
     return _list_templates()
 
 
 @app.get("/api/templates/{slug}")
-def api_get_template(slug: str) -> dict[str, Any]:
+def api_get_template(slug: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     try:
         return _get_template(slug)
     except FileNotFoundError:
@@ -1080,7 +1080,7 @@ def api_get_template(slug: str) -> dict[str, Any]:
 
 
 @app.post("/api/templates")
-def api_create_template(body: dict[str, Any]) -> dict[str, Any]:
+def api_create_template(body: dict[str, Any], auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     from_profile = body.pop("from_profile", None)
     if from_profile:
         project_root = _resolve_project_root(from_profile)
@@ -1109,7 +1109,7 @@ def api_create_template(body: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.put("/api/templates/{slug}")
-def api_update_template(slug: str, body: dict[str, Any]) -> dict[str, Any]:
+def api_update_template(slug: str, body: dict[str, Any], auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     try:
         return _save_template(slug, body)
     except ValueError as e:
@@ -1117,7 +1117,7 @@ def api_update_template(slug: str, body: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.delete("/api/templates/{slug}")
-def api_delete_template(slug: str) -> dict[str, str]:
+def api_delete_template(slug: str, auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
     try:
         _delete_template(slug)
     except ValueError as e:
@@ -1128,7 +1128,7 @@ def api_delete_template(slug: str) -> dict[str, str]:
 
 
 @app.get("/api/reconcile/status")
-def get_reconcile_status() -> dict[str, Any]:
+def get_reconcile_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     return dict(_reconcile_status)
 
 
@@ -1143,7 +1143,7 @@ async def _stream_reconcile_status() -> Any:
 
 
 @app.get("/api/reconcile/status/stream")
-async def stream_reconcile_status() -> StreamingResponse:
+async def stream_reconcile_status(auth: AuthContext = Depends(require_auth)) -> StreamingResponse:
     """Server-Sent Events: stream do status de reconcile ate running === false."""
     return StreamingResponse(
         _stream_reconcile_status(),
@@ -1153,7 +1153,7 @@ async def stream_reconcile_status() -> StreamingResponse:
 
 
 @app.get("/api/ingest/status")
-def get_ingest_status() -> dict[str, Any]:
+def get_ingest_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     return dict(_ingest_status)
 
 
@@ -1167,7 +1167,7 @@ async def _stream_ingest_status() -> Any:
 
 
 @app.get("/api/ingest/status/stream")
-async def stream_ingest_status() -> StreamingResponse:
+async def stream_ingest_status(auth: AuthContext = Depends(require_auth)) -> StreamingResponse:
     return StreamingResponse(
         _stream_ingest_status(),
         media_type="text/event-stream",
@@ -1284,7 +1284,7 @@ def _run_classifier_cycle_background(
 
 
 @app.get("/api/classifier/status")
-def get_classifier_status(project_id: str | None = Query(None, description="Projeto para calcular override efetivo")) -> dict[str, Any]:
+def get_classifier_status(project_id: str | None = Query(None, description="Projeto para calcular override efetivo"), auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     return _classifier_status_payload(project_id)
 
 
@@ -1366,7 +1366,7 @@ def resolve_label_conflict(
 
 
 @app.get("/api/classifier/report/latest")
-def get_latest_classifier_report() -> dict[str, Any]:
+def get_latest_classifier_report(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     registry = load_classifier_registry()
     report = load_classifier_report(registry.latest_report_id)
     if not report:
@@ -1375,7 +1375,7 @@ def get_latest_classifier_report() -> dict[str, Any]:
 
 
 @app.get("/api/classifier/reports")
-def get_classifier_reports(limit: int = Query(10, ge=1, le=50)) -> list[dict[str, Any]]:
+def get_classifier_reports(limit: int = Query(10, ge=1, le=50), auth: AuthContext = Depends(require_auth)) -> list[dict[str, Any]]:
     reports = []
     for report in list_classifier_reports(limit=limit):
         reports.append(
@@ -1391,7 +1391,7 @@ def get_classifier_reports(limit: int = Query(10, ge=1, le=50)) -> list[dict[str
 
 
 @app.delete("/api/classifier/reports/{report_id}")
-def delete_classifier_report(report_id: str) -> Response:
+def delete_classifier_report(report_id: str, auth: AuthContext = Depends(require_auth)) -> Response:
     registry = load_classifier_registry()
     if report_id == registry.champion_report_id:
         raise HTTPException(status_code=409, detail="Não é possível deletar o relatório campeão ativo")
@@ -1424,7 +1424,7 @@ def set_classifier_override(project_id: str, body: dict[str, Any], auth: AuthCon
 
 
 @app.put("/api/classifier/benchmark-modes")
-def set_benchmark_enabled_modes(body: dict[str, Any]) -> dict[str, Any]:
+def set_benchmark_enabled_modes(body: dict[str, Any], auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     modes_raw = body.get("benchmark_enabled_modes")
     if not isinstance(modes_raw, list):
         raise HTTPException(status_code=400, detail="benchmark_enabled_modes must be a list")
@@ -1441,7 +1441,7 @@ def set_benchmark_enabled_modes(body: dict[str, Any]) -> dict[str, Any]:
 
 
 @app.get("/api/classifier/cycle/status")
-def get_classifier_cycle_status() -> dict[str, Any]:
+def get_classifier_cycle_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     return dict(_classifier_cycle_status)
 
 
@@ -1455,7 +1455,7 @@ async def _stream_classifier_cycle_status() -> Any:
 
 
 @app.get("/api/classifier/cycle/status/stream")
-async def stream_classifier_cycle_status() -> StreamingResponse:
+async def stream_classifier_cycle_status(auth: AuthContext = Depends(require_auth)) -> StreamingResponse:
     return StreamingResponse(
         _stream_classifier_cycle_status(),
         media_type="text/event-stream",
@@ -1464,7 +1464,7 @@ async def stream_classifier_cycle_status() -> StreamingResponse:
 
 
 @app.get("/api/classifier/datasets/readiness")
-def get_dataset_readiness() -> dict[str, Any]:
+def get_dataset_readiness(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     """Prontidão dos datasets (validação rotulada, treino, gate sparse) para a UI orientar o usuário."""
     return dataset_readiness()
 
@@ -1485,6 +1485,7 @@ def start_classifier_cycle(
     min_training_docs: int = Query(100, ge=0),
     min_docs_per_class: int = Query(5, ge=1),
     x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
+    auth: AuthContext = Depends(require_auth)
 ) -> JSONResponse:
     if _classifier_cycle_status.get("running"):
         raise HTTPException(status_code=409, detail="Classifier cycle already in progress")
@@ -1533,7 +1534,7 @@ def start_classifier_cycle(
 
 
 @app.delete("/api/classifier/cycle")
-def cancel_classifier_cycle() -> Response:
+def cancel_classifier_cycle(auth: AuthContext = Depends(require_auth)) -> Response:
     if not _classifier_cycle_status.get("running"):
         raise HTTPException(status_code=409, detail="Nenhum ciclo em andamento")
     _cycle_cancel_event.set()
@@ -1562,7 +1563,7 @@ async def _stream_session_events(session_id: str) -> Any:
 
 
 @app.get("/api/chat/sessions/{session_id}/events")
-async def stream_session_events(session_id: str) -> StreamingResponse:
+async def stream_session_events(session_id: str, auth: AuthContext = Depends(require_auth)) -> StreamingResponse:
     """SSE: stream real-time updates for a specific chat session."""
     return StreamingResponse(
         _stream_session_events(session_id),
@@ -1599,7 +1600,7 @@ def reconcile_project(project_id: str, reindex_search: bool = True, auth: AuthCo
 
 
 @app.post("/api/reconcile")
-def reconcile_all_projects(reindex_search: bool = True):
+def reconcile_all_projects(reindex_search: bool = True, auth: AuthContext = Depends(require_auth)):
     if _reconcile_status.get("running"):
         raise HTTPException(status_code=409, detail="Reconcile already in progress")
     roots = list_project_roots(Path(settings.projects_root))
@@ -1950,7 +1951,7 @@ def get_document_chunks(
 
 
 @app.post("/api/documents/{doc_id}/tags")
-def update_document_tags(doc_id: str, payload: DocumentTagsUpdate) -> dict[str, Any]:
+def update_document_tags(doc_id: str, payload: DocumentTagsUpdate, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     """Add and/or remove tags for a document. Idempotent (no duplicate tags)."""
     try:
         hit = os_client.get(index=settings.opensearch_index, id=doc_id)
@@ -1970,7 +1971,7 @@ def update_document_tags(doc_id: str, payload: DocumentTagsUpdate) -> dict[str, 
 
 
 @app.patch("/api/documents/{doc_id}")
-def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate) -> dict[str, Any]:
+def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     """Partial update: document_type, correspondent, business_domain, review_status."""
     try:
         os_client.get(index=settings.opensearch_index, id=doc_id)
@@ -2059,7 +2060,7 @@ def move_document(project_id: str, doc_id: str, request: DocumentMoveRequest, au
 
 
 @app.get("/api/tags")
-def list_tags(project_id: str | None = Query(None, description="Filter by project")) -> dict[str, Any]:
+def list_tags(project_id: str | None = Query(None, description="Filter by project"), auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     """Aggregate unique tag values from the index."""
     aggs: dict[str, Any] = {
         "tags": {
@@ -2134,7 +2135,7 @@ def get_stats(
 
 
 @app.get("/api/models", response_model=list[ModelOption])
-def get_models() -> list[ModelOption]:
+def get_models(auth: AuthContext = Depends(require_auth)) -> list[ModelOption]:
     """Return catalog of supported LLM models (builtin + cache remoto LiteLLM mesclados)."""
     return load_catalog()
 
@@ -2158,7 +2159,7 @@ def refresh_models(
 
 
 @app.get("/api/models/catalog-config")
-def get_models_catalog_config() -> dict[str, Any]:
+def get_models_catalog_config(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     """Fonte do catálogo (URL efetiva + default) e data do último refresh."""
     return {
         "url": get_catalog_source_url(),
@@ -2189,7 +2190,7 @@ def update_models_catalog_config(
 
 
 @app.get("/api/models/detail")
-def get_models_detail() -> dict[str, Any]:
+def get_models_detail(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     """Catálogo mesclado com preços por 1M tokens — para a aba Catálogo de modelos."""
     builtin_keys = {(m.provider, m.model) for m in LLM_MODEL_CATALOG}
     items: list[dict[str, Any]] = []
@@ -2364,6 +2365,7 @@ def _session_doc_to_model(doc_id: str, src: dict[str, Any]) -> ChatSession:
 def list_chat_sessions(
     q: str | None = Query(None, alias="q"),
     channel: str | None = Query(None, description="Filter by channel (web, telegram, ...)"),
+    auth: AuthContext = Depends(require_auth)
 ) -> list[ChatSession]:
     """List chat sessions ordered by updatedAt desc; optional full-text filter on title."""
     body: dict[str, Any] = {"size": 500, "sort": [{"updatedAt": {"order": "desc"}}]}
@@ -2390,7 +2392,7 @@ def list_chat_sessions(
 
 
 @app.get("/api/chat/sessions/{session_id}", response_model=ChatSession)
-def get_chat_session(session_id: str) -> ChatSession:
+def get_chat_session(session_id: str, auth: AuthContext = Depends(require_auth)) -> ChatSession:
     """Return a single chat session by id."""
     try:
         hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
@@ -2401,7 +2403,7 @@ def get_chat_session(session_id: str) -> ChatSession:
 
 
 @app.post("/api/chat/sessions", response_model=ChatSession)
-def create_chat_session(body: ChatSessionCreate) -> ChatSession:
+def create_chat_session(body: ChatSessionCreate, auth: AuthContext = Depends(require_auth)) -> ChatSession:
     """Create a new chat session (id generated in backend)."""
     now_ms = int(time.time() * 1000)
     doc_id = uuid.uuid4().hex
@@ -2480,7 +2482,7 @@ async def _maybe_mirror_to_channel(
 
 
 @app.patch("/api/chat/sessions/{session_id}", response_model=ChatSession)
-async def update_chat_session(session_id: str, body: ChatSessionUpdate) -> ChatSession:
+async def update_chat_session(session_id: str, body: ChatSessionUpdate, auth: AuthContext = Depends(require_auth)) -> ChatSession:
     """Update session. Supports append_messages (atomic) or messages (full replace)."""
     if body.messages is not None and body.append_messages is not None:
         raise HTTPException(status_code=400, detail="Envie 'messages' ou 'append_messages', não ambos")
@@ -2532,7 +2534,7 @@ async def update_chat_session(session_id: str, body: ChatSessionUpdate) -> ChatS
 
 
 @app.delete("/api/chat/sessions/{session_id}", status_code=204)
-def delete_chat_session(session_id: str):
+def delete_chat_session(session_id: str, auth: AuthContext = Depends(require_auth)):
     """Delete a chat session. Returns 204 No Content."""
     try:
         os_client.delete(index=_CHAT_SESSIONS_INDEX, id=session_id, refresh=True)
@@ -2566,6 +2568,7 @@ def get_usage_summary(
     end_date: str = Query(..., description="End date YYYY-MM-DD"),
     project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
     channel: str | None = Query(None, description="Filter by channel (web, telegram, ...)"),
+    auth: AuthContext = Depends(require_auth)
 ) -> UsageSummaryResponse:
     """Aggregate usage from chat sessions in the given date range (by updatedAt)."""
     try:
@@ -2714,6 +2717,7 @@ def get_usage_sessions(
     project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
     channel: str | None = Query(None, description="Filter by channel (web, telegram, ...)"),
     limit: int = Query(100, ge=1, le=500),
+    auth: AuthContext = Depends(require_auth)
 ) -> list[UsageSessionItem]:
     """List chat sessions with usage in the date range, ordered by updatedAt desc."""
     try:
@@ -2766,6 +2770,7 @@ async def api_classify(
     body: ClassifyRequest,
     x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
     x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+    auth: AuthContext = Depends(require_auth)
 ) -> ClassifyResponse:
     """Classify a document excerpt via LLM (submit_classification tool). Request may override provider/model."""
     if body.provider and body.model:
@@ -2796,6 +2801,7 @@ def get_classification_usage(
     start_date: str = Query(..., description="Start date YYYY-MM-DD"),
     end_date: str = Query(..., description="End date YYYY-MM-DD"),
     project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
+    auth: AuthContext = Depends(require_auth)
 ) -> ClassificationUsageSummary:
     """Aggregate classification LLM usage in the given date range."""
     try:
@@ -2887,6 +2893,7 @@ def get_training_usage(
     start_date: str = Query(..., description="Start date YYYY-MM-DD"),
     end_date: str = Query(..., description="End date YYYY-MM-DD"),
     project_id: str | None = Query(None, description="Filter by project_id; omit for all"),
+    auth: AuthContext = Depends(require_auth)
 ) -> TrainingUsageSummary:
     """Aggregate training/pipeline LLM usage in the given date range."""
     try:
@@ -3851,6 +3858,7 @@ def suggest(
     q: str = Query(..., min_length=3),
     project_id: str | None = None,
     size: int | None = None,
+    auth: AuthContext = Depends(require_auth)
 ) -> SuggestResponse:
     suggest_size = size if size is not None else settings.suggest_size
     filters: list[dict[str, Any]] = []
@@ -4019,6 +4027,7 @@ def benchmark_search(
     q: list[str] = Query(..., min_length=1),
     project_id: str | None = None,
     size: int = 10,
+    auth: AuthContext = Depends(require_auth)
 ) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     durations_ms: list[float] = []

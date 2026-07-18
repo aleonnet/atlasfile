@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.25.2] -- 2026-07-18
+
+### Segurança
+
+- **Cobertura completa de autenticação**: 40 endpoints que ficavam públicos com `API_AUTH_ENABLED=true` (sessões de chat, templates, classify, usage, reconcile, ciclo/status do classificador, catálogo de modelos, setup/status, streams SSE...) agora exigem key — header `Authorization: Bearer` ou `?api_key=` nos streams (EventSource não envia header; os getters do frontend já anexavam o param). `/health` permanece público (monitoramento/instalador). Efeito colateral positivo: o AuthGate valida a key contra um endpoint de fato autenticado (`setup/status` era público — qualquer key "passava" no gate). 16 testes de cobertura de auth novos.
+
+---
+
 ## [0.25.1] -- 2026-07-18
 
 ### Corrigido
