@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.22.3] -- 2026-07-17
+
+### Corrigido
+
+- **Onboarding mostra o caminho físico dos arquivos**: o passo 1 exibia `/projects` (mount interno do container) — sem significado para quem acabou de digitar um caminho real no instalador. O compose agora repassa `PROJECTS_HOST_ROOT` à API, o `/api/setup/status` devolve `projects_host_root`, e o wizard exibe "Seus arquivos ficarão em <caminho do host>"; quando o caminho não é conhecido, o campo é ocultado (nunca mais `/projects`)
+
+---
+
 ## [0.22.2] -- 2026-07-17
 
 ### Segurança

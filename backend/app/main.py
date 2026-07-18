@@ -995,6 +995,7 @@ def setup_status() -> dict[str, Any]:
     return {
         "app_env": settings.app_env,
         "projects_root": settings.projects_root,
+        "projects_host_root": settings.projects_host_root,
         "total_project_dirs": len(roots),
         "initialized_projects": initialized_count,
         "onboarding_suggested": initialized_count == 0,

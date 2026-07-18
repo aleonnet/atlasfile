@@ -8,6 +8,7 @@ vi.mock("../../api", () => ({
     Promise.resolve({
       app_env: "dev",
       projects_root: "/projects",
+      projects_host_root: "/Users/teste/AtlasFileProjects",
       total_project_dirs: 0,
       initialized_projects: 0,
       onboarding_suggested: true,
@@ -47,11 +48,12 @@ describe("OnboardingWizard", () => {
     expect(screen.getByText(/Comecar/)).toBeInTheDocument();
   });
 
-  it("shows projects_root from setup status", async () => {
+  it("shows the physical host path (not the container mount) from setup status", async () => {
     render(<OnboardingWizard {...defaultProps()} />);
     await waitFor(() => {
-      expect(screen.getByText("/projects")).toBeInTheDocument();
+      expect(screen.getByText("/Users/teste/AtlasFileProjects")).toBeInTheDocument();
     });
+    expect(screen.queryByText("/projects")).not.toBeInTheDocument();
   });
 
   it("navigates to create project step", async () => {

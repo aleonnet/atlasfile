@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     opensearch_nested_objects_limit: int = 50000
 
     projects_root: str = "/projects"
+    # Caminho do host montado em /projects (informativo, exibido na UI)
+    projects_host_root: str = ""
     classifier_datasets_root: str = ""
     auto_scan_on_startup: bool = False
     auto_reconcile_interval_seconds: int = 0

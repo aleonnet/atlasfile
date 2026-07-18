@@ -106,6 +106,8 @@ export function getFileDownloadUrl(filePath: string): string {
 export interface SetupStatus {
   app_env: string;
   projects_root: string;
+  /** Caminho físico no host montado em /projects (vazio se desconhecido). */
+  projects_host_root?: string;
   total_project_dirs: number;
   initialized_projects: number;
   onboarding_suggested: boolean;

@@ -44,6 +44,9 @@ services:
       - OPENSEARCH_USER=admin
       - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?defina OPENSEARCH_INITIAL_ADMIN_PASSWORD no .env (o install.sh gera automaticamente)}
       - PROJECTS_ROOT=/projects
+      # Caminho do host montado em /projects — informativo, para a UI mostrar
+      # ao usuário onde os arquivos ficam fisicamente
+      - PROJECTS_HOST_ROOT=${PROJECTS_HOST_ROOT:-}
       - CLASSIFIER_DATASETS_ROOT=${CLASSIFIER_DATASETS_ROOT:-/projects/_ATLASFILE/classifier/datasets}
       - AUTO_RECONCILE_INTERVAL_SECONDS=${AUTO_RECONCILE_INTERVAL_SECONDS:-600}
       - AUTO_RECONCILE_REINDEX_SEARCH=${AUTO_RECONCILE_REINDEX_SEARCH:-true}

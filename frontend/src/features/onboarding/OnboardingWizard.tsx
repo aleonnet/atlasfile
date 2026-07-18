@@ -159,20 +159,25 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
               Sistema de gestao documental inteligente para projetos.
             </p>
 
-            <div className="mt-5">
-              <label className={fieldLabelClass}>
-                <FolderOpen size={13} aria-hidden /> Pasta de projetos
-                <span title="Diretorio montado como /projects no container. Para alterar, edite .env e reinicie os containers.">
-                  <Info size={11} aria-hidden />
-                </span>
-              </label>
-              <div className="rounded-md border border-border bg-panel-strong px-3 py-2 font-mono text-[0.8rem] text-foreground">
-                {setupStatus?.projects_root ?? "/projects"}
+            {/* Só o caminho físico do host interessa ao usuário (foi o que ele
+                escolheu no instalador); sem ele, ocultar — /projects é um
+                detalhe interno do container. */}
+            {setupStatus?.projects_host_root ? (
+              <div className="mt-5">
+                <label className={fieldLabelClass}>
+                  <FolderOpen size={13} aria-hidden /> Seus arquivos ficarao em
+                  <span title="Pasta escolhida na instalacao. Para alterar, edite PROJECTS_HOST_ROOT no .env e reinicie os containers.">
+                    <Info size={11} aria-hidden />
+                  </span>
+                </label>
+                <div className="rounded-md border border-border bg-panel-strong px-3 py-2 font-mono text-[0.8rem] text-foreground">
+                  {setupStatus.projects_host_root}
+                </div>
+                <p className={hintClass}>
+                  Escolhida na instalacao. Para alterar, edite <code className="text-accent-light">.env</code> e reinicie os containers.
+                </p>
               </div>
-              <p className={hintClass}>
-                Configurado na instalacao. Para alterar, edite <code className="text-accent-light">.env</code> e reinicie os containers.
-              </p>
-            </div>
+            ) : null}
 
             <div className={actionsClass}>
               <Button className="ml-auto" onClick={goToProjects}>
