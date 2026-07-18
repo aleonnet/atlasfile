@@ -14,30 +14,70 @@ from app.config import settings
 _LOADED: dict[str, dict] = {}
 
 
-def _load_config() -> dict:
-    """Load usage costs from config path (JSON). Empty dict if file missing or invalid."""
-    path_str = (settings.usage_costs_config_path or "").strip()
-    if not path_str:
-        return {}
-    path = Path(path_str)
-    if not path.is_absolute():
-        path = Path.cwd() / path_str
-    if not path.exists():
-        # Fallback: path default aponta para o container (/workspace); em execução
-        # local (scripts no venv) usa o config/usage_costs.json do repositório.
-        repo_fallback = Path(__file__).resolve().parents[2] / "config" / "usage_costs.json"
-        if repo_fallback.exists():
-            path = repo_fallback
-    if path not in _LOADED:
+def _override_path() -> Path:
+    """Override gravado pelo refresh do catálogo (fonte LiteLLM) — runtime-writable."""
+    return Path(settings.projects_root) / "_ATLASFILE" / "llm" / "usage_costs_override.json"
+
+
+# Memo do override por mtime (arquivo pequeno, mas lido a cada chamada LLM).
+_override_memo: tuple[float | None, dict] | None = None
+
+
+def _load_override() -> dict:
+    global _override_memo
+    path = _override_path()
+    try:
+        mtime: float | None = path.stat().st_mtime
+    except OSError:
+        mtime = None
+    if _override_memo is not None and _override_memo[0] == mtime:
+        return _override_memo[1]
+    data: dict = {}
+    if mtime is not None:
         try:
-            if path.exists():
-                with path.open(encoding="utf-8") as f:
-                    _LOADED[str(path)] = json.load(f)
-            else:
-                _LOADED[str(path)] = {}
+            with path.open(encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                data = loaded
         except (json.JSONDecodeError, OSError):
-            _LOADED[str(path)] = {}
-    return _LOADED.get(str(path), {})
+            data = {}
+    _override_memo = (mtime, data)
+    return data
+
+
+def _load_config() -> dict:
+    """Load usage costs: base do config (JSON) mesclado com o override do refresh (override vence por modelo)."""
+    path_str = (settings.usage_costs_config_path or "").strip()
+    base: dict = {}
+    if path_str:
+        path = Path(path_str)
+        if not path.is_absolute():
+            path = Path.cwd() / path_str
+        if not path.exists():
+            # Fallback: path default aponta para o container (/workspace); em execução
+            # local (scripts no venv) usa o config/usage_costs.json do repositório.
+            repo_fallback = Path(__file__).resolve().parents[2] / "config" / "usage_costs.json"
+            if repo_fallback.exists():
+                path = repo_fallback
+        if path not in _LOADED:
+            try:
+                if path.exists():
+                    with path.open(encoding="utf-8") as f:
+                        _LOADED[str(path)] = json.load(f)
+                else:
+                    _LOADED[str(path)] = {}
+            except (json.JSONDecodeError, OSError):
+                _LOADED[str(path)] = {}
+        base = _LOADED.get(str(path), {})
+    override = _load_override()
+    if not override:
+        return base
+    merged = {k: dict(v) for k, v in base.items() if isinstance(v, dict)}
+    for provider, models in override.items():
+        if not isinstance(models, dict):
+            continue
+        merged.setdefault(provider, {}).update(models)
+    return merged
 
 
 def get_cost_per_1m(provider: str, model: str) -> tuple[float, float, float, float] | None:
@@ -46,8 +86,8 @@ def get_cost_per_1m(provider: str, model: str) -> tuple[float, float, float, flo
     prov = config.get((p := provider.strip().lower()), {})
     if not isinstance(prov, dict):
         return None
-    entry = prov.get((m := model.strip()), {})
-    if not isinstance(entry, dict):
+    entry = prov.get(model.strip())
+    if not isinstance(entry, dict) or not entry:
         return None
     try:
         input_p = float(entry.get("input", 0) or 0)

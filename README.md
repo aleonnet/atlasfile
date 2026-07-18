@@ -256,6 +256,8 @@ Veja `.env.example` para a lista completa.
 | `get_stats` | Estatísticas agregadas por `doc_kind`, `business_domain`, `document_type` e `project_id` |
 | `get_document` | Metadados + chunks de um documento |
 | `get_document_chunks` | Chunks específicos por localização (page:N, sheet:Name) |
+| `spreadsheet_schema` | Abas, colunas e amostra de uma planilha (xlsx/csv) para consulta estruturada |
+| `spreadsheet_query` | SELECT (DuckDB, read-only) direto no arquivo original — contagens e agregações exatas |
 | `apply_tags` | Adiciona/remove tags |
 | `set_metadata` | Atualiza `document_type`, `business_domain`, `correspondent` e `review_status` |
 | `submit_classification` | Suporte a classificação/revisão via LLM quando o fluxo configurado exigir |

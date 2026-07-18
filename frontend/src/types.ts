@@ -232,6 +232,8 @@ export interface UsageByModelEntry {
   output_cost_usd: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  /** false = modelo sem preço cadastrado; o custo exibido seria 0 fabricado. */
+  cost_tracked?: boolean;
 }
 
 export interface UsageByDayEntry {
@@ -726,4 +728,34 @@ export interface LabelConflict {
     justificativa?: string;
   };
   sources: LabelConflictSource[];
+}
+
+export interface DatasetReadinessBlocker {
+  code: string;
+  message: string;
+  params?: Record<string, number>;
+}
+
+export interface DatasetReadiness {
+  cycle_ready: boolean;
+  splits_available: boolean;
+  validation: { labeled: number; unlabeled: number };
+  training: {
+    records: number;
+    business_domain_classes: Record<string, number>;
+    document_type_classes: Record<string, number>;
+  };
+  supervised_gate: { eligible: boolean; reasons: string[]; warnings: string[] };
+  holdout: { enabled: boolean; modulus: number; min_train_per_class: number };
+  blockers: DatasetReadinessBlocker[];
+  suggestions: DatasetReadinessBlocker[];
+}
+
+export interface BackfillValidationResult {
+  dry_run: boolean;
+  moved: number;
+  per_class: Record<string, number>;
+  skipped: { doc_id: string; reason: string }[];
+  validation_labeled_total: number;
+  training_total: number;
 }

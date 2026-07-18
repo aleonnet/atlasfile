@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # Caminho do host montado em /projects (informativo, exibido na UI)
     projects_host_root: str = ""
     classifier_datasets_root: str = ""
+    # Hold-out operacional: fração ~1/modulus das decisões humanas vai para o
+    # validation set (0 desliga); warm-up manda os primeiros N por classe ao treino.
+    classifier_holdout_modulus: int = 5
+    classifier_holdout_min_train_per_class: int = 3
     auto_scan_on_startup: bool = False
     auto_reconcile_interval_seconds: int = 0
     auto_reconcile_reindex_search: bool = True

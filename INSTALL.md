@@ -116,6 +116,11 @@ cd backend && .venv/bin/python scripts/backfill_embeddings.py --force   # re-emb
 
 ```bash
 # Autenticação por API key (default: desligada)
+# Caminho simples — re-execute o instalador com a flag (gera key, configura .env,
+# rebuilda a API e preserva dados; a key aparece no final):
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth
+
+# Manual, se preferir:
 # API_AUTH_ENABLED=true
 # 1) Crie config/api_keys.json a partir de config/api_keys.example.json (fica fora do git)
 # 2) Coloque a key do MCP em ATLASFILE_API_TOKEN no .env (precisa existir no json)

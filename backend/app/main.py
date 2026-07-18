@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import html as html_module
+import httpx
 import json
 import mimetypes
 import unicodedata
@@ -36,12 +37,10 @@ from .classifier_registry import (
 )
 from .classifier_runtime import resolve_classifier_mode
 from .config import settings
-from .evaluation_dataset import (
-    TrainingPoolRecord,
-    append_training_pool_record,
-    dataset_relative_path,
-    materialize_training_pool_snapshot,
-    validation_overlap_for_file,
+from .dataset_holdout import (
+    backfill_validation_from_training_pool,
+    dataset_readiness,
+    route_labeled_document,
 )
 from .indexer import backfill_search_fields, index_document, read_text_excerpt
 from .ingest_history import append_ingest_entry, load_ingest_history, update_history_item
@@ -110,7 +109,18 @@ from .triage import (
     triage_rejected_dir,
     triage_resolved_dir,
 )
-from .llm_catalog import LLM_MODEL_CATALOG
+from .llm_catalog import LLM_MODEL_CATALOG, catalog_refreshed_at, load_catalog
+from .llm_catalog_refresh import (
+    LITELLM_CATALOG_URL,
+    get_catalog_source_url,
+    refresh_catalog,
+    set_catalog_source_url,
+)
+from .spreadsheet_query import (
+    SpreadsheetQueryError,
+    get_schema as get_spreadsheet_schema,
+    run_query as run_spreadsheet_query,
+)
 from .orchestrator import classify_with_llm, get_llm_config, run_chat_loop
 from .usage_costs import get_cost_per_1m
 from .utils import DEFAULT_CANONICAL_PATTERN, build_canonical_filename, fold_ocr_spacing, normalize_text, utc_now_iso
@@ -1451,6 +1461,23 @@ async def stream_classifier_cycle_status() -> StreamingResponse:
     )
 
 
+@app.get("/api/classifier/datasets/readiness")
+def get_dataset_readiness() -> dict[str, Any]:
+    """Prontidão dos datasets (validação rotulada, treino, gate sparse) para a UI orientar o usuário."""
+    return dataset_readiness()
+
+
+@app.post("/api/classifier/datasets/backfill-validation")
+def backfill_validation(
+    dry_run: bool = Query(False),
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    """Reserva ~20% do training pool para o validation set (estratificado, idempotente)."""
+    if _classifier_cycle_status.get("running"):
+        raise HTTPException(status_code=409, detail="Aguarde o ciclo do classificador terminar")
+    return backfill_validation_from_training_pool(dry_run=dry_run)
+
+
 @app.post("/api/classifier/cycle")
 def start_classifier_cycle(
     min_training_docs: int = Query(100, ge=0),
@@ -1458,6 +1485,11 @@ def start_classifier_cycle(
 ) -> JSONResponse:
     if _classifier_cycle_status.get("running"):
         raise HTTPException(status_code=409, detail="Classifier cycle already in progress")
+    readiness = dataset_readiness()
+    if not readiness.get("cycle_ready"):
+        blockers = readiness.get("blockers") or []
+        detail = blockers[0]["message"] if blockers else "Datasets do classificador ainda não estão prontos"
+        raise HTTPException(status_code=422, detail=detail)
     registry = load_classifier_registry()
     enabled_modes = registry.benchmark_enabled_modes or ["bootstrap"]
     _classifier_cycle_status.update(
@@ -1740,6 +1772,54 @@ def download_file(
         media_type=media_type or "application/octet-stream",
         headers={"Content-Disposition": f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_name}"},
     )
+
+
+def _resolve_spreadsheet_path(doc_id: str, auth: AuthContext) -> Path:
+    """doc_id → arquivo físico da planilha, confinado ao projects root e ao escopo do auth."""
+    try:
+        hit = os_client.get(index=settings.opensearch_index, id=doc_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+    src = hit.get("_source", {})
+    enforce_project_scope(auth, str(src.get("project_id") or ""))
+    path_str = str(src.get("path") or "")
+    if not path_str:
+        raise HTTPException(status_code=400, detail="Documento sem path registrado")
+    base = Path(settings.projects_root).resolve()
+    requested = Path(path_str).resolve()
+    try:
+        requested.relative_to(base)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Caminho fora do diretorio de projetos")
+    if not requested.is_file():
+        raise HTTPException(status_code=404, detail=f"Arquivo nao encontrado no filesystem: {requested.name}")
+    return requested
+
+
+@app.get("/api/documents/{doc_id}/spreadsheet/schema")
+def spreadsheet_schema_endpoint(doc_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Abas, colunas e amostra da planilha original — base para spreadsheet_query."""
+    path = _resolve_spreadsheet_path(doc_id, auth)
+    try:
+        return get_spreadsheet_schema(path)
+    except SpreadsheetQueryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class SpreadsheetQueryRequest(BaseModel):
+    sql: str
+
+
+@app.post("/api/documents/{doc_id}/spreadsheet/query")
+def spreadsheet_query_endpoint(
+    doc_id: str, body: SpreadsheetQueryRequest, auth: AuthContext = Depends(require_auth)
+) -> dict[str, Any]:
+    """Executa SELECT (DuckDB) sobre a planilha original — agregações exatas sem passar pelo contexto do LLM."""
+    path = _resolve_spreadsheet_path(doc_id, auth)
+    try:
+        return run_spreadsheet_query(path, body.sql)
+    except SpreadsheetQueryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 def _apply_get_document_limit(data: dict[str, Any], max_chars: int) -> dict[str, Any]:
@@ -2039,8 +2119,126 @@ def get_stats(
 
 @app.get("/api/models", response_model=list[ModelOption])
 def get_models() -> list[ModelOption]:
-    """Return catalog of supported LLM models (OpenAI and Anthropic), with context_tokens and max_output_tokens."""
-    return list(LLM_MODEL_CATALOG)
+    """Return catalog of supported LLM models (builtin + cache remoto LiteLLM mesclados)."""
+    return load_catalog()
+
+
+@app.post("/api/models/refresh")
+def refresh_models(
+    dry_run: bool = Query(False),
+    url: str | None = Query(None, description="Testar uma URL alternativa (só com dry_run)"),
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    """Atualiza o catálogo de modelos e preços a partir da fonte remota (chat + tool use only).
+    dry_run=true valida a fonte (fetch + parse + contagens) sem persistir."""
+    if url and not dry_run:
+        raise HTTPException(status_code=400, detail="URL alternativa só é aceita com dry_run=true — salve-a antes")
+    try:
+        return refresh_catalog(dry_run=dry_run, url=url)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao buscar o catálogo remoto: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/api/models/catalog-config")
+def get_models_catalog_config() -> dict[str, Any]:
+    """Fonte do catálogo (URL efetiva + default) e data do último refresh."""
+    return {
+        "url": get_catalog_source_url(),
+        "default_url": LITELLM_CATALOG_URL,
+        "refreshed_at": catalog_refreshed_at(),
+    }
+
+
+class CatalogConfigRequest(BaseModel):
+    url: str = ""
+
+
+@app.put("/api/models/catalog-config")
+def update_models_catalog_config(
+    body: CatalogConfigRequest, auth: AuthContext = Depends(require_auth)
+) -> dict[str, Any]:
+    """Salva a URL da fonte do catálogo (vazia = voltar à default). Valida com dry-run antes."""
+    candidate = body.url.strip()
+    try:
+        if candidate:
+            refresh_catalog(dry_run=True, url=candidate)
+        effective = set_catalog_source_url(candidate)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"URL inacessível: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"url": effective, "default_url": LITELLM_CATALOG_URL, "refreshed_at": catalog_refreshed_at()}
+
+
+@app.get("/api/models/detail")
+def get_models_detail() -> dict[str, Any]:
+    """Catálogo mesclado com preços por 1M tokens — para a aba Catálogo de modelos."""
+    builtin_keys = {(m.provider, m.model) for m in LLM_MODEL_CATALOG}
+    items: list[dict[str, Any]] = []
+    for option in load_catalog():
+        cost = get_cost_per_1m(option.provider, option.model)
+        items.append(
+            {
+                **option.model_dump(),
+                "input_cost_per_1m": cost[0] if cost else None,
+                "output_cost_per_1m": cost[1] if cost else None,
+                "cache_read_cost_per_1m": cost[2] if cost else None,
+                "cache_write_cost_per_1m": cost[3] if cost else None,
+                "cost_tracked": cost is not None,
+                "source": "builtin" if (option.provider, option.model) in builtin_keys else "remote",
+            }
+        )
+    return {"refreshed_at": catalog_refreshed_at(), "source_url": get_catalog_source_url(), "models": items}
+
+
+class ModelValidateRequest(BaseModel):
+    provider: str
+    model: str
+
+
+@app.post("/api/models/validate")
+def validate_model(
+    body: ModelValidateRequest,
+    x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
+    x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    """Confirma na API do provedor que o modelo existe (GET /v1/models/{id}); não persiste a key."""
+    provider = body.provider.strip().lower()
+    model = body.model.strip()
+    if not model:
+        raise HTTPException(status_code=400, detail="Informe o nome do modelo")
+    if provider == "openai":
+        if not x_openai_api_key:
+            raise HTTPException(status_code=400, detail="Configure a chave OpenAI antes de validar")
+        import openai as openai_sdk
+
+        try:
+            openai_sdk.OpenAI(api_key=x_openai_api_key).models.retrieve(model)
+            return {"valid": True, "detail": f"Modelo '{model}' disponível na OpenAI"}
+        except openai_sdk.NotFoundError:
+            return {"valid": False, "detail": f"Modelo '{model}' não existe na OpenAI"}
+        except openai_sdk.AuthenticationError:
+            raise HTTPException(status_code=401, detail="Chave OpenAI inválida")
+        except Exception as exc:  # rede/timeout — não confundir com inexistente
+            raise HTTPException(status_code=502, detail=f"Falha ao consultar a OpenAI: {exc}")
+    if provider == "anthropic":
+        if not x_anthropic_api_key:
+            raise HTTPException(status_code=400, detail="Configure a chave Anthropic antes de validar")
+        import anthropic as anthropic_sdk
+
+        try:
+            anthropic_sdk.Anthropic(api_key=x_anthropic_api_key).models.retrieve(model)
+            return {"valid": True, "detail": f"Modelo '{model}' disponível na Anthropic"}
+        except anthropic_sdk.NotFoundError:
+            return {"valid": False, "detail": f"Modelo '{model}' não existe na Anthropic"}
+        except anthropic_sdk.AuthenticationError:
+            raise HTTPException(status_code=401, detail="Chave Anthropic inválida")
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Falha ao consultar a Anthropic: {exc}")
+    raise HTTPException(status_code=400, detail=f"Provedor não suportado: {provider}")
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -2463,6 +2661,7 @@ def get_usage_summary(
                 output_cost_usd=round(output_cost, 6),
                 total_tokens=agg["input_tokens"] + agg["output_tokens"],
                 estimated_cost_usd=round(agg["estimated_cost_usd"], 6),
+                cost_tracked=cost_per is not None,
             )
         )
     by_model_list.sort(key=lambda x: (-x.estimated_cost_usd, x.model))
@@ -2914,44 +3113,21 @@ def _relocate_document(
     index_document(os_client, indexed_payload, profile=profile)
     _append_index_md(project_root, indexed_payload)
 
-    # Training pool
-    training_pool_status = "appended"
-    training_pool_details: dict[str, Any] = {}
-    validation_overlap = validation_overlap_for_file(dest_path)
-    if validation_overlap:
-        training_pool_status = "skipped_overlap_with_validation_set"
-        training_pool_details = {
-            "training_pool_validation_files": validation_overlap,
-        }
-    else:
-        snapshot_path, snapshot_sha = materialize_training_pool_snapshot(
-            source_path=dest_path,
-            doc_id=doc_id,
-            original_filename=original_filename,
-        )
-        append_training_pool_record(
-            TrainingPoolRecord(
-                doc_id=doc_id,
-                project_id=project_id,
-                original_filename=original_filename,
-                path=dataset_relative_path(snapshot_path),
-                source_path=str(dest_path),
-                business_domain=target_business_domain,
-                document_type=target_document_type,
-                decision=decision,
-                sha256=snapshot_sha,
-                topics=list((extra_metadata or {}).get("topics", []) or []),
-                entities=list((extra_metadata or {}).get("entities", []) or []),
-                notes=note,
-            )
-        )
-        training_pool_details = {
-            "training_pool_record_path": dataset_relative_path(snapshot_path),
-            "training_pool_sha256": snapshot_sha,
-        }
-
-    indexed_payload["training_pool_status"] = training_pool_status
-    indexed_payload.update(training_pool_details)
+    # Datasets do classificador: decisão humana roteia treino OU validação
+    # (hold-out determinístico + regra semente + warm-up — ver dataset_holdout.py)
+    dataset_result = route_labeled_document(
+        source_path=dest_path,
+        doc_id=doc_id,
+        project_id=project_id,
+        original_filename=original_filename,
+        business_domain=target_business_domain,
+        document_type=target_document_type,
+        decision=decision,
+        topics=list((extra_metadata or {}).get("topics", []) or []),
+        entities=list((extra_metadata or {}).get("entities", []) or []),
+        notes=note,
+    )
+    indexed_payload.update(dataset_result)
     return indexed_payload
 
 

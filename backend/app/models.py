@@ -276,6 +276,8 @@ class UsageByModelEntry(BaseModel):
     output_cost_usd: float = 0.0
     total_tokens: int = 0
     estimated_cost_usd: float = 0.0
+    # False = modelo sem preço cadastrado — custo exibido seria 0 fabricado
+    cost_tracked: bool = True
 
 
 class UsageByDayEntry(BaseModel):

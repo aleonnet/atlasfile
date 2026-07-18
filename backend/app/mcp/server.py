@@ -132,6 +132,22 @@ def get_document_chunks(doc_id: str, locations: list[str]) -> str:
 
 
 @mcp.tool()
+def spreadsheet_schema(doc_id: str) -> str:
+    """Inspect the structure of a spreadsheet document (xlsx/xlsm/csv) BEFORE querying it. Returns JSON with tables (one per sheet): table name to use in SQL, sanitized column names, original column headers, row_count and 3 sample rows. Always call this first, then use spreadsheet_query with the returned table/column names. Use these tools whenever the user asks for counts, sums, group-by breakdowns or any exact aggregation over a spreadsheet — NEVER count rows from get_document text."""
+    data = get(f"/api/documents/{doc_id}/spreadsheet/schema")
+    return json.dumps(data, ensure_ascii=False)
+
+
+@mcp.tool()
+def spreadsheet_query(doc_id: str, sql: str) -> str:
+    """Run a read-only SQL SELECT (DuckDB dialect) against the original spreadsheet file of a document (xlsx/xlsm/csv). The aggregation is computed exactly by the database — use for counts, sums, averages, GROUP BY pivots and filters (e.g. SELECT empresa, situacao, COUNT(*) FROM aba GROUP BY 1, 2). Single SELECT statement only; results capped at 500 rows (aggregate or add LIMIT for large outputs). Get table and column names from spreadsheet_schema first. All columns are VARCHAR for xlsx — CAST(col AS DOUBLE) before SUM/AVG on numeric columns."""
+    if not (sql or "").strip().lower().lstrip("(").startswith(("select", "with")):
+        return json.dumps({"error": "only SELECT queries are allowed"}, ensure_ascii=False)
+    data = post(f"/api/documents/{doc_id}/spreadsheet/query", json={"sql": sql})
+    return json.dumps(data, ensure_ascii=False)
+
+
+@mcp.tool()
 def apply_tags(
     doc_id: str,
     tags_to_add: list[str],

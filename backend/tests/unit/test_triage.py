@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import app.dataset_holdout as holdout_module
 import app.main as main_module
 from app.auth import AuthContext
 from app.ingestion import _append_index_md
@@ -124,10 +125,12 @@ def _prepare_pending_triage_item(
 def _patch_triage_dependencies(monkeypatch, tmp_path: Path) -> tuple[MagicMock, MagicMock]:
     monkeypatch.setattr(main_module.settings, "projects_root", str(tmp_path), raising=False)
     monkeypatch.setattr(main_module.settings, "classifier_datasets_root", str(tmp_path / "datasets"), raising=False)
+    # Holdout desligado: estes testes cobrem o caminho de treino do roteador
+    monkeypatch.setattr(main_module.settings, "classifier_holdout_modulus", 0, raising=False)
     index_mock = MagicMock()
     training_pool_mock = MagicMock()
     monkeypatch.setattr(main_module, "index_document", index_mock)
-    monkeypatch.setattr(main_module, "append_training_pool_record", training_pool_mock)
+    monkeypatch.setattr(holdout_module, "append_training_pool_record", training_pool_mock)
     return index_mock, training_pool_mock
 
 
@@ -273,8 +276,10 @@ def test_decide_triage_skips_training_pool_when_document_overlaps_validation_set
     )
     index_mock, training_pool_mock = _patch_triage_dependencies(monkeypatch, tmp_path)
     snapshot_mock = MagicMock()
-    monkeypatch.setattr(main_module, "materialize_training_pool_snapshot", snapshot_mock)
-    monkeypatch.setattr(main_module, "validation_overlap_for_file", lambda *_args, **_kwargs: ["validation.pdf"])
+    monkeypatch.setattr(holdout_module, "materialize_training_pool_snapshot", snapshot_mock)
+    monkeypatch.setattr(
+        holdout_module, "_update_validation_labels_by_sha", lambda *_args, **_kwargs: ["validation.pdf"]
+    )
 
     result = main_module.decide_triage(
         project_id,

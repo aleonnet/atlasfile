@@ -20,10 +20,9 @@ def test_get_cost_per_1m_from_config() -> None:
         }
         assert get_cost_per_1m("openai", "gpt-4o-mini") == (0.15, 0.60, 0.0, 0.0)
         assert get_cost_per_1m("anthropic", "claude-sonnet-4-6") == (3.0, 15.0, 0.30, 3.0)
-        # unknown model: config returns {} so we get (0,0,0,0)
-        assert get_cost_per_1m("openai", "unknown") == (0.0, 0.0, 0.0, 0.0)
-        # empty provider: prov is {} so entry is {} -> (0,0,0,0)
-        assert get_cost_per_1m("", "gpt-4o-mini") == (0.0, 0.0, 0.0, 0.0)
+        # unknown model/provider: None (custo não rastreado — nunca zero fabricado)
+        assert get_cost_per_1m("openai", "unknown") is None
+        assert get_cost_per_1m("", "gpt-4o-mini") is None
 
 
 def test_estimate_usage_cost_empty() -> None:

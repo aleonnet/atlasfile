@@ -6,7 +6,15 @@ from unittest.mock import patch
 
 import pytest
 
-from app.mcp.server import get_document_chunks, get_document, list_documents, run_server, search_documents
+from app.mcp.server import (
+    get_document,
+    get_document_chunks,
+    list_documents,
+    run_server,
+    search_documents,
+    spreadsheet_query,
+    spreadsheet_schema,
+)
 
 
 def test_mcp_server_imports() -> None:
@@ -89,3 +97,34 @@ def test_search_documents_empty_query_returns_error() -> None:
     data = json.loads(result)
     assert "error" in data
     assert "list_documents" in data["error"]
+
+
+def test_spreadsheet_schema_calls_api() -> None:
+    """spreadsheet_schema delega ao endpoint REST de schema."""
+    with patch("app.mcp.server.get") as mock_get:
+        mock_get.return_value = {"file": "cmdb.xlsx", "tables": [{"table": "aba", "columns": ["empresa"]}]}
+        result = spreadsheet_schema(doc_id="doc-1")
+    data = json.loads(result)
+    assert data["tables"][0]["table"] == "aba"
+    mock_get.assert_called_once_with("/api/documents/doc-1/spreadsheet/schema")
+
+
+def test_spreadsheet_query_calls_api_with_sql() -> None:
+    """spreadsheet_query envia o SELECT ao endpoint REST."""
+    with patch("app.mcp.server.post") as mock_post:
+        mock_post.return_value = {"columns": ["empresa", "qtde"], "rows": [["OI SA", 2]], "truncated": False}
+        result = spreadsheet_query(doc_id="doc-1", sql="SELECT empresa, COUNT(*) AS qtde FROM aba GROUP BY 1")
+    data = json.loads(result)
+    assert data["rows"] == [["OI SA", 2]]
+    mock_post.assert_called_once()
+    assert mock_post.call_args[0][0] == "/api/documents/doc-1/spreadsheet/query"
+    assert "SELECT" in mock_post.call_args[1]["json"]["sql"]
+
+
+def test_spreadsheet_query_rejects_non_select_client_side() -> None:
+    """Guard no cliente: não-SELECT nem chega na API."""
+    with patch("app.mcp.server.post") as mock_post:
+        result = spreadsheet_query(doc_id="doc-1", sql="DROP TABLE aba")
+    data = json.loads(result)
+    assert "error" in data
+    mock_post.assert_not_called()

@@ -1,21 +1,18 @@
-import { ChevronDown, ChevronRight, Inbox, RefreshCw, Settings } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCw, Settings, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  backfillValidation,
   cancelClassifierCycle,
   deleteClassifierReport,
-  deleteInboxFile,
-  fetchInboxFiles,
+  fetchDatasetReadiness,
   fetchClassifierCycleStatus,
   fetchClassifierReportLatest,
   fetchClassifierReports,
   fetchClassifierStatus,
-  fetchIngestStatus,
   fetchModels,
   fetchProjectProfile,
   getClassifierCycleStatusStreamUrl,
-  getIngestStatusStreamUrl,
   startClassifierCycle,
-  triggerScan,
   updateBenchmarkEnabledModes,
   updateClassifierOverride,
   updateProjectProfile
@@ -23,15 +20,13 @@ import {
 import type {
   ClassifierCycleStatus,
   ClassifierReport,
+  DatasetReadiness,
   ClassifierReportSummary,
   ClassifierStatusResponse,
-  IngestOperationStatus,
   LLMPolicy,
   ModelOption,
   OperationalClassifierMode,
-  Project,
   ProjectProfileV2,
-  ScanResult,
   TriageItem
 } from "../../types";
 import { Badge } from "../../components/ui/badge";
@@ -39,6 +34,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { CollapsibleSection, rowDeleteButtonClass } from "../../components/ui/collapsible-section";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
+import { EmptyState } from "../../components/ui/empty-state";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/utils";
 
@@ -120,23 +116,6 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function buildPendingIngestStatus(projectId: string | null): IngestOperationStatus {
-  return {
-    last_run_started_at: null,
-    last_run_finished_at: null,
-    duration_seconds: null,
-    project_id: projectId,
-    running: true,
-    phase: "starting",
-    progress_current: 0,
-    progress_total: 0,
-    progress_file: null,
-    processed_count: 0,
-    failed_count: 0,
-    last_error: null,
-  };
-}
-
 function buildPendingClassifierCycleStatus(previous: ClassifierCycleStatus | null): ClassifierCycleStatus {
   return {
     last_run_started_at: previous?.last_run_started_at ?? null,
@@ -155,11 +134,7 @@ function buildPendingClassifierCycleStatus(previous: ClassifierCycleStatus | nul
 type Props = {
   selectedProject: string;
   selectedProjectLabel: string;
-  projects: Project[];
-  projectLabelById: Map<string, string>;
   triageItems: TriageItem[];
-  initializingProjectId: string | null;
-  onLoadTriage: () => Promise<void>;
   onStatus: (msg: string) => void;
   openaiApiKey: string;
   anthropicApiKey: string;
@@ -171,11 +146,7 @@ type Props = {
 export function IngestTriageCard({
   selectedProject,
   selectedProjectLabel,
-  projects,
-  projectLabelById,
   triageItems,
-  initializingProjectId,
-  onLoadTriage,
   onStatus,
   openaiApiKey,
   anthropicApiKey,
@@ -183,7 +154,6 @@ export function IngestTriageCard({
   selectedModelTriage,
   onChangeModelTriage
 }: Props) {
-  const [loading, setLoading] = useState(false);
   const [llmPolicy, setLlmPolicy] = useState<LLMPolicy>(DEFAULT_LLM_POLICY);
   const [profileVersion, setProfileVersion] = useState<number>(0);
   const [llmSaving, setLlmSaving] = useState(false);
@@ -198,9 +168,9 @@ export function IngestTriageCard({
   const [confirmCancelCycle, setConfirmCancelCycle] = useState(false);
   const [cancellingCycle, setCancellingCycle] = useState(false);
   const [classifierCycleStatus, setClassifierCycleStatus] = useState<ClassifierCycleStatus | null>(null);
-  const [ingestStatus, setIngestStatus] = useState<IngestOperationStatus | null>(null);
-  const [inboxFiles, setInboxFiles] = useState<{ filename: string; size: number }[]>([]);
-  const ingestMonitorStopRef = useRef<(() => void) | null>(null);
+  const [datasetReadiness, setDatasetReadiness] = useState<DatasetReadiness | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [confirmBackfill, setConfirmBackfill] = useState(false);
   const classifierCycleMonitorStopRef = useRef<(() => void) | null>(null);
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
@@ -243,12 +213,12 @@ export function IngestTriageCard({
 
   const loadClassifierState = useCallback(async () => {
     try {
-      const [cycle, ingest] = await Promise.all([
+      const [cycle, readiness] = await Promise.all([
         fetchClassifierCycleStatus(),
-        fetchIngestStatus()
+        fetchDatasetReadiness().catch(() => null)
       ]);
       setClassifierCycleStatus(cycle);
-      setIngestStatus(ingest);
+      setDatasetReadiness(readiness);
     } catch {
       /* ignore */
     }
@@ -279,21 +249,6 @@ export function IngestTriageCard({
   useEffect(() => {
     void loadClassifierState();
   }, [loadClassifierState]);
-
-  // Fila da INBOX visível: o usuário vê O QUE será processado antes de clicar
-  const loadInbox = useCallback(() => {
-    if (!isSingleProject) {
-      setInboxFiles([]);
-      return;
-    }
-    fetchInboxFiles(selectedProject)
-      .then((res) => setInboxFiles(res.files))
-      .catch(() => setInboxFiles([]));
-  }, [isSingleProject, selectedProject]);
-
-  useEffect(() => {
-    loadInbox();
-  }, [loadInbox]);
 
   useEffect(() => {
     if (models.length === 0) {
@@ -360,89 +315,10 @@ export function IngestTriageCard({
     void persistLlmPolicy(nextPolicy);
   }
 
-  const stopIngestMonitor = useCallback(() => {
-    ingestMonitorStopRef.current?.();
-    ingestMonitorStopRef.current = null;
-  }, []);
-
   const stopClassifierCycleMonitor = useCallback(() => {
     classifierCycleMonitorStopRef.current?.();
     classifierCycleMonitorStopRef.current = null;
   }, []);
-
-  const startIngestMonitor = useCallback(
-    (requestPromise: Promise<unknown>) => {
-      stopIngestMonitor();
-      let cancelled = false;
-      let requestSettled = false;
-      let stream: EventSource | null = null;
-
-      void requestPromise.finally(() => {
-        requestSettled = true;
-      });
-
-      const closeStream = () => {
-        stream?.close();
-        stream = null;
-      };
-
-      const applyStatus = (data: IngestOperationStatus) => {
-        if (!cancelled) {
-          setIngestStatus(data);
-        }
-      };
-
-      const pollUntilFinished = async (): Promise<void> => {
-        while (!cancelled) {
-          try {
-            const latest = await fetchIngestStatus();
-            if (cancelled) return;
-            applyStatus(latest);
-            if (latest.running && typeof window !== "undefined" && typeof window.EventSource !== "undefined") {
-              closeStream();
-              stream = new window.EventSource(getIngestStatusStreamUrl());
-              stream.onmessage = (event) => {
-                try {
-                  const data = JSON.parse(event.data) as IngestOperationStatus;
-                  applyStatus(data);
-                  if (!data.running) {
-                    closeStream();
-                  }
-                } catch {
-                  /* ignore */
-                }
-              };
-              stream.onerror = () => {
-                closeStream();
-                if (!cancelled) {
-                  void pollUntilFinished();
-                }
-              };
-              return;
-            }
-            if (!latest.running && requestSettled) {
-              return;
-            }
-          } catch {
-            if (requestSettled) {
-              return;
-            }
-          }
-          await sleep(250);
-        }
-      };
-
-      void pollUntilFinished();
-
-      const stop = () => {
-        cancelled = true;
-        closeStream();
-      };
-      ingestMonitorStopRef.current = stop;
-      return stop;
-    },
-    [stopIngestMonitor]
-  );
 
   const startClassifierCycleMonitor = useCallback(() => {
     stopClassifierCycleMonitor();
@@ -518,10 +394,9 @@ export function IngestTriageCard({
 
   useEffect(() => {
     return () => {
-      stopIngestMonitor();
       stopClassifierCycleMonitor();
     };
-  }, [stopClassifierCycleMonitor, stopIngestMonitor]);
+  }, [stopClassifierCycleMonitor]);
 
   useEffect(() => {
     if (!classifierCycleStatus?.running) {
@@ -587,6 +462,24 @@ export function IngestTriageCard({
     }
   }
 
+  async function handleBackfillValidation() {
+    setConfirmBackfill(false);
+    setBackfilling(true);
+    try {
+      const result = await backfillValidation(false);
+      onStatus(
+        result.moved > 0
+          ? `${result.moved} documento(s) reservado(s) para validação`
+          : "Nenhum documento elegível para reservar"
+      );
+      await loadClassifierState();
+    } catch (e) {
+      onStatus(e instanceof Error ? e.message : "Falha ao reservar documentos para validação");
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
   async function handleCancelCycle() {
     setConfirmCancelCycle(false);
     setCancellingCycle(true);
@@ -599,45 +492,6 @@ export function IngestTriageCard({
     }
   }
 
-  async function handleScan() {
-    if (!selectedProject) return;
-    setLoading(true);
-    setIngestStatus(buildPendingIngestStatus(selectedProject === ALL_PROJECTS ? null : selectedProject));
-    onStatus("Processando inbox...");
-    try {
-      const results: ScanResult[] = [];
-      if (selectedProject === ALL_PROJECTS) {
-        for (const project of projects) {
-          const scanPromise = triggerScan(project.project_id);
-          startIngestMonitor(scanPromise);
-          results.push(await scanPromise);
-        }
-      } else {
-        const scanPromise = triggerScan(selectedProject);
-        startIngestMonitor(scanPromise);
-        results.push(await scanPromise);
-      }
-
-      await onLoadTriage();
-
-      const totals = results.reduce(
-        (acc, r) => ({
-          processed: acc.processed + r.processed_count,
-          failed: acc.failed + r.failed_count
-        }),
-        { processed: 0, failed: 0 }
-      );
-      onStatus(`Inbox processado: ${totals.processed} arquivo${totals.processed !== 1 ? "s" : ""}, ${totals.failed} falha${totals.failed !== 1 ? "s" : ""}`);
-    } catch {
-      onStatus("Falha ao processar inbox");
-    } finally {
-      stopIngestMonitor();
-      void fetchIngestStatus().then(setIngestStatus).catch(() => {});
-      loadInbox();
-      setLoading(false);
-    }
-  }
-
   const currentProviderModel = `${llmPolicy.provider}/${llmPolicy.model}`;
   const modelLabel = models.find((m) => `${m.provider}/${m.model}` === currentProviderModel)?.label;
   const hasKey =
@@ -647,19 +501,20 @@ export function IngestTriageCard({
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="flex items-center gap-2">
-          <Inbox className="size-4 text-accent" aria-hidden />
-          Ingestão e triagem
+        <CardTitle className="flex min-h-9 items-center gap-2">
+          <Sparkles className="size-4 text-accent" aria-hidden />
+          Classificador
         </CardTitle>
-        <Button
-          disabled={loading || !selectedProject || initializingProjectId === selectedProject}
-          onClick={handleScan}
-        >
-          <RefreshCw className={loading ? "animate-spin" : ""} />
-          {loading ? "Processando..." : "Processar INBOX"}
-        </Button>
       </CardHeader>
       <CardContent>
+
+      {!isSingleProject && (
+        <EmptyState
+          icon={<Sparkles aria-hidden />}
+          title="Nenhum projeto selecionado"
+          description="Selecione um projeto específico para configurar o classificador, os modos de benchmark e a política LLM."
+        />
+      )}
 
       {isSingleProject && selectedProjectLabel && (
         <div className="mb-1 flex items-center gap-1.5 pb-1 text-[0.82rem] text-muted-foreground">
@@ -669,71 +524,6 @@ export function IngestTriageCard({
               · {triageItems.length} pendente{triageItems.length !== 1 ? "s" : ""}
             </span>
           )}
-        </div>
-      )}
-
-      {/* Fila da INBOX: o que o Processar INBOX vai processar */}
-      {isSingleProject && inboxFiles.length > 0 && (
-        <div className="mb-2.5 rounded-md border border-border bg-elevated px-3 py-2.5">
-          <p className="font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">
-            Na fila da INBOX ({inboxFiles.length})
-          </p>
-          <ul className="m-0 mt-1.5 flex list-none flex-wrap gap-1.5 p-0">
-            {inboxFiles.map((file) => (
-              <li
-                key={file.filename}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-panel py-1 pl-2.5 pr-1 font-mono text-[0.7rem] text-foreground"
-                title={file.filename}
-              >
-                <span className="max-w-56 truncate">{file.filename}</span>
-                <span className="text-tertiary">{(file.size / 1024).toFixed(0)}kb</span>
-                <button
-                  type="button"
-                  className={rowDeleteButtonClass}
-                  aria-label={`Remover ${file.filename} da inbox`}
-                  onClick={() => {
-                    void deleteInboxFile(selectedProject, file.filename)
-                      .then(() => loadInbox())
-                      .catch(() => onStatus("Falha ao remover arquivo da inbox"));
-                  }}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {(loading || ingestStatus?.running ||
-        ingestStatus?.phase === "starting" ||
-        ingestStatus?.phase === "extracting" ||
-        ingestStatus?.phase === "processing") && (
-        <div className={opProgressClass}>
-          <p className={opPhaseClass}>{formatPhaseLabel(ingestStatus?.phase) || "Iniciando..."}</p>
-          <div className={opBarWrapClass}>
-            <div
-              className={opBarFillClass}
-              style={{
-                width: (ingestStatus?.progress_total ?? 0) > 0
-                  ? `${Math.min(100, (100 * (ingestStatus?.progress_current ?? 0)) / ingestStatus!.progress_total!)}%`
-                  : "0%"
-              }}
-            />
-          </div>
-          <p className={opStatsClass}>
-            {ingestStatus?.progress_current ?? 0} / {ingestStatus?.progress_total ?? 0} arquivo{(ingestStatus?.progress_total ?? 0) !== 1 ? "s" : ""}
-          </p>
-          {ingestStatus?.progress_file && (
-            <p className={opFileClass}>{ingestStatus.progress_file}</p>
-          )}
-        </div>
-      )}
-
-      {ingestStatus?.phase === "failed" && !loading && !ingestStatus?.running && (
-        <div className={opProgressClass}>
-          <p className={cn(opPhaseClass, "text-destructive")}>Falhou</p>
-          {ingestStatus.last_error && <p className={opFileClass}>{ingestStatus.last_error}</p>}
         </div>
       )}
 
@@ -782,7 +572,12 @@ export function IngestTriageCard({
                   <div className="relative">
                     <Button
                       variant={classifierCycleStatus?.running && !cancellingCycle ? "destructive" : "secondary"}
-                      disabled={cancellingCycle}
+                      disabled={cancellingCycle || (!classifierCycleStatus?.running && datasetReadiness?.cycle_ready === false)}
+                      title={
+                        !classifierCycleStatus?.running && datasetReadiness?.cycle_ready === false
+                          ? datasetReadiness.blockers[0]?.message
+                          : undefined
+                      }
                       onClick={() => {
                         if (classifierCycleStatus?.running) {
                           setConfirmCancelCycle(true);
@@ -821,6 +616,41 @@ export function IngestTriageCard({
                     );
                   })}
                 </div>
+
+                {datasetReadiness && !datasetReadiness.cycle_ready && !classifierCycleStatus?.running && (
+                  <div className="mb-2.5 rounded-md border border-accent/30 bg-accent-soft/30 px-3 py-2.5">
+                    {datasetReadiness.blockers.map((b) => (
+                      <p key={b.code} className="m-0 text-[0.8rem] text-foreground">{b.message}</p>
+                    ))}
+                    <p className="m-0 mt-1 font-mono text-[0.68rem] text-tertiary">
+                      validação rotulada: {datasetReadiness.validation.labeled} · treino: {datasetReadiness.training.records}
+                    </p>
+                    {datasetReadiness.suggestions.some((s) => s.code === "backfill_available") && (
+                      <div className="relative mt-2">
+                        <Button variant="secondary" size="sm" disabled={backfilling} onClick={() => setConfirmBackfill(true)}>
+                          {backfilling
+                            ? "Reservando..."
+                            : `Reservar ${datasetReadiness.suggestions.find((s) => s.code === "backfill_available")?.params?.would_move ?? ""} para validação`}
+                        </Button>
+                        {confirmBackfill && (
+                          <div className="absolute left-0 top-[calc(100%+6px)] z-20 flex min-w-64 flex-col gap-2 rounded-md border border-border bg-panel p-3 shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
+                            <p className="m-0 text-[0.82rem] text-foreground">
+                              Mover parte do pool de treino para o conjunto de validação? Os documentos deixam de treinar o modelo e passam a avaliá-lo.
+                            </p>
+                            <div className="flex gap-1.5">
+                              <Button size="sm" onClick={() => void handleBackfillValidation()}>Confirmar</Button>
+                              <Button variant="secondary" size="sm" onClick={() => setConfirmBackfill(false)}>Não</Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {datasetReadiness?.cycle_ready &&
+                  datasetReadiness.suggestions.filter((s) => s.code === "sparse_gate_not_met").map((s) => (
+                    <p key={s.code} className="mb-2 text-[0.75rem] text-muted-foreground">{s.message}</p>
+                  ))}
 
                 <p className="mb-2.5 text-[0.78rem] text-muted-foreground">
                   Promoção: {classifierStatus.promotion_policy === "auto_best_with_ui_override" ? "Automático — melhor score" : classifierStatus.promotion_policy} | gate: exact &ge; {formatPct(classifierStatus.promotion_gates.min_exact_match_accuracy)}

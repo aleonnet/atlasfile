@@ -44,33 +44,6 @@ const mockProfile = {
   version: 1
 };
 
-const mockScanResult = {
-  project_id: "p1",
-  processed_count: 3,
-  failed_count: 0,
-  items: [
-    { doc_id: "d1", project_id: "p1", business_domain: "fiscal", title: "relatorio", original_filename: "relatorio.pdf", canonical_filename: "relatorio.pdf", path: "/p1/02_AREAS/fiscal/relatorio.pdf", decision: "auto" as const, confidence_score: 0.92, sha256: "abc", tags: ["fiscal"] },
-    { doc_id: "d2", project_id: "p1", business_domain: "juridico", title: "contrato", original_filename: "contrato.docx", canonical_filename: "contrato.docx", path: "/p1/_TRIAGE_REVIEW/pending/contrato.docx", decision: "triage_pending" as const, confidence_score: 0.61, sha256: "def", tags: ["juridico"], topics_source: "llm_policy" },
-    { doc_id: "d3", project_id: "p1", business_domain: "unclassified", title: "duplicado", original_filename: "duplicado.pdf", canonical_filename: "", path: "/p1/_TRIAGE_REVIEW/rejected/duplicado.pdf", decision: "duplicate" as const, confidence_score: 0.0, sha256: "ghi", tags: [] }
-  ],
-  errors: []
-};
-
-const mockHistoryEntry = {
-  timestamp: "2026-03-04T10:00:00+00:00",
-  ...mockScanResult
-};
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 const mockClassifierStatus = {
   available_modes: ["bootstrap", "sparse_logreg"],
   champion_mode: "bootstrap",
@@ -172,12 +145,8 @@ vi.mock("../../api", () => ({
       version: 2
     })
   ),
-  triggerScan: vi.fn(() => Promise.resolve(mockScanResult)),
-  fetchIngestHistory: vi.fn(() => Promise.resolve({ project_id: "p1", entries: [] })),
-  fetchIngestStatus: vi.fn(() => Promise.resolve({ last_run_started_at: null, last_run_finished_at: null, duration_seconds: null, project_id: null, running: false, phase: "idle", progress_current: 0, progress_total: 0, progress_file: null, processed_count: 0, failed_count: 0, last_error: null })),
-  fetchInboxFiles: vi.fn(() => Promise.resolve({ files: [] })),
-  deleteInboxFile: vi.fn(() => Promise.resolve({ status: "ok", deleted: "" })),
-  getIngestStatusStreamUrl: vi.fn(() => "http://localhost/api/ingest/status/stream"),
+  fetchDatasetReadiness: vi.fn(() => Promise.resolve({ cycle_ready: true, splits_available: false, validation: { labeled: 3, unlabeled: 0 }, training: { records: 12, business_domain_classes: {}, document_type_classes: {} }, supervised_gate: { eligible: false, reasons: [], warnings: [] }, holdout: { enabled: true, modulus: 5, min_train_per_class: 3 }, blockers: [], suggestions: [] })),
+  backfillValidation: vi.fn(() => Promise.resolve({ dry_run: false, moved: 0, per_class: {}, skipped: [], validation_labeled_total: 3, training_total: 12 })),
   fetchModels: vi.fn(() =>
     Promise.resolve([
       { provider: "openai", model: "gpt-4o-mini", label: "OpenAI gpt-4o-mini (base)" },
@@ -190,11 +159,7 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof IngestTriag
   return {
     selectedProject: "p1",
     selectedProjectLabel: "Projeto 1",
-    projects: [{ project_id: "p1", project_label: "Projeto 1", root: "/p1", initialized: true }],
-    projectLabelById: new Map([["p1", "Projeto 1"]]),
     triageItems: [],
-    initializingProjectId: null,
-    onLoadTriage: vi.fn(() => Promise.resolve()),
     onStatus: vi.fn(),
     openaiApiKey: "sk-test-key",
     anthropicApiKey: "",
@@ -212,12 +177,12 @@ describe("IngestTriageCard", () => {
     vi.useRealTimers();
   });
 
-  it("renders header and Processar INBOX button", async () => {
+  it("renders header without operational scan button (config-only card)", async () => {
     render(<IngestTriageCard {...defaultProps()} />);
     await waitFor(() => {
-      expect(screen.getByText(/Ingestão e triagem/i)).toBeInTheDocument();
+      expect(screen.getByText(/^Classificador$/)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Processar INBOX/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Processar INBOX/i)).not.toBeInTheDocument();
   });
 
   it("shows Classificação LLM collapsible for single project", async () => {
@@ -237,10 +202,10 @@ describe("IngestTriageCard", () => {
     expect(screen.getAllByText(/bootstrap/i).length).toBeGreaterThan(0);
   });
 
-  it("hides LLM section when all projects selected", async () => {
+  it("shows empty state when all projects selected", async () => {
     render(<IngestTriageCard {...defaultProps({ selectedProject: "__all__" })} />);
     await waitFor(() => {
-      expect(screen.getByText(/Processar INBOX/i)).toBeInTheDocument();
+      expect(screen.getByText(/Nenhum projeto selecionado/i)).toBeInTheDocument();
     });
     expect(screen.queryByText(/Classificação LLM/i)).not.toBeInTheDocument();
   });
@@ -299,124 +264,9 @@ describe("IngestTriageCard", () => {
     });
   });
 
-  it("calls triggerScan on button click", async () => {
-    const onStatus = vi.fn();
-    render(<IngestTriageCard {...defaultProps({ onStatus })} />);
-    await waitFor(() => {
-      expect(screen.getByText(/Processar INBOX/i)).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByText(/Processar INBOX/i));
-    });
-
-    const { triggerScan } = await import("../../api");
-    await waitFor(() => {
-      expect(vi.mocked(triggerScan)).toHaveBeenCalledWith("p1");
-    });
-  });
-
-  it("shows live inbox progress after the scan starts from an idle status", async () => {
-    const originalEventSource = window.EventSource;
-    Object.defineProperty(window, "EventSource", { configurable: true, value: undefined });
-    const idleStatus = {
-      last_run_started_at: null,
-      last_run_finished_at: null,
-      duration_seconds: null,
-      project_id: null,
-      running: false,
-      phase: "idle",
-      progress_current: 0,
-      progress_total: 0,
-      progress_file: null,
-      processed_count: 0,
-      failed_count: 0,
-      last_error: null
-    };
-    try {
-      const runningStatus = {
-        ...idleStatus,
-        project_id: "p1",
-        running: true,
-        phase: "processing",
-        progress_current: 2,
-        progress_total: 6,
-        progress_file: "arquivo.pdf",
-        processed_count: 1
-      };
-      const completedStatus = {
-        ...idleStatus,
-        project_id: "p1",
-        phase: "completed",
-        progress_current: 6,
-        progress_total: 6,
-        processed_count: 6
-      };
-      const scanDeferred = deferred<typeof mockScanResult>();
-      const { triggerScan, fetchIngestStatus, fetchIngestHistory } = await import("../../api");
-      vi.mocked(triggerScan).mockReturnValue(scanDeferred.promise);
-      vi.mocked(fetchIngestHistory)
-        .mockResolvedValueOnce({ project_id: "p1", entries: [] })
-        .mockResolvedValueOnce({ project_id: "p1", entries: [] });
-      vi.mocked(fetchIngestStatus).mockResolvedValue(completedStatus);
-      vi.mocked(fetchIngestStatus)
-        .mockResolvedValueOnce(idleStatus)
-        .mockResolvedValueOnce(idleStatus)
-        .mockResolvedValueOnce(runningStatus);
-
-      render(<IngestTriageCard {...defaultProps()} />);
-      await waitFor(() => {
-        expect(screen.getByText(/Processar INBOX/i)).toBeInTheDocument();
-      });
-
-      await act(async () => {
-        fireEvent.click(screen.getByText(/Processar INBOX/i));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText(/Processando arquivos/i)).toBeInTheDocument();
-      }, { timeout: 3000 });
-      expect(screen.getByText(/2 \/ 6 arquivo/i)).toBeInTheDocument();
-      expect(screen.getByText(/arquivo\.pdf/i)).toBeInTheDocument();
-
-      await act(async () => {
-        scanDeferred.resolve({
-          ...mockScanResult,
-          processed_count: 6,
-          items: mockScanResult.items
-        });
-        await Promise.resolve();
-      });
-
-      await waitFor(() => {
-        expect(screen.queryByText(/Processando arquivos/i)).not.toBeInTheDocument();
-      }, { timeout: 3000 });
-    } finally {
-      const { triggerScan, fetchIngestStatus, fetchIngestHistory } = await import("../../api");
-      vi.mocked(triggerScan).mockResolvedValue(mockScanResult);
-      vi.mocked(fetchIngestStatus).mockResolvedValue(idleStatus);
-      vi.mocked(fetchIngestHistory).mockResolvedValue({ project_id: "p1", entries: [] });
-      Object.defineProperty(window, "EventSource", { configurable: true, value: originalEventSource });
-    }
-  });
-
   it("updates the classifier cycle to completion without needing reload", async () => {
     const originalEventSource = window.EventSource;
     Object.defineProperty(window, "EventSource", { configurable: true, value: undefined });
-    const idleIngestStatus = {
-      last_run_started_at: null,
-      last_run_finished_at: null,
-      duration_seconds: null,
-      project_id: null,
-      running: false,
-      phase: "idle",
-      progress_current: 0,
-      progress_total: 0,
-      progress_file: null,
-      processed_count: 0,
-      failed_count: 0,
-      last_error: null
-    };
     const idleCycle = {
       last_run_started_at: null,
       last_run_finished_at: null,
@@ -445,8 +295,7 @@ describe("IngestTriageCard", () => {
         report_id: "cycle_20260320_010000",
         champion_mode: "bootstrap"
       };
-      const { fetchClassifierCycleStatus, fetchIngestStatus, startClassifierCycle } = await import("../../api");
-      vi.mocked(fetchIngestStatus).mockResolvedValue(idleIngestStatus);
+      const { fetchClassifierCycleStatus, startClassifierCycle } = await import("../../api");
       vi.mocked(fetchClassifierCycleStatus).mockResolvedValue(completedCycle);
       vi.mocked(fetchClassifierCycleStatus)
         .mockResolvedValueOnce(idleCycle)
@@ -473,9 +322,8 @@ describe("IngestTriageCard", () => {
       }, { timeout: 3000 });
       expect(screen.getByText(/Rodar ciclo/i)).toBeInTheDocument();
     } finally {
-      const { fetchClassifierCycleStatus, fetchIngestStatus } = await import("../../api");
+      const { fetchClassifierCycleStatus } = await import("../../api");
       vi.mocked(fetchClassifierCycleStatus).mockResolvedValue(idleCycle);
-      vi.mocked(fetchIngestStatus).mockResolvedValue(idleIngestStatus);
       Object.defineProperty(window, "EventSource", { configurable: true, value: originalEventSource });
     }
   });

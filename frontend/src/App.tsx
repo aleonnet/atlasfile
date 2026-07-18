@@ -632,11 +632,7 @@ function AppShell() {
           <ConfigView
             selectedProject={selectedProject}
             selectedProjectLabel={selectedProjectLabel}
-            projects={projects}
-            projectLabelById={projectLabelById}
             triageItems={triageItems}
-            initializingProjectId={initializingProjectId}
-            onLoadTriage={loadTriage}
             onStatus={setStatus}
             openaiApiKey={openaiApiKey}
             anthropicApiKey={anthropicApiKey}

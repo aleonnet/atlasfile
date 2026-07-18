@@ -23,6 +23,8 @@ import type {
   ScanResult,
   SearchFilters,
   SearchResponse,
+  BackfillValidationResult,
+  DatasetReadiness,
   StatsResponse,
   StoredChatMessage,
   SuggestResponse,
@@ -340,6 +342,25 @@ export async function startClassifierCycle(params?: {
   return res.json();
 }
 
+/** Prontidão dos datasets do classificador (validação/treino/gate) para orientar o usuário. */
+export async function fetchDatasetReadiness(): Promise<DatasetReadiness> {
+  const res = await apiFetch(`${API_URL}/api/classifier/datasets/readiness`);
+  if (!res.ok) throw new Error("Falha ao carregar prontidão dos datasets");
+  return res.json();
+}
+
+/** Reserva ~20% do pool de treino para validação (estratificado, idempotente). */
+export async function backfillValidation(dryRun = false): Promise<BackfillValidationResult> {
+  const res = await apiFetch(`${API_URL}/api/classifier/datasets/backfill-validation?dry_run=${dryRun}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const detail = await res.json().then((d) => d.detail).catch(() => null);
+    throw new Error(detail || "Falha ao reservar documentos para validação");
+  }
+  return res.json();
+}
+
 export async function fetchClassifierCycleStatus(): Promise<ClassifierCycleStatus> {
   const res = await apiFetch(`${API_URL}/api/classifier/cycle/status`);
   if (!res.ok) throw new Error("Falha ao carregar status do ciclo do classificador");
@@ -456,6 +477,99 @@ export async function fetchHealth(): Promise<{ ok: boolean }> {
 export async function fetchModels(): Promise<ModelOption[]> {
   const res = await apiFetch(`${API_URL}/api/models`);
   if (!res.ok) throw new Error("Falha ao carregar modelos");
+  return res.json();
+}
+
+export interface ModelRefreshResult {
+  dry_run: boolean;
+  source_url: string;
+  models_total: number;
+  openai: number;
+  anthropic: number;
+  priced_models: number;
+  /** ausente em dry_run */
+  refreshed_at?: string;
+}
+
+/** Atualiza o catálogo de modelos e preços a partir da fonte remota. dryRun valida sem persistir. */
+export async function refreshModelCatalog(options?: { dryRun?: boolean; url?: string }): Promise<ModelRefreshResult> {
+  const params = new URLSearchParams();
+  if (options?.dryRun) params.set("dry_run", "true");
+  if (options?.url) params.set("url", options.url);
+  const qs = params.toString();
+  const res = await apiFetch(`${API_URL}/api/models/refresh${qs ? `?${qs}` : ""}`, { method: "POST" });
+  if (!res.ok) {
+    const detail = await res.json().then((d) => d.detail).catch(() => null);
+    throw new Error(detail || "Falha ao atualizar o catálogo de modelos");
+  }
+  return res.json();
+}
+
+export interface CatalogConfig {
+  url: string;
+  default_url: string;
+  refreshed_at: string | null;
+}
+
+export async function fetchCatalogConfig(): Promise<CatalogConfig> {
+  const res = await apiFetch(`${API_URL}/api/models/catalog-config`);
+  if (!res.ok) throw new Error("Falha ao carregar a configuração do catálogo");
+  return res.json();
+}
+
+/** Salva a URL da fonte do catálogo (valida com dry-run no backend; vazia = default). */
+export async function updateCatalogConfig(url: string): Promise<CatalogConfig> {
+  const res = await apiFetch(`${API_URL}/api/models/catalog-config`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().then((d) => d.detail).catch(() => null);
+    throw new Error(detail || "Falha ao salvar a URL do catálogo");
+  }
+  return res.json();
+}
+
+export interface ModelCatalogDetailEntry extends ModelOption {
+  input_cost_per_1m: number | null;
+  output_cost_per_1m: number | null;
+  cache_read_cost_per_1m: number | null;
+  cache_write_cost_per_1m: number | null;
+  cost_tracked: boolean;
+  source: "builtin" | "remote";
+}
+
+export interface ModelCatalogDetail {
+  refreshed_at: string | null;
+  source_url: string;
+  models: ModelCatalogDetailEntry[];
+}
+
+export async function fetchModelCatalogDetail(): Promise<ModelCatalogDetail> {
+  const res = await apiFetch(`${API_URL}/api/models/detail`);
+  if (!res.ok) throw new Error("Falha ao carregar o catálogo detalhado");
+  return res.json();
+}
+
+/** Valida na API do provedor que o modelo existe; a key vai só no header. */
+export async function validateModel(
+  provider: string,
+  model: string,
+  keys: { openai?: string; anthropic?: string }
+): Promise<{ valid: boolean; detail: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (keys.openai) headers["X-OpenAI-API-Key"] = keys.openai;
+  if (keys.anthropic) headers["X-Anthropic-API-Key"] = keys.anthropic;
+  const res = await apiFetch(`${API_URL}/api/models/validate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ provider, model }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().then((d) => d.detail).catch(() => null);
+    throw new Error(detail || "Falha ao validar o modelo");
+  }
   return res.json();
 }
 

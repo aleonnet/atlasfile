@@ -165,11 +165,11 @@ def resolve_validation_file(file_name: str) -> Path:
     return validation_set_files_dir() / file_name
 
 
-def validation_sha_index() -> dict[str, list[str]]:
+def validation_sha_index(*, include_unlabeled: bool = False) -> dict[str, list[str]]:
     ensure_dataset_scaffold()
     index: dict[str, list[str]] = {}
     for entry in load_validation_set():
-        if not entry.is_labeled():
+        if not include_unlabeled and not entry.is_labeled():
             continue
         file_path = resolve_validation_file(entry.file)
         if not file_path.exists():
@@ -182,7 +182,9 @@ def validation_sha_index() -> dict[str, list[str]]:
 def validation_overlap_for_file(file_path: Path) -> list[str]:
     if not file_path.exists() or not file_path.is_file():
         return []
-    return sorted(validation_sha_index().get(sha256_file(file_path), []))
+    # include_unlabeled: anti-leakage vale também para entries ainda sem rótulo —
+    # o arquivo já está reservado para validação, não pode alimentar o treino.
+    return sorted(validation_sha_index(include_unlabeled=True).get(sha256_file(file_path), []))
 
 
 def stage_validation_files(source_paths: Iterable[Path]) -> list[Path]:

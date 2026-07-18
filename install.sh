@@ -13,6 +13,10 @@
 #   --projects-root PATH  (default: ~/Documents/AtlasFileProjects)
 #   --yes                 não-interativo (aceita defaults)
 #   --no-open             não abre o browser ao final
+#   --enable-auth         liga a autenticação da API (gera key em config/api_keys.json,
+#                         define API_AUTH_ENABLED=true e ATLASFILE_API_TOKEN no .env).
+#                         Re-executar o instalador com esta flag habilita auth numa
+#                         instalação existente sem perder dados.
 set -euo pipefail
 
 REPO_URL="${ATLASFILE_REPO_URL:-https://github.com/aleonnet/atlasfile.git}"
@@ -22,6 +26,8 @@ PROJECTS_ROOT_DEFAULT="${HOME}/Documents/AtlasFileProjects"
 PROJECTS_ROOT=""
 ASSUME_YES=0
 OPEN_BROWSER=1
+ENABLE_AUTH=0
+API_KEY_VALUE=""
 LOG_FILE="${TMPDIR:-/tmp}/atlasfile-install-$(date +%s).log"
 START_TS=$(date +%s)
 
@@ -33,6 +39,7 @@ while [ $# -gt 0 ]; do
     --projects-root) PROJECTS_ROOT="$2"; shift 2 ;;
     --yes) ASSUME_YES=1; shift ;;
     --no-open) OPEN_BROWSER=0; shift ;;
+    --enable-auth) ENABLE_AUTH=1; shift ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Flag desconhecida: $1 (use --help)"; exit 1 ;;
   esac
@@ -209,6 +216,37 @@ else
 fi
 printf '  %s✔%s projetos em: %s%s%s\n' "$GREEN" "$RESET" "$BOLD" "${PROJECTS_ROOT}" "$RESET"
 
+# set_env VAR VALOR — substitui ou anexa no .env
+set_env() {
+  if grep -q "^$1=" .env; then
+    tmp_env="$(mktemp)"
+    sed "s|^$1=.*|$1=$2|" .env > "${tmp_env}" && mv "${tmp_env}" .env
+  else
+    printf '%s=%s\n' "$1" "$2" >> .env
+  fi
+}
+
+# ── Autenticação da API (opt-in via --enable-auth) ──────────────────────────
+# A key entra na imagem no build (config/api_keys.json) e no .env para o MCP
+# server (ATLASFILE_API_TOKEN). Re-executar preserva a key existente.
+if [ "${ENABLE_AUTH}" = "1" ]; then
+  keys_file="config/api_keys.json"
+  if [ -f "${keys_file}" ]; then
+    API_KEY_VALUE="$(sed -n 's/.*"key"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${keys_file}" | head -1)"
+    [ -n "${API_KEY_VALUE}" ] && info "api_keys.json já existe — key preservada"
+  fi
+  if [ -z "${API_KEY_VALUE}" ]; then
+    key_rand="$( (LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom || true) | head -c 32)"
+    [ -n "${key_rand}" ] || key_rand="$(openssl rand -hex 16 2>/dev/null || date +%s)"
+    API_KEY_VALUE="atlas_sk_${key_rand}"
+    printf '{\n  "keys": [\n    {"key": "%s", "name": "installer", "projects": ["*"]}\n  ]\n}\n' "${API_KEY_VALUE}" > "${keys_file}"
+    printf '  %s✔%s api_keys.json criado com key gerada\n' "$GREEN" "$RESET"
+  fi
+  set_env API_AUTH_ENABLED true
+  set_env ATLASFILE_API_TOKEN "${API_KEY_VALUE}"
+  printf '  %s✔%s autenticação da API habilitada\n' "$GREEN" "$RESET"
+fi
+
 # ── 4. Build + subida ───────────────────────────────────────────────────────
 title "4/5" "Construindo e subindo a stack"
 info "primeira vez baixa imagens e compila — bom momento para um café ☕"
@@ -236,6 +274,11 @@ printf '  %s│%s  %sAPI%s         http://localhost:8000/health               %s
 printf '  %s│%s  %sProjetos%s    %-40s %s│%s\n' "$ORANGE" "$RESET" "$BOLD" "$RESET" "$(printf '%.40s' "${PROJECTS_ROOT}")" "$ORANGE" "$RESET"
 printf '  %s╰─────────────────────────────────────────────────────────╯%s\n' "$ORANGE" "$RESET"
 printf '\n'
+if [ "${ENABLE_AUTH}" = "1" ] && [ -n "${API_KEY_VALUE}" ]; then
+  printf '  %s🔑 API key%s (cole em Configuração → Acesso, em cada navegador):\n' "$BOLD" "$RESET"
+  printf '     %s%s%s\n' "$ORANGE" "${API_KEY_VALUE}" "$RESET"
+  printf '\n'
+fi
 info "o assistente de primeiros passos abre sozinho na interface"
 info "logs:  cd ${INSTALL_DIR} && docker compose logs -f"
 info "parar: cd ${INSTALL_DIR} && docker compose down"

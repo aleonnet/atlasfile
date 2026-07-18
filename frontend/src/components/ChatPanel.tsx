@@ -7,6 +7,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Brain, Clock, FileSearch, FileText, Layers, Loader2, Pencil, Plus, Send, Settings, Sparkles, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { fetchSuggestions, getFileDownloadUrl } from "../api";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
@@ -766,7 +767,7 @@ function ChatMessageBubble({
             {isUser ? (
               userContentEl
             ) : (
-              <ReactMarkdown components={MARKDOWN_COMPONENTS}>{content}</ReactMarkdown>
+              <ReactMarkdown components={MARKDOWN_COMPONENTS} remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             )}
           </div>
         </div>

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { StatTile } from "../components/ui/stat-tile";
+import { InboxQueueChips } from "../features/ingest/InboxQueueChips";
 import { InboxScanCard } from "../features/ingest/InboxScanCard";
 import { IngestHistoryCard } from "../features/ingest/IngestHistoryCard";
 import { DropHintCard } from "../features/ingest/DropHintCard";
@@ -323,6 +324,7 @@ export function PainelView({
   }
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
+  const [inboxRefreshToken, setInboxRefreshToken] = useState(0);
   const initializedCount = projects.filter((p) => p.initialized).length;
 
   function applyFilter(patch: Partial<SearchFilters>) {
@@ -420,13 +422,24 @@ export function PainelView({
                 </div>
               )}
 
+              {isSingleProject && (
+                <InboxQueueChips
+                  projectId={selectedProject}
+                  onStatus={onStatus}
+                  refreshToken={inboxRefreshToken}
+                />
+              )}
+
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4">
                 <div className="flex items-center gap-2">
                   <InboxScanCard
                     selectedProject={selectedProject}
                     projects={projects}
                     onStatus={onStatus}
-                    onScanComplete={onScanComplete}
+                    onScanComplete={() => {
+                      setInboxRefreshToken((t) => t + 1);
+                      onScanComplete();
+                    }}
                   />
                   <Button disabled={reconcilingNow} onClick={onReconcile}>
                     <RefreshCw className={reconcilingNow ? "animate-spin" : ""} />

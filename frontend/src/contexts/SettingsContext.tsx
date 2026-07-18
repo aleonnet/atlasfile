@@ -9,6 +9,16 @@ const CHAT_SHOW_THINKING_KEY = "atlasfile-chat-show-thinking";
 const OPENAI_API_KEY_STORAGE = "atlasfile-openai-api-key";
 const ANTHROPIC_API_KEY_STORAGE = "atlasfile-anthropic-api-key";
 const AUTO_TITLE_LLM_KEY = "atlasfile-auto-title-llm";
+const CUSTOM_MODELS_KEY = "atlasfile-custom-models";
+
+function readCustomModels(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CUSTOM_MODELS_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -46,6 +56,11 @@ type SettingsContextValue = {
   resolvedTheme: "light" | "dark";
   setTheme: (mode: ThemeMode) => void;
   models: ModelOption[];
+  /** Modelos digitados/validados pelo usuário ("provider/model"), persistidos localmente. */
+  customModels: string[];
+  addCustomModel: (value: string) => void;
+  /** Recarrega o catálogo do backend (após um refresh remoto). */
+  reloadModels: () => Promise<void>;
   selectedModel: string;
   setSelectedModel: React.Dispatch<React.SetStateAction<string>>;
   selectedModelTriage: string;
@@ -67,6 +82,7 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
   const [models, setModels] = useState<ModelOption[]>([]);
+  const [customModels, setCustomModels] = useState<string[]>(readCustomModels);
   const [selectedModel, setSelectedModel] = useState<string>(() => readStorage(CHAT_MODEL_STORAGE_KEY));
   const [selectedModelTriage, setSelectedModelTriage] = useState<string>(() => readStorage(TRIAGE_MODEL_STORAGE_KEY));
   const [openaiApiKey, setOpenaiApiKey] = useState<string>(() => readStorage(OPENAI_API_KEY_STORAGE));
@@ -98,7 +114,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     fetchModels()
       .then((list) => {
         setModels(list);
-        const values = list.map((m) => `${m.provider}/${m.model}`);
+        // Modelos custom validados contam como conhecidos — sem isso a seleção
+        // do usuário seria resetada para o primeiro do catálogo a cada load.
+        const values = [...list.map((m) => `${m.provider}/${m.model}`), ...customModels];
         const first = values[0];
         if (first) {
           setSelectedModel((s) => (!s || !values.includes(s) ? first : s));
@@ -106,7 +124,27 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => setModels([]));
-  }, [models.length]);
+  }, [models.length, customModels]);
+
+  const addCustomModel = useMemo(
+    () => (value: string) => {
+      setCustomModels((prev) => {
+        if (prev.includes(value)) return prev;
+        const next = [...prev, value];
+        writeStorage(CUSTOM_MODELS_KEY, JSON.stringify(next));
+        return next;
+      });
+    },
+    []
+  );
+
+  const reloadModels = useMemo(
+    () => async () => {
+      const list = await fetchModels();
+      setModels(list);
+    },
+    []
+  );
 
   const value = useMemo<SettingsContextValue>(
     () => ({
@@ -114,6 +152,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       resolvedTheme,
       setTheme,
       models,
+      customModels,
+      addCustomModel,
+      reloadModels,
       selectedModel,
       setSelectedModel,
       selectedModelTriage,
@@ -133,6 +174,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       theme,
       resolvedTheme,
       models,
+      customModels,
+      addCustomModel,
+      reloadModels,
       selectedModel,
       selectedModelTriage,
       openaiApiKey,

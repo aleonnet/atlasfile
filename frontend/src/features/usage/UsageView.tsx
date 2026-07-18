@@ -519,13 +519,23 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                 ) : (
                   summary.by_model.map((row: UsageByModelEntry) => (
                     <tr key={row.model}>
-                      <td className="left">{row.model}</td>
+                      <td className="left">
+                        {row.model}
+                        {row.cost_tracked === false && (
+                          <span
+                            className="ml-1.5 rounded-full border border-border bg-panel-strong px-1.5 py-0.5 font-mono text-[0.62rem] text-tertiary"
+                            title="Modelo sem preço cadastrado — atualize o catálogo em Configuração do Assistente para rastrear o custo"
+                          >
+                            custo não rastreado
+                          </span>
+                        )}
+                      </td>
                       <td>{formatTokens(row.input_tokens)}</td>
                       <td>{formatTokens(row.output_tokens)}</td>
                       <td>{formatUsd4(row.input_cost_usd)}</td>
                       <td>{formatUsd4(row.output_cost_usd)}</td>
                       <td>{formatTokens(row.total_tokens)}</td>
-                      <td>{formatUsd(row.estimated_cost_usd)}</td>
+                      <td>{row.cost_tracked === false ? "—" : formatUsd(row.estimated_cost_usd)}</td>
                     </tr>
                   ))
                 )}

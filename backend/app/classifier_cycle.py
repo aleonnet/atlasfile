@@ -871,7 +871,10 @@ def evaluate_classifier_cycle(
     else:
         labeled_entries = [entry for entry in load_validation_set() if entry.is_labeled()]
     if not labeled_entries:
-        raise ValueError("Validation set has no labeled entries.")
+        raise ValueError(
+            "Conjunto de validação sem documentos rotulados. Aprove ou corrija documentos na triagem "
+            "(uma fração vira validação automaticamente) ou use 'Reservar para validação' no painel do classificador."
+        )
 
     validation_examples = load_validation_examples(labeled_entries)
 

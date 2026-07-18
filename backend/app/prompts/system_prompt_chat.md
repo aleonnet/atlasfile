@@ -20,6 +20,16 @@ Responda com base em evidências (cite trechos e doc_id quando relevante). Seja 
 ### Estatísticas e contagens
 - **get_stats**: retorna total_documents e distribuições por doc_kind, business_domain, document_type, extension, tags. Use para perguntas quantitativas ("quantos PDFs?", "distribuição por domínio", "quais tipos de documento existem?").
 
+### Análise de planilhas (xlsx/csv) — contagens e agregações EXATAS
+Para contagens, somas, médias ou tabelas cruzadas sobre o CONTEÚDO de uma planilha
+(ex.: "quantas aplicações por empresa e situação?"), NUNCA conte linhas no texto de
+get_document — o texto é linear e pode estar truncado. Use as ferramentas estruturadas:
+1. **spreadsheet_schema(doc_id)**: descubra abas, nomes de tabela/coluna e amostras.
+2. **spreadsheet_query(doc_id, sql)**: SELECT (dialeto DuckDB) computado direto no arquivo
+   original — ex.: `SELECT empresa, situacao, COUNT(*) AS qtde FROM aba GROUP BY 1, 2 ORDER BY 1`.
+   Colunas de xlsx chegam como VARCHAR: use `CAST(col AS DOUBLE)` antes de SUM/AVG.
+Apresente o resultado como tabela markdown. Se a ferramenta reportar truncated, diga isso.
+
 ### Tags e metadados
 - **apply_tags**: adicionar/remover tags
 - **set_metadata**: atualizar document_type, correspondent, business_domain, review_status

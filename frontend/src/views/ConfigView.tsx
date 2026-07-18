@@ -8,16 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { IngestTriageCard } from "../features/ingest/IngestTriageCard";
 import { ProfileLayoutWorkspace } from "../features/profile-layout/ProfileLayoutWorkspace";
 import { TemplateEditorView } from "../features/templates/TemplateEditorView";
-import type { Project, TriageItem } from "../types";
+import type { TriageItem } from "../types";
 
 type Props = {
   selectedProject: string;
   selectedProjectLabel: string;
-  projects: Project[];
-  projectLabelById: Map<string, string>;
   triageItems: TriageItem[];
-  initializingProjectId: string | null;
-  onLoadTriage: () => Promise<void>;
   onStatus: (msg: string) => void;
   openaiApiKey: string;
   anthropicApiKey: string;
@@ -67,6 +63,23 @@ function ApiAccessCard({ onStatus }: { onStatus: (msg: string) => void }) {
           />
           <Button onClick={handleSave}>Salvar</Button>
         </div>
+        <div className="mt-4 rounded-md border border-border bg-elevated px-3 py-2.5">
+          <p className="m-0 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">Como habilitar a autenticação</p>
+          <p className="m-0 mt-1.5 text-[0.8rem] text-muted-foreground">
+            A autenticação é uma decisão de deployment — por segurança, não pode ser ligada por esta UI
+            (uma interface sem auth não deve conseguir ativar auth). O caminho mais simples é re-executar
+            o instalador no servidor, que gera a key, configura o <code className="rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light">.env</code> e reconstrói a API preservando seus dados:
+          </p>
+          <pre className="mt-1.5 overflow-x-auto rounded bg-panel-strong px-2.5 py-2 font-mono text-[0.7rem] text-accent-light">
+            curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth
+          </pre>
+          <p className="m-0 mt-1.5 text-[0.8rem] text-muted-foreground">
+            Ou manualmente: keys em <code className="rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light">config/api_keys.json</code>,{" "}
+            <code className="rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light">API_AUTH_ENABLED=true</code> no .env e{" "}
+            <code className="rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light">docker compose up -d --build api mcp</code>.
+            Ao final, a key gerada é exibida no terminal — cole-a acima em cada navegador que acessa o AtlasFile.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
@@ -75,11 +88,7 @@ function ApiAccessCard({ onStatus }: { onStatus: (msg: string) => void }) {
 export function ConfigView({
   selectedProject,
   selectedProjectLabel,
-  projects,
-  projectLabelById,
   triageItems,
-  initializingProjectId,
-  onLoadTriage,
   onStatus,
   openaiApiKey,
   anthropicApiKey,
@@ -109,11 +118,7 @@ export function ConfigView({
           <IngestTriageCard
             selectedProject={selectedProject}
             selectedProjectLabel={selectedProjectLabel}
-            projects={projects}
-            projectLabelById={projectLabelById}
             triageItems={triageItems}
-            initializingProjectId={initializingProjectId}
-            onLoadTriage={onLoadTriage}
             onStatus={onStatus}
             openaiApiKey={openaiApiKey}
             anthropicApiKey={anthropicApiKey}

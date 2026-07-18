@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.23.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [catalogo_dinamico_planilhas_sql_holdout_v0230](catalogo_dinamico_planilhas_sql_holdout_v0230.plan.md) | Catálogo de modelos dinâmico (fonte LiteLLM, combobox com modelo custom validado no provedor, custos honestos com badge "não rastreado"); análise estruturada de planilhas no chat (tools MCP spreadsheet_schema/query, DuckDB SELECT-only sobre o arquivo original, remark-gfm); ciclo do classificador destravado (hold-out ~20% por SHA das decisões humanas, regra semente, warm-up, backfill estratificado, readiness na UI) |
+
+---
+
 ## 0.22.0
 
 | # | Plano | Escopo |
