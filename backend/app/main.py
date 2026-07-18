@@ -1486,6 +1486,11 @@ def start_classifier_cycle(
     if _classifier_cycle_status.get("running"):
         raise HTTPException(status_code=409, detail="Classifier cycle already in progress")
     readiness = dataset_readiness()
+    auto_backfill_moved = 0
+    if readiness.get("cycle_ready") and readiness.get("validation", {}).get("labeled", 0) == 0:
+        # Auto-cura: validação vazia mas o backfill resolve — executa sem pedir clique extra
+        auto_backfill_moved = int(backfill_validation_from_training_pool().get("moved", 0))
+        readiness = dataset_readiness()
     if not readiness.get("cycle_ready"):
         blockers = readiness.get("blockers") or []
         detail = blockers[0]["message"] if blockers else "Datasets do classificador ainda não estão prontos"
@@ -1513,7 +1518,14 @@ def start_classifier_cycle(
         daemon=True,
     )
     thread.start()
-    return JSONResponse(status_code=202, content={"status": "started", "message": "Classifier cycle started"})
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "started",
+            "message": "Classifier cycle started",
+            "auto_backfill_moved": auto_backfill_moved,
+        },
+    )
 
 
 @app.delete("/api/classifier/cycle")

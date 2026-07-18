@@ -192,4 +192,21 @@ describe("ChartBlock", () => {
     expect(screen.getByText("DOCX")).toBeInTheDocument();
     expect(screen.getAllByText("Jurídico")).toHaveLength(2);
   });
+
+  it("renders bubble chart with categorical axes and groups", () => {
+    const json = JSON.stringify({
+      type: "bubble",
+      title: "Domínio × Tipo × Formato",
+      data: [
+        { x: "juridico", y: "contrato", group: "pdf", value: 3 },
+        { x: "juridico", y: "parecer", group: "docx", value: 1 },
+        { x: "financeiro", y: "relatorio", group: "pdf", value: 2 },
+      ],
+    });
+    const { container } = render(<ChartBlock jsonString={json} />);
+    expect(screen.getByText("Domínio × Tipo × Formato")).toBeInTheDocument();
+    // renderer conhecido → container de gráfico, não fallback de código
+    expect(container.querySelector(".chart-block-container")).toBeInTheDocument();
+    expect(container.querySelector(".chart-block-fallback")).not.toBeInTheDocument();
+  });
 });

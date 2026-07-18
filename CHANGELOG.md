@@ -15,6 +15,20 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.25.0] -- 2026-07-18
+
+### Adicionado
+
+- **Criar tipo/domínio direto do "Aprovar com correção"**: link "+ O destino certo não existe? Criar novo tipo ou domínio" abre o modal de criação governada (reuso do CreateTaxonomyEntryModal, que agora informa kind+key criados); ao criar, o catálogo recarrega e o novo destino já vem selecionado.
+- **Gráfico `bubble` (4 dimensões em um)**: eixos categóricos x × y, cor = grupo, tamanho + rótulo = valor — ex.: domínio × tipo, cor formato, tamanho quantidade. Alternativa aos facets quando small multiples gerariam muitos painéis. (Gráficos 3D em perspectiva foram avaliados e descartados: leitura de dados ruim por oclusão/distorção — bubble matrix e heatmap são o padrão recomendado.)
+- **Tabelas com linha de Total**: regra no system prompt — toda tabela com colunas numéricas termina com linha **Total** (somando só o que faz sentido; no SQL, preferir computar junto).
+
+### Corrigido
+
+- **Coleções pequenas destravaram o primeiro ciclo**: a regra semente agora vem ANTES do warm-up — a partir da 2ª decisão humana, uma vai para a validação (o warm-up protege o sparse, que exige 100 docs e é irrelevante nessa escala; caso real: 6 arquivos triados e ciclo bloqueado com "validação: 0 · treino: 3"). E quando a validação está vazia mas o pool de treino resolve, **o "Rodar ciclo" se auto-cura**: reserva automaticamente os documentos necessários (com fallback para pools minúsculos — move 1 mesmo com todas as classes pequenas) e roda — sem botão extra, sem clique a mais; o status informa "N documento(s) reservados automaticamente". O endpoint `POST /api/classifier/datasets/backfill-validation` permanece para uso operacional explícito.
+
+---
+
 ## [0.24.0] -- 2026-07-18
 
 ### Adicionado

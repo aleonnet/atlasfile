@@ -750,12 +750,3 @@ export interface DatasetReadiness {
   blockers: DatasetReadinessBlocker[];
   suggestions: DatasetReadinessBlocker[];
 }
-
-export interface BackfillValidationResult {
-  dry_run: boolean;
-  moved: number;
-  per_class: Record<string, number>;
-  skipped: { doc_id: string; reason: string }[];
-  validation_labeled_total: number;
-  training_total: number;
-}

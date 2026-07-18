@@ -58,28 +58,54 @@ def test_should_hold_out_deterministic_and_toggleable():
     assert 150 < hits < 250  # ~20%
 
 
-def test_seed_rule_first_eligible_doc_goes_to_validation(datasets_root, monkeypatch):
+def test_first_doc_goes_to_training_second_seeds_validation(datasets_root, monkeypatch):
     monkeypatch.setattr(dataset_holdout.settings, "classifier_holdout_min_train_per_class", 0)
-    doc = _make_doc(datasets_root, "primeiro.txt", "conteudo unico 1")
-    result = _route(doc)
+    monkeypatch.setattr(dataset_holdout.settings, "classifier_holdout_modulus", 5)
+    # conteúdo determinístico FORA do módulo (senão o 1º doc poderia cair nos ~20%)
+    i = 0
+    while True:
+        first = _make_doc(datasets_root, f"primeiro{i}.txt", f"conteudo unico {i}")
+        if not should_hold_out(sha256_file(first), modulus=5):
+            break
+        first.unlink()
+        i += 1
+    assert _route(first)["dataset_route"] == "training"  # semente exige treino não-vazio
+    second = _make_doc(datasets_root, "segundo.txt", "conteudo unico 2")
+    result = _route(second)
     assert result["dataset_route"] == "validation"
     entries = load_validation_set()
     assert len(entries) == 1 and entries[0].is_labeled()
     assert entries[0].business_domain == "financeiro"
     assert (validation_set_files_dir() / entries[0].file).exists()
-    assert load_training_pool_records() == []
+    assert len(load_training_pool_records()) == 1
 
 
-def test_warmup_routes_first_n_per_class_to_training(datasets_root, monkeypatch):
+def test_seed_fires_on_second_human_decision_before_warmup(datasets_root, monkeypatch):
     monkeypatch.setattr(dataset_holdout.settings, "classifier_holdout_min_train_per_class", 3)
-    monkeypatch.setattr(dataset_holdout.settings, "classifier_holdout_modulus", 1)  # tudo iria p/ validação
-    # Warm-up vence a semente: os 3 primeiros da classe vão para treino mesmo com modulus=1
-    for i in range(3):
-        doc = _make_doc(datasets_root, f"warm{i}.txt", f"conteudo warm {i}")
-        assert _route(doc)["dataset_route"] == "training"
-    # O 4º (classe aquecida, validação vazia) → semente → validação
-    doc4 = _make_doc(datasets_root, "warm3.txt", "conteudo warm 3")
-    assert _route(doc4)["dataset_route"] == "validation"
+    monkeypatch.setattr(dataset_holdout.settings, "classifier_holdout_modulus", 5)
+    # 1ª decisão: treino (semente exige treino não-vazio para ter o que comparar)
+    doc1 = _make_doc(datasets_root, "d1.txt", "conteudo 1")
+    assert _route(doc1)["dataset_route"] == "training"
+    # 2ª decisão: SEMENTE → validação, mesmo com warm-up não satisfeito
+    # (coleções pequenas não podem esperar 3 por classe — sparse exige 100 docs anyway)
+    doc2 = _make_doc(datasets_root, "d2.txt", "conteudo 2", )
+    assert _route(doc2, bd="juridico", dt="contrato")["dataset_route"] == "validation"
+    # 3ª decisão em diante: warm-up volta a valer (classes < 3 → treino)
+    doc3 = _make_doc(datasets_root, "d3.txt", "conteudo 3")
+    assert _route(doc3)["dataset_route"] == "training"
+
+
+def test_warmup_holds_after_seed_until_class_warm(datasets_root, monkeypatch):
+    monkeypatch.setattr(dataset_holdout.settings, "classifier_holdout_min_train_per_class", 3)
+    monkeypatch.setattr(dataset_holdout.settings, "classifier_holdout_modulus", 1)  # pós warm-up, tudo validação
+    docs = [_make_doc(datasets_root, f"w{i}.txt", f"conteudo w {i}") for i in range(6)]
+    routes = [_route(d)["dataset_route"] for d in docs]
+    # d0 treino; d1 semente→validação; d2-d4 warm-up→treino (classe chega a 3+... d2,d3 completam 3);
+    assert routes[0] == "training"
+    assert routes[1] == "validation"
+    assert routes[2] == "training" and routes[3] == "training"
+    # classe aquecida (3 no treino) + modulus=1 → validação
+    assert routes[4] == "validation"
 
 
 def test_sha_already_in_training_stays_training(datasets_root, monkeypatch):
@@ -98,6 +124,8 @@ def test_sha_already_in_training_stays_training(datasets_root, monkeypatch):
 
 def test_human_decision_updates_validation_labels(datasets_root, monkeypatch):
     monkeypatch.setattr(dataset_holdout.settings, "classifier_holdout_min_train_per_class", 0)
+    first = _make_doc(datasets_root, "primeiro.txt", "conteudo primeiro")
+    assert _route(first)["dataset_route"] == "training"
     doc = _make_doc(datasets_root, "valida.txt", "conteudo v")
     assert _route(doc)["dataset_route"] == "validation"
     # Humano corrige depois (ex.: move) — mesma SHA → entry atualizada, sem ir ao treino
@@ -107,7 +135,8 @@ def test_human_decision_updates_validation_labels(datasets_root, monkeypatch):
     entries = load_validation_set()
     assert entries[0].business_domain == "juridico"
     assert entries[0].document_type == "parecer"
-    assert load_training_pool_records() == []
+    # a decisão sobre o doc em validação não gera registro de treino novo
+    assert len(load_training_pool_records()) == 1
 
 
 def _fill_training(datasets_root, monkeypatch, n_por_classe: dict[str, int]):
@@ -144,21 +173,49 @@ def test_backfill_stratified_and_idempotent(datasets_root, monkeypatch):
     assert again["moved"] == 0
 
 
-def test_readiness_blockers_and_suggestions(datasets_root, monkeypatch):
+def test_readiness_blockers_and_auto_backfill(datasets_root, monkeypatch):
+    # Vazio total: bloqueado de verdade (nada a auto-curar)
     ready0 = dataset_readiness()
     assert ready0["cycle_ready"] is False
     assert ready0["blockers"][0]["code"] == "validation_empty"
-    assert all(s["code"] != "backfill_available" for s in ready0["suggestions"])  # pool vazio
 
+    # Pool com dados e validação vazia: NÃO bloqueia — o ciclo auto-reserva ao rodar
     _fill_training(datasets_root, monkeypatch, {"financeiro": 10, "juridico": 5})
     ready1 = dataset_readiness()
-    assert ready1["cycle_ready"] is False
+    assert ready1["cycle_ready"] is True
+    assert ready1["blockers"] == []
     codes = {s["code"] for s in ready1["suggestions"]}
-    assert "backfill_available" in codes
+    assert "auto_backfill_on_run" in codes
     assert "sparse_gate_not_met" in codes  # 15 < 100
 
     backfill_validation_from_training_pool()
     ready2 = dataset_readiness()
     assert ready2["cycle_ready"] is True
-    assert ready2["blockers"] == []
     assert ready2["validation"]["labeled"] > 0
+    assert all(s["code"] != "auto_backfill_on_run" for s in ready2["suggestions"])
+
+
+def test_readiness_tiny_stuck_pool_is_auto_fixable(datasets_root, monkeypatch):
+    # O caso real do usuário: 3 docs de classes diferentes, validação vazia —
+    # o fallback do backfill torna o ciclo auto-curável (sem clique extra)
+    _fill_training(datasets_root, monkeypatch, {"a": 1, "b": 1, "c": 1})
+    ready = dataset_readiness()
+    assert ready["cycle_ready"] is True
+    assert ready["blockers"] == []
+    auto = [s for s in ready["suggestions"] if s["code"] == "auto_backfill_on_run"]
+    assert auto and auto[0]["params"]["would_move"] == 1
+
+
+def test_backfill_emergency_fallback_for_tiny_pools(datasets_root, monkeypatch):
+    # Instalação presa: classes pequenas (1 cada), validação vazia — o fallback
+    # move exatamente 1 registro para destravar o primeiro ciclo.
+    _fill_training(datasets_root, monkeypatch, {"a": 1, "b": 1, "c": 1})
+    preview = backfill_validation_from_training_pool(dry_run=True)
+    assert preview["moved"] == 1
+    result = backfill_validation_from_training_pool()
+    assert result["moved"] == 1
+    assert result["validation_labeled_total"] == 1
+    assert result["training_total"] == 2
+    # idempotente: validação deixou de estar vazia → fallback não repete
+    again = backfill_validation_from_training_pool()
+    assert again["moved"] == 0

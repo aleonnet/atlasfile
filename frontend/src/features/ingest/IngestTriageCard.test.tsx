@@ -146,7 +146,6 @@ vi.mock("../../api", () => ({
     })
   ),
   fetchDatasetReadiness: vi.fn(() => Promise.resolve({ cycle_ready: true, splits_available: false, validation: { labeled: 3, unlabeled: 0 }, training: { records: 12, business_domain_classes: {}, document_type_classes: {} }, supervised_gate: { eligible: false, reasons: [], warnings: [] }, holdout: { enabled: true, modulus: 5, min_train_per_class: 3 }, blockers: [], suggestions: [] })),
-  backfillValidation: vi.fn(() => Promise.resolve({ dry_run: false, moved: 0, per_class: {}, skipped: [], validation_labeled_total: 3, training_total: 12 })),
   fetchModels: vi.fn(() =>
     Promise.resolve([
       { provider: "openai", model: "gpt-4o-mini", label: "OpenAI gpt-4o-mini (base)" },

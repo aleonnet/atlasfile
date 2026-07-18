@@ -9,8 +9,8 @@ import { cn } from "../../lib/utils";
 type Props = {
   open: boolean;
   onClose: () => void;
-  /** Notifica criação bem-sucedida (para recarregar template/taxonomia). */
-  onCreated?: () => void;
+  /** Notifica criação bem-sucedida com o que foi criado (para recarregar e pré-selecionar). */
+  onCreated?: (kind: "document_type" | "business_domain", key: string) => void;
 };
 
 /**
@@ -57,7 +57,7 @@ export function CreateTaxonomyEntryModal({ open, onClose, onCreated }: Props) {
       setKey("");
       setLabel("");
       setAliases("");
-      onCreated?.();
+      onCreated?.(kind, result.key);
       onClose();
     } catch {
       toast.error("Falha ao criar entrada de taxonomia");

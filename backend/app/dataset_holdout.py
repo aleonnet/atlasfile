@@ -181,7 +181,26 @@ def route_labeled_document(
         if sha in {r.sha256 for r in records if r.sha256}:
             return _append_training()
 
-        # 3. Warm-up: primeiros N por classe alimentam a elegibilidade do sparse
+        # 3. Semente ANTES do warm-up: o primeiro ciclo só precisa de 1 doc rotulado
+        # na validação, e o warm-up protege o sparse — que exige 100 docs e é
+        # irrelevante em coleções pequenas. A partir da 2ª decisão humana, uma vai
+        # para a validação. (modulus <= 0 desliga o hold-out inteiro, semente incluída.)
+        if _holdout_modulus() > 0 and records and _labeled_validation_count(load_validation_set()) == 0:
+            entry = add_labeled_validation_entry(
+                source_path=source_path,
+                business_domain=business_domain,
+                document_type=document_type,
+                topics=list(topics or []),
+                entities=[e if isinstance(e, dict) else dict(e) for e in (entities or [])],
+                notes=notes,
+            )
+            return {
+                "dataset_route": "validation",
+                "training_pool_status": "held_out_for_validation",
+                "training_pool_validation_files": [entry.file],
+            }
+
+        # 4. Warm-up: primeiros N por classe alimentam a elegibilidade do sparse
         min_per_class = _min_train_per_class()
         if min_per_class > 0:
             bd_counts = Counter(r.business_domain.strip() for r in records if r.business_domain.strip())
@@ -191,11 +210,8 @@ def route_labeled_document(
             ) < min_per_class:
                 return _append_training()
 
-        # 4. Semente (validação rotulada vazia) ou módulo determinístico → validação.
-        # modulus <= 0 desliga o hold-out por completo (rollback), inclusive a semente.
-        validation_entries = load_validation_set()
-        seed_needed = _labeled_validation_count(validation_entries) == 0
-        if _holdout_modulus() > 0 and (seed_needed or should_hold_out(sha)):
+        # 5. Módulo determinístico → validação
+        if _holdout_modulus() > 0 and should_hold_out(sha):
             entry = add_labeled_validation_entry(
                 source_path=source_path,
                 business_domain=business_domain,
@@ -266,6 +282,19 @@ def backfill_validation_from_training_pool(
             if taken:
                 per_class[bd] = taken
 
+        # Fallback de emergência: validação rotulada vazia e nenhuma classe cede
+        # (todas pequenas) → mover 1 registro mesmo assim destrava o primeiro ciclo
+        # (bootstrap/llm avaliam com 1; o gate do sparse é irrelevante nessa escala).
+        if not selected and sum(validation_bd_counts.values()) == 0 and len(records) >= 2:
+            candidates = sorted(
+                (r for r in records if r.sha256 and r.sha256 not in validation_shas),
+                key=lambda r: (not should_hold_out(r.sha256), r.sha256),
+            )
+            if candidates:
+                fallback = candidates[0]
+                selected.append(fallback)
+                per_class[fallback.business_domain.strip()] = 1
+
         moved = 0
         if not dry_run:
             moved_ids: set[str] = set()
@@ -331,22 +360,31 @@ def dataset_readiness() -> dict[str, Any]:
     if not cycle_ready:
         preview = backfill_validation_from_training_pool(dry_run=True)
         would_move = int(preview.get("moved", 0))
-        message = (
-            "O conjunto de validação não tem documentos rotulados. Aprove ou corrija documentos na "
-            "triagem (cerca de 1 em cada 5 decisões passa a compor a validação automaticamente)"
-        )
         if would_move > 0:
-            message += " — ou reserve documentos do pool de treino para validação abaixo."
+            # Auto-cura: o POST do ciclo reserva sozinho antes de rodar — não há
+            # decisão do usuário aqui, então nada de botão extra nem bloqueio.
+            cycle_ready = True
             suggestions.append(
                 {
-                    "code": "backfill_available",
+                    "code": "auto_backfill_on_run",
                     "params": {"would_move": would_move},
-                    "message": f"Reservar {would_move} documento(s) do pool de treino para validação.",
+                    "message": (
+                        f"Ao rodar o ciclo, {would_move} documento(s) do treino serão reservados "
+                        "automaticamente para validação."
+                    ),
                 }
             )
         else:
-            message += "."
-        blockers.append({"code": "validation_empty", "message": message})
+            blockers.append(
+                {
+                    "code": "validation_empty",
+                    "message": (
+                        "O conjunto de validação não tem documentos rotulados. Aprove ou corrija "
+                        "documentos na triagem — a partir da 2ª decisão, uma passa a compor a "
+                        "validação automaticamente."
+                    ),
+                }
+            )
 
     if not gate.get("eligible", False) and records:
         suggestions.append(

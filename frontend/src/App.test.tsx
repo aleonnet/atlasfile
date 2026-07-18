@@ -100,7 +100,6 @@ vi.mock("./api", () => ({
   triggerScan: vi.fn(() => Promise.resolve({ project_id: "p1", processed_count: 0, failed_count: 0, items: [], errors: [] })),
   fetchIngestHistory: vi.fn(() => Promise.resolve({ project_id: "p1", entries: [] })),
   fetchDatasetReadiness: vi.fn(() => Promise.resolve({ cycle_ready: true, splits_available: false, validation: { labeled: 3, unlabeled: 0 }, training: { records: 12, business_domain_classes: {}, document_type_classes: {} }, supervised_gate: { eligible: false, reasons: [], warnings: [] }, holdout: { enabled: true, modulus: 5, min_train_per_class: 3 }, blockers: [], suggestions: [] })),
-  backfillValidation: vi.fn(() => Promise.resolve({ dry_run: false, moved: 0, per_class: {}, skipped: [], validation_labeled_total: 3, training_total: 12 })),
   fetchIngestStatus: vi.fn(() => Promise.resolve({ last_run_started_at: null, last_run_finished_at: null, duration_seconds: null, project_id: null, running: false, phase: "idle", progress_current: 0, progress_total: 0, progress_file: null, processed_count: 0, failed_count: 0, last_error: null })),
   getIngestStatusStreamUrl: vi.fn(() => "http://localhost/api/ingest/status/stream"),
   fetchProjectProfile: vi.fn(() =>

@@ -8,16 +8,20 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
+  LabelList,
   Legend,
   Line,
   LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   Treemap,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 
 /** Paleta de gráficos da marca (--chart-N, definida por tema em styles.css) */
@@ -52,6 +56,9 @@ interface ChartSpec {
   series?: string[];
   xKey?: string;
   yKey?: string;
+  /** bubble: key da dimensão de cor (grupo) e do valor (tamanho/rótulo) */
+  groupKey?: string;
+  valueKey?: string;
   /** Small multiples: um mini-gráfico por facet (3ª dimensão categórica) */
   facets?: ChartFacet[];
 }
@@ -353,6 +360,47 @@ function renderHeatmap(spec: ChartSpec) {
   );
 }
 
+/** Bolhas em eixos categóricos: x × y, cor = grupo, tamanho + rótulo = valor.
+ *  4 dimensões num gráfico só (ex.: domínio × tipo, cor formato, tamanho quantidade). */
+function renderBubble(spec: ChartSpec) {
+  const xKey = spec.xKey ?? "x";
+  const yKey = spec.yKey ?? "y";
+  const groupKey = spec.groupKey ?? "group";
+  const valueKey = spec.valueKey ?? "value";
+  const groups = [...new Set(spec.data.map((d) => String(d[groupKey] ?? "")))];
+  const yCount = new Set(spec.data.map((d) => String(d[yKey] ?? ""))).size;
+  const height = Math.max(300, 90 + yCount * 46);
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <ScatterChart margin={{ top: 12, right: 24, bottom: 4, left: 8 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#2a2630" />
+        <XAxis type="category" dataKey={xKey} allowDuplicatedCategory={false} tick={{ fill: "#a8a4b3", fontSize: 11 }} />
+        <YAxis type="category" dataKey={yKey} allowDuplicatedCategory={false} tick={{ fill: "#a8a4b3", fontSize: 11 }} width={90} />
+        <ZAxis dataKey={valueKey} range={[120, 1100]} />
+        <Tooltip
+          contentStyle={TOOLTIP_STYLE}
+          cursor={{ strokeDasharray: "3 3" }}
+          formatter={formatValue}
+        />
+        <Legend />
+        {groups.map((group, i) => (
+          <Scatter
+            key={group}
+            name={group}
+            data={spec.data.filter((d) => String(d[groupKey] ?? "") === group)}
+            fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+            fillOpacity={0.75}
+            isAnimationActive={true}
+            animationDuration={600}
+          >
+            <LabelList dataKey={valueKey} style={{ fontSize: 10, fill: "var(--text)", pointerEvents: "none" }} />
+          </Scatter>
+        ))}
+      </ScatterChart>
+    </ResponsiveContainer>
+  );
+}
+
 const RENDERERS: Record<string, (spec: ChartSpec) => JSX.Element> = {
   bar: renderBar,
   grouped_bar: renderBar, // multi-series lado a lado (renderBar já agrupa quando há series)
@@ -364,6 +412,7 @@ const RENDERERS: Record<string, (spec: ChartSpec) => JSX.Element> = {
   composed: renderComposed,
   treemap: renderTreemap,
   heatmap: renderHeatmap,
+  bubble: renderBubble,
 };
 
 export const ChartBlock = React.memo(function ChartBlock({ jsonString }: { jsonString: string }) {

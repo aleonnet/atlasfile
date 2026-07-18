@@ -1,7 +1,6 @@
 import { ChevronDown, ChevronRight, RefreshCw, Settings, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  backfillValidation,
   cancelClassifierCycle,
   deleteClassifierReport,
   fetchDatasetReadiness,
@@ -169,8 +168,6 @@ export function IngestTriageCard({
   const [cancellingCycle, setCancellingCycle] = useState(false);
   const [classifierCycleStatus, setClassifierCycleStatus] = useState<ClassifierCycleStatus | null>(null);
   const [datasetReadiness, setDatasetReadiness] = useState<DatasetReadiness | null>(null);
-  const [backfilling, setBackfilling] = useState(false);
-  const [confirmBackfill, setConfirmBackfill] = useState(false);
   const classifierCycleMonitorStopRef = useRef<(() => void) | null>(null);
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
@@ -452,31 +449,18 @@ export function IngestTriageCard({
   async function handleStartClassifierCycle() {
     setClassifierCycleStatus((previous) => buildPendingClassifierCycleStatus(previous));
     try {
-      await startClassifierCycle();
+      const started = await startClassifierCycle();
       startClassifierCycleMonitor();
-      onStatus("Ciclo do classificador iniciado");
+      const moved = started.auto_backfill_moved ?? 0;
+      onStatus(
+        moved > 0
+          ? `Ciclo iniciado — ${moved} documento(s) reservado(s) automaticamente para validação`
+          : "Ciclo do classificador iniciado"
+      );
     } catch {
       stopClassifierCycleMonitor();
       void fetchClassifierCycleStatus().then(setClassifierCycleStatus).catch(() => {});
       onStatus("Falha ao iniciar ciclo do classificador");
-    }
-  }
-
-  async function handleBackfillValidation() {
-    setConfirmBackfill(false);
-    setBackfilling(true);
-    try {
-      const result = await backfillValidation(false);
-      onStatus(
-        result.moved > 0
-          ? `${result.moved} documento(s) reservado(s) para validação`
-          : "Nenhum documento elegível para reservar"
-      );
-      await loadClassifierState();
-    } catch (e) {
-      onStatus(e instanceof Error ? e.message : "Falha ao reservar documentos para validação");
-    } finally {
-      setBackfilling(false);
     }
   }
 
@@ -625,32 +609,14 @@ export function IngestTriageCard({
                     <p className="m-0 mt-1 font-mono text-[0.68rem] text-tertiary">
                       validação rotulada: {datasetReadiness.validation.labeled} · treino: {datasetReadiness.training.records}
                     </p>
-                    {datasetReadiness.suggestions.some((s) => s.code === "backfill_available") && (
-                      <div className="relative mt-2">
-                        <Button variant="secondary" size="sm" disabled={backfilling} onClick={() => setConfirmBackfill(true)}>
-                          {backfilling
-                            ? "Reservando..."
-                            : `Reservar ${datasetReadiness.suggestions.find((s) => s.code === "backfill_available")?.params?.would_move ?? ""} para validação`}
-                        </Button>
-                        {confirmBackfill && (
-                          <div className="absolute left-0 top-[calc(100%+6px)] z-20 flex min-w-64 flex-col gap-2 rounded-md border border-border bg-panel p-3 shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
-                            <p className="m-0 text-[0.82rem] text-foreground">
-                              Mover parte do pool de treino para o conjunto de validação? Os documentos deixam de treinar o modelo e passam a avaliá-lo.
-                            </p>
-                            <div className="flex gap-1.5">
-                              <Button size="sm" onClick={() => void handleBackfillValidation()}>Confirmar</Button>
-                              <Button variant="secondary" size="sm" onClick={() => setConfirmBackfill(false)}>Não</Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
                 {datasetReadiness?.cycle_ready &&
-                  datasetReadiness.suggestions.filter((s) => s.code === "sparse_gate_not_met").map((s) => (
-                    <p key={s.code} className="mb-2 text-[0.75rem] text-muted-foreground">{s.message}</p>
-                  ))}
+                  datasetReadiness.suggestions
+                    .filter((s) => s.code === "sparse_gate_not_met" || s.code === "auto_backfill_on_run")
+                    .map((s) => (
+                      <p key={s.code} className="mb-2 text-[0.75rem] text-muted-foreground">{s.message}</p>
+                    ))}
 
                 <p className="mb-2.5 text-[0.78rem] text-muted-foreground">
                   Promoção: {classifierStatus.promotion_policy === "auto_best_with_ui_override" ? "Automático — melhor score" : classifierStatus.promotion_policy} | gate: exact &ge; {formatPct(classifierStatus.promotion_gates.min_exact_match_accuracy)}

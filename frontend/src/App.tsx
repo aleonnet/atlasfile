@@ -30,6 +30,7 @@ import { Topbar } from "./layouts/Topbar";
 import { ConfigView } from "./views/ConfigView";
 import { PainelView } from "./views/PainelView";
 import { AssistantSettingsModal } from "./features/settings/AssistantSettingsModal";
+import { CreateTaxonomyEntryModal } from "./features/templates/CreateTaxonomyEntryModal";
 import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
 import { TemplateSelectModal } from "./features/templates/TemplateSelectModal";
 import { AssistenteView } from "./views/AssistenteView";
@@ -97,6 +98,7 @@ function AppShell() {
   const [correctBusinessDomainOptions, setCorrectBusinessDomainOptions] = useState<ProjectArea[]>([]);
   const [correctBusinessDomainValue, setCorrectBusinessDomainValue] = useState("");
   const [correctDocumentTypeOptions, setCorrectDocumentTypeOptions] = useState<ProjectDocumentType[]>([]);
+  const [correctTaxonomyModalOpen, setCorrectTaxonomyModalOpen] = useState(false);
   const [correctDocumentTypeValue, setCorrectDocumentTypeValue] = useState("");
   const [correctSubmitting, setCorrectSubmitting] = useState(false);
   const [templateModalProject, setTemplateModalProject] = useState<{ ref: string; label: string } | null>(null);
@@ -728,6 +730,30 @@ function AppShell() {
           setCorrectDocumentTypeValue("");
         }}
         onSubmit={submitCorrectDecision}
+        onCreateTaxonomyEntry={() => setCorrectTaxonomyModalOpen(true)}
+      />
+
+      <CreateTaxonomyEntryModal
+        open={correctTaxonomyModalOpen}
+        onClose={() => setCorrectTaxonomyModalOpen(false)}
+        onCreated={(kind, key) => {
+          // Recarrega o catálogo do projeto do item em correção e pré-seleciona o criado
+          const item = correctModalItem;
+          if (!item) return;
+          fetchProjectProfile(item.project_id)
+            .then((resp) => {
+              const classification = resp.profile.classification || {};
+              setCorrectBusinessDomainOptions(
+                (classification.business_domains || []).map((a) => ({ key: a.key, label: a.label || a.key }))
+              );
+              setCorrectDocumentTypeOptions(
+                (classification.document_types || []).map((t) => ({ key: t.key, label: t.label || t.key }))
+              );
+              if (kind === "business_domain") setCorrectBusinessDomainValue(key);
+              else setCorrectDocumentTypeValue(key);
+            })
+            .catch(() => setStatus("Falha ao recarregar catálogo após criação"));
+        }}
       />
 
       {newProjectModalOpen && (

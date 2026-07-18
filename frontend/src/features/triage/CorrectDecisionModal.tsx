@@ -14,6 +14,8 @@ type Props = {
   onChangeDocumentType: (value: string) => void;
   onCancel: () => void;
   onSubmit: () => void;
+  /** Abre a criação governada de taxonomia (novo domínio/tipo) sem sair do fluxo. */
+  onCreateTaxonomyEntry?: () => void;
 };
 
 const warningClass =
@@ -29,7 +31,8 @@ export function CorrectDecisionModal({
   onChangeBusinessDomain,
   onChangeDocumentType,
   onCancel,
-  onSubmit
+  onSubmit,
+  onCreateTaxonomyEntry
 }: Props) {
   useEscapeKey(item ? onCancel : null);
 
@@ -124,6 +127,17 @@ export function CorrectDecisionModal({
           </option>
         ))}
       </select>
+
+      {onCreateTaxonomyEntry && (
+        <button
+          type="button"
+          className="mt-3 border-0 bg-transparent p-0 font-mono text-[0.72rem] text-accent shadow-none hover:underline"
+          disabled={submitting}
+          onClick={onCreateTaxonomyEntry}
+        >
+          + O destino certo não existe? Criar novo tipo ou domínio
+        </button>
+      )}
 
       <ModalActions>
         <Button variant="secondary" disabled={submitting} onClick={onCancel}>

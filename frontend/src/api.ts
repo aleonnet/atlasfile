@@ -23,7 +23,6 @@ import type {
   ScanResult,
   SearchFilters,
   SearchResponse,
-  BackfillValidationResult,
   DatasetReadiness,
   StatsResponse,
   StoredChatMessage,
@@ -332,7 +331,7 @@ export async function updateBenchmarkEnabledModes(modes: string[]): Promise<Clas
 export async function startClassifierCycle(params?: {
   min_training_docs?: number;
   min_docs_per_class?: number;
-}): Promise<{ status: string; message?: string }> {
+}): Promise<{ status: string; message?: string; auto_backfill_moved?: number }> {
   const url = new URL(`${API_URL}/api/classifier/cycle`);
   if (params?.min_training_docs != null) url.searchParams.set("min_training_docs", String(params.min_training_docs));
   if (params?.min_docs_per_class != null) url.searchParams.set("min_docs_per_class", String(params.min_docs_per_class));
@@ -346,18 +345,6 @@ export async function startClassifierCycle(params?: {
 export async function fetchDatasetReadiness(): Promise<DatasetReadiness> {
   const res = await apiFetch(`${API_URL}/api/classifier/datasets/readiness`);
   if (!res.ok) throw new Error("Falha ao carregar prontidão dos datasets");
-  return res.json();
-}
-
-/** Reserva ~20% do pool de treino para validação (estratificado, idempotente). */
-export async function backfillValidation(dryRun = false): Promise<BackfillValidationResult> {
-  const res = await apiFetch(`${API_URL}/api/classifier/datasets/backfill-validation?dry_run=${dryRun}`, {
-    method: "POST",
-  });
-  if (!res.ok) {
-    const detail = await res.json().then((d) => d.detail).catch(() => null);
-    throw new Error(detail || "Falha ao reservar documentos para validação");
-  }
   return res.json();
 }
 

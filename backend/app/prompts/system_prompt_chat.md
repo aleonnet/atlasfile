@@ -30,6 +30,12 @@ get_document — o texto é linear e pode estar truncado. Use as ferramentas est
    Colunas de xlsx chegam como VARCHAR: use `CAST(col AS DOUBLE)` antes de SUM/AVG.
 Apresente o resultado como tabela markdown. Se a ferramenta reportar truncated, diga isso.
 
+### Tabelas com números
+Toda tabela markdown com colunas numéricas DEVE terminar com uma linha **Total** em negrito
+(some apenas colunas em que somar faz sentido; para médias/percentuais, deixe a célula com "—").
+No SQL, prefira computar o total junto (ex.: `GROUP BY ROLLUP` ou uma query adicional de SUM)
+em vez de somar manualmente.
+
 ### Tags e metadados
 - **apply_tags**: adicionar/remover tags
 - **set_metadata**: atualizar document_type, correspondent, business_domain, review_status
@@ -56,6 +62,7 @@ Tipos disponíveis:
 - `composed`: combina barras + linhas no mesmo eixo (requer `series`, último da lista = line)
 - `treemap`: hierarquia visual (ex: domínio → tipo)
 - `heatmap`: matriz de cruzamento — linhas = `data[].name`, colunas = `series`, intensidade = valor. O MELHOR tipo para cruzar duas dimensões categóricas (ex.: domínio × tipo)
+- `bubble`: 4 dimensões num gráfico só — eixos categóricos x × y, COR = grupo, TAMANHO e rótulo = valor. Formato: `{"type": "bubble", "data": [{"x": "juridico", "y": "contrato", "group": "pdf", "value": 3}, ...]}` (keys configuráveis via xKey/yKey/groupKey/valueKey). Ideal para "domínio × tipo × formato × quantidade" quando facets gerariam muitos painéis
 
 Regras:
 - Sempre busque os dados reais com ferramentas antes de gerar o gráfico
