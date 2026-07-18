@@ -128,19 +128,28 @@ function AppShell() {
 
   useEffect(() => {
     let mounted = true;
+    // Debounce + retry adaptativo: 1 blip transitório (restart de container,
+    // rede) não pode tremer o orb em "error" — exige 2 falhas seguidas; e em
+    // erro re-verifica a cada 5s (não 30s) para recuperar rápido sem reload.
+    let failures = 0;
+    let timer: number | undefined;
     async function check() {
+      let ok = false;
       try {
-        const { ok } = await fetchHealth();
-        if (mounted) setHealthOk(ok);
+        ok = (await fetchHealth()).ok;
       } catch {
-        if (mounted) setHealthOk(false);
+        ok = false;
       }
+      if (!mounted) return;
+      failures = ok ? 0 : failures + 1;
+      if (ok) setHealthOk(true);
+      else if (failures >= 2) setHealthOk(false);
+      timer = window.setTimeout(check, failures > 0 ? 5000 : 30000);
     }
-    check();
-    const t = setInterval(check, 30000);
+    void check();
     return () => {
       mounted = false;
-      clearInterval(t);
+      window.clearTimeout(timer);
     };
   }, []);
 

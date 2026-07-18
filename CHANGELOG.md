@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.26.2] -- 2026-07-18
+
+### Corrigido
+
+- **Orb da sidebar não treme mais com blips transitórios**: o estado `error` (único com shake, por design) disparava com UMA falha do `/health` (ex.: restart de container) e a recuperação esperava o tick de 30s — parecia bug até o reload. Agora exige 2 falhas consecutivas e, em erro, re-verifica a cada 5s (recupera sozinho).
+
+---
+
 ## [0.26.1] -- 2026-07-18
 
 ### Corrigido
