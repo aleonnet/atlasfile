@@ -22,6 +22,20 @@ vi.mock("../../api", () => ({
     ])
   ),
   initializeProject: vi.fn(() => Promise.resolve({ status: "ok", already_initialized: false })),
+  validateProviderKey: vi.fn(() => Promise.resolve({ valid: true, detail: "Chave OpenAI válida" })),
+  fetchProjectProfile: vi.fn(() =>
+    Promise.resolve({
+      version: 1,
+      etag: "e1",
+      profile: {
+        profile_version: 2,
+        project_id: "proj_teste",
+        project_label: "Proj Teste",
+        classification: { llm_policy: { enabled: false, provider: "openai", model: "gpt-4o-mini", mode: "tag_only", allow_override_fields: [], override_guardrails: {} } },
+      },
+    })
+  ),
+  updateProjectProfile: vi.fn(() => Promise.resolve({ version: 2, etag: "e2", profile: {} })),
 }));
 
 function defaultProps(overrides?: Partial<React.ComponentProps<typeof OnboardingWizard>>) {
@@ -182,6 +196,52 @@ describe("OnboardingWizard", () => {
     await waitFor(() => expect(screen.getByText(/Tudo pronto/)).toBeInTheDocument());
 
     expect(onChangeOpenAiKey).toHaveBeenCalledWith("sk-test-123");
+  });
+
+  it("valida a key sem bloquear e ativa LLM tag_only no projeto quando válida", async () => {
+    const api = await import("../../api");
+    render(<OnboardingWizard {...defaultProps()} />);
+    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "proj_teste" } });
+    fireEvent.click(screen.getByText(/Criar e Continuar/));
+    await waitFor(() => expect(screen.getByText(/Configure o assistente/)).toBeInTheDocument());
+
+    // key longa dispara a validação com debounce; badge ✓ aparece sem travar nada
+    fireEvent.change(screen.getByLabelText(/API Key/), { target: { value: "sk-proj-abcdef1234567890" } });
+    await waitFor(() => expect(api.validateProviderKey).toHaveBeenCalledWith("openai", "sk-proj-abcdef1234567890"), {
+      timeout: 3000,
+    });
+    await screen.findByText(/Chave válida — a classificação LLM será ativada/);
+
+    fireEvent.click(screen.getByText(/Salvar e Concluir/));
+    await waitFor(() => expect(screen.getByText(/Tudo pronto/)).toBeInTheDocument());
+    expect(screen.getByText(/Classificação LLM ativada \(tag_only\)/)).toBeInTheDocument();
+    expect(api.updateProjectProfile).toHaveBeenCalledTimes(1);
+    const [projectRef, profile] = vi.mocked(api.updateProjectProfile).mock.calls[0];
+    expect(projectRef).toBe("proj_teste");
+    expect(profile.classification.llm_policy).toMatchObject({ enabled: true, provider: "openai", mode: "tag_only" });
+  });
+
+  it("key inválida não impede concluir e não ativa o LLM", async () => {
+    const api = await import("../../api");
+    vi.mocked(api.validateProviderKey).mockResolvedValue({ valid: false, detail: "Chave OpenAI inválida" });
+    render(<OnboardingWizard {...defaultProps()} />);
+    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "proj_teste" } });
+    fireEvent.click(screen.getByText(/Criar e Continuar/));
+    await waitFor(() => expect(screen.getByText(/Configure o assistente/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/API Key/), { target: { value: "sk-proj-invalida123456789" } });
+    await screen.findByText(/Chave inválida — você pode continuar/, undefined, { timeout: 3000 });
+
+    fireEvent.click(screen.getByText(/Salvar e Concluir/));
+    await waitFor(() => expect(screen.getByText(/Tudo pronto/)).toBeInTheDocument());
+    expect(screen.queryByText(/Classificação LLM ativada/)).not.toBeInTheDocument();
+    expect(api.updateProjectProfile).not.toHaveBeenCalled();
   });
 
   describe("replay mode (existing projects)", () => {

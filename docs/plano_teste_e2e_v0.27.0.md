@@ -12,7 +12,7 @@
 |---|---------|-------------|----------|
 | 1 | Instalador com auth | `curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh \| bash -s -- --dir ~/AtlasFileNovo --enable-auth` | Sobe em <60s (cache quente); prompt da pasta funciona; **API key exibida ao final** |
 | 2 | AuthGate primeiro | Abrir `localhost:5173` em **janela anônima** | Gate assume a tela pedindo a key; key errada → erro; key certa → entra |
-| 3 | Onboarding | Após o gate | Wizard abre sozinho (backend zerado); passo 1 mostra a **pasta física** escolhida (não `/projects`); criar projeto + key OpenAI |
+| 3 | Onboarding | Após o gate | Wizard abre sozinho (backend zerado); passo 1 mostra a **pasta física** escolhida (não `/projects`); criar projeto + key OpenAI. Key digitada mostra ✓/✗ **sem travar o avançar** (testar uma key errada antes da certa); com key ✓, o final confirma "Classificação LLM ativada (tag_only)" e a primeira ingestão já traz linha `llm:` nos detalhes |
 | 4 | Auth na API | `curl localhost:8000/api/projects` sem/com `Authorization: Bearer` | 401 sem key; 200 com; `/health` público |
 
 ## Fase B — Ingestão e triagem (6 pts)

@@ -276,9 +276,14 @@ function AppShell() {
     if (showOnboarding) return;
     let cancelled = false;
     (async () => {
-      const [, currentReconcile] = await Promise.all([refreshProjects(), fetchReconcileStatus()]);
+      // Boot é best-effort: falha aqui (API subindo, backend zerado no wizard)
+      // não vira toast — conectividade é sinalizada pelo orb de health
+      const [, currentReconcile] = await Promise.all([
+        refreshProjects().catch(() => undefined),
+        fetchReconcileStatus().catch(() => null),
+      ]);
       if (cancelled) return;
-      setReconcileStatus(currentReconcile);
+      if (currentReconcile) setReconcileStatus(currentReconcile);
       fetchStats().then(setDashboardStats).catch(() => {});
 
       if (!currentReconcile?.running) return;

@@ -2276,6 +2276,50 @@ class ModelValidateRequest(BaseModel):
     model: str
 
 
+class KeyValidateRequest(BaseModel):
+    provider: str
+
+
+@app.post("/api/keys/validate")
+def validate_provider_key(
+    body: KeyValidateRequest,
+    x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
+    x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    """Checa se a key do provedor é válida (models.list); key transiente, nunca persistida.
+
+    Key inválida é resultado esperado (valid=False), não erro — o wizard usa
+    isto de forma não-impeditiva.
+    """
+    provider = body.provider.strip().lower()
+    if provider == "openai":
+        if not x_openai_api_key:
+            raise HTTPException(status_code=400, detail="Informe a chave OpenAI no header X-OpenAI-API-Key")
+        import openai as openai_sdk
+
+        try:
+            openai_sdk.OpenAI(api_key=x_openai_api_key).models.list()
+            return {"valid": True, "detail": "Chave OpenAI válida"}
+        except openai_sdk.AuthenticationError:
+            return {"valid": False, "detail": "Chave OpenAI inválida"}
+        except Exception as exc:  # rede/timeout — não confundir com key inválida
+            raise HTTPException(status_code=502, detail=f"Falha ao consultar a OpenAI: {exc}")
+    if provider == "anthropic":
+        if not x_anthropic_api_key:
+            raise HTTPException(status_code=400, detail="Informe a chave Anthropic no header X-Anthropic-API-Key")
+        import anthropic as anthropic_sdk
+
+        try:
+            anthropic_sdk.Anthropic(api_key=x_anthropic_api_key).models.list()
+            return {"valid": True, "detail": "Chave Anthropic válida"}
+        except anthropic_sdk.AuthenticationError:
+            return {"valid": False, "detail": "Chave Anthropic inválida"}
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Falha ao consultar a Anthropic: {exc}")
+    raise HTTPException(status_code=400, detail=f"Provedor não suportado: {provider}")
+
+
 @app.post("/api/models/validate")
 def validate_model(
     body: ModelValidateRequest,

@@ -1,6 +1,6 @@
 import { Check, ChevronLeft, ChevronRight, FolderOpen, Info, Plus, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { fetchProjects, fetchSetupStatus, initializeProject, listTemplates } from "../../api";
+import { fetchProjectProfile, fetchProjects, fetchSetupStatus, initializeProject, listTemplates, updateProjectProfile, validateProviderKey } from "../../api";
 import { AuroraField } from "../../components/AuroraField";
 import { Orb } from "../../components/OrbGL";
 import { Wordmark } from "../../components/Wordmark";
@@ -49,6 +49,8 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
 
   const [llmProvider, setLlmProvider] = useState<"openai" | "anthropic">("openai");
   const [llmKey, setLlmKey] = useState("");
+  const [keyCheck, setKeyCheck] = useState<"idle" | "checking" | "valid" | "invalid" | "unreachable">("idle");
+  const [llmActivated, setLlmActivated] = useState(false);
 
   const hasExistingProjects = existingProjects.filter((p) => p.initialized).length > 0;
   const isReplay = hasExistingProjects;
@@ -73,6 +75,29 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
   useEffect(() => {
     if (step === "projects") void loadTemplates();
   }, [step, loadTemplates]);
+
+  // Validação não-impeditiva da key: badge ✓/✗ ao digitar; nunca trava o Avançar
+  useEffect(() => {
+    if (step !== "llm" || llmKey.trim().length < 15) {
+      setKeyCheck("idle");
+      return;
+    }
+    setKeyCheck("checking");
+    let stale = false;
+    const timer = setTimeout(() => {
+      validateProviderKey(llmProvider, llmKey.trim())
+        .then((r) => {
+          if (!stale) setKeyCheck(r.valid ? "valid" : "invalid");
+        })
+        .catch(() => {
+          if (!stale) setKeyCheck("unreachable");
+        });
+    }, 700);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [step, llmProvider, llmKey]);
 
   useEffect(() => {
     if (step === "llm") {
@@ -113,11 +138,43 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
     setStep("llm");
   }
 
-  function handleSaveLlm() {
+  async function handleSaveLlm() {
     if (llmProvider === "openai") {
       onChangeOpenAiKey(llmKey);
     } else {
       onChangeAnthropicKey(llmKey);
+    }
+    // Key validada + projeto criado → o projeto nasce com classificação LLM
+    // tag_only ligada (o usuário forneceu a key deliberadamente). Falha aqui
+    // não bloqueia o wizard — dá para ligar depois em Configuração.
+    if (keyCheck === "valid" && createdProjectId) {
+      try {
+        const resp = await fetchProjectProfile(createdProjectId);
+        const current = resp.profile.classification.llm_policy;
+        const updated = {
+          ...resp.profile,
+          classification: {
+            ...resp.profile.classification,
+            llm_policy: {
+              allow_override_fields: ["document_type", "tags", "confidence", "topics"],
+              override_guardrails: {
+                business_domain_override_only_if_rule_confidence_below: 0.65,
+                require_explanation: true,
+                max_business_domain_changes: 1,
+              },
+              ...current,
+              enabled: true,
+              provider: llmProvider,
+              model: current?.model || (llmProvider === "openai" ? "gpt-4o-mini" : "claude-haiku-4-5"),
+              mode: "tag_only" as const,
+            },
+          },
+        };
+        await updateProjectProfile(createdProjectId, updated, resp.version, "onboarding:llm-default");
+        setLlmActivated(true);
+      } catch {
+        /* não-impeditivo */
+      }
     }
     setStep("done");
   }
@@ -337,6 +394,22 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
                 onChange={(e) => setLlmKey(e.target.value)}
                 placeholder={llmProvider === "openai" ? "sk-..." : "sk-ant-..."}
               />
+              {keyCheck === "checking" && (
+                <p className={cn(hintClass, "text-muted-foreground")}>Verificando a chave…</p>
+              )}
+              {keyCheck === "valid" && (
+                <p className={cn(hintClass, "!text-success")}>
+                  ✓ Chave válida — a classificação LLM será ativada (tag_only) no projeto
+                </p>
+              )}
+              {keyCheck === "invalid" && (
+                <p className={cn(hintClass, "!text-destructive")}>
+                  ✗ Chave inválida — você pode continuar e ajustar depois em Configurações
+                </p>
+              )}
+              {keyCheck === "unreachable" && (
+                <p className={hintClass}>Não foi possível verificar a chave agora (sem bloqueio — siga normalmente)</p>
+              )}
               <p className={hintClass}>
                 Salva localmente no navegador. Voce pode configurar depois em Configuracoes do Assistente.
               </p>
@@ -363,6 +436,11 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
               <p className="mt-2 text-sm text-muted-foreground">
                 Projeto <strong className="text-foreground">{projectLabel || createdProjectId}</strong> criado.<br />
                 Coloque seus arquivos em <code className="font-mono text-[0.8rem] text-accent-light">Projects/{createdProjectId}/_INBOX_DROP/</code>
+              </p>
+            )}
+            {llmActivated && (
+              <p className="mt-2 text-sm text-success">
+                ✓ Classificação LLM ativada (tag_only) — os documentos já serão enriquecidos na ingestão.
               </p>
             )}
             <p className="mt-2 text-sm text-muted-foreground">

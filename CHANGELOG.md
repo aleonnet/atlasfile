@@ -15,6 +15,19 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.28.0] -- 2026-07-18
+
+### Adicionado
+
+- **Validação de key no onboarding (não-impeditiva)**: ao digitar a key OpenAI/Anthropic no wizard, um check assíncrono contra a API do provedor (novo `POST /api/keys/validate`, key transiente no header, nunca persistida) mostra ✓ válida / ✗ inválida / "não foi possível verificar" — **nunca bloqueia** o avançar.
+- **LLM tag_only ligado por default quando a key valida**: com key ✓ e projeto criado no wizard, o projeto já nasce com `llm_policy.enabled=true, mode=tag_only` e o modelo default do provedor (gpt-4o-mini / claude-haiku-4-5) — os documentos são enriquecidos desde a primeira ingestão, em vez de nascer com a política desligada. O passo final confirma: "Classificação LLM ativada (tag_only)". Falha na ativação não trava o wizard.
+
+### Corrigido
+
+- **Sem toast de erro no boot durante o wizard**: recarregar a página com backend zerado (ou API ainda subindo) mostrava "Falha ao carregar dados: Falha ao carregar status de reconciliacao". O carregamento inicial (projetos + status de reconciliação) agora é best-effort e silencioso — conectividade é sinalizada pelo orb de health; o toast fica reservado para falhas durante uma reconciliação realmente em andamento.
+
+---
+
 ## [0.27.3] -- 2026-07-18
 
 ### Corrigido

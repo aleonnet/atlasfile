@@ -564,6 +564,25 @@ export async function validateModel(
   return res.json();
 }
 
+/** Checa se a key do provedor é válida (key transiente no header, nunca persistida). */
+export async function validateProviderKey(
+  provider: "openai" | "anthropic",
+  key: string
+): Promise<{ valid: boolean; detail: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  headers[provider === "openai" ? "X-OpenAI-API-Key" : "X-Anthropic-API-Key"] = key;
+  const res = await apiFetch(`${API_URL}/api/keys/validate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ provider }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().then((d) => d.detail).catch(() => null);
+    throw new Error(detail || "Falha ao verificar a chave");
+  }
+  return res.json();
+}
+
 /** Send chat message; optional API keys in headers. Returns assistant content and tool_calls_used. */
 export async function sendChatMessage(
   messages: ChatMessage[],
