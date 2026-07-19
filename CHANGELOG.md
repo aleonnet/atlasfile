@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.34.5] -- 2026-07-19
+
+### Corrigido
+
+- **Quiralidade do buraco negro**: o port mantinha o flip de y do Ghostty (uv top-down), mas o WebGL é y-up — o mundo ficava espelhado e o disco cruzava na diagonal invertida em relação ao demo original. Removido o `-p.y`; orientação agora idêntica à referência.
+
+---
+
 ## [0.34.4] -- 2026-07-19
 
 ### Corrigido

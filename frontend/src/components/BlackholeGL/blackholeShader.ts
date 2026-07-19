@@ -128,8 +128,10 @@ void main() {
   vec2 p = (uv - center) * vec2(aspect, 1.0);
   float plen = length(p);
 
+  // Sem o flip de y do original: o gl_FragCoord do WebGL já é y-up (no
+  // Ghostty o -p.y convertia o uv top-down) — mantê-lo espelhava o disco.
   float W = B_CRIT / max(rh, 1e-4);
-  vec2 pr = rot(vec2(p.x, -p.y), DISK_ROLL) * W;
+  vec2 pr = rot(p, DISK_ROLL) * W;
   float b = length(pr);
 
   float window = exp(-pow(plen / (7.0 * rh), 2.0));
