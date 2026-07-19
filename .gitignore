@@ -19,3 +19,4 @@ backend/runs/config/api_keys.json
 # Artefatos de sessões de teste com browser (Playwright MCP)
 .playwright-mcp/
 /v[0-9]*.png
+.vite/
