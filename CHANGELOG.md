@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.34.4] -- 2026-07-19
+
+### Corrigido
+
+- **Lente gravitacional sobre o starfield**: o céu estava ancorado nas coordenadas do buraco e viajava junto com ele (parecia uma foto colada). Agora o céu é fixo na TELA (papel que o texto do terminal tem no shader original) e só a deflexão gravitacional é relativa ao buraco — as estrelas ficam paradas e esticam em arcos de Einstein quando a lente passa (perto do anel de fótons `nv.z→0` e a deflexão explode). Validado com dois frames espaçados no Chrome real: buraco deriva, céu fixo, arcos visíveis.
+
+---
+
 ## [0.34.3] -- 2026-07-19
 
 ### Corrigido

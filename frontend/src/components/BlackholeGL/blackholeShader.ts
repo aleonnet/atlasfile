@@ -136,20 +136,18 @@ void main() {
   float bmax = rout + 3.0;
   float Z0 = max(14.0, rout + 5.0);
 
-  // Visibilidade do céu: o original prendia as estrelas ao redor do buraco
-  // (window) porque o "céu" era o texto do terminal; aqui o céu é nosso —
-  // base visível na tela toda, reforço perto da lente. O termo pr*FOV dá a
-  // variação por pixel de uma câmera (longe do buraco a direção do raio
-  // tenderia a uma constante e o céu inteiro amostraria um ponto só).
-  const float SKY_FOV = 0.05;
+  // Céu FIXO NA TELA (não no buraco): as estrelas ficam paradas e é a lente
+  // que passa por cima distorcendo — papel do texto do terminal no original.
+  // Só o desvio gravitacional é relativo ao buraco.
+  vec2 skyBase = (uv - 0.5) * vec2(aspect, 1.0) * 1.6;
   float starVis = mix(0.70, 1.0, window) * shield;
 
-  // far field: sem textura para lentear — só o starfield dobrado (barato).
+  // far field: deflexão fraca analítica sobre o céu fixo.
   // Alfa = luminância: premultiplicado com rgb > alfa é INVÁLIDO por spec e o
   // compositor Metal do Chrome clampa para preto (o headless/software deixava
   // passar — foi assim que este bug se escondeu dos screenshots).
   if (b >= bmax) {
-    vec3 d = normalize(vec3(pr * SKY_FOV - (pr / b) * (2.0 / b), -1.0));
+    vec3 d = normalize(vec3(skyBase - (pr / b) * (2.0 / b), -1.0));
     vec3 st = stars(d) * uStarGain * starVis;
     outColor = vec4(st, clamp(max(st.r, max(st.g, st.b)), 0.0, 1.0));
     return;
@@ -223,8 +221,11 @@ void main() {
 
   vec3 bg = vec3(0.0);
   if (!captured) {
+    // Projeção do raio dobrado sobre o céu fixo: perto do anel de fótons
+    // nv.z → 0 e a deflexão explode — estrelas esticam em arcos (Einstein).
     vec3 nv = normalize(v);
-    bg = stars(normalize(vec3(nv.xy + pr * SKY_FOV, nv.z))) * uStarGain * starVis;
+    vec2 defl = nv.xy / max(-nv.z, 0.06);
+    bg = stars(normalize(vec3(skyBase + defl, -1.0))) * uStarGain * starVis;
   }
 
   // Saída premultiplicada VÁLIDA (alfa >= max componente da luz): a luz do
