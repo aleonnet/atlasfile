@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { triggerScan } from "../../api";
 import { Button } from "../../components/ui/button";
 import i18n from "../../i18n";
-import type { Project, ScanResult } from "../../types";
+import type { Project, ScanResult, StatusSeverity } from "../../types";
 import { useIngestMonitor } from "./hooks/useIngestMonitor";
 
 const ALL_PROJECTS = "__all__";
@@ -19,7 +19,7 @@ function formatPhaseLabel(phase?: string | null): string {
 type Props = {
   selectedProject: string;
   projects: Project[];
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
   onScanComplete: () => void;
 };
 
@@ -66,7 +66,7 @@ export function InboxScanCard({ selectedProject, projects, onStatus, onScanCompl
         failures: t("ingest:count.failure", { count: totals.failed })
       }));
     } catch {
-      onStatus(t("ingest:scan.failed"));
+      onStatus(t("ingest:scan.failed"), "error");
     } finally {
       stopMonitor();
       refreshStatus();

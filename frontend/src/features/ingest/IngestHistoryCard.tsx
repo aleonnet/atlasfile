@@ -12,7 +12,7 @@ import { Card, CardContent } from "../../components/ui/card";
 import { CollapsibleSection } from "../../components/ui/collapsible-section";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { invalidateAfterMove } from "../../lib/mutations";
-import type { IngestHistoryEntry, ProjectProfileV2 } from "../../types";
+import type { IngestHistoryEntry, ProjectProfileV2, StatusSeverity } from "../../types";
 
 function decisionBadge(decision: FlatRow["decision"]) {
   switch (decision) {
@@ -128,7 +128,7 @@ function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
 
 type Props = {
   selectedProject: string;
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
 };
 
 export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
@@ -337,7 +337,7 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
             } catch (e) {
               const msg = e instanceof Error ? e.message : t("ingest:history.moveFailed");
               setMoveError(msg);
-              onStatus(msg);
+              onStatus(msg, "error");
             } finally {
               setMoveSubmitting(false);
             }

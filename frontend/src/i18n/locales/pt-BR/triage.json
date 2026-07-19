@@ -21,7 +21,11 @@
     "restoreFailed": "Falha ao restaurar",
     "deleteFailed": "Falha ao excluir",
     "restoring": "Restaurando — devolvendo à fila de triagem",
-    "deleting": "Excluindo — apagando arquivo e registro"
+    "deleting": "Excluindo — apagando arquivo e registro",
+    "reason": {
+      "sem_texto_extraivel": "sem texto extraível (OCR vazio)",
+      "below_triage_min": "confiança abaixo do mínimo"
+    }
   },
   "correctModal": {
     "label": "Aprovar com correção",

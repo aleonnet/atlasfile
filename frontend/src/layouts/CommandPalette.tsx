@@ -249,7 +249,7 @@ export function CommandPalette({
             </>
           )}
 
-          {(!searching || matches("novo projeto", q)) && (
+          {(!searching || matches(t("painel:shell.newProject"), q)) && (
             <>
               <CommandSeparator />
               <CommandGroup heading={t("painel:shell.actionsGroup")}>

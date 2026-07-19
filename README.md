@@ -37,6 +37,7 @@ O instalador clona o projeto, configura o `.env`, sobe a stack Docker e abre `ht
 - **Templates, profiles e layout** editáveis pela UI
 - **Benchmark supervisionado** com 3 modos (bootstrap, sparse_logreg, llm), corpus unificado e splits estratificados
 - **Status em tempo real** para reconcile, INBOX e ciclo do classificador
+- **Interface bilíngue (PT-BR / EN-US)** com detecção automática pelo navegador, seletor persistido em Configuração → Preferências e alternador nas telas de primeiro acesso; erros da API usam códigos estáveis (`{code, params, message}`) traduzidos pela UI; números, datas e moeda seguem o idioma ativo
 - **Rastreabilidade** completa: nome original → nome canônico → triagem → índice → benchmark
 
 ## Stack

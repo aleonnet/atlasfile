@@ -54,6 +54,7 @@ import type {
   ProjectDocumentType,
   ReconcileStatus,
   StatsResponse,
+  StatusSeverity,
   TriageItem,
 } from "./types";
 
@@ -101,15 +102,21 @@ function AppShell() {
   useEffect(() => {
     setVisitedViews((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
   }, [view]);
-  const [status, setStatus] = useState(t("painel:app.statusReady"));
+  const [status, setStatus] = useState<{ text: string; severity: StatusSeverity }>(() => ({
+    text: t("painel:app.statusReady"),
+    severity: "info",
+  }));
+  // Canal de status estrutural: cada emissor declara a severidade (default
+  // "info") — zero sniffing de texto, funciona igual em qualquer idioma.
+  const handleStatus = useCallback((msg: string, severity: StatusSeverity = "info") => {
+    setStatus({ text: msg, severity });
+  }, []);
 
   // O footer .status morreu: mensagens de status viram um toast único que se
   // atualiza in-place (id fixo) — progresso contínuo não vira spam de toasts.
   useEffect(() => {
-    if (!status || status === t("painel:app.statusReady")) return;
-    // Sniffing de severidade cobre os dois catálogos (PT/EN); "erro" ⊂ "error".
-    const isError = /falha|erro|negado|inválid|fail|denied|invalid/i.test(status);
-    toast[isError ? "error" : "message"](status, { id: "app-status" });
+    if (!status.text || status.text === t("painel:app.statusReady")) return;
+    toast[status.severity === "error" ? "error" : "message"](status.text, { id: "app-status" });
   }, [status]);
 
 
@@ -139,7 +146,7 @@ function AppShell() {
         setAuthRequired(true);
         return;
       }
-      setStatus(t("painel:app.accessDenied", { detail: detail || t("painel:app.accessDeniedDefault") }));
+      handleStatus(t("painel:app.accessDenied", { detail: detail || t("painel:app.accessDeniedDefault") }), "error");
     });
     return () => setUnauthorizedHandler(null);
   }, []);
@@ -270,7 +277,7 @@ function AppShell() {
   const dashboardStats: StatsResponse | null = statsQuery.data ?? null;
 
   // Reconciliação: ponte SSE→Query única (boot retoma sozinho se estiver rodando)
-  const reconcile = useReconcileMonitor({ onStatus: setStatus });
+  const reconcile = useReconcileMonitor({ onStatus: handleStatus });
   const reconcileStatus = reconcile.reconcileStatus;
   const reconcilingNow = reconcile.reconciling;
 
@@ -297,7 +304,7 @@ function AppShell() {
     setTemplateModalProject(null);
     await refreshProjects();
     if (ref) setSelectedProject(ref);
-    setStatus(t("painel:app.projectInitialized"));
+    handleStatus(t("painel:app.projectInitialized"));
   }
 
   async function handleReconcileNow() {
@@ -307,16 +314,16 @@ function AppShell() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("painel:app.reconcileFailed");
       if (err instanceof ApiError && err.code === "RECONCILE_IN_PROGRESS") {
-        setStatus(t("painel:app.reconcileAlreadyRunning"));
+        handleStatus(t("painel:app.reconcileAlreadyRunning"));
         void reconcile.start; // canal já acompanha via snapshot ativo
       } else {
-        setStatus(msg);
+        handleStatus(msg, "error");
       }
     }
   }
 
   async function openCorrectModal(item: TriageItem) {
-    setStatus(t("painel:app.loadingCatalog", { project: projectLabelById.get(item.project_id) || item.project_id }));
+    handleStatus(t("painel:app.loadingCatalog", { project: projectLabelById.get(item.project_id) || item.project_id }));
     try {
       const resp = await fetchProjectProfile(item.project_id);
       const classification = resp.profile.classification || {};
@@ -326,7 +333,7 @@ function AppShell() {
         label: area.label || area.key,
       }));
       if (!areas.length) {
-        setStatus(t("painel:app.noDomainsForCorrection"));
+        handleStatus(t("painel:app.noDomainsForCorrection"), "error");
         return;
       }
       const suggestedDomain = item.suggested_business_domain || "";
@@ -337,7 +344,7 @@ function AppShell() {
         folder: entry.folder,
       }));
       if (!documentTypes.length) {
-        setStatus(t("painel:app.noTypesForCorrection"));
+        handleStatus(t("painel:app.noTypesForCorrection"), "error");
         return;
       }
       const suggestedDocumentType = item.suggested_document_type || "";
@@ -348,9 +355,9 @@ function AppShell() {
       setCorrectBusinessDomainValue(suggestedDomainExists ? suggestedDomain : areas[0].key);
       setCorrectDocumentTypeValue(suggestedDocumentTypeExists ? suggestedDocumentType : documentTypes[0].key);
       setCorrectModalItem(item);
-      setStatus(t("painel:app.selectDomainAndType"));
+      handleStatus(t("painel:app.selectDomainAndType"));
     } catch {
-      setStatus(t("painel:app.loadCatalogFailed"));
+      handleStatus(t("painel:app.loadCatalogFailed"), "error");
     }
   }
 
@@ -367,10 +374,10 @@ function AppShell() {
     triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
       .then(() => {
         invalidateAfterTriageDecision();
-        setStatus(t("painel:app.correctedAndMoved", { businessDomain: businessDomainValue, documentType: documentTypeValue }));
+        handleStatus(t("painel:app.correctedAndMoved", { businessDomain: businessDomainValue, documentType: documentTypeValue }));
       })
       .catch(() => {
-        setStatus(t("painel:app.correctionFailed"));
+        handleStatus(t("painel:app.correctionFailed"), "error");
         invalidateAfterTriageDecision();
       })
       .finally(() => processing.finish());
@@ -392,12 +399,12 @@ function AppShell() {
       await triageDecision(item.project_id, item.doc_id, action);
       invalidateAfterTriageDecision();
       if (action === "reject") {
-        setStatus(t("painel:app.rejectedAndMoved"));
+        handleStatus(t("painel:app.rejectedAndMoved"));
       } else {
-        setStatus(t("painel:app.decisionRecorded", { action }));
+        handleStatus(t("painel:app.decisionRecorded", { action }));
       }
     } catch {
-      setStatus(t("painel:app.decisionFailed"));
+      handleStatus(t("painel:app.decisionFailed"), "error");
     } finally {
       processing.finish();
     }
@@ -478,7 +485,7 @@ function AppShell() {
             reconcilingNow={reconcilingNow}
             onReconcile={handleReconcileNow}
             onDecision={handleDecision}
-            onStatus={setStatus}
+            onStatus={handleStatus}
             onScanComplete={handleDataChanged}
           />
           )}
@@ -506,7 +513,7 @@ function AppShell() {
             selectedProject={selectedProject}
             selectedProjectLabel={selectedProjectLabel}
             triageItems={triageItems}
-            onStatus={setStatus}
+            onStatus={handleStatus}
             openaiApiKey={openaiApiKey}
             anthropicApiKey={anthropicApiKey}
             onOpenSettings={() => setSettingsOpen(true)}
@@ -518,7 +525,7 @@ function AppShell() {
 
         <div className={view === "config" ? "contents" : "hidden"}>
           {visitedViews.has("config") && (
-          <ConfigView selectedProject={selectedProject} onStatus={setStatus} />
+          <ConfigView selectedProject={selectedProject} onStatus={handleStatus} />
           )}
         </div>
 
@@ -628,7 +635,7 @@ function AppShell() {
               if (kind === "business_domain") setCorrectBusinessDomainValue(key);
               else setCorrectDocumentTypeValue(key);
             })
-            .catch(() => setStatus(t("painel:app.reloadCatalogFailed")));
+            .catch(() => handleStatus(t("painel:app.reloadCatalogFailed"), "error"));
         }}
       />
 

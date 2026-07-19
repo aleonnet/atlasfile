@@ -4,10 +4,11 @@ import { deleteInboxFile } from "../../api";
 import { useInboxFilesQuery } from "../../lib/queries";
 import { qk } from "../../lib/queryKeys";
 import { rowDeleteButtonClass } from "../../components/ui/collapsible-section";
+import type { StatusSeverity } from "../../types";
 
 type Props = {
   projectId: string;
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
 };
 
 /** Fila da INBOX visível: o usuário vê O QUE o Processar INBOX vai processar,
@@ -42,7 +43,7 @@ export function InboxQueueChips({ projectId, onStatus }: Props) {
               onClick={() => {
                 void deleteInboxFile(projectId, file.filename)
                   .then(() => queryClient.invalidateQueries({ queryKey: qk.inboxFiles(projectId) }))
-                  .catch(() => onStatus(t("ingest:queue.removeFailed")));
+                  .catch(() => onStatus(t("ingest:queue.removeFailed"), "error"));
               }}
             >
               ×

@@ -28,6 +28,7 @@ import type {
   ModelOption,
   OperationalClassifierMode,
   ProjectProfileV2,
+  StatusSeverity,
   TriageItem
 } from "../../types";
 import { Badge } from "../../components/ui/badge";
@@ -87,6 +88,13 @@ function formatSkipReason(reasons: string[]): string {
   return first.replace(/_/g, " ").slice(0, 48);
 }
 
+/** Status do último ciclo (succeeded/failed/running) traduzido; código
+ *  desconhecido passa cru. */
+function formatCycleStatus(status?: string | null): string {
+  if (!status) return "—";
+  return i18n.exists(`ingest:cycleStatus.${status}`) ? i18n.t(`ingest:cycleStatus.${status}`) : status;
+}
+
 function formatClassifierModeLabel(mode?: string | null): string {
   switch (mode) {
     case "bootstrap":
@@ -139,7 +147,7 @@ type Props = {
   selectedProject: string;
   selectedProjectLabel: string;
   triageItems: TriageItem[];
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
   openaiApiKey: string;
   anthropicApiKey: string;
   onOpenSettings: () => void;
@@ -272,7 +280,7 @@ export function IngestTriageCard({
       setLlmPolicy({ ...DEFAULT_LLM_POLICY, ...resp.profile.classification?.llm_policy });
       invalidateAfterProfileChange(selectedProject);
     } catch {
-      onStatus(t("ingest:llm.savePolicyFailed"));
+      onStatus(t("ingest:llm.savePolicyFailed"), "error");
     } finally {
       setLlmSaving(false);
     }
@@ -330,7 +338,7 @@ export function IngestTriageCard({
       queryClient.setQueryData(qk.classifier.status(selectedProject), status);
       onStatus(nextValue ? t("ingest:classifier.overrideSaved", { mode: nextValue }) : t("ingest:classifier.overrideCleared"));
     } catch {
-      onStatus(t("ingest:classifier.overrideSaveFailed"));
+      onStatus(t("ingest:classifier.overrideSaveFailed"), "error");
     } finally {
       setClassifierSaving(false);
     }
@@ -360,7 +368,7 @@ export function IngestTriageCard({
       const status = await updateBenchmarkEnabledModes(next);
       queryClient.setQueryData(qk.classifier.status(selectedProject), status);
     } catch {
-      onStatus(t("ingest:classifier.benchmarkModesSaveFailed"));
+      onStatus(t("ingest:classifier.benchmarkModesSaveFailed"), "error");
     } finally {
       setClassifierSaving(false);
     }
@@ -381,7 +389,7 @@ export function IngestTriageCard({
       );
     } catch {
       void cycleChannel.refresh();
-      onStatus(t("ingest:classifier.cycleStartFailed"));
+      onStatus(t("ingest:classifier.cycleStartFailed"), "error");
     }
   }
 
@@ -393,7 +401,7 @@ export function IngestTriageCard({
       onStatus(t("ingest:classifier.cancelSignalSent"));
     } catch {
       setCancellingCycle(false);
-      onStatus(t("ingest:classifier.cancelFailed"));
+      onStatus(t("ingest:classifier.cancelFailed"), "error");
     }
   }
 
@@ -449,7 +457,7 @@ export function IngestTriageCard({
                     { label: t("ingest:classifier.statChampion"), value: formatClassifierModeLabel(classifierStatus.champion_mode) },
                     { label: t("ingest:classifier.statEffective"), value: formatClassifierModeLabel(classifierStatus.effective_mode) },
                     { label: t("ingest:classifier.statOverride"), value: classifierStatus.override_mode ? formatClassifierModeLabel(classifierStatus.override_mode) : t("ingest:classifier.overrideAuto") },
-                    { label: t("ingest:classifier.statLastCycle"), value: classifierStatus.latest_cycle_status },
+                    { label: t("ingest:classifier.statLastCycle"), value: formatCycleStatus(classifierStatus.latest_cycle_status) },
                   ].map((stat) => (
                     <div key={stat.label} className="flex flex-col gap-1 rounded-md border border-border bg-background p-2.5">
                       <span className="font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">{stat.label}</span>

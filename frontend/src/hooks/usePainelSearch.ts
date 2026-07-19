@@ -5,10 +5,10 @@ import i18n from "../i18n";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useProject } from "../contexts/ProjectContext";
 import { qk } from "../lib/queryKeys";
-import type { SearchFilters, StatsResponse } from "../types";
+import type { SearchFilters, StatsResponse, StatusSeverity } from "../types";
 
 type UsePainelSearchOptions = {
-  onStatus: (message: string) => void;
+  onStatus: (message: string, severity?: StatusSeverity) => void;
 };
 
 type SubmittedSearch = {
@@ -57,7 +57,7 @@ export function usePainelSearch({ onStatus }: UsePainelSearchOptions) {
   }, [resultsQuery.data]);
 
   useEffect(() => {
-    if (resultsQuery.isError) onStatus(i18n.t("errors:api.search"));
+    if (resultsQuery.isError) onStatus(i18n.t("errors:api.search"), "error");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resultsQuery.isError]);
 

@@ -176,5 +176,10 @@
     "noKeyWarning": "⚠ API Key not configured for {{provider}}.",
     "configure": "Configure",
     "savePolicyFailed": "Failed to save the LLM policy to the profile"
+  },
+  "cycleStatus": {
+    "succeeded": "succeeded",
+    "failed": "failed",
+    "running": "running"
   }
 }

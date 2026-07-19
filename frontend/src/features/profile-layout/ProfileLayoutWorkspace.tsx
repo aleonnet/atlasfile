@@ -20,11 +20,12 @@ import { applyLayout, getProfile, getProfileHistory, planLayout, saveProfile, va
 import { LayoutPlanPreview } from "./LayoutPlanPreview";
 import { ProfileLayoutEditor } from "./ProfileLayoutEditor";
 import type { LayoutPlanResponse, ProfileHistoryEntry, ProjectProfileV2 } from "./types";
+import type { StatusSeverity } from "../../types";
 
 type Props = {
   projectRef: string;
   disabled?: boolean;
-  onStatus?: (msg: string) => void;
+  onStatus?: (msg: string, severity?: StatusSeverity) => void;
 };
 
 type ConflictStrategy = "rename_with_suffix" | "skip" | "overwrite";
@@ -120,12 +121,12 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       } else {
         const errs = (result as { errors?: string[] }).errors ?? [];
         setValidationMessage(t("profileLayout:workspace.invalidProfile", { errors: errs.join("; ") || t("profileLayout:workspace.validationError") }));
-        onStatus?.(t("profileLayout:workspace.invalidStatus"));
+        onStatus?.(t("profileLayout:workspace.invalidStatus"), "error");
       }
     } catch {
       setValidationOk(false);
       setValidationMessage(t("profileLayout:workspace.invalidProfileShort"));
-      onStatus?.(t("profileLayout:workspace.validateFailedStatus"));
+      onStatus?.(t("profileLayout:workspace.validateFailedStatus"), "error");
     }
   }
 
@@ -143,7 +144,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       invalidateAfterProfileChange(projectRef);
       await loadWorkspace();
     } catch {
-      onStatus?.(t("profileLayout:workspace.saveFailedStatus"));
+      onStatus?.(t("profileLayout:workspace.saveFailedStatus"), "error");
       setError(t("profileLayout:workspace.saveFailedError"));
     } finally {
       setSaving(false);
@@ -165,7 +166,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       onStatus?.(t("profileLayout:workspace.planGenerated", { count: next.summary.ops }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("profileLayout:workspace.planFailed");
-      onStatus?.(msg);
+      onStatus?.(msg, "error");
       setError(msg);
     } finally {
       setSaving(false);
@@ -185,7 +186,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       invalidateAfterProfileChange(projectRef);
       await loadWorkspace();
     } catch {
-      onStatus?.(t("profileLayout:workspace.applyFailedStatus"));
+      onStatus?.(t("profileLayout:workspace.applyFailedStatus"), "error");
       setError(t("profileLayout:workspace.applyFailedError"));
     } finally {
       setSaving(false);
@@ -405,7 +406,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
                     setTemplateSlug("");
                     setTemplateDesc("");
                   } catch {
-                    onStatus?.(t("profileLayout:workspace.templateSaveFailed"));
+                    onStatus?.(t("profileLayout:workspace.templateSaveFailed"), "error");
                   } finally {
                     setTemplateSaving(false);
                   }

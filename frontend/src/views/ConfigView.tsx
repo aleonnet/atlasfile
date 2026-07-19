@@ -10,17 +10,18 @@ import { nativeSelectClass } from "../components/ui/modal-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { ProfileLayoutWorkspace } from "../features/profile-layout/ProfileLayoutWorkspace";
 import { TemplateEditorView } from "../features/templates/TemplateEditorView";
+import type { StatusSeverity } from "../types";
 
 type Props = {
   selectedProject: string;
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
 };
 
 const ALL_PROJECTS = "__all__";
 
 const codeClass = "rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light";
 
-function ApiAccessCard({ onStatus }: { onStatus: (msg: string) => void }) {
+function ApiAccessCard({ onStatus }: { onStatus: (msg: string, severity?: StatusSeverity) => void }) {
   const { t } = useTranslation();
   const [keyValue, setKeyValue] = useState(getApiKey());
 

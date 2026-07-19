@@ -6,15 +6,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { qk } from "../../lib/queryKeys";
 import { formatDateTimeShort } from "../../lib/format";
+import i18n from "../../i18n";
 import { ProcessingAura } from "../../components/ui/processing-aura";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { CollapsibleSection, rowDeleteButtonClass } from "../../components/ui/collapsible-section";
 import { cn } from "../../lib/utils";
+import type { StatusSeverity } from "../../types";
 
 type Props = {
   projectId: string;
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
   /** Restaurar devolve o doc à fila — o Painel precisa recarregar triagem/stats. */
   onChanged: () => void;
 };
@@ -26,6 +28,13 @@ function formatWhen(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/** decision_note pode ser um code do pipeline (ex.: sem_texto_extraivel) ou
+ *  texto livre do usuário — codes conhecidos são traduzidos, o resto passa cru. */
+function formatRejectionNote(note: string | null | undefined): string {
+  if (!note) return i18n.t("triage:rejected.rejected");
+  return i18n.exists(`triage:rejected.reason.${note}`) ? i18n.t(`triage:rejected.reason.${note}`) : note;
 }
 
 /** Rejeitados com visibilidade e ações: antes desta seção, rejeitar um documento
@@ -50,7 +59,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
       void queryClient.invalidateQueries({ queryKey: qk.triage.rejected(projectId) });
       onChanged();
     } catch (e) {
-      onStatus(e instanceof Error ? e.message : t("triage:rejected.restoreFailed"));
+      onStatus(e instanceof Error ? e.message : t("triage:rejected.restoreFailed"), "error");
     } finally {
       setBusyDocId(null);
       setBusyAction(null);
@@ -68,7 +77,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
       // Notifica o Painel: o badge no Processamentos vira "excluído" sem reload
       onChanged();
     } catch (e) {
-      onStatus(e instanceof Error ? e.message : t("triage:rejected.deleteFailed"));
+      onStatus(e instanceof Error ? e.message : t("triage:rejected.deleteFailed"), "error");
     } finally {
       setBusyDocId(null);
       setBusyAction(null);
@@ -95,7 +104,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
                     {item.original_filename}
                   </span>
                   <span className={cn("font-mono text-[0.68rem]", isOrphan ? "text-tertiary" : "text-muted-foreground")}>
-                    {isOrphan ? t("triage:rejected.orphanRecord") : item.decision_note || t("triage:rejected.rejected")} · {formatWhen(item.processed_at)}
+                    {isOrphan ? t("triage:rejected.orphanRecord") : formatRejectionNote(item.decision_note)} · {formatWhen(item.processed_at)}
                   </span>
                   {!isOrphan && (
                     <Button

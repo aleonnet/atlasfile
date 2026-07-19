@@ -1,11 +1,11 @@
 import { IngestTriageCard } from "../features/ingest/IngestTriageCard";
-import type { TriageItem } from "../types";
+import type { StatusSeverity, TriageItem } from "../types";
 
 type Props = {
   selectedProject: string;
   selectedProjectLabel: string;
   triageItems: TriageItem[];
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
   openaiApiKey: string;
   anthropicApiKey: string;
   onOpenSettings: () => void;

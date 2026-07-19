@@ -4,7 +4,7 @@ import i18n from "../i18n";
 import { invalidateAfterReconcile } from "../lib/mutations";
 import { qk } from "../lib/queryKeys";
 import { useSseChannel } from "./useSseChannel";
-import type { ReconcileStatus } from "../types";
+import type { ReconcileStatus, StatusSeverity } from "../types";
 
 function progressMessage(latest: ReconcileStatus): string {
   const skipped = latest.progress_skipped ?? 0;
@@ -35,7 +35,7 @@ function summaryMessage(latest: ReconcileStatus, scopeLabel?: string): string {
  *  cópias do padrão SSE+poll que viviam no App (boot retomando reconcile em
  *  andamento + botão Reconciliar). Progresso e resumo viram mensagens de
  *  status; o término invalida stats/triagem/histórico. */
-export function useReconcileMonitor({ onStatus }: { onStatus: (msg: string) => void }) {
+export function useReconcileMonitor({ onStatus }: { onStatus: (msg: string, severity?: StatusSeverity) => void }) {
   const scopeLabelRef = useRef<string | undefined>(undefined);
   const startedHereRef = useRef(false);
 

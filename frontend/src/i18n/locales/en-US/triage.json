@@ -21,7 +21,11 @@
     "restoreFailed": "Failed to restore",
     "deleteFailed": "Failed to delete",
     "restoring": "Restoring — returning to the triage queue",
-    "deleting": "Deleting — erasing file and record"
+    "deleting": "Deleting — erasing file and record",
+    "reason": {
+      "sem_texto_extraivel": "no extractable text (empty OCR)",
+      "below_triage_min": "confidence below the minimum"
+    }
   },
   "correctModal": {
     "label": "Approve with correction",

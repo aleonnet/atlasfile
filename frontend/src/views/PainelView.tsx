@@ -33,6 +33,7 @@ import type {
   SearchFilters,
   SearchHit,
   StatsResponse,
+  StatusSeverity,
   TriageItem,
 } from "../types";
 
@@ -48,7 +49,7 @@ type Props = {
   reconcilingNow: boolean;
   onReconcile: () => void;
   onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => void;
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
   onScanComplete: () => void;
 
 };
@@ -298,14 +299,14 @@ export function PainelView({
       const bds = (classification.business_domains || []).map((d) => ({ key: d.key, label: d.label || d.key }));
       const dts = (classification.document_types || []).map((d) => ({ key: d.key, label: d.label || d.key }));
       if (!bds.length || !dts.length) {
-        onStatus(t("painel:moveModal.noTaxonomy"));
+        onStatus(t("painel:moveModal.noTaxonomy"), "error");
         return;
       }
       setMoveBdOptions(bds);
       setMoveDtOptions(dts);
       setMoveHit(hit);
     } catch {
-      onStatus(t("painel:moveModal.loadProfileFailed"));
+      onStatus(t("painel:moveModal.loadProfileFailed"), "error");
     }
   }
 
@@ -323,7 +324,7 @@ export function PainelView({
     } catch (e) {
       const msg = e instanceof Error ? e.message : t("painel:moveModal.moveFailed");
       setMoveError(msg);
-      onStatus(msg);
+      onStatus(msg, "error");
     } finally {
       setMoveSubmitting(false);
     }
