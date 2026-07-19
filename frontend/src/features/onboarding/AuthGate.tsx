@@ -2,6 +2,7 @@ import { KeyRound, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { fetchSetupStatus, setApiKey } from "../../api";
+import { LanguageQuickSwitch } from "../../components/LanguageQuickSwitch";
 import { Orb } from "../../components/OrbGL";
 import { Wordmark } from "../../components/Wordmark";
 import { Button } from "../../components/ui/button";
@@ -72,6 +73,9 @@ export function AuthGate() {
           {checking ? <Loader2 className="animate-spin" /> : <KeyRound />}
           {checking ? t("onboarding:authGate.validating") : t("onboarding:authGate.enter")}
         </Button>
+        <div className="mt-4 flex justify-center">
+          <LanguageQuickSwitch />
+        </div>
       </div>
     </div>
   );

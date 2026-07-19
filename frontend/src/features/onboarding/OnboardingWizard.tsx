@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { fetchProjectProfile, fetchProjects, fetchSetupStatus, initializeProject, listTemplates, updateProjectProfile, validateProviderKey } from "../../api";
 import { AuroraField } from "../../components/AuroraField";
+import { LanguageQuickSwitch } from "../../components/LanguageQuickSwitch";
 import { Orb } from "../../components/OrbGL";
 import { Wordmark } from "../../components/Wordmark";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
@@ -489,6 +490,12 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
                 {i < stepIndex ? <Check size={10} aria-hidden /> : i + 1}
               </span>
             ))}
+          </div>
+        )}
+
+        {step !== "done" && (
+          <div className="mt-3 flex justify-center">
+            <LanguageQuickSwitch />
           </div>
         )}
       </div>
