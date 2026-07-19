@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.35.0] -- 2026-07-19
+
+### Adicionado
+
+- **Tour de looks do buraco negro** no fundo do gate/wizard: Inferno (5500K, filamentos âmbar) → Gargantua (4500K, névoa suave estilo filme) → Quasar (15000K, disco azul-branco gigante), 14s por look com crossfade de 2.5s — mecânica `DiskLook`/`mixLook` do shader original em ritmo contemplativo (5s/slot é ritmo do modo demo de gravação); ajuste num número só (`TOUR_SLOT_SEC`). O orb da sidebar permanece no Inferno (o Quasar tem raio externo 14 r_s e estouraria 40px). Constante órfã `LENS_DEPTH` removida.
+
+---
+
 ## [0.34.5] -- 2026-07-19
 
 ### Corrigido

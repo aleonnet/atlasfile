@@ -26,23 +26,42 @@ uniform float uVariant;   // 0 = backdrop (deriva Lissajous), 1 = orb (centrado)
 uniform float uStarGain;  // brilho do starfield lenteado
 
 // ------------------------------------------------------------- tunables ----
-const float LENS_DEPTH    = 13.0;
-const float DISK_INNER    = 1.8;
-const float DISK_OUTER    = 8.0;
-const float DISK_INCL     = 1.5;
-const float DISK_ROLL     = 0.35;
-const float DISK_GAIN     = 2.2;
-const float DISK_OPACITY  = 0.9;
-const float DISK_TEMP     = 5500.0;
-const float DOPPLER_MIX   = 0.6;
-const float DISK_BEAM     = 2.5;
-const float DISK_SPEED    = 5.0;
-const float DISK_WIND     = 7.0;
-const float DISK_CONTRAST = 1.6;
-const float EXPOSURE      = 1.4;
-const float DILATION_MIN  = 0.2;
+const float DILATION_MIN = 0.2;
 #define N_STEPS 40
 #define B_CRIT 2.5980762
+
+// O look completo do disco num pacote (estrutura do shader original) — o tour
+// do backdrop faz crossfade entre presets do tuner; o orb fica no Inferno
+// (o Quasar tem rout 14 e estouraria um canvas de 40px).
+struct DiskLook {
+  float temp, incl, roll, inner, outer, opac, dopp, beam, gain, contr, wind, speed, expo;
+};
+//                                        temp     incl  roll  inner outer opac  dopp  beam gain contr wind speed expo
+const DiskLook LOOK_INFERNO   = DiskLook( 5500.0,  1.50, 0.35, 1.8,  8.0,  0.90, 0.60, 2.5, 2.2, 1.6,  7.0, 5.0,  1.40);
+const DiskLook LOOK_GARGANTUA = DiskLook( 4500.0,  1.52, 0.10, 2.2,  7.0,  0.85, 0.35, 2.0, 1.4, 0.5,  7.0, 5.0,  1.20);
+const DiskLook LOOK_QUASAR    = DiskLook(15000.0,  1.30, 0.35, 3.0, 14.0,  0.35, 1.00, 4.0, 1.2, 1.3,  8.0, 5.0,  0.80);
+
+// Tour contemplativo: Inferno → Gargantua → Quasar, TOUR_SLOT_SEC por look
+// com crossfade suave — ajuste fino num número só.
+const float TOUR_SLOT_SEC = 14.0;
+const float TOUR_XFADE    = 2.5 / TOUR_SLOT_SEC;
+
+DiskLook mixLook(DiskLook a, DiskLook b, float f) {
+  return DiskLook(
+    mix(a.temp, b.temp, f), mix(a.incl, b.incl, f), mix(a.roll, b.roll, f),
+    mix(a.inner, b.inner, f), mix(a.outer, b.outer, f), mix(a.opac, b.opac, f),
+    mix(a.dopp, b.dopp, f), mix(a.beam, b.beam, f), mix(a.gain, b.gain, f),
+    mix(a.contr, b.contr, f), mix(a.wind, b.wind, f), mix(a.speed, b.speed, f),
+    mix(a.expo, b.expo, f));
+}
+
+DiskLook tourLook(float t) {
+  DiskLook looks[3] = DiskLook[3](LOOK_INFERNO, LOOK_GARGANTUA, LOOK_QUASAR);
+  float u = mod(t, TOUR_SLOT_SEC * 3.0) / TOUR_SLOT_SEC;   // 0..3, relógio de slots
+  int i = int(min(u, 2.999));
+  float f = smoothstep(1.0 - TOUR_XFADE, 1.0, fract(u));   // crossfade no fim do slot
+  return mixLook(looks[i], looks[(i + 1) % 3], f);
+}
 
 // --------------------------------------------------------------- helpers ---
 float hash21(vec2 p) {
@@ -120,8 +139,13 @@ void main() {
     center = vec2(0.5 + wander.x * 0.30, 0.62 + wander.y * 0.16);
   }
 
-  float rin = max(DISK_INNER, 1.6);
-  float rout = max(DISK_OUTER, rin + 0.5);
+  // Look ativo: backdrop faz o tour com crossfade; orb fica no Inferno.
+  DiskLook L;
+  if (uVariant > 0.5) L = LOOK_INFERNO;
+  else L = tourLook(t);
+
+  float rin = max(L.inner, 1.6);
+  float rout = max(L.outer, rin + 0.5);
   float dil = mix(1.0, DILATION_MIN, I);
   float shield = vis;
 
@@ -131,7 +155,7 @@ void main() {
   // Sem o flip de y do original: o gl_FragCoord do WebGL já é y-up (no
   // Ghostty o -p.y convertia o uv top-down) — mantê-lo espelhava o disco.
   float W = B_CRIT / max(rh, 1e-4);
-  vec2 pr = rot(p, DISK_ROLL) * W;
+  vec2 pr = rot(p, L.roll) * W;
   float b = length(pr);
 
   float window = exp(-pow(plen / (7.0 * rh), 2.0));
@@ -160,7 +184,7 @@ void main() {
   vec3 v = vec3(0.0, 0.0, -1.0);
   float h2 = dot(pr, pr);
 
-  float ci = cos(DISK_INCL), si = sin(DISK_INCL);
+  float ci = cos(L.incl), si = sin(L.incl);
   vec3 n = vec3(0.0, si, ci);
   vec3 e2 = vec3(0.0, ci, -si);
 
@@ -196,24 +220,24 @@ void main() {
         float turns = phi / 6.2831853;
         float kep = pow(rin / rc, 1.5);
         float gloc = sqrt(max(1.0 - 1.5 / rc, 0.02));
-        float swirl = rc * DISK_WIND * 0.12 - t * kep * DISK_SPEED * gloc * dil;
+        float swirl = rc * L.wind * 0.12 - t * kep * L.speed * gloc * dil;
         float streaks = vnoiseWrapY(vec2(rc * 2.8, turns * 19.0 + swirl * 3.0), 19.0) * 0.65 +
                         vnoiseWrapY(vec2(rc * 1.0, turns * 9.0 + swirl * 1.5 + 7.0), 9.0) * 0.35;
-        streaks = 0.35 + DISK_CONTRAST * streaks * streaks;
+        streaks = 0.35 + L.contr * streaks * streaks;
 
         vec3 gasdir = normalize(cross(n, xc));
         float beta = clamp(inversesqrt(max(2.0 * (rc - 1.0), 0.2)), 0.0, 0.99);
         float g = gloc / max(1.0 + beta * dot(gasdir, normalize(v)), 0.05);
-        g = mix(1.0, g, DOPPLER_MIX);
+        g = mix(1.0, g, L.dopp);
 
         float xpr = max(1.0 - sqrt(rin / rc), 0.0);
         float tprof = pow(rin / rc, 0.75) * pow(xpr, 0.25) / 0.488;
-        vec3 cbb = blackbody(DISK_TEMP * tprof * g);
-        float boost = pow(g, DISK_BEAM);
+        vec3 cbb = blackbody(L.temp * tprof * g);
+        float boost = pow(g, L.beam);
 
         float density = band * streaks;
-        emitc += trans * cbb * (DISK_GAIN * 2.2 * density * tprof * tprof * boost);
-        trans *= 1.0 - clamp(DISK_OPACITY * density, 0.0, 1.0);
+        emitc += trans * cbb * (L.gain * 2.2 * density * tprof * tprof * boost);
+        trans *= 1.0 - clamp(L.opac * density, 0.0, 1.0);
       }
     }
     sPrev = s;
@@ -233,7 +257,7 @@ void main() {
   // Saída premultiplicada VÁLIDA (alfa >= max componente da luz): a luz do
   // disco/estrelas quase-soma sobre a página; sombra e disco opaco ocluem.
   // blend: ONE, 1-SRC_ALPHA.
-  vec3 light = (bg * trans + (vec3(1.0) - exp(-emitc * EXPOSURE))) * vis;
+  vec3 light = (bg * trans + (vec3(1.0) - exp(-emitc * L.expo))) * vis;
   float occ = clamp((captured ? 0.94 : 0.0) + (1.0 - trans) * 0.85, 0.0, 1.0) * vis * window;
   float alpha = clamp(max(occ, max(light.r, max(light.g, light.b))), 0.0, 1.0);
   outColor = vec4(light, alpha);
