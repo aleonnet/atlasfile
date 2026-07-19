@@ -270,3 +270,60 @@ def test_process_inbox_file_dedup_no_new_json_or_index_entry(
     assert len(json_files) == 0, f"No metadata JSON should be created for dups, found: {json_files}"
     # No _INDEX.md created/appended
     assert not index_md.exists(), "_INDEX.md should not be written for duplicates"
+
+
+@patch("app.ingestion.ensure_project_structure")
+@patch("app.ingestion.sha256_file", return_value="img_sha")
+@patch("app.ingestion._find_original_in_triage", return_value=None)
+@patch("app.ingestion._find_original_in_search_index", return_value=None)
+@patch("app.ingestion.classify_with_operational_mode")
+@patch("app.ingestion.read_text_excerpt", return_value="")
+@patch("app.ingestion._append_index_md")
+def test_sem_texto_extraivel_nao_fabrica_sugestao_e_pula_llm(
+    mock_append: MagicMock,
+    mock_excerpt: MagicMock,
+    mock_classify: MagicMock,
+    mock_find_index: MagicMock,
+    mock_find_triage: MagicMock,
+    mock_sha: MagicMock,
+    mock_ensure: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """Imagem sem texto (OCR vazio): a classificação por nome de arquivo seria
+    fabricada — o doc vai para triagem com reason=sem_texto_extraivel, sem
+    sugestão, e o LLM não é chamado (custo zero sobre entrada vazia)."""
+    # O bootstrap devolveria um chute baseado no filename — a proteção deve descartar
+    mock_classify.return_value = {
+        "business_domain": "societario",
+        "document_type": "relatorio",
+        "document_type_confidence": 0.25,
+        "business_domain_confidence": 0.05,
+        "confidence": 0.05,
+        "reason": "filename_guess",
+        "top_candidates": [],
+    }
+    inbox_file = _write_file(tmp_path / "_INBOX_DROP" / "tela-rota.jpg", b"\xff\xd8fakejpg")
+    profile = _minimal_profile(tmp_path)
+    profile["classification"]["llm_policy"] = {"enabled": True, "provider": "openai", "model": "gpt-4o-mini", "mode": "tag_only"}
+    mock_client = MagicMock()
+
+    with patch("app.orchestrator.classify_with_llm") as mock_llm:
+        result = process_inbox_file(
+            client=mock_client,
+            project_root=tmp_path,
+            profile=profile,
+            inbox_file=inbox_file,
+        )
+        mock_llm.assert_not_called()
+
+    assert result["decision"] == "triage_pending"
+    assert result["classification_reason"] == "sem_texto_extraivel"
+    # payload usa o fallback neutro "unclassified" (nunca o chute do filename)
+    assert result.get("business_domain") in ("", "unclassified")
+    assert result["confidence_score"] == 0.0
+
+    pending_meta = json.loads(
+        next((tmp_path / "_TRIAGE_REVIEW" / "pending").glob("*.json")).read_text()
+    )
+    assert pending_meta["reason"] == "sem_texto_extraivel"
+    assert not pending_meta.get("suggested_business_domain")

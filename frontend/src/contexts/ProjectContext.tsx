@@ -19,9 +19,29 @@ type ProjectContextValue = {
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
 
+const SELECTED_PROJECT_STORAGE_KEY = "atlasfile_selected_project";
+
+function readStoredProject(): string {
+  try {
+    return localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY) || ALL_PROJECTS;
+  } catch {
+    return ALL_PROJECTS;
+  }
+}
+
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<string>(ALL_PROJECTS);
+  // Persistido: a seleção de projeto sobrevive ao reload da página; se o
+  // projeto salvo não existir mais, refreshProjects volta para "todos"
+  const [selectedProject, setSelectedProject] = useState<string>(readStoredProject);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, selectedProject);
+    } catch {
+      /* storage indisponível — seleção só não persiste */
+    }
+  }, [selectedProject]);
 
   const refreshProjects = useCallback(async () => {
     const data = await fetchProjects();

@@ -5,6 +5,7 @@ O contexto do projeto (business_domains, document_types, aliases e topics válid
 
 Regras:
 - Analise o CONTEÚDO do documento, não apenas o nome do arquivo.
+- Considere a extensão do arquivo como evidência estrutural: cada document_type lista as extensões esperadas; um arquivo cuja extensão não pertence às esperadas de um tipo raramente é desse tipo (ex.: um .pptx não é "plano" se "plano" espera .pdf/.docx — prefira um tipo que espere .pptx, como apresentação).
 - Escolha sempre um dos business_domains listados no contexto do projeto. Use os aliases como pistas.
 - Escolha sempre um dos document_types listados no contexto do projeto. Use os aliases como pistas.
 - Se nenhum business_domain ou document_type se encaixar, use "outro" e explique na justificativa.

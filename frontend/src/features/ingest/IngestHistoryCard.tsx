@@ -7,7 +7,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { CollapsibleSection } from "../../components/ui/collapsible-section";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
-import { onDataRefresh } from "../../lib/refreshBus";
+import { emitDataRefresh, onDataRefresh } from "../../lib/refreshBus";
 import type { IngestHistoryEntry, ProjectProfileV2 } from "../../types";
 
 function decisionBadge(decision: FlatRow["decision"]) {
@@ -344,7 +344,7 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
               onStatus(`Documento movido para ${targetBd}/${targetDt}`);
               setMoveRow(null);
               setMoveError(null);
-              void loadHistory();
+              emitDataRefresh();
             } catch (e) {
               const msg = e instanceof Error ? e.message : "Falha ao mover documento";
               setMoveError(msg);

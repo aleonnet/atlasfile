@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Check, GitCompareArrows, Pencil, PlusCircle, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { onDataRefresh } from "../../lib/refreshBus";
 import { createTaxonomyEntry, fetchLabelConflicts, fetchTaxonomy, resolveLabelConflict } from "../../api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -50,6 +51,9 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
       .then((res) => setConflicts(res.items))
       .catch(() => setConflicts([]));
   }, []);
+
+  // Reativo: decisões/correções podem criar conflitos — o card aparece sem reload
+  useEffect(() => onDataRefresh(load), [load]);
 
   useEffect(() => {
     load();

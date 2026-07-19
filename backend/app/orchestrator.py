@@ -459,9 +459,13 @@ def _build_project_context(profile: dict[str, Any] | None) -> str:
             label = dtype.get("label", key)
             aliases = dtype.get("aliases") or []
             alias_str = ", ".join(str(a) for a in aliases if str(a).strip())
+            extensions = dtype.get("extensions") or []
+            ext_str = ", ".join(str(e) for e in extensions if str(e).strip())
             line = f"- {key} ({label})"
             if alias_str:
                 line += f" — aliases: {alias_str}"
+            if ext_str:
+                line += f" — extensões esperadas: {ext_str}"
             lines.append(line)
         if len(lines) > 1:
             parts.append("\n".join(lines))

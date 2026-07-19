@@ -19,7 +19,7 @@ import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { fieldLabelClass, ModalActions, ModalShell } from "./components/ui/modal-shell";
 import { Toaster, toast } from "./components/ui/sonner";
-import { emitDataRefresh } from "./lib/refreshBus";
+import { emitDataRefresh, onDataRefresh } from "./lib/refreshBus";
 import { NavigationProvider, useNavigation } from "./contexts/NavigationContext";
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
@@ -300,9 +300,7 @@ function AppShell() {
       };
       const finishReconcileFromLoad = async (latest: ReconcileStatus) => {
         if (cancelled) return;
-        await loadTriage();
-        if (cancelled) return;
-        fetchStats().then(setDashboardStats).catch(() => {});
+        emitDataRefresh();
         const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
         const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
         const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
@@ -392,8 +390,7 @@ function AppShell() {
     };
 
     const finishReconcile = async (latest: ReconcileStatus) => {
-      await loadTriage();
-      fetchStats().then(setDashboardStats).catch(() => {});
+      emitDataRefresh();
       const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
       const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
       const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
@@ -499,10 +496,7 @@ function AppShell() {
     setTriageItems((prev) => prev.filter((i) => i.doc_id !== item.doc_id));
     setStatus("Registrando correcao em segundo plano...");
     triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
-      .then(() => loadTriage())
       .then(() => {
-        // A decisão indexa o documento na hora — painel reflete sem refresh manual
-        fetchStats().then(setDashboardStats).catch(() => {});
         emitDataRefresh();
         setStatus(`Documento aprovado por correção e movido para ${businessDomainValue}/${documentTypeValue}`);
       })
@@ -512,13 +506,23 @@ function AppShell() {
       });
   }
 
-  /** Ponto único pós-mutação: triagem + stats recarregam e o bus notifica os
-   *  cards derivados (histórico, fila da INBOX, rejeitados) — zero reloads. */
+  /** Fonte única de reatividade: TODA mutação emite no bus; o App assina o
+   *  bus para triagem + stats (estado que vive aqui e nunca remonta), e os
+   *  cards derivados (histórico, inbox, rejeitados, projetos) assinam cada um
+   *  o seu — zero reloads de página, zero pontos esquecidos. */
   const handleDataChanged = useCallback(() => {
-    void loadTriage();
-    fetchStats().then(setDashboardStats).catch(() => {});
     emitDataRefresh();
-  }, [loadTriage]);
+  }, []);
+
+  useEffect(
+    () =>
+      onDataRefresh(() => {
+        void loadTriage();
+        fetchStats().then(setDashboardStats).catch(() => {});
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedProject, projects]
+  );
 
   async function handleDecision(item: TriageItem, action: "approve" | "correct" | "reject") {
     if (action === "correct") {
@@ -527,9 +531,6 @@ function AppShell() {
     }
     try {
       await triageDecision(item.project_id, item.doc_id, action);
-      await loadTriage();
-      // A decisão indexa (approve) ou remove (reject) na hora — painel acompanha
-      fetchStats().then(setDashboardStats).catch(() => {});
       emitDataRefresh();
       if (action === "reject") {
         setStatus("Documento rejeitado e movido para rejected com nome original");

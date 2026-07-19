@@ -61,7 +61,7 @@ export function DropHintCard() {
             Solte arquivos em qualquer lugar — ou clique para selecionar
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Arraste PDF, DOCX, XLSX, PPTX, MSG ou EML para <strong className="text-foreground">qualquer tela</strong> —
+            Arraste PDF, DOCX, XLSX, PPTX, MSG, EML ou imagens (JPG/PNG, via OCR) para <strong className="text-foreground">qualquer tela</strong> —
             o portal envia à INBOX e o pipeline cuida do resto: classificação, roteamento, indexação e busca.
           </p>
           <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">

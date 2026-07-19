@@ -36,6 +36,7 @@ import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { EmptyState } from "../../components/ui/empty-state";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/utils";
+import { emitDataRefresh } from "../../lib/refreshBus";
 
 /* Bloco de progresso de operação (ingest / ciclo do classificador) */
 const opProgressClass = "mb-2.5 flex flex-col gap-1 rounded-md border border-border bg-elevated px-3 py-2.5";
@@ -281,6 +282,7 @@ export function IngestTriageCard({
       setFullProfile(resp.profile);
       setProfileVersion(resp.version);
       setLlmPolicy({ ...DEFAULT_LLM_POLICY, ...resp.profile.classification?.llm_policy });
+      emitDataRefresh();
     } catch {
       onStatus("Falha ao salvar política LLM no profile");
     } finally {

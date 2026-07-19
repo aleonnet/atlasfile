@@ -15,6 +15,39 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.29.0] -- 2026-07-19
+
+### Adicionado
+
+- **OCR de imagens soltas** (.jpg/.jpeg/.png/.tif/.tiff/.bmp/.webp): o extrator agora roda Tesseract (o mesmo motor do PDF escaneado) sobre imagens — uma foto de contrato entra no pipeline com texto real, é classificada e indexada com chunks citáveis. Hint do portal atualizado.
+
+### Corrigido
+
+- **Proteção sem-texto (fim da sugestão fabricada)**: imagem sem texto legível (OCR vazio) ou formato ilegível não gera mais chute a partir do nome do arquivo (o caso "tela-rota.jpg → societario/relatorio 5%"). O documento vai para a triagem com `reason: sem_texto_extraivel`, **sem sugestão**, confiança 0.0, e a fila mostra "sem texto extraível (OCR vazio) — decida manualmente". O LLM é pulado nesses casos (custo zero sobre entrada vazia).
+
+---
+
+## [0.28.3] -- 2026-07-19
+
+### Corrigido
+
+- **Auditoria de reatividade (pedido: "nada pode depender de reload")**: o App agora **assina** o bus `atlas:data-refresh` para triagem + stats (estado que vive no App e nunca remonta) e toda mutação apenas **emite** — fonte única, sem pontos esquecidos. Passam a atualizar ao vivo: migração/remoção de taxonomia (stats/painel), mover documento (histórico + busca + stats), fim de reconciliação (todos os cards), salvar política LLM, e o card de conflitos de rótulo (assina o bus — conflitos criados por correções aparecem sem reload).
+
+### Mudado
+
+- **Briefing do classificador LLM com extensões**: o contexto do projeto agora lista as extensões esperadas por tipo (`plano — extensões esperadas: .pdf, .docx`) e o system prompt instrui a usar a extensão como evidência estrutural — um `.pptx` não deve virar `plano`. Vale para a classificação ao vivo e para o benchmark do ciclo.
+
+---
+
+## [0.28.2] -- 2026-07-19
+
+### Corrigido
+
+- **Excluir rejeitado atualiza o badge do Processamentos ao vivo**: o Excluir agora notifica o bus (mesmo canal do Restaurar) — a linha vira "excluído" sem reload.
+- **Projeto selecionado sobrevive ao reload**: a seleção persiste em `localStorage` (`atlasfile_selected_project`); se o projeto salvo não existir mais, volta para "todos" automaticamente.
+
+---
+
 ## [0.28.1] -- 2026-07-18
 
 ### Corrigido

@@ -335,10 +335,21 @@ def process_inbox_file(
     text_excerpt = read_text_excerpt(inbox_file)
     classification = classify_with_operational_mode(profile=profile, source_path=inbox_file, text_excerpt=text_excerpt)
 
+    # Proteção: sem texto extraível (imagem sem texto, formato ilegível) não há
+    # evidência de conteúdo — nada de sugestão fabricada a partir do nome do
+    # arquivo; vai para triagem com o motivo explícito e o LLM é pulado
+    if not text_excerpt.strip():
+        classification["business_domain"] = None
+        classification["document_type"] = ""
+        classification["confidence"] = 0.0
+        classification["business_domain_confidence"] = 0.0
+        classification["document_type_confidence"] = 0.0
+        classification["reason"] = "sem_texto_extraivel"
+
     llm_result: dict[str, Any] | None = None
     policy = _llm_policy(profile)
     llm_enabled = bool(policy.get("enabled")) or bool(getattr(settings, "classification_llm_enabled", False))
-    if llm_enabled:
+    if llm_enabled and text_excerpt.strip():
         try:
             from .orchestrator import classify_with_llm
 
@@ -377,18 +388,25 @@ def process_inbox_file(
     triage_min = float(profile.get("confidence_thresholds", {}).get("triage_min", 0.5))
     confidence = float(classification["confidence"])
     business_domain = classification.get("business_domain")
-    if not business_domain:
-        raise ValueError("bootstrap classification did not return business_domain")
     document_type = str(classification.get("document_type") or "").strip()
-    if not document_type:
+    # sem_texto_extraivel é o único caso legítimo de classificação vazia:
+    # vai direto para triagem, sem sugestão e sem resolução de pasta
+    no_extractable_text = classification.get("reason") == "sem_texto_extraivel"
+    if not business_domain and not no_extractable_text:
+        raise ValueError("bootstrap classification did not return business_domain")
+    if not document_type and not no_extractable_text:
         raise ValueError("bootstrap classification did not return document_type")
 
-    area_path = resolve_classification_path(
-        project_root=project_root,
-        profile=profile,
-        business_domain=str(business_domain),
-        document_type=document_type,
-        create_if_missing=True,
+    area_path = (
+        resolve_classification_path(
+            project_root=project_root,
+            profile=profile,
+            business_domain=str(business_domain),
+            document_type=document_type,
+            create_if_missing=True,
+        )
+        if business_domain
+        else None
     )
 
     ingested_at = utc_now_iso()
@@ -504,7 +522,7 @@ def process_inbox_file(
             "confidence_score": confidence,
             "business_domain_confidence": float(classification.get("business_domain_confidence") or confidence),
             "document_type_confidence": float(classification.get("document_type_confidence") or 0.0),
-            "reason": "below_triage_min",
+            "reason": classification.get("reason") if classification.get("reason") == "sem_texto_extraivel" else "below_triage_min",
             "top_candidates": classification.get("top_candidates", []),
             "top_document_type_candidates": classification.get("top_document_type_candidates", []),
             "source_path": str(dest_file),

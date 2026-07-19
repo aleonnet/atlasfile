@@ -145,6 +145,40 @@ def _extract_plain_text(path: Path, max_chars: int) -> ExtractionResult:
     )
 
 
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp"}
+
+
+def _extract_image(path: Path, max_chars: int) -> ExtractionResult:
+    """OCR de imagem solta (Tesseract, o mesmo motor usado em PDF escaneado)."""
+    ext = path.suffix.lower()
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        return ExtractionResult(
+            text_excerpt="",
+            chunk_text="",
+            chunk_locations=[],
+            chunks=[],
+            content_type="image",
+            extraction_status="ocr_unavailable",
+            metadata={"extension": ext},
+        )
+    with Image.open(path) as img:
+        text = (pytesseract.image_to_string(img, lang="por+eng") or "").strip()
+    excerpt = _safe_excerpt(text, max_chars)
+    chunks = _format_chunks("image", 1, excerpt) if excerpt else []
+    return ExtractionResult(
+        text_excerpt=excerpt,
+        chunk_text="\n".join(chunk for _, chunk in chunks),
+        chunk_locations=[loc for loc, _ in chunks],
+        chunks=_chunks_from_rows(chunks),
+        content_type="image",
+        extraction_status="ok_ocr" if excerpt else "no_text",
+        metadata={"extension": ext},
+    )
+
+
 def _extract_html(path: Path, max_chars: int) -> ExtractionResult:
     """Best-effort HTML text extraction with zero extra deps."""
     try:
@@ -656,6 +690,8 @@ def extract_document_content(path: Path, max_chars: int | None = None) -> Extrac
             return _extract_pptx(path, max_chars=max_chars)
         if ext == ".msg":
             return _extract_msg(path, max_chars=max_chars)
+        if ext in _IMAGE_EXTS:
+            return _extract_image(path, max_chars=max_chars)
         if ext in {".zip", ".rar"}:
             return _extract_archive_listing(path, max_chars=max_chars)
         if ext in {".doc", ".xls", ".ppt"}:

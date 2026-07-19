@@ -87,6 +87,8 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                       sugestão: <span className="text-foreground">{suggestedBusinessDomain}</span>
                       {item.suggested_document_type ? ` / ${item.suggested_document_type}` : ""}
                     </>
+                  ) : item.reason === "sem_texto_extraivel" ? (
+                    <span className="text-accent">sem texto extraível (OCR vazio) — decida manualmente</span>
                   ) : (
                     "sem sugestão"
                   )}

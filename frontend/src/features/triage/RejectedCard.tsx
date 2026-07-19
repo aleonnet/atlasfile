@@ -70,6 +70,8 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
       await deleteRejectedTriage(projectId, item.doc_id);
       onStatus(`"${item.original_filename}" excluído definitivamente`);
       load();
+      // Notifica o Painel: o badge no Processamentos vira "excluído" sem reload
+      onChanged();
     } catch (e) {
       onStatus(e instanceof Error ? e.message : "Falha ao excluir");
     } finally {

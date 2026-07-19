@@ -15,8 +15,9 @@ def _sample_profile() -> dict:
                 {"key": "marketing_produtos", "aliases": ["marketing", "produtos"]},
             ],
             "document_types": [
-                {"key": "contrato", "label": "Contrato", "aliases": ["contrato", "agreement", "acordo"]},
+                {"key": "contrato", "label": "Contrato", "aliases": ["contrato", "agreement", "acordo"], "extensions": [".pdf", ".docx"]},
                 {"key": "parecer", "label": "Parecer", "aliases": ["parecer", "opiniao"]},
+                {"key": "apresentacao", "label": "Apresentação", "aliases": ["apresentacao"], "extensions": [".pptx"]},
             ],
         },
         "indexing": {
@@ -45,6 +46,17 @@ def test_build_project_context_includes_document_types():
     assert "contrato (Contrato)" in ctx
     assert "parecer (Parecer)" in ctx
     assert "aliases: contrato, agreement, acordo" in ctx
+
+
+def test_build_project_context_inclui_extensoes_esperadas():
+    """A extensão é evidência estrutural: sem ela no briefing, o LLM já
+    classificou um .pptx como 'plano' (tipo que espera .pdf/.docx)."""
+    ctx = _build_project_context(_sample_profile())
+    assert "contrato (Contrato) — aliases: contrato, agreement, acordo — extensões esperadas: .pdf, .docx" in ctx
+    assert "apresentacao (Apresentação) — aliases: apresentacao — extensões esperadas: .pptx" in ctx
+    # tipo sem extensões declaradas não ganha o sufixo
+    assert "parecer (Parecer) — aliases: parecer, opiniao\n" in ctx or "parecer (Parecer) — aliases: parecer, opiniao" in ctx
+    assert "parecer (Parecer) — aliases: parecer, opiniao — extensões" not in ctx
 
 
 def test_build_project_context_includes_instructions():

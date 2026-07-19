@@ -65,14 +65,16 @@ describe("RejectedCard", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
-  it("Excluir exige confirmação e só então chama a API", async () => {
-    render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={() => {}} />);
+  it("Excluir exige confirmação, chama a API e notifica o Painel (badge excluído sem reload)", async () => {
+    const onChanged = vi.fn();
+    render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={onChanged} />);
     await screen.findByText("Rejeitados");
     fireEvent.click(screen.getByLabelText("Excluir contrato_ruim.pdf definitivamente"));
     expect(deleteRejectedTriage).not.toHaveBeenCalled();
     expect(screen.getByText(/apagado do disco/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Excluir" }));
     await waitFor(() => expect(deleteRejectedTriage).toHaveBeenCalledWith("p1", "abc123"));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
   it("recarrega quando o bus de refresh emite (reatividade sem reload)", async () => {
