@@ -564,6 +564,21 @@ export async function validateModel(
   return res.json();
 }
 
+/** Fase real da decisão de triagem em andamento (poll da Aura de Processamento). */
+export async function fetchDecisionStatus(): Promise<{
+  running: boolean;
+  phase: string;
+  doc_id: string | null;
+  project_id: string | null;
+  filename: string | null;
+  action: string | null;
+  started_at: string | null;
+}> {
+  const res = await apiFetch(`${API_URL}/api/triage/decision-status`);
+  if (!res.ok) throw new Error("Falha ao consultar status da decisão");
+  return res.json();
+}
+
 /** Checa se a key do provedor é válida (key transiente no header, nunca persistida). */
 export async function validateProviderKey(
   provider: "openai" | "anthropic",

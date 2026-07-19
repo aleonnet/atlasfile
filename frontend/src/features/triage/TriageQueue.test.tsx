@@ -1,7 +1,31 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { ProcessingProvider, useProcessing } from "../../contexts/ProcessingContext";
 import type { TriageItem } from "../../types";
 import { TriageQueue } from "./TriageQueue";
+
+vi.mock("../../api", () => ({
+  fetchDecisionStatus: vi.fn(() =>
+    Promise.resolve({
+      running: true,
+      phase: "extraindo_conteudo",
+      doc_id: "t1",
+      project_id: "p1",
+      filename: "documento_ambiguo.docx",
+      action: "approve",
+      started_at: null,
+    })
+  ),
+}));
+
+function StartApprove({ children }: { children: React.ReactNode }) {
+  const { start } = useProcessing();
+  useEffect(() => {
+    start({ docId: "t1", projectId: "p1", filename: "documento_ambiguo.docx", action: "approve" });
+  }, [start]);
+  return <>{children}</>;
+}
 
 const baseItem: TriageItem = {
   doc_id: "t1",
@@ -71,21 +95,22 @@ describe("TriageQueue", () => {
     expect(screen.getByRole("button", { name: /Aprovar/ })).toBeDisabled();
   });
 
-  it("mostra a aura de processamento honesta durante uma decisão longa", async () => {
-    let release: () => void = () => {};
-    const onDecision = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+  it("aura vem do contexto global com fase REAL do backend (sobrevive a remount)", async () => {
     render(
-      <TriageQueue
-        triageItems={[baseItem]}
-        projectLabelById={new Map([["p1", "Projeto 1"]])}
-        onDecision={onDecision}
-      />
+      <ProcessingProvider>
+        <StartApprove>
+          <TriageQueue
+            triageItems={[baseItem]}
+            projectLabelById={new Map([["p1", "Projeto 1"]])}
+            onDecision={vi.fn()}
+          />
+        </StartApprove>
+      </ProcessingProvider>
     );
-    fireEvent.click(screen.getByRole("button", { name: /Aprovar/ }));
-    await screen.findByText(/Aprovando — movendo, extraindo e indexando/);
-    release();
-    await waitFor(() =>
-      expect(screen.queryByText(/Aprovando — movendo, extraindo e indexando/)).not.toBeInTheDocument()
-    );
+    // fase inicial imediata; o poll traz a fase real do backend
+    await screen.findByText(/Aprovando — preparando/);
+    await screen.findByText(/Aprovando — extraindo conteúdo/, undefined, { timeout: 3000 });
+    // enquanto processa, TODOS os botões de decisão ficam bloqueados
+    expect(screen.getByRole("button", { name: /Rejeitar/ })).toBeDisabled();
   });
 });

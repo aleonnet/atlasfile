@@ -15,6 +15,18 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.31.0] -- 2026-07-19
+
+### Adicionado
+
+- **Processamento Focal** (evolução da Aura): decisões de triagem agora têm estado **global** (`ProcessingContext`) com **fases reais do backend** — novo `GET /api/triage/decision-status` reporta `movendo arquivo → extraindo conteúdo → indexando para busca → atualizando datasets` (poll 1s). O card em decisão fica focal com a aura; **todo o resto do Painel esmaece sob um scrim** (cliques bloqueados, cursor de espera — processar em série é a regra e agora é visível); ao **navegar para outra tela, um pill flutuante** (padrão Gmail) mantém o processo à vista com fase e clique-para-voltar; o **orb da sidebar pulsa** em `ingesting` durante a operação. O tempo decorrido usa o início real da operação — **sobrevive a navegação e remount**.
+
+### Corrigido
+
+- **Citações clicáveis no chat para imagens**: a lista de extensões dos chips (`DOC_EXTENSIONS`) não incluía imagens — `Fluxo instalação.png` citado pelo agente não virava pill clicável (PDFs funcionavam). Adicionados `png/jpg/jpeg/tif/tiff/bmp/webp/xml/html`.
+
+---
+
 ## [0.30.0] -- 2026-07-19
 
 ### Adicionado

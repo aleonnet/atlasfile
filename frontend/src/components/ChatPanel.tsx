@@ -827,7 +827,7 @@ function ChatMessageBubble({
   );
 }
 
-const DOC_EXTENSIONS = "pdf|docx?|xlsx?|xlsm|pptx?|msg|eml|csv|txt|md";
+const DOC_EXTENSIONS = "pdf|docx?|xlsx?|xlsm|pptx?|msg|eml|csv|txt|md|png|jpe?g|tiff?|bmp|webp|xml|html?";
 // 1º padrão: nome entre aspas/backticks (permite espaços); 2º: token sem espaços
 const QUOTED_DOC_RE = new RegExp(`[\`"“']([^\`"“”'\\n]{3,120}?\\.(?:${DOC_EXTENSIONS}))[\`"”']`, "gi");
 const BARE_DOC_RE = new RegExp(`(?:^|[\\s(])([^\\s\`"'()\\[\\]{},;]{3,120}?\\.(?:${DOC_EXTENSIONS}))(?=[\\s).,;:]|$)`, "gim");

@@ -6,18 +6,23 @@ export function MiniOrb({ className }: { className?: string }) {
   return <span aria-hidden className={cn("atlas-mini-orb inline-block size-3.5 shrink-0 rounded-full", className)} />;
 }
 
-function useElapsedSeconds(): number {
-  const [seconds, setSeconds] = useState(0);
+function useElapsedSeconds(startedAt?: number): number {
+  const compute = () => (startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0);
+  const [seconds, setSeconds] = useState(compute);
   useEffect(() => {
-    const timer = window.setInterval(() => setSeconds((v) => v + 1), 1000);
+    setSeconds(compute());
+    const timer = window.setInterval(() => setSeconds((v) => (startedAt ? compute() : v + 1)), 1000);
     return () => window.clearInterval(timer);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startedAt]);
   return seconds;
 }
 
 type Props = {
-  /** Rótulo honesto da ação em curso (ex.: "Aprovando — movendo, extraindo e indexando"). */
+  /** Rótulo honesto da ação em curso (ex.: "Aprovando — extraindo conteúdo"). */
   label: string;
+  /** Início da operação (epoch ms): o tempo decorrido sobrevive a remount/navegação. */
+  startedAt?: number;
   /** Variante compacta para linhas (rejeitados, modais). */
   compact?: boolean;
   className?: string;
@@ -28,8 +33,8 @@ type Props = {
  *  rótulo com varredura de gradiente e tempo decorrido REAL — nunca uma barra
  *  de progresso inventada. Renderizar condicionalmente dentro de um container
  *  com `relative isolate` (o halo fica atrás do fundo do próprio container). */
-export function ProcessingAura({ label, compact = false, className }: Props) {
-  const seconds = useElapsedSeconds();
+export function ProcessingAura({ label, startedAt, compact = false, className }: Props) {
+  const seconds = useElapsedSeconds(startedAt);
   return (
     <>
       <span aria-hidden className="atlas-aura pointer-events-none absolute -inset-[3px] -z-10 rounded-[inherit]" />

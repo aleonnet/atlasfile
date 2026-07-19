@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { cn } from "../../lib/utils";
 import { ProcessingAura } from "../../components/ui/processing-aura";
+import { formatDecisionAction, formatDecisionPhase, useProcessing } from "../../contexts/ProcessingContext";
 import type { TriageItem } from "../../types";
 
 type Props = {
@@ -27,18 +28,16 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
   const reducedMotion = useReducedMotion();
   // Trava de duplo clique: uma decisão em voo por item — o backend também tem
   // claim atômico (409), mas a UI nem deve deixar a segunda requisição sair.
+  const { active: processingOp, phase: processingPhase } = useProcessing();
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<"approve" | "correct" | "reject" | null>(null);
 
   async function decide(item: TriageItem, action: "approve" | "correct" | "reject") {
     if (busyDocId) return;
     setBusyDocId(item.doc_id);
-    setBusyAction(action);
     try {
       await onDecision(item, action);
     } finally {
       setBusyDocId(null);
-      setBusyAction(null);
     }
   }
 
@@ -81,7 +80,10 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                 initial={reducedMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.03, 0.3) }}
-                className="relative isolate rounded-lg border border-border bg-card p-4 shadow-[inset_2px_0_0_var(--accent)] transition-[border-color] hover:border-border-strong"
+                className={cn(
+                  "relative isolate rounded-lg border border-border bg-card p-4 shadow-[inset_2px_0_0_var(--accent)] transition-[border-color] hover:border-border-strong",
+                  processingOp?.docId === item.doc_id && "z-40"
+                )}
               >
                 <p className="font-display text-sm font-semibold text-foreground-strong">{item.filename}</p>
                 <p className="mt-0.5 font-mono text-[0.7rem] text-tertiary">
@@ -131,34 +133,29 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                   </div>
                 )}
 
-                <div className={cn("mt-3 flex gap-2", busyDocId === item.doc_id && "opacity-50")}>
+                <div className={cn("mt-3 flex gap-2", (busyDocId !== null || processingOp !== null) && "opacity-50")}>
                   <Button
                     size="sm"
-                    disabled={!suggestedBusinessDomain || busyDocId === item.doc_id}
+                    disabled={!suggestedBusinessDomain || (busyDocId !== null || processingOp !== null)}
                     title={!suggestedBusinessDomain ? "Sem sugestão de domínio" : undefined}
                     onClick={() => void decide(item, "approve")}
                   >
                     <Check />
                     Aprovar
                   </Button>
-                  <Button size="sm" variant="secondary" disabled={busyDocId === item.doc_id} onClick={() => void decide(item, "correct")}>
+                  <Button size="sm" variant="secondary" disabled={(busyDocId !== null || processingOp !== null)} onClick={() => void decide(item, "correct")}>
                     <Pencil />
                     Corrigir
                   </Button>
-                  <Button size="sm" variant="destructive" disabled={busyDocId === item.doc_id} onClick={() => void decide(item, "reject")}>
+                  <Button size="sm" variant="destructive" disabled={(busyDocId !== null || processingOp !== null)} onClick={() => void decide(item, "reject")}>
                     <X />
                     Rejeitar
                   </Button>
                 </div>
-                {busyDocId === item.doc_id && busyAction && (
+                {processingOp?.docId === item.doc_id && (
                   <ProcessingAura
-                    label={
-                      busyAction === "approve"
-                        ? "Aprovando — movendo, extraindo e indexando"
-                        : busyAction === "reject"
-                          ? "Rejeitando — movendo para rejeitados"
-                          : "Abrindo correção"
-                    }
+                    startedAt={processingOp.startedAt}
+                    label={`${formatDecisionAction(processingOp.action)} — ${formatDecisionPhase(processingPhase)}`}
                   />
                 )}
               </motion.li>

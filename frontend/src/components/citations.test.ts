@@ -21,4 +21,15 @@ describe("extractCitations", () => {
   it("ignora texto sem documentos", () => {
     expect(extractCitations("nenhum arquivo citado aqui, só texto. www.site.com")).toEqual([]);
   });
+
+  it("imagens (OCR) viram pílula — o caso real 'Fluxo instalação.png' com acento e espaço", () => {
+    // resposta real do agente: nome entre crases (formato instruído no prompt)
+    const text = "Você pode abrir o arquivo clicando em: `Fluxo instalação.png` (doc_id 61834d0e)";
+    expect(extractCitations(text)).toEqual(["Fluxo instalação.png"]);
+  });
+
+  it("demais extensões novas: jpg, webp, xml e sem-espaço fora de crases", () => {
+    const text = "Veja foto_predio.jpg e `nota fiscal 42.xml`; também logo.webp no anexo.";
+    expect(extractCitations(text)).toEqual(["nota fiscal 42.xml", "foto_predio.jpg", "logo.webp"]);
+  });
 });

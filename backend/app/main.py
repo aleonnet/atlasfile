@@ -3154,6 +3154,30 @@ def _ingested_date_token(ingested_at: Any, date_format: str) -> str | None:
         return None
 
 
+# Fases reais da decisão de triagem em andamento (uma por vez, claim atômico
+# garante). A UI consome via GET /api/triage/decision-status para mostrar a
+# etapa verdadeira (mover, extrair, indexar...) em vez de rótulo genérico.
+_decision_status: dict[str, Any] = {
+    "running": False,
+    "phase": "idle",
+    "doc_id": None,
+    "project_id": None,
+    "filename": None,
+    "action": None,
+    "started_at": None,
+}
+
+
+def _set_decision_phase(phase: str) -> None:
+    if _decision_status.get("running"):
+        _decision_status["phase"] = phase
+
+
+@app.get("/api/triage/decision-status")
+def get_triage_decision_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    return dict(_decision_status)
+
+
 def _relocate_document(
     *,
     project_root: Path,
@@ -3217,14 +3241,17 @@ def _relocate_document(
     dest_dir = project_root / classification_path
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest_path = dest_dir / canonical_filename
+    _set_decision_phase("movendo_arquivo")
     shutil.move(str(source_path), str(dest_path))
 
+    _set_decision_phase("extraindo_conteudo")
+    extracted_content = read_text_excerpt(dest_path)
     indexed_payload: dict[str, Any] = {
         "doc_id": doc_id,
         "project_id": project_id,
         "business_domain": target_business_domain,
         "title": source_path.stem,
-        "content": read_text_excerpt(dest_path),
+        "content": extracted_content,
         "original_filename": original_filename,
         "canonical_filename": canonical_filename,
         "path": str(dest_path),
@@ -3242,12 +3269,14 @@ def _relocate_document(
         "entities": (extra_metadata or {}).get("entities", []),
         "naming_pattern": canonical_pattern,
     }
+    _set_decision_phase("indexando")
     index_document(os_client, indexed_payload, profile=profile)
     _append_index_md(project_root, indexed_payload)
 
     if dataset_routing:
         # Datasets do classificador: decisão humana roteia treino OU validação
         # (hold-out determinístico + regra semente + warm-up — ver dataset_holdout.py)
+        _set_decision_phase("atualizando_datasets")
         dataset_result = route_labeled_document(
             source_path=dest_path,
             doc_id=doc_id,
@@ -3368,6 +3397,20 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest, 
             raise HTTPException(status_code=409, detail="Este documento já foi decidido")
         raise HTTPException(status_code=404, detail=f"Triage item nao encontrado: {doc_id}")
 
+    _decision_status.update({
+        "running": True,
+        "phase": "preparando",
+        "doc_id": doc_id,
+        "project_id": project_id,
+        "filename": None,
+        "action": request.action,
+        "started_at": utc_now_iso(),
+    })
+    try:
+        meta_preview = json.loads(pending_meta.read_text(encoding="utf-8"))
+        _decision_status["filename"] = str(meta_preview.get("original_filename") or "")
+    except Exception:
+        pass
     try:
         return _process_claimed_triage_decision(
             project_root=project_root,
@@ -3385,6 +3428,8 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest, 
             except OSError:
                 pass
         raise
+    finally:
+        _decision_status.update({"running": False, "phase": "idle"})
 
 
 def _process_claimed_triage_decision(
@@ -3413,6 +3458,7 @@ def _process_claimed_triage_decision(
         raise HTTPException(status_code=400, detail="Acao invalida. Use approve, correct ou reject.")
 
     if action == "reject":
+        _set_decision_phase("movendo_arquivo")
         rejected_dir = triage_rejected_dir(project_root)
         original_filename = str(data.get("original_filename") or source_path.name)
         original_path = Path(original_filename)

@@ -19,10 +19,12 @@ import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { fieldLabelClass, ModalActions, ModalShell } from "./components/ui/modal-shell";
 import { Toaster, toast } from "./components/ui/sonner";
+import { MiniOrb } from "./components/ui/processing-aura";
 import { emitDataRefresh, onDataRefresh } from "./lib/refreshBus";
 import { NavigationProvider, useNavigation } from "./contexts/NavigationContext";
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
+import { formatDecisionAction, formatDecisionPhase, ProcessingProvider, useProcessing } from "./contexts/ProcessingContext";
 import { useChatSession } from "./hooks/useChatSession";
 import { useSearch } from "./hooks/useSearch";
 import { CommandPalette } from "./layouts/CommandPalette";
@@ -80,6 +82,7 @@ function AppShell() {
     refreshProjects,
   } = useProject();
 
+  const processing = useProcessing();
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
   const [status, setStatus] = useState("Pronto");
 
@@ -495,6 +498,7 @@ function AppShell() {
     setCorrectSubmitting(false);
     setTriageItems((prev) => prev.filter((i) => i.doc_id !== item.doc_id));
     setStatus("Registrando correcao em segundo plano...");
+    processing.start({ docId: item.doc_id, projectId: item.project_id, filename: item.filename, action: "correct" });
     triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
       .then(() => {
         emitDataRefresh();
@@ -503,7 +507,8 @@ function AppShell() {
       .catch(() => {
         setStatus("Falha ao registrar correção");
         void loadTriage();
-      });
+      })
+      .finally(() => processing.finish());
   }
 
   /** Fonte única de reatividade: TODA mutação emite no bus; o App assina o
@@ -529,6 +534,7 @@ function AppShell() {
       await openCorrectModal(item);
       return;
     }
+    processing.start({ docId: item.doc_id, projectId: item.project_id, filename: item.filename, action });
     try {
       await triageDecision(item.project_id, item.doc_id, action);
       emitDataRefresh();
@@ -539,6 +545,8 @@ function AppShell() {
       }
     } catch {
       setStatus("Falha ao registrar decisao");
+    } finally {
+      processing.finish();
     }
   }
 
@@ -697,6 +705,21 @@ function AppShell() {
         />
       )}
 
+      {processing.active && view !== "painel" && (
+        <button
+          type="button"
+          onClick={() => setView("painel")}
+          title="Voltar ao Painel"
+          className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-full border border-border bg-panel py-2 pl-3 pr-4 font-mono text-[0.75rem] text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition-transform hover:scale-[1.03]"
+        >
+          <MiniOrb />
+          <span className="max-w-56 truncate">
+            {formatDecisionAction(processing.active.action)} {processing.active.filename}
+          </span>
+          <span className="atlas-thinking-text">{formatDecisionPhase(processing.phase)}…</span>
+        </button>
+      )}
+
       <GlobalDropPortal onScanComplete={handleDataChanged} />
 
       <CommandPalette
@@ -815,8 +838,10 @@ function App() {
     <SettingsProvider>
         <ProjectProvider>
           <NavigationProvider>
+            <ProcessingProvider>
             <AppShell />
             <Toaster />
+            </ProcessingProvider>
         </NavigationProvider>
       </ProjectProvider>
     </SettingsProvider>

@@ -20,6 +20,7 @@ import { TriageQueue } from "../features/triage/TriageQueue";
 import { buildEvidenceGroups, topLocations } from "../features/search/searchFormatters";
 import { cn } from "../lib/utils";
 import { emitDataRefresh } from "../lib/refreshBus";
+import { useProcessing } from "../contexts/ProcessingContext";
 import type {
   Project,
   ProjectArea,
@@ -277,6 +278,7 @@ export function PainelView({
   onSearchFiltersChange,
   onClearSearch,
 }: Props) {
+  const { active: processingOp } = useProcessing();
   const [moveHit, setMoveHit] = useState<SearchHit | null>(null);
   const [moveSubmitting, setMoveSubmitting] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
@@ -336,7 +338,16 @@ export function PainelView({
   }
 
   return (
-    <>
+    <div className="relative">
+      {/* Scrim de processamento: decisão em série é a regra — o resto do Painel
+          esmaece e bloqueia cliques; o card focal (z-40) fica acima, vivo */}
+      {processingOp && (
+        <div
+          aria-hidden
+          className="absolute inset-0 z-30 cursor-wait rounded-lg bg-background/55 backdrop-blur-[1px]"
+          onClick={(e) => e.stopPropagation()}
+        />
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Painel</CardTitle>
@@ -602,6 +613,6 @@ export function PainelView({
           onConfirm={handleMoveConfirm}
         />
       )}
-    </>
+    </div>
   );
 }

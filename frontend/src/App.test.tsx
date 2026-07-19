@@ -100,6 +100,7 @@ vi.mock("./api", () => ({
   triggerScan: vi.fn(() => Promise.resolve({ project_id: "p1", processed_count: 0, failed_count: 0, items: [], errors: [] })),
   fetchIngestHistory: vi.fn(() => Promise.resolve({ project_id: "p1", entries: [] })),
   fetchRejectedTriage: vi.fn(() => Promise.resolve([])),
+  fetchDecisionStatus: vi.fn(() => Promise.resolve({ running: false, phase: "idle", doc_id: null, project_id: null, filename: null, action: null, started_at: null })),
   restoreRejectedTriage: vi.fn(() => Promise.resolve({ status: "restored" })),
   deleteRejectedTriage: vi.fn(() => Promise.resolve({ status: "deleted" })),
   fetchDatasetReadiness: vi.fn(() => Promise.resolve({ cycle_ready: true, splits_available: false, validation: { labeled: 3, unlabeled: 0 }, training: { records: 12, business_domain_classes: {}, document_type_classes: {} }, supervised_gate: { eligible: false, reasons: [], warnings: [] }, holdout: { enabled: true, modulus: 5, min_train_per_class: 3 }, blockers: [], suggestions: [] })),
