@@ -70,4 +70,22 @@ describe("TriageQueue", () => {
     );
     expect(screen.getByRole("button", { name: /Aprovar/ })).toBeDisabled();
   });
+
+  it("mostra a aura de processamento honesta durante uma decisão longa", async () => {
+    let release: () => void = () => {};
+    const onDecision = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+    render(
+      <TriageQueue
+        triageItems={[baseItem]}
+        projectLabelById={new Map([["p1", "Projeto 1"]])}
+        onDecision={onDecision}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Aprovar/ }));
+    await screen.findByText(/Aprovando — movendo, extraindo e indexando/);
+    release();
+    await waitFor(() =>
+      expect(screen.queryByText(/Aprovando — movendo, extraindo e indexando/)).not.toBeInTheDocument()
+    );
+  });
 });

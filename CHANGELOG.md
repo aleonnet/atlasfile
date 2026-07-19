@@ -15,6 +15,19 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.30.0] -- 2026-07-19
+
+### Adicionado
+
+- **Aura de Processamento** (`ProcessingAura` + `MiniOrb`): feedback vivo e honesto para operações longas — halo conic-gradient da marca girando ao redor do card (mesma arte do compose do chat), mini-orb pulsante, rótulo da ação com varredura de gradiente e **tempo decorrido real** (nunca uma barra de progresso inventada). Respeita `prefers-reduced-motion`.
+- **Aplicada em**: decisões de triagem ("Aprovando — movendo, extraindo e indexando" / "Rejeitando…"), restaurar/excluir rejeitados, aprovar com correção, mover documento e aplicar layout do profile. Scan da INBOX e ciclo do classificador (que já têm progresso real) ganharam o mini-orb para consistência visual.
+
+### Mudado
+
+- **Benchmark: "previsto" → "classificado"** no detalhe expansível (esperado = seu rótulo; classificado = a resposta do classificador).
+
+---
+
 ## [0.29.1] -- 2026-07-19
 
 ### Corrigido

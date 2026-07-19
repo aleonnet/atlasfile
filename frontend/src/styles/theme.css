@@ -162,6 +162,24 @@
   }
 }
 
+/* Mini-orb pulsante (aura de processamento de operações longas) */
+.atlas-mini-orb {
+  background: radial-gradient(circle at 35% 35%, var(--accent-light), var(--accent) 55%, var(--accent-purple));
+  box-shadow: 0 0 10px var(--accent-soft);
+  animation: atlas-orb-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes atlas-orb-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.82); opacity: 0.75; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-mini-orb {
+    animation: none;
+  }
+}
+
 /* "Pensando..." com varredura de gradiente (shimmer de texto, Apple-like) */
 .atlas-thinking-text {
   background: linear-gradient(

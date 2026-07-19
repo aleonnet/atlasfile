@@ -1,4 +1,5 @@
 import { Button } from "../../components/ui/button";
+import { MiniOrb } from "../../components/ui/processing-aura";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import type { ProjectArea, ProjectDocumentType, TriageItem } from "../../types";
@@ -144,7 +145,7 @@ export function CorrectDecisionModal({
           Cancelar
         </Button>
         <Button disabled={submitting || !businessDomainValue || !documentTypeValue} onClick={handleSubmit}>
-          {submitting ? "Aprovando..." : "Aprovar e mover"}
+          {submitting ? <><MiniOrb className="size-3" /> Aprovando — movendo e indexando…</> : "Aprovar e mover"}
         </Button>
       </ModalActions>
     </ModalShell>

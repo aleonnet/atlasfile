@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { MiniOrb } from "./ui/processing-aura";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { Button } from "./ui/button";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "./ui/modal-shell";
@@ -102,7 +103,7 @@ export function MoveDocumentModal({
           Cancelar
         </Button>
         <Button disabled={submitting || !changed || !bdValue || !dtValue} onClick={() => onConfirm(bdValue, dtValue)}>
-          {submitting ? "Movendo..." : "Confirmar"}
+          {submitting ? <><MiniOrb className="size-3" /> Movendo…</> : "Confirmar"}
         </Button>
       </ModalActions>
     </ModalShell>

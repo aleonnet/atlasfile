@@ -2,6 +2,7 @@ import { RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { deleteRejectedTriage, fetchRejectedTriage, restoreRejectedTriage, type RejectedTriageItem } from "../../api";
 import { onDataRefresh } from "../../lib/refreshBus";
+import { ProcessingAura } from "../../components/ui/processing-aura";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { CollapsibleSection, rowDeleteButtonClass } from "../../components/ui/collapsible-section";
@@ -28,6 +29,7 @@ function formatWhen(iso: string): string {
 export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
   const [items, setItems] = useState<RejectedTriageItem[]>([]);
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"restore" | "delete" | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -51,6 +53,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
 
   async function handleRestore(item: RejectedTriageItem) {
     setBusyDocId(item.doc_id);
+    setBusyAction("restore");
     try {
       await restoreRejectedTriage(projectId, item.doc_id);
       onStatus(`"${item.original_filename}" devolvido à fila de triagem`);
@@ -60,12 +63,14 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
       onStatus(e instanceof Error ? e.message : "Falha ao restaurar");
     } finally {
       setBusyDocId(null);
+      setBusyAction(null);
     }
   }
 
   async function handleDelete(item: RejectedTriageItem) {
     setConfirmDeleteId(null);
     setBusyDocId(item.doc_id);
+    setBusyAction("delete");
     try {
       await deleteRejectedTriage(projectId, item.doc_id);
       onStatus(`"${item.original_filename}" excluído definitivamente`);
@@ -76,6 +81,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
       onStatus(e instanceof Error ? e.message : "Falha ao excluir");
     } finally {
       setBusyDocId(null);
+      setBusyAction(null);
     }
   }
 
@@ -93,7 +99,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
               return (
                 <li
                   key={item.doc_id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-elevated px-3 py-2"
+                  className="relative isolate flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-elevated px-3 py-2"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground" title={item.original_filename}>
                     {item.original_filename}
@@ -139,6 +145,13 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
                       </div>
                     )}
                   </div>
+                  {busyDocId === item.doc_id && (
+                    <ProcessingAura
+                      compact
+                      className="w-full"
+                      label={busyAction === "restore" ? "Restaurando — devolvendo à fila de triagem" : "Excluindo — apagando arquivo e registro"}
+                    />
+                  )}
                 </li>
               );
             })}

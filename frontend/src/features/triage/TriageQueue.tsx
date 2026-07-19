@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
+import { cn } from "../../lib/utils";
+import { ProcessingAura } from "../../components/ui/processing-aura";
 import type { TriageItem } from "../../types";
 
 type Props = {
@@ -26,14 +28,17 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
   // Trava de duplo clique: uma decisão em voo por item — o backend também tem
   // claim atômico (409), mas a UI nem deve deixar a segunda requisição sair.
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"approve" | "correct" | "reject" | null>(null);
 
   async function decide(item: TriageItem, action: "approve" | "correct" | "reject") {
     if (busyDocId) return;
     setBusyDocId(item.doc_id);
+    setBusyAction(action);
     try {
       await onDecision(item, action);
     } finally {
       setBusyDocId(null);
+      setBusyAction(null);
     }
   }
 
@@ -76,7 +81,7 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                 initial={reducedMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.03, 0.3) }}
-                className="rounded-lg border border-border bg-card p-4 shadow-[inset_2px_0_0_var(--accent)] transition-[border-color] hover:border-border-strong"
+                className="relative isolate rounded-lg border border-border bg-card p-4 shadow-[inset_2px_0_0_var(--accent)] transition-[border-color] hover:border-border-strong"
               >
                 <p className="font-display text-sm font-semibold text-foreground-strong">{item.filename}</p>
                 <p className="mt-0.5 font-mono text-[0.7rem] text-tertiary">
@@ -126,7 +131,7 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                   </div>
                 )}
 
-                <div className="mt-3 flex gap-2">
+                <div className={cn("mt-3 flex gap-2", busyDocId === item.doc_id && "opacity-50")}>
                   <Button
                     size="sm"
                     disabled={!suggestedBusinessDomain || busyDocId === item.doc_id}
@@ -145,6 +150,17 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                     Rejeitar
                   </Button>
                 </div>
+                {busyDocId === item.doc_id && busyAction && (
+                  <ProcessingAura
+                    label={
+                      busyAction === "approve"
+                        ? "Aprovando — movendo, extraindo e indexando"
+                        : busyAction === "reject"
+                          ? "Rejeitando — movendo para rejeitados"
+                          : "Abrindo correção"
+                    }
+                  />
+                )}
               </motion.li>
             );
           })}

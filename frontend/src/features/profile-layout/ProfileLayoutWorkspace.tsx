@@ -12,6 +12,7 @@ import { fieldLabelClass, ModalActions, ModalShell } from "../../components/ui/m
 import { Skeleton } from "../../components/ui/skeleton";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { emitDataRefresh } from "../../lib/refreshBus";
+import { ProcessingAura } from "../../components/ui/processing-aura";
 import { applyLayout, getProfile, getProfileHistory, planLayout, saveProfile, validateProfile } from "./api";
 import { LayoutPlanPreview } from "./LayoutPlanPreview";
 import { ProfileLayoutEditor } from "./ProfileLayoutEditor";
@@ -47,6 +48,7 @@ function comparableProfile(profile: ProjectProfileV2): Record<string, unknown> {
 export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [profile, setProfile] = useState<ProjectProfileV2 | null>(null);
   const [draft, setDraft] = useState<ProjectProfileV2 | null>(null);
   const [history, setHistory] = useState<ProfileHistoryEntry[]>([]);
@@ -161,6 +163,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
   async function handleApply() {
     if (!draft || !profile || !plan) return;
     setSaving(true);
+    setApplying(true);
     try {
       await applyLayout(projectRef, draft, plan.plan_id, profile.version, {
         strategy: conflictStrategy,
@@ -174,6 +177,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       setError("Aplicação de layout falhou.");
     } finally {
       setSaving(false);
+      setApplying(false);
     }
   }
 
@@ -318,7 +322,8 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       <LayoutPlanPreview plan={plan} />
 
       {plan && (
-        <div className="space-y-2.5">
+        <div className="relative isolate space-y-2.5 rounded-lg">
+          {applying && <ProcessingAura label="Aplicando layout — movendo pastas e atualizando o profile" />}
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => void handleApply()} disabled={!applyConfirmed || loading || saving}>
               Aplicar migração

@@ -1,4 +1,5 @@
 import { RefreshCw } from "lucide-react";
+import { MiniOrb } from "../../components/ui/processing-aura";
 import { useState } from "react";
 import { triggerScan } from "../../api";
 import { Button } from "../../components/ui/button";
@@ -88,7 +89,10 @@ export function InboxScanCard({ selectedProject, projects, onStatus, onScanCompl
 
       {isRunning && (
         <div className="min-w-44 space-y-1">
-          <p className="font-display text-xs font-semibold text-foreground-strong">{formatPhaseLabel(ingestStatus?.phase) || "Iniciando..."}</p>
+          <p className="flex items-center gap-1.5 font-display text-xs font-semibold text-foreground-strong">
+            <MiniOrb className="size-2.5" />
+            {formatPhaseLabel(ingestStatus?.phase) || "Iniciando..."}
+          </p>
           <div className="h-1 overflow-hidden rounded-full bg-panel-strong">
             <div
               className="h-full rounded-full bg-gradient-to-r from-accent to-accent-light shadow-[0_0_8px_var(--accent-soft)] transition-[width] duration-300"

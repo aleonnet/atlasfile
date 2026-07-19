@@ -37,6 +37,7 @@ import { EmptyState } from "../../components/ui/empty-state";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/utils";
 import { emitDataRefresh } from "../../lib/refreshBus";
+import { MiniOrb } from "../../components/ui/processing-aura";
 
 /* Bloco de progresso de operação (ingest / ciclo do classificador) */
 const opProgressClass = "mb-2.5 flex flex-col gap-1 rounded-md border border-border bg-elevated px-3 py-2.5";
@@ -641,6 +642,7 @@ export function IngestTriageCard({
             {classifierCycleStatus && (classifierCycleStatus.running || classifierCycleStatus.phase === "failed" || classifierCycleStatus.phase === "cancelled") && (
               <div className={opProgressClass}>
                 <p className={cn(opPhaseClass, classifierCycleStatus.phase === "failed" && "text-destructive", classifierCycleStatus.phase === "cancelled" && "text-accent")}>
+                  {classifierCycleStatus.running && <MiniOrb className="mr-1.5 size-2.5" />}
                   {cancellingCycle && classifierCycleStatus.running ? "Aguardando cancelamento..." : formatPhaseLabel(classifierCycleStatus.phase)}
                 </p>
                 {classifierCycleStatus.running && (
@@ -735,7 +737,7 @@ export function IngestTriageCard({
                                         <p className="m-0 truncate text-foreground/90" title={r.file}>{r.file}</p>
                                         <p className="m-0">
                                           esperado: <code>{r.expected_business_domain} / {r.expected_document_type}</code>
-                                          {"   "}previsto: <code>{r.predicted_business_domain} / {r.predicted_document_type}</code>
+                                          {"   "}classificado: <code>{r.predicted_business_domain} / {r.predicted_document_type}</code>
                                           {"   "}
                                           <span className={r.business_domain_ok ? "text-success" : "text-destructive"}>
                                             {r.business_domain_ok ? "✓" : "✗"} domínio
