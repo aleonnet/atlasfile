@@ -17,7 +17,7 @@ _Contexto: v0.33.0 entregou UI PT-BR/EN-US completa e classificação bilíngue 
 
 | Item | O que é | Estado |
 |---|---|---|
-| Shader blackhole (geodésicas de Schwarzschild, MIT — [s13k.dev/blackhole](https://s13k.dev/blackhole/)) como elemento vivo da UI | Candidatos mapeados: (a) indicador de contexto do chat — buraco negro cresce com o % de contexto da sessão (análogo direto do MODE_TOKENS; o dado já existe na UI); (b) fundo do AuthGate/onboarding (backdrop lenteado, não o DOM); (c) estado especial do Orb durante ciclo do classificador. Porte: componente WebGL2 próprio (`BlackholeGL`) adaptando o fragment Shadertoy-style, com gating de `prefers-reduced-motion` e custo de GPU limitado pelo tamanho do canvas | Em avaliação — exige plano próprio com mockups |
+| Shader blackhole (geodésicas de Schwarzschild, MIT — [s13k.dev/blackhole](https://s13k.dev/blackhole/)) como elemento vivo da UI | Candidatos aprovados em conceito pelo usuário (2026-07-19): (a) indicador de contexto do chat — buraco negro cresce com o % de contexto da sessão (análogo do MODE_TOKENS; o dado já existe na UI). **Restrição de design do usuário: não pode ficar muito pequeno** — presença visual desde o início (semente já legível, análogo ao TOKEN_AREA_MIN do shader), não um ícone tímido; (b) fundo do AuthGate/onboarding (backdrop lenteado, não o DOM); (c) estado especial do Orb durante ciclo do classificador. Porte: componente WebGL2 próprio (`BlackholeGL`) adaptando o fragment Shadertoy-style, com gating de `prefers-reduced-motion` e custo de GPU limitado pelo tamanho do canvas | Em avaliação — exige plano próprio com mockups |
 
 ## Como usar este arquivo
 
