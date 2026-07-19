@@ -5,11 +5,11 @@
   },
   "welcome": {
     "title": "Bem-vindo ao AtlasFile",
-    "subtitle": "Sistema de gestao documental inteligente para projetos.",
-    "filesLocationLabel": "Seus arquivos ficarao em",
-    "filesLocationInfo": "Pasta escolhida na instalacao. Para alterar, edite PROJECTS_HOST_ROOT no .env e reinicie os containers.",
-    "filesLocationHint": "Escolhida na instalacao. Para alterar, edite <code>.env</code> e reinicie os containers.",
-    "start": "Comecar"
+    "subtitle": "Sistema de gestão documental inteligente para projetos.",
+    "filesLocationLabel": "Seus arquivos ficarão em",
+    "filesLocationInfo": "Pasta escolhida na instalação. Para alterar, edite PROJECTS_HOST_ROOT no .env e reinicie os containers.",
+    "filesLocationHint": "Escolhida na instalação. Para alterar, edite <code>.env</code> e reinicie os containers.",
+    "start": "Começar"
   },
   "projects": {
     "replayTitle": "Seus projetos",

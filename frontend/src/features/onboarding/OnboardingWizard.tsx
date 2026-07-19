@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { fetchProjectProfile, fetchProjects, fetchSetupStatus, initializeProject, listTemplates, updateProjectProfile, validateProviderKey } from "../../api";
 import { AuroraField } from "../../components/AuroraField";
+import { BlackholeGL } from "../../components/BlackholeGL/BlackholeGL";
 import { LanguageQuickSwitch } from "../../components/LanguageQuickSwitch";
 import { Orb } from "../../components/OrbGL";
 import { Wordmark } from "../../components/Wordmark";
@@ -198,6 +199,9 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-6 text-foreground">
       {/* Aurora viva no fundo do hero: blobs da marca seguem o mouse com mola */}
       <AuroraField className="pointer-events-none absolute inset-0 size-full" />
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <BlackholeGL variant="backdrop" intensity={0.55} starGain={0.5} />
+      </div>
       <div className="relative w-full max-w-lg rounded-xl border border-border-subtle bg-panel p-8 shadow-[0_12px_28px_rgba(0,0,0,0.35)] [animation:atlas-slide-in_250ms_var(--ease-out)] motion-reduce:animate-none">
         {step !== "done" && (
           <button

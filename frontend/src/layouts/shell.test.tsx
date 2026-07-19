@@ -9,6 +9,7 @@ import { CommandPalette } from "./CommandPalette";
 import { Sidebar } from "./Sidebar";
 
 vi.mock("../api", () => ({
+  fetchClassifierCycleStatus: vi.fn(() => Promise.resolve({ running: false })),
   fetchProjects: vi.fn(() =>
     Promise.resolve([
       { project_id: "p1", project_label: "Projeto 1", root: "/p1", initialized: true },

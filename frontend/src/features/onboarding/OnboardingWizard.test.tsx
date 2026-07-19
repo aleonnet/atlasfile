@@ -59,7 +59,7 @@ describe("OnboardingWizard", () => {
     await waitFor(() => {
       expect(screen.getByText(/Bem-vindo ao AtlasFile/)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Comecar/)).toBeInTheDocument();
+    expect(screen.getByText(/Começar/)).toBeInTheDocument();
   });
 
   it("shows the physical host path (not the container mount) from setup status", async () => {
@@ -73,9 +73,9 @@ describe("OnboardingWizard", () => {
   it("navigates to create project step", async () => {
     render(<OnboardingWizard {...defaultProps()} />);
     await waitFor(() => {
-      expect(screen.getByText(/Comecar/)).toBeInTheDocument();
+      expect(screen.getByText(/Começar/)).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText(/Comecar/));
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => {
       expect(screen.getByText(/Crie seu primeiro projeto/)).toBeInTheDocument();
     });
@@ -83,8 +83,8 @@ describe("OnboardingWizard", () => {
 
   it("back button returns to previous step", async () => {
     render(<OnboardingWizard {...defaultProps()} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByText(/Crie seu primeiro projeto/)).toBeInTheDocument());
 
     fireEvent.click(screen.getByText(/Voltar/));
@@ -95,8 +95,8 @@ describe("OnboardingWizard", () => {
 
   it("validates project name (empty)", async () => {
     render(<OnboardingWizard {...defaultProps()} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByText(/Criar e Continuar/)).toBeInTheDocument());
 
     fireEvent.click(screen.getByText(/Criar e Continuar/));
@@ -107,8 +107,8 @@ describe("OnboardingWizard", () => {
 
   it("validates project name (invalid slug)", async () => {
     render(<OnboardingWizard {...defaultProps()} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "Meu Projeto" } });
@@ -121,8 +121,8 @@ describe("OnboardingWizard", () => {
   it("calls initializeProject on valid submit", async () => {
     const { initializeProject } = await import("../../api");
     render(<OnboardingWizard {...defaultProps()} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "meu_projeto" } });
@@ -137,8 +137,8 @@ describe("OnboardingWizard", () => {
     vi.mocked(initializeProject).mockRejectedValueOnce(new Error("API error"));
 
     render(<OnboardingWizard {...defaultProps()} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "test_proj" } });
@@ -150,8 +150,8 @@ describe("OnboardingWizard", () => {
 
   it("navigates to LLM step after project creation", async () => {
     render(<OnboardingWizard {...defaultProps()} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "my_proj" } });
@@ -164,8 +164,8 @@ describe("OnboardingWizard", () => {
   it("skip LLM completes onboarding", async () => {
     const onComplete = vi.fn();
     render(<OnboardingWizard {...defaultProps({ onComplete })} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "proj1" } });
@@ -183,8 +183,8 @@ describe("OnboardingWizard", () => {
     const onChangeOpenAiKey = vi.fn();
     const onComplete = vi.fn();
     render(<OnboardingWizard {...defaultProps({ onComplete, onChangeOpenAiKey })} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "proj2" } });
@@ -201,8 +201,8 @@ describe("OnboardingWizard", () => {
   it("valida a key sem bloquear e ativa LLM tag_only no projeto quando válida", async () => {
     const api = await import("../../api");
     render(<OnboardingWizard {...defaultProps()} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "proj_teste" } });
     fireEvent.click(screen.getByText(/Criar e Continuar/));
@@ -228,8 +228,8 @@ describe("OnboardingWizard", () => {
     const api = await import("../../api");
     vi.mocked(api.validateProviderKey).mockResolvedValue({ valid: false, detail: "Chave OpenAI inválida" });
     render(<OnboardingWizard {...defaultProps()} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "proj_teste" } });
     fireEvent.click(screen.getByText(/Criar e Continuar/));
@@ -244,8 +244,8 @@ describe("OnboardingWizard", () => {
     const api = await import("../../api");
     vi.mocked(api.validateProviderKey).mockResolvedValue({ valid: false, detail: "Chave OpenAI inválida" });
     render(<OnboardingWizard {...defaultProps()} />);
-    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Começar/));
     await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "proj_teste" } });
     fireEvent.click(screen.getByText(/Criar e Continuar/));
@@ -277,8 +277,8 @@ describe("OnboardingWizard", () => {
 
     it("shows existing projects on replay", async () => {
       render(<OnboardingWizard {...defaultProps()} />);
-      await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-      fireEvent.click(screen.getByText(/Comecar/));
+      await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+      fireEvent.click(screen.getByText(/Começar/));
       await waitFor(() => {
         expect(screen.getByText(/Seus projetos/)).toBeInTheDocument();
         expect(screen.getByText(/My Existing/)).toBeInTheDocument();
@@ -288,8 +288,8 @@ describe("OnboardingWizard", () => {
     it("continue without creating project on replay", async () => {
       const { initializeProject } = await import("../../api");
       render(<OnboardingWizard {...defaultProps()} />);
-      await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-      fireEvent.click(screen.getByText(/Comecar/));
+      await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+      fireEvent.click(screen.getByText(/Começar/));
       await waitFor(() => expect(screen.getByText(/Seus projetos/)).toBeInTheDocument());
 
       fireEvent.click(screen.getByText(/Continuar/));
@@ -299,8 +299,8 @@ describe("OnboardingWizard", () => {
 
     it("expands create form on replay", async () => {
       render(<OnboardingWizard {...defaultProps()} />);
-      await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
-      fireEvent.click(screen.getByText(/Comecar/));
+      await waitFor(() => expect(screen.getByText(/Começar/)).toBeInTheDocument());
+      fireEvent.click(screen.getByText(/Começar/));
       await waitFor(() => expect(screen.getByText(/Seus projetos/)).toBeInTheDocument());
 
       fireEvent.click(screen.getByText(/Criar novo projeto/));

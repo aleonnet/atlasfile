@@ -15,6 +15,18 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.34.0] -- 2026-07-19
+
+### Adicionado
+
+- **Buraco negro de Schwarzschild como elemento vivo da UI** (`BlackholeGL`, port WebGL2 do [ghostty-blackhole](https://s13k.dev/blackhole/), MIT): física real por pixel — geodésicas nulas integradas (lente gravitacional, sombra, anel de fótons), disco de acreção Shakura–Sunyaev com Doppler/beaming relativístico e dilatação temporal; starfield lenteado; saída premultiplicada (a luz soma sobre a página, a sombra oclui). Dois usos: **fundo do gate de API key e do wizard de onboarding** (deriva Lissajous atrás do card, em camada com a aurora) e **orb da sidebar durante o ciclo do classificador** ("documentos sendo puxados"), com exibição mínima de 4s para ciclos curtos não virarem pisca. Pausa fora de viewport/aba oculta; `prefers-reduced-motion` congela num frame estático; leitura do status do ciclo por observer de cache (zero fetch novo).
+
+### Corrigido
+
+- Acentuação da tela de boas-vindas do onboarding ("gestão", "ficarão", "instalação", "Começar") — resíduos da UI legada que a varredura ortográfica da 0.33.0 não cobriu.
+
+---
+
 ## [0.33.0] -- 2026-07-19
 
 ### Adicionado

@@ -18,7 +18,12 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
+import { fetchClassifierCycleStatus } from "../api";
+import { BlackholeGL } from "../components/BlackholeGL/BlackholeGL";
+import { qk } from "../lib/queryKeys";
 import { Orb, type OrbGLState } from "../components/OrbGL";
+import type { ClassifierCycleStatus } from "../types";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { ALL_PROJECTS, useProject } from "../contexts/ProjectContext";
@@ -223,6 +228,31 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
     return () => window.removeEventListener("atlas:ingest-active", handler);
   }, []);
 
+  // Ciclo do classificador rodando → o orb vira um buraco negro ("documentos
+  // sendo puxados"). Observer do cache alimentado pelo SSE do ciclo — zero
+  // fetch novo (enabled: false), a auditoria de rede em idle continua limpa.
+  const cycleQuery = useQuery<ClassifierCycleStatus>({
+    queryKey: qk.classifier.cycleStatus(),
+    queryFn: fetchClassifierCycleStatus,
+    enabled: false,
+  });
+  const running = !!cycleQuery.data?.running;
+  // Exibição mínima: num corpus pequeno o ciclo dura ~150ms e o swap viraria
+  // um pisca — ciclo curto segura o buraco negro por alguns segundos; ciclo
+  // longo fica o tempo real.
+  const MIN_SHOW_MS = 4000;
+  const [holdUntil, setHoldUntil] = useState(0);
+  useEffect(() => {
+    if (running) setHoldUntil(Date.now() + MIN_SHOW_MS);
+  }, [running]);
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    if (running || holdUntil <= Date.now()) return;
+    const id = setTimeout(() => forceTick((n) => n + 1), holdUntil - Date.now());
+    return () => clearTimeout(id);
+  }, [running, holdUntil]);
+  const cycleRunning = running || Date.now() < holdUntil;
+
   const orbState: OrbGLState =
     healthOk === false ? "error" : ingestActive ? "ingesting" : healthOk === true ? "alive" : "idle";
 
@@ -258,7 +288,11 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
         )}
 
         <div className={cn("relative flex items-center gap-2.5 pt-4", collapsed ? "justify-center px-0" : "px-4")}>
-          <Orb state={orbState} size={collapsed ? 28 : 40} />
+          {cycleRunning ? (
+            <BlackholeGL variant="orb" intensity={0.85} starGain={0.35} size={collapsed ? 28 : 40} />
+          ) : (
+            <Orb state={orbState} size={collapsed ? 28 : 40} />
+          )}
           {!collapsed && (
             <h1 className="font-display text-lg font-bold tracking-tight text-foreground-strong">AtlasFile</h1>
           )}

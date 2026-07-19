@@ -2,6 +2,7 @@ import { KeyRound, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { fetchSetupStatus, setApiKey } from "../../api";
+import { BlackholeGL } from "../../components/BlackholeGL/BlackholeGL";
 import { LanguageQuickSwitch } from "../../components/LanguageQuickSwitch";
 import { Orb } from "../../components/OrbGL";
 import { Wordmark } from "../../components/Wordmark";
@@ -38,8 +39,11 @@ export function AuthGate() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-md rounded-xl border border-border bg-panel p-8 shadow-[0_18px_48px_rgba(0,0,0,0.35)]">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-6">
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <BlackholeGL variant="backdrop" intensity={0.6} starGain={0.6} />
+      </div>
+      <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-panel p-8 shadow-[0_18px_48px_rgba(0,0,0,0.35)]">
         <div className="flex flex-col items-center gap-2 text-center">
           <Orb state="alive" size={96} />
           <Wordmark className="h-12 w-64" />
