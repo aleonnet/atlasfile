@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.29.1] -- 2026-07-19
+
+### Corrigido
+
+- **Passo final do wizard atualizado ao fluxo atual**: a tela "Tudo pronto!" descrevia o processo manual antigo ("coloque seus arquivos em `_INBOX_DROP/` e clique em Processar INBOX"). Agora orienta o fluxo real — arrastar arquivos em qualquer tela com processamento automático — e mantém o caminho manual como alternativa.
+
+---
+
 ## [0.29.0] -- 2026-07-19
 
 ### Adicionado

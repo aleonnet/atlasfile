@@ -436,7 +436,8 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
             {createdProjectId && (
               <p className="mt-2 text-sm text-muted-foreground">
                 Projeto <strong className="text-foreground">{projectLabel || createdProjectId}</strong> criado.<br />
-                Coloque seus arquivos em <code className="font-mono text-[0.8rem] text-accent-light">Projects/{createdProjectId}/_INBOX_DROP/</code>
+                Arraste seus arquivos em <strong className="text-foreground">qualquer tela</strong> — o portal envia e
+                processa tudo automaticamente (classificação, roteamento, indexação e busca).
               </p>
             )}
             {llmActivated && (
@@ -445,7 +446,9 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
               </p>
             )}
             <p className="mt-2 text-sm text-muted-foreground">
-              Proximo passo: clique em <strong className="text-foreground">Processar INBOX</strong> para iniciar a ingestao.
+              Alternativa manual: copiar arquivos para{" "}
+              <code className="font-mono text-[0.78rem] text-accent-light">Projects/{createdProjectId ?? "<projeto>"}/_INBOX_DROP/</code>{" "}
+              e clicar em <strong className="text-foreground">Processar INBOX</strong> no Painel.
             </p>
             <div className="mt-6">
               <Button onClick={handleFinish}>
