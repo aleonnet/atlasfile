@@ -296,4 +296,4 @@ As suites cobrem lifecycle do classificador, benchmark, datasets, ingestao, tria
 | `plano_teste_e2e_v0.7.0.md` | Baseline E2E registrada e reutilizada como referencia do lote real |
 | `agent-tools-flow.md` | Fluxo MCP → LLM → tools (como o agente recebe e usa ferramentas) |
 
-Planos de implementação concluídos ficam em `docs/planos_concluidos/` como registro de decisões.
+Planos de implementação concluídos ficam em `docs/planos_concluidos/` como registro de decisões. Evoluções futuras avaliadas (com gatilho explícito de execução) ficam em `docs/ROADMAP.md`.
