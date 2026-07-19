@@ -1,8 +1,10 @@
 import { differenceInCalendarDays, format, parseISO, startOfISOWeek, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { BarChart3, ChevronLeft, ChevronRight, CircleDollarSign, Coins, GraduationCap, MessagesSquare, RefreshCw, Tags, Zap } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchClassificationUsage, fetchTrainingUsage, fetchUsageSessions, fetchUsageSummary } from "../../api";
+import { qk } from "../../lib/queryKeys";
 import { Button } from "../../components/ui/button";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { DateRangePicker } from "../../components/ui/date-range-picker";
@@ -371,43 +373,38 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
   const [chartMode, setChartMode] = useState<ChartMode>("by-type");
   const [granularityOverride, setGranularityOverride] = useState<Granularity | null>(null);
   const granularity = granularityOverride ?? autoGranularity(startDate, endDate);
-  const [summary, setSummary] = useState<UsageSummaryResponse | null>(null);
-  const [sessions, setSessions] = useState<UsageSessionItem[]>([]);
-  const [classifUsage, setClassifUsage] = useState<ClassificationUsageSummary | null>(null);
-  const [trainingUsage, setTrainingUsage] = useState<TrainingUsageSummary | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sessionsPage, setSessionsPage] = useState(0);
 
-  const load = useCallback(() => {
-    setError(null);
-    setLoading(true);
-    const baseParams = {
-      start_date: startDate,
-      end_date: endDate,
-      project_id: projectId || null,
-    };
-    const channelParam = channel === ALL_CHANNELS ? null : channel;
-    Promise.all([
-      fetchUsageSummary({ ...baseParams, channel: channelParam }),
-      fetchUsageSessions({ ...baseParams, channel: channelParam, limit: 100 }),
-      fetchClassificationUsage(baseParams),
-      fetchTrainingUsage(baseParams).catch(() => null),
-    ])
-      .then(([s, list, classif, training]) => {
-        setSummary(s);
-        setSessions(list);
-        setClassifUsage(classif);
-        setTrainingUsage(training);
-        setSessionsPage(0);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar"))
-      .finally(() => setLoading(false));
-  }, [startDate, endDate, projectId, channel]);
+  // Uma query para o bundle da tela (mesmo Promise.all de antes) — o cache por
+  // chave [período, projeto, canal] torna a troca de filtros instantânea na volta
+  const usageQuery = useQuery({
+    queryKey: qk.usage.summary(projectId || undefined, { startDate, endDate, channel }),
+    queryFn: async () => {
+      const baseParams = {
+        start_date: startDate,
+        end_date: endDate,
+        project_id: projectId || null,
+      };
+      const channelParam = channel === ALL_CHANNELS ? null : channel;
+      const [s, list, classif, training] = await Promise.all([
+        fetchUsageSummary({ ...baseParams, channel: channelParam }),
+        fetchUsageSessions({ ...baseParams, channel: channelParam, limit: 100 }),
+        fetchClassificationUsage(baseParams),
+        fetchTrainingUsage(baseParams).catch(() => null),
+      ]);
+      return { summary: s, sessions: list, classifUsage: classif, trainingUsage: training };
+    },
+  });
+  const loading = usageQuery.isPending;
+  const error = usageQuery.error ? (usageQuery.error instanceof Error ? usageQuery.error.message : "Erro ao carregar") : null;
+  const summary = usageQuery.data?.summary ?? null;
+  const sessions = usageQuery.data?.sessions ?? [];
+  const classifUsage = usageQuery.data?.classifUsage ?? null;
+  const trainingUsage = usageQuery.data?.trainingUsage ?? null;
 
   useEffect(() => {
-    load();
-  }, [load]);
+    setSessionsPage(0);
+  }, [startDate, endDate, projectId, channel]);
 
   return (
     <section className="flex flex-col">
@@ -433,13 +430,13 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
             <SelectItem value="telegram">Telegram</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="secondary" onClick={load} disabled={loading}>
+        <Button variant="secondary" onClick={() => void usageQuery.refetch()} disabled={loading}>
           <RefreshCw className={loading ? "animate-spin" : ""} />
           Atualizar
         </Button>
       </div>
 
-      {error && <ErrorState className="mt-4" description={error} onRetry={load} />}
+      {error && <ErrorState className="mt-4" description={error} onRetry={() => void usageQuery.refetch()} />}
 
       {summary && (
         <>

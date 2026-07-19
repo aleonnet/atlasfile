@@ -13,6 +13,8 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { emitDataRefresh } from "../../lib/refreshBus";
 import { ProcessingAura } from "../../components/ui/processing-aura";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { qk } from "../../lib/queryKeys";
 import { applyLayout, getProfile, getProfileHistory, planLayout, saveProfile, validateProfile } from "./api";
 import { LayoutPlanPreview } from "./LayoutPlanPreview";
 import { ProfileLayoutEditor } from "./ProfileLayoutEditor";
@@ -46,12 +48,9 @@ function comparableProfile(profile: ProjectProfileV2): Record<string, unknown> {
 }
 
 export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus }: Props) {
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [profile, setProfile] = useState<ProjectProfileV2 | null>(null);
   const [draft, setDraft] = useState<ProjectProfileV2 | null>(null);
-  const [history, setHistory] = useState<ProfileHistoryEntry[]>([]);
   const [plan, setPlan] = useState<LayoutPlanResponse | null>(null);
   const [applyConfirmed, setApplyConfirmed] = useState(false);
   const [conflictStrategy, setConflictStrategy] = useState<ConflictStrategy>("rename_with_suffix");
@@ -65,6 +64,38 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
   const [templateDesc, setTemplateDesc] = useState("");
   const [templateSaving, setTemplateSaving] = useState(false);
 
+  const queryClient = useQueryClient();
+  // Workspace = profile + histórico numa query (mesma chave qk.profile — é o
+  // mesmo endpoint; invalidations pós-mutação recarregam draft/histórico)
+  const workspaceQuery = useQuery({
+    queryKey: [...qk.profile(projectRef), "workspace"],
+    queryFn: async () => {
+      const [profileResp, historyList] = await Promise.all([getProfile(projectRef), getProfileHistory(projectRef)]);
+      return { profileResp, historyList };
+    },
+    enabled: !!projectRef && !disabled,
+  });
+  const loading = workspaceQuery.isPending && !!projectRef && !disabled;
+  const history = workspaceQuery.data?.historyList ?? [];
+  const profile = workspaceQuery.data?.profileResp.profile ?? null;
+
+  // Draft local: nasce do profile carregado; recarregar profile re-semeia o
+  // draft apenas quando não há edição em curso (isDirty preservado)
+  useEffect(() => {
+    if (workspaceQuery.data) {
+      setDraft(workspaceQuery.data.profileResp.profile);
+      setPlan(null);
+      setApplyConfirmed(false);
+      setValidationMessage("");
+      setError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceQuery.data]);
+
+  async function loadWorkspace() {
+    await queryClient.invalidateQueries({ queryKey: qk.profile(projectRef) });
+  }
+
   const isDirty = useMemo(() => {
     if (!profile || !draft) return false;
     return stableStringify(comparableProfile(profile)) !== stableStringify(comparableProfile(draft));
@@ -74,29 +105,6 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
     if (!profile || !draft) return false;
     return stableStringify(profile.layout) !== stableStringify(draft.layout);
   }, [profile, draft]);
-
-  async function loadWorkspace() {
-    if (!projectRef || disabled) return;
-    setLoading(true);
-    setError(null);
-    setPlan(null);
-    setApplyConfirmed(false);
-    try {
-      const [profileResp, historyList] = await Promise.all([getProfile(projectRef), getProfileHistory(projectRef)]);
-      setProfile(profileResp.profile);
-      setDraft(profileResp.profile);
-      setHistory(historyList);
-      setValidationMessage("");
-    } catch {
-      setError("Falha ao carregar profile/layout do projeto.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void loadWorkspace();
-  }, [projectRef, disabled]);
 
   async function handleValidate() {
     if (!draft) return;
@@ -125,7 +133,6 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
     setSaving(true);
     try {
       const saved = await saveProfile(projectRef, draft, profile.version);
-      setProfile(saved.profile);
       setDraft(saved.profile);
       onStatus?.(saved.version === profile.version ? "Sem alterações no profile" : "Profile salvo");
       emitDataRefresh();

@@ -1,13 +1,14 @@
 import { ArrowRightLeft, CheckCircle2, ChevronDown, ChevronRight, Clock, XCircle } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchIngestHistory, fetchProjectProfile, moveDocument } from "../../api";
+import { moveDocument } from "../../api";
+import { useIngestHistoryQuery, useProjectProfileQuery } from "../../lib/queries";
 import { MoveDocumentModal } from "../../components/MoveDocumentModal";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { CollapsibleSection } from "../../components/ui/collapsible-section";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
-import { emitDataRefresh, onDataRefresh } from "../../lib/refreshBus";
+import { emitDataRefresh } from "../../lib/refreshBus";
 import type { IngestHistoryEntry, ProjectProfileV2 } from "../../types";
 
 function decisionBadge(decision: FlatRow["decision"]) {
@@ -128,43 +129,23 @@ type Props = {
 };
 
 export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
-  const [history, setHistory] = useState<IngestHistoryEntry[]>([]);
   const [page, setPage] = useState(0);
   const [expandedLlm, setExpandedLlm] = useState<Set<string>>(new Set());
   const [moveRow, setMoveRow] = useState<FlatRow | null>(null);
   const [moveSubmitting, setMoveSubmitting] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
-  const [fullProfile, setFullProfile] = useState<ProjectProfileV2 | null>(null);
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
 
-  const loadHistory = useCallback(async () => {
-    if (!isSingleProject) {
-      setHistory([]);
-      return;
-    }
-    try {
-      const resp = await fetchIngestHistory(selectedProject);
-      setHistory(resp.entries);
-    } catch {
-      setHistory([]);
-    }
-  }, [selectedProject, isSingleProject]);
+  // Reativo via cache: scans/decisões invalidam ingest-history
+  const { data: historyData } = useIngestHistoryQuery(selectedProject, isSingleProject);
+  const history: IngestHistoryEntry[] = historyData?.entries ?? [];
+  const { data: profileData } = useProjectProfileQuery(selectedProject, isSingleProject);
+  const fullProfile = profileData?.profile ?? null;
 
   useEffect(() => {
-    void loadHistory();
     setPage(0);
-  }, [loadHistory]);
-
-  // Reativo: scans/decisões emitem no bus — o histórico aparece sem reload
-  useEffect(() => onDataRefresh(() => void loadHistory()), [loadHistory]);
-
-  useEffect(() => {
-    if (!isSingleProject) return;
-    fetchProjectProfile(selectedProject)
-      .then((resp) => setFullProfile(resp.profile))
-      .catch(() => {});
-  }, [selectedProject, isSingleProject]);
+  }, [selectedProject]);
 
   const allRows = useMemo(() => flattenHistory(history), [history]);
   const totalPages = Math.ceil(allRows.length / PAGE_SIZE);

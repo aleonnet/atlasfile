@@ -1,8 +1,10 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Check, GitCompareArrows, Pencil, PlusCircle, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { onDataRefresh } from "../../lib/refreshBus";
-import { createTaxonomyEntry, fetchLabelConflicts, fetchTaxonomy, resolveLabelConflict } from "../../api";
+import { useState } from "react";
+import { createTaxonomyEntry, resolveLabelConflict } from "../../api";
+import { useLabelConflictsQuery, useTaxonomyQuery } from "../../lib/queries";
+import { useQueryClient } from "@tanstack/react-query";
+import { qk } from "../../lib/queryKeys";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -31,13 +33,17 @@ function sourceLabel(ref: string): string {
  */
 export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) {
   const reducedMotion = useReducedMotion();
-  const [conflicts, setConflicts] = useState<LabelConflict[]>([]);
+  // Reativo via cache: decisões/correções invalidam label-conflicts — o card
+  // aparece/some sozinho; taxonomia é quase-estática (staleTime longo)
+  const queryClient = useQueryClient();
+  const { data: conflictsData } = useLabelConflictsQuery();
+  const conflicts = conflictsData?.items ?? [];
+  const { data: taxonomy = null } = useTaxonomyQuery();
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [correcting, setCorrecting] = useState<LabelConflict | null>(null);
   const [choice, setChoice] = useState<string>("");
   const [customBd, setCustomBd] = useState("");
   const [customDt, setCustomDt] = useState("");
-  const [taxonomy, setTaxonomy] = useState<{ business_domains: string[]; document_types: string[] } | null>(null);
   // Fluxo "criar taxonomia e aplicar": itens faltantes + campos editáveis
   const [creating, setCreating] = useState<{
     conflict: LabelConflict;
@@ -46,21 +52,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
     missing: { kind: "business_domain" | "document_type"; key: string; label: string; aliases: string }[];
   } | null>(null);
 
-  const load = useCallback(() => {
-    fetchLabelConflicts()
-      .then((res) => setConflicts(res.items))
-      .catch(() => setConflicts([]));
-  }, []);
-
-  // Reativo: decisões/correções podem criar conflitos — o card aparece sem reload
-  useEffect(() => onDataRefresh(load), [load]);
-
-  useEffect(() => {
-    load();
-    fetchTaxonomy()
-      .then(setTaxonomy)
-      .catch(() => setTaxonomy(null));
-  }, [load]);
+  const reloadConflicts = () => void queryClient.invalidateQueries({ queryKey: qk.labelConflicts() });
 
   /** Itens da escolha que ainda não existem na taxonomia do template. */
   function missingEntries(businessDomain: string, documentType: string) {
@@ -103,7 +95,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
             (result.updated_projects.length ? ` e em ${result.updated_projects.length} projeto(s)` : "")
         );
       }
-      setTaxonomy(await fetchTaxonomy());
+      await queryClient.invalidateQueries({ queryKey: qk.taxonomy() });
       const { conflict, businessDomain, documentType } = creating;
       setCreating(null);
       await resolve(conflict, businessDomain, documentType);
@@ -121,7 +113,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
         `Rótulo canônico aplicado: ${businessDomain}/${documentType}` +
           (result.labeled_by === "human_confirmed_llm" ? " (proposta do LLM confirmada)" : "")
       );
-      setConflicts((prev) => prev.filter((c) => c.sha256 !== conflict.sha256));
+      reloadConflicts();
       setCorrecting(null);
       onResolved?.();
     } catch {

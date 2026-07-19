@@ -121,7 +121,7 @@ export function ConfigView({
           <TabsTrigger value="acesso"><KeyRound aria-hidden /> Acesso</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="perfil">
+        <TabsContent value="perfil" forceMount>
           <ProfileLayoutWorkspace
             projectRef={selectedProject}
             disabled={selectedProject === ALL_PROJECTS}
@@ -129,7 +129,7 @@ export function ConfigView({
           />
         </TabsContent>
 
-        <TabsContent value="classificador">
+        <TabsContent value="classificador" forceMount>
           <IngestTriageCard
             selectedProject={selectedProject}
             selectedProjectLabel={selectedProjectLabel}
@@ -143,11 +143,11 @@ export function ConfigView({
           />
         </TabsContent>
 
-        <TabsContent value="templates">
+        <TabsContent value="templates" forceMount>
           <TemplateEditorView />
         </TabsContent>
 
-        <TabsContent value="acesso">
+        <TabsContent value="acesso" forceMount>
           <ApiAccessCard onStatus={onStatus} />
         </TabsContent>
       </Tabs>

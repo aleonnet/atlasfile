@@ -3,6 +3,7 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TemplateEditorView } from "./TemplateEditorView";
+import { renderWithProviders } from "../../test/utils";
 import { saveTemplate } from "../../api";
 
 const fullProfile = {
@@ -91,7 +92,7 @@ vi.mock("../../api", () => ({
 
 async function openEditor() {
   await act(async () => {
-    render(<TemplateEditorView />);
+    renderWithProviders(<TemplateEditorView />);
   });
   await waitFor(() => expect(screen.getByText("M&A / Carve-out")).toBeInTheDocument());
   await act(async () => {
@@ -107,7 +108,7 @@ describe("TemplateEditorView", () => {
 
   it("renders template list on mount", async () => {
     await act(async () => {
-      render(<TemplateEditorView />);
+      renderWithProviders(<TemplateEditorView />);
     });
     await waitFor(() => {
       expect(screen.getByText("M&A / Carve-out")).toBeInTheDocument();

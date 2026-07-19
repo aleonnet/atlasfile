@@ -1,7 +1,9 @@
 import { RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { deleteRejectedTriage, fetchRejectedTriage, restoreRejectedTriage, type RejectedTriageItem } from "../../api";
-import { onDataRefresh } from "../../lib/refreshBus";
+import { useState } from "react";
+import { deleteRejectedTriage, restoreRejectedTriage, type RejectedTriageItem } from "../../api";
+import { useRejectedTriageQuery } from "../../lib/queries";
+import { useQueryClient } from "@tanstack/react-query";
+import { qk } from "../../lib/queryKeys";
 import { ProcessingAura } from "../../components/ui/processing-aura";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -27,27 +29,12 @@ function formatWhen(iso: string): string {
 /** Rejeitados com visibilidade e ações: antes desta seção, rejeitar um documento
  *  só o fazia sumir da fila — o arquivo ficava invisível em _TRIAGE_REVIEW/rejected. */
 export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
-  const [items, setItems] = useState<RejectedTriageItem[]>([]);
+  // Reativo via cache: mutações invalidam qk.triage — o card aparece/some sozinho
+  const queryClient = useQueryClient();
+  const { data: items = [] } = useRejectedTriageQuery(projectId);
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"restore" | "delete" | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    if (!projectId) {
-      setItems([]);
-      return;
-    }
-    fetchRejectedTriage(projectId)
-      .then(setItems)
-      .catch(() => setItems([]));
-  }, [projectId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Reativo: rejeições emitem no bus — o card aparece na hora, sem reload
-  useEffect(() => onDataRefresh(load), [load]);
 
   if (items.length === 0) return null;
 
@@ -57,7 +44,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
     try {
       await restoreRejectedTriage(projectId, item.doc_id);
       onStatus(`"${item.original_filename}" devolvido à fila de triagem`);
-      load();
+      void queryClient.invalidateQueries({ queryKey: qk.triage.rejected(projectId) });
       onChanged();
     } catch (e) {
       onStatus(e instanceof Error ? e.message : "Falha ao restaurar");
@@ -74,7 +61,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
     try {
       await deleteRejectedTriage(projectId, item.doc_id);
       onStatus(`"${item.original_filename}" excluído definitivamente`);
-      load();
+      void queryClient.invalidateQueries({ queryKey: qk.triage.rejected(projectId) });
       // Notifica o Painel: o badge no Processamentos vira "excluído" sem reload
       onChanged();
     } catch (e) {

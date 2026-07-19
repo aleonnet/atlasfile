@@ -1,6 +1,9 @@
 import { FileStack, Pencil, Plus, Replace, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createTemplate, deleteTemplate, getTemplate, listTemplates, saveTemplate } from "../../api";
+import { useQueryClient } from "@tanstack/react-query";
+import { createTemplate, deleteTemplate, getTemplate, saveTemplate } from "../../api";
+import { useTemplatesQuery } from "../../lib/queries";
+import { qk } from "../../lib/queryKeys";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -81,8 +84,10 @@ function EditorOverlay({ label, children }: { label: string; children: React.Rea
 }
 
 export function TemplateEditorView() {
-  const [templates, setTemplates] = useState<TemplateMeta[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const templatesQuery = useTemplatesQuery();
+  const templates = templatesQuery.data ?? [];
+  const loading = templatesQuery.isPending;
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -92,19 +97,8 @@ export function TemplateEditorView() {
   useEscapeKey(confirmDelete ? () => setConfirmDelete(null) : editor ? () => setEditor(null) : null);
 
   const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      setTemplates(await listTemplates());
-    } catch {
-      setTemplates([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+    await queryClient.invalidateQueries({ queryKey: qk.templates.scope() });
+  }, [queryClient]);
 
   async function handleEdit(slug: string) {
     try {

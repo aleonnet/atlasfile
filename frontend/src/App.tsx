@@ -20,7 +20,9 @@ import { Input } from "./components/ui/input";
 import { fieldLabelClass, ModalActions, ModalShell } from "./components/ui/modal-shell";
 import { Toaster, toast } from "./components/ui/sonner";
 import { MiniOrb } from "./components/ui/processing-aura";
-import { emitDataRefresh, onDataRefresh } from "./lib/refreshBus";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./lib/queryClient";
+import { emitDataRefresh, installRefreshBusQueryAdapter, onDataRefresh } from "./lib/refreshBus";
 import { NavigationProvider, useNavigation, type ViewKind } from "./contexts/NavigationContext";
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
@@ -88,6 +90,8 @@ function AppShell() {
   // com CSS) — todo estado de tela (chat, abas, colapsáveis, rascunhos,
   // monitores ao vivo) sobrevive à navegação. Padrão tab-navigator/Activity.
   const [visitedViews, setVisitedViews] = useState<Set<ViewKind>>(() => new Set([view]));
+  // F1 (migração TanStack Query): eventos legados do bus viram invalidations
+  useEffect(() => installRefreshBusQueryAdapter(), []);
   useEffect(() => {
     setVisitedViews((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
   }, [view]);
@@ -848,16 +852,18 @@ function AppShell() {
 
 function App() {
   return (
-    <SettingsProvider>
+    <QueryClientProvider client={queryClient}>
+      <SettingsProvider>
         <ProjectProvider>
           <NavigationProvider>
             <ProcessingProvider>
-            <AppShell />
-            <Toaster />
+              <AppShell />
+              <Toaster />
             </ProcessingProvider>
-        </NavigationProvider>
-      </ProjectProvider>
-    </SettingsProvider>
+          </NavigationProvider>
+        </ProjectProvider>
+      </SettingsProvider>
+    </QueryClientProvider>
   );
 }
 

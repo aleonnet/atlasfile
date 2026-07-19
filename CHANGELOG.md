@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.32.1] -- 2026-07-19
+
+### Corrigido
+
+- **Keep-alive também nas abas da Configuração**: alternar entre Perfil/Classificador/Templates/Acesso desmontava o conteúdo da aba inativa (Radix Tabs default) — o Perfil do projeto voltava ao estado inicial. Agora as abas usam `forceMount` (inativa fica oculta, não desmontada): rascunhos, colapsáveis e estado interno sobrevivem à alternância, no mesmo padrão do keep-alive das telas.
+
+---
+
 ## [0.32.0] -- 2026-07-19
 
 ### Mudado
