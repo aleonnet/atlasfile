@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchProjects } from "../api";
-import i18n from "../i18n";
+import { useTranslation } from "react-i18next";
 import { qk } from "../lib/queryKeys";
 import { STORAGE_KEYS, storageGet, storageSet } from "../lib/storage";
 import type { Project } from "../types";
@@ -26,6 +26,9 @@ function readStoredProject(): string {
 }
 
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
+  // useTranslation (e não i18n direto): inscreve o provider na troca de idioma
+  // ao vivo — o rótulo "Todos os projetos" memoizado recalcula na hora.
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const projectsQuery = useQuery({ queryKey: qk.projects(), queryFn: fetchProjects });
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
@@ -54,9 +57,9 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const selectedProjectLabel = useMemo(
     () =>
       selectedProject === ALL_PROJECTS
-        ? i18n.t("common:allProjects")
+        ? t("common:allProjects")
         : projects.find((p) => p.project_id === selectedProject)?.project_label ?? "",
-    [projects, selectedProject]
+    [projects, selectedProject, t]
   );
 
   const projectLabelById = useMemo(() => {

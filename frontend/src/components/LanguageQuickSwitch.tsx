@@ -1,17 +1,15 @@
 import { Languages } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { STORAGE_KEYS, storageSet } from "../lib/storage";
 
 /** Alternador discreto de idioma para as telas de primeiro acesso (AuthGate e
  *  wizard) — a detecção do navegador pode errar e o seletor de Configuração
- *  só é alcançável depois do setup. Mesmo mecanismo da aba Preferências:
- *  persiste a escolha e recarrega (constantes de módulo reavaliam no boot). */
+ *  só é alcançável depois do setup. Troca AO VIVO: changeLanguage re-renderiza
+ *  tudo que está inscrito e o detector persiste a escolha sozinho. */
 export function LanguageQuickSwitch({ className = "" }: { className?: string }) {
   const { t, i18n } = useTranslation();
 
   const handleChange = (lng: string) => {
-    storageSet(STORAGE_KEYS.language, lng);
-    window.location.reload();
+    void i18n.changeLanguage(lng);
   };
 
   return (

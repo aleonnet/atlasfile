@@ -73,7 +73,7 @@
   "language": {
     "title": "Idioma",
     "label": "Idioma da interface",
-    "description": "Idioma da interface. A página recarrega ao trocar para aplicar em todas as telas.",
+    "description": "Idioma da interface — a troca aplica na hora, sem recarregar.",
     "ptBR": "Português (Brasil)",
     "enUS": "English (US)"
   },

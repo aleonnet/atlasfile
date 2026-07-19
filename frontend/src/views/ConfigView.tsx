@@ -70,15 +70,13 @@ function ApiAccessCard({ onStatus }: { onStatus: (msg: string, severity?: Status
   );
 }
 
-/** Troca de idioma: grava a preferência e recarrega — labels em constantes de
- *  módulo (sidebar, paleta, selects) só reavaliam no boot, então o reload
- *  garante a troca completa e determinística. */
+/** Troca de idioma AO VIVO: changeLanguage re-renderiza todos os inscritos e
+ *  o detector persiste a escolha em localStorage — sem reload, sem blink. */
 function LanguageCard() {
   const { t, i18n } = useTranslation();
 
   const handleChange = (lng: string) => {
-    storageSet(STORAGE_KEYS.language, lng);
-    window.location.reload();
+    void i18n.changeLanguage(lng);
   };
 
   return (

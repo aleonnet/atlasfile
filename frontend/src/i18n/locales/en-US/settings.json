@@ -73,7 +73,7 @@
   "language": {
     "title": "Language",
     "label": "Interface language",
-    "description": "Interface language. The page reloads when switching to apply it across all screens.",
+    "description": "Interface language — switching applies instantly, no reload.",
     "ptBR": "Português (Brasil)",
     "enUS": "English (US)"
   },

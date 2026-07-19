@@ -18,7 +18,6 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import i18n from "../i18n";
 import { Orb, type OrbGLState } from "../components/OrbGL";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
@@ -32,11 +31,13 @@ const SIDEBAR_COLLAPSED_KEY = STORAGE_KEYS.sidebarCollapsed;
 const EXPANDED_WIDTH = 248;
 const COLLAPSED_WIDTH = 64;
 
-const NAV_ITEMS: Array<{ view: ViewKind; label: string; icon: React.ReactNode }> = [
-  { view: "painel", label: i18n.t("painel:shell.navPainel"), icon: <LayoutDashboard size={18} strokeWidth={2} aria-hidden /> },
-  { view: "assistente", label: i18n.t("painel:shell.navAssistente"), icon: <MessageCircle size={18} strokeWidth={2} aria-hidden /> },
-  { view: "classificador", label: i18n.t("painel:shell.navClassificador"), icon: <Sparkles size={18} strokeWidth={2} aria-hidden /> },
-  { view: "config", label: i18n.t("painel:shell.navConfig"), icon: <FolderCog size={18} strokeWidth={2} aria-hidden /> },
+// Chaves em escopo de módulo, texto no render — a troca de idioma ao vivo
+// re-renderiza sem reload (constante congelada foi a causa do antigo blink).
+const NAV_ITEMS: Array<{ view: ViewKind; labelKey: string; icon: React.ReactNode }> = [
+  { view: "painel", labelKey: "painel:shell.navPainel", icon: <LayoutDashboard size={18} strokeWidth={2} aria-hidden /> },
+  { view: "assistente", labelKey: "painel:shell.navAssistente", icon: <MessageCircle size={18} strokeWidth={2} aria-hidden /> },
+  { view: "classificador", labelKey: "painel:shell.navClassificador", icon: <Sparkles size={18} strokeWidth={2} aria-hidden /> },
+  { view: "config", labelKey: "painel:shell.navConfig", icon: <FolderCog size={18} strokeWidth={2} aria-hidden /> },
 ];
 
 const THEME_CYCLE: Record<ThemeMode, ThemeMode> = { system: "light", light: "dark", dark: "system" };
@@ -45,10 +46,10 @@ const THEME_ICON: Record<ThemeMode, React.ReactNode> = {
   light: <Sun size={16} aria-hidden />,
   dark: <Moon size={16} aria-hidden />,
 };
-const THEME_LABEL: Record<ThemeMode, string> = {
-  system: i18n.t("painel:shell.themeSystem"),
-  light: i18n.t("painel:shell.themeLight"),
-  dark: i18n.t("painel:shell.themeDark"),
+const THEME_LABEL_KEY: Record<ThemeMode, string> = {
+  system: "painel:shell.themeSystem",
+  light: "painel:shell.themeLight",
+  dark: "painel:shell.themeDark",
 };
 
 type Props = {
@@ -302,7 +303,7 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
                 type="button"
                 onClick={() => setView(item.view)}
                 aria-current={active ? "page" : undefined}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? t(item.labelKey) : undefined}
                 className={cn(
                   "relative flex w-full items-center gap-2.5 rounded-md border-0 bg-transparent font-display text-sm font-medium shadow-none",
                   "transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -319,13 +320,13 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
                   />
                 )}
                 <span className="relative">{item.icon}</span>
-                {!collapsed && <span className="relative">{item.label}</span>}
+                {!collapsed && <span className="relative">{t(item.labelKey)}</span>}
               </button>
             );
             return collapsed ? (
               <Tooltip key={item.view}>
                 <TooltipTrigger asChild>{button}</TooltipTrigger>
-                <TooltipContent side="right">{item.label}</TooltipContent>
+                <TooltipContent side="right">{t(item.labelKey)}</TooltipContent>
               </Tooltip>
             ) : (
               button
@@ -354,8 +355,8 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
               <button
                 type="button"
                 onClick={() => setTheme(THEME_CYCLE[theme])}
-                title={THEME_LABEL[theme]}
-                aria-label={THEME_LABEL[theme]}
+                title={t(THEME_LABEL_KEY[theme])}
+                aria-label={t(THEME_LABEL_KEY[theme])}
                 className="rounded-md border-0 bg-transparent p-1.5 text-tertiary shadow-none transition-colors hover:bg-panel-strong hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {THEME_ICON[theme]}

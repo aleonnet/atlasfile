@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getFileDownloadUrl } from "../api";
-import i18n from "../i18n";
 import {
   Command,
   CommandEmpty,
@@ -44,17 +43,19 @@ type Props = {
   onNewProject: () => void;
 };
 
-const NAV_ITEMS: Array<{ view: ViewKind; label: string; icon: React.ReactNode }> = [
-  { view: "painel", label: i18n.t("painel:shell.navPainel"), icon: <LayoutDashboard /> },
-  { view: "assistente", label: i18n.t("painel:shell.navAssistente"), icon: <MessageCircle /> },
-  { view: "classificador", label: i18n.t("painel:shell.navClassificador"), icon: <Sparkles /> },
-  { view: "config", label: i18n.t("painel:shell.navConfig"), icon: <FolderCog /> },
+// Chaves em escopo de módulo, texto no render — a troca de idioma ao vivo
+// atualiza a paleta (labels e matching do filtro) sem reload.
+const NAV_ITEMS: Array<{ view: ViewKind; labelKey: string; icon: React.ReactNode }> = [
+  { view: "painel", labelKey: "painel:shell.navPainel", icon: <LayoutDashboard /> },
+  { view: "assistente", labelKey: "painel:shell.navAssistente", icon: <MessageCircle /> },
+  { view: "classificador", labelKey: "painel:shell.navClassificador", icon: <Sparkles /> },
+  { view: "config", labelKey: "painel:shell.navConfig", icon: <FolderCog /> },
 ];
 
-const THEME_ITEMS: Array<{ mode: ThemeMode; label: string; icon: React.ReactNode }> = [
-  { mode: "system", label: i18n.t("painel:shell.themeItemSystem"), icon: <Monitor /> },
-  { mode: "light", label: i18n.t("painel:shell.themeItemLight"), icon: <Sun /> },
-  { mode: "dark", label: i18n.t("painel:shell.themeItemDark"), icon: <Moon /> },
+const THEME_ITEMS: Array<{ mode: ThemeMode; labelKey: string; icon: React.ReactNode }> = [
+  { mode: "system", labelKey: "painel:shell.themeItemSystem", icon: <Monitor /> },
+  { mode: "light", labelKey: "painel:shell.themeItemLight", icon: <Sun /> },
+  { mode: "dark", labelKey: "painel:shell.themeItemDark", icon: <Moon /> },
 ];
 
 function matches(label: string, query: string): boolean {
@@ -105,9 +106,9 @@ export function CommandPalette({
 
   const close = () => onOpenChange(false);
 
-  const navMatches = NAV_ITEMS.filter((item) => !searching || matches(item.label, q));
+  const navMatches = NAV_ITEMS.filter((item) => !searching || matches(t(item.labelKey), q));
   const projectMatches = projects.filter((p) => !searching || matches(p.project_label, q)).slice(0, 8);
-  const themeMatches = THEME_ITEMS.filter((item) => !searching || matches(item.label, q));
+  const themeMatches = THEME_ITEMS.filter((item) => !searching || matches(t(item.labelKey), q));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -180,7 +181,7 @@ export function CommandPalette({
                   }}
                 >
                   {item.icon}
-                  <span>{item.label}</span>
+                  <span>{t(item.labelKey)}</span>
                   {view === item.view && <CommandShortcut>{t("painel:shell.current")}</CommandShortcut>}
                 </CommandItem>
               ))}
@@ -242,7 +243,7 @@ export function CommandPalette({
                     }}
                   >
                     {item.icon}
-                    <span>{item.label}</span>
+                    <span>{t(item.labelKey)}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>
