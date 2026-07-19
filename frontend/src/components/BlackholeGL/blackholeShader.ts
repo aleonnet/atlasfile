@@ -80,18 +80,20 @@ vec3 blackbody(float T) {
   return vec3(r, g, b);
 }
 
+// Mais denso e brilhante que o original (0.92/0.10/1x): no Ghostty as
+// estrelas eram um detalhe sobre o texto; aqui elas SÃO o céu.
 vec3 stars(vec3 d) {
   vec2 sph = vec2(atan(d.x, -d.z), asin(clamp(d.y, -1.0, 1.0)));
   vec2 g = sph * 40.0;
   vec2 id = floor(g);
   float h = hash21(id);
-  if (h < 0.92) return vec3(0.0);
+  if (h < 0.86) return vec3(0.0);
   vec2 f = fract(g) - 0.5;
   vec2 off = (vec2(hash21(id + 17.3), hash21(id + 31.7)) - 0.5) * 0.7;
-  float spark = smoothstep(0.10, 0.0, length(f - off));
-  float tw = 0.7 + 0.3 * sin(uTime * (0.5 + 2.0 * hash21(id + 5.1)) + 40.0 * h);
-  vec3 tint = mix(vec3(1.0, 0.82, 0.60), vec3(0.75, 0.85, 1.0), hash21(id + 2.9));
-  return tint * spark * tw * ((h - 0.92) / 0.08);
+  float spark = smoothstep(0.16, 0.0, length(f - off));
+  float tw = 0.75 + 0.25 * sin(uTime * (0.5 + 2.0 * hash21(id + 5.1)) + 40.0 * h);
+  vec3 tint = mix(vec3(1.0, 0.85, 0.65), vec3(0.78, 0.87, 1.0), hash21(id + 2.9));
+  return tint * spark * tw * (0.35 + 1.3 * (h - 0.86) / 0.14);
 }
 
 // ------------------------------------------------------------------ main ---
@@ -140,7 +142,7 @@ void main() {
   // variação por pixel de uma câmera (longe do buraco a direção do raio
   // tenderia a uma constante e o céu inteiro amostraria um ponto só).
   const float SKY_FOV = 0.05;
-  float starVis = mix(0.45, 1.0, window) * shield;
+  float starVis = mix(0.70, 1.0, window) * shield;
 
   // far field: sem textura para lentear — só o starfield dobrado (barato)
   if (b >= bmax) {

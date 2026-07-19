@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.34.2] -- 2026-07-19
+
+### Corrigido
+
+- **Starfield de verdade**: as estrelas da 0.34.1 existiam mas eram fracas demais para ler como céu — densidade ~2.3x (limiar 0.86), estrelas maiores (0.16), brilho com piso (0.35 + 1.3x) e base de visibilidade 0.70 na tela toda. No original Ghostty as estrelas eram um detalhe sobre o texto do terminal; na UI elas são o próprio céu.
+
+---
+
 ## [0.34.1] -- 2026-07-19
 
 ### Corrigido
