@@ -21,7 +21,7 @@ import { buildEvidenceGroups, topLocations } from "../features/search/searchForm
 import { cn } from "../lib/utils";
 import { invalidateAfterMove } from "../lib/mutations";
 import { useProcessing } from "../contexts/ProcessingContext";
-import type { useSearch } from "../hooks/useSearch";
+import { usePainelSearch } from "../hooks/usePainelSearch";
 import type {
   Project,
   ProjectArea,
@@ -47,8 +47,7 @@ type Props = {
   onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => void;
   onStatus: (msg: string) => void;
   onScanComplete: () => void;
-  /** Estado/ações de busca (instância única do App — compartilhada com a ⌘K). */
-  search: ReturnType<typeof useSearch>;
+
 };
 
 function extractFolder(path: string): string {
@@ -254,8 +253,9 @@ export function PainelView({
   onDecision,
   onStatus,
   onScanComplete,
-  search,
 }: Props) {
+  // Busca completa: o Painel é o dono (padrão benchmark) — resultados no cache,
+  // handoff da paleta chega via intent de navegação
   const {
     fullQuery,
     fullResults,
@@ -270,7 +270,7 @@ export function PainelView({
     runFullSearch: onRunFullSearch,
     setSearchFilters: onSearchFiltersChange,
     clearSearch: onClearSearch,
-  } = search;
+  } = usePainelSearch({ onStatus });
   const { active: processingOp } = useProcessing();
   const [moveHit, setMoveHit] = useState<SearchHit | null>(null);
   const [moveSubmitting, setMoveSubmitting] = useState(false);

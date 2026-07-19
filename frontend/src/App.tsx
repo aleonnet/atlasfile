@@ -32,7 +32,7 @@ import { NavigationProvider, useNavigation, type ViewKind } from "./contexts/Nav
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
 import { formatDecisionAction, formatDecisionPhase, ProcessingProvider, useProcessing } from "./contexts/ProcessingContext";
-import { useSearch } from "./hooks/useSearch";
+import { useQuickSearch } from "./hooks/useQuickSearch";
 import { CommandPalette } from "./layouts/CommandPalette";
 import { Sidebar } from "./layouts/Sidebar";
 import { Topbar } from "./layouts/Topbar";
@@ -59,7 +59,7 @@ const TG_TOKEN_STORAGE_KEY = STORAGE_KEYS.telegramBotToken;
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
 function AppShell() {
-  const { view, setView } = useNavigation();
+  const { view, setView, requestSearch } = useNavigation();
   const {
     theme,
     setTheme,
@@ -124,7 +124,7 @@ function AppShell() {
   const [authRequired, setAuthRequired] = useState(false);
   const [appEnv, setAppEnv] = useState("production");
 
-  const search = useSearch({ onStatus: setStatus });
+  const quickSearch = useQuickSearch();
 
   useEffect(() => {
     setUnauthorizedHandler((httpStatus, detail) => {
@@ -448,7 +448,7 @@ function AppShell() {
           setNewProjectModalOpen(true);
           setNewProjectName("");
         }}
-        onOpenSearch={() => search.setSearchModalOpen(true)}
+        onOpenSearch={() => quickSearch.setOpen(true)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -475,7 +475,6 @@ function AppShell() {
             onDecision={handleDecision}
             onStatus={setStatus}
             onScanComplete={handleDataChanged}
-            search={search}
           />
           )}
         </div>
@@ -547,16 +546,16 @@ function AppShell() {
       <GlobalDropPortal onScanComplete={handleDataChanged} />
 
       <CommandPalette
-        open={search.searchModalOpen}
-        onOpenChange={search.setSearchModalOpen}
-        query={search.query}
-        onQueryChange={search.setQuery}
-        hits={search.modalHits}
-        loading={search.modalLoading}
+        open={quickSearch.open}
+        onOpenChange={quickSearch.setOpen}
+        query={quickSearch.query}
+        onQueryChange={quickSearch.setQuery}
+        hits={quickSearch.hits}
+        loading={quickSearch.loading}
         onSubmitSearch={(q) => {
-          search.setFullSearchInput(q);
-          void search.runFullSearch(1, q);
-          setView("painel");
+          // Handoff benchmark: navegação com intent — o Painel semeia e busca
+          requestSearch(q);
+          quickSearch.setOpen(false);
         }}
         onSelectProject={(projectId) => void handleSelectProject(projectId)}
         onNewProject={() => {

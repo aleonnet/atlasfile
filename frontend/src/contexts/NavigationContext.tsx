@@ -10,6 +10,11 @@ function viewFromHash(hash: string): ViewKind | null {
 }
 
 type NavigationContextValue = {
+  /** Intent de busca do handoff paleta→Painel (análogo de query-param de rota). */
+  searchIntent: string | null;
+  /** Navega ao Painel carregando a busca — o padrão VS Code/Slack de handoff. */
+  requestSearch: (query: string) => void;
+  clearSearchIntent: () => void;
   view: ViewKind;
   setView: (view: ViewKind) => void;
 };
@@ -32,6 +37,14 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  const [searchIntent, setSearchIntent] = useState<string | null>(null);
+  const requestSearch = useCallback((query: string) => {
+    setSearchIntent(query);
+    setViewState("painel");
+    window.location.hash = "#/painel";
+  }, []);
+  const clearSearchIntent = useCallback(() => setSearchIntent(null), []);
+
   const setView = useCallback((next: ViewKind) => {
     setViewState(next);
     try {
@@ -42,7 +55,10 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
-  const value = useMemo(() => ({ view, setView }), [view, setView]);
+  const value = useMemo(
+    () => ({ view, setView, searchIntent, requestSearch, clearSearchIntent }),
+    [view, setView, searchIntent, requestSearch, clearSearchIntent]
+  );
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
 }
 
