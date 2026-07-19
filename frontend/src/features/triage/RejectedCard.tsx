@@ -89,7 +89,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
     <Card>
       <CardContent className="pt-5">
         <CollapsibleSection
-          title="Rejeitados"
+          title="Rejeitados" persistKey="rejeitados"
           badge={`${items.length} arquivo${items.length !== 1 ? "s" : ""}`}
           className="border-0 bg-transparent [&>summary]:px-0 [&>div]:border-0 [&>div]:px-0"
         >

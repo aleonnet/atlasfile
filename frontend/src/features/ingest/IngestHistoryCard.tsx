@@ -192,7 +192,7 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
     <>
       <Card>
         <CardContent className="pt-5">
-          <CollapsibleSection title="Processamentos" badge={`${allRows.length} arquivo${allRows.length !== 1 ? "s" : ""}`} defaultOpen className="border-0 bg-transparent [&>summary]:px-0 [&>div]:border-0 [&>div]:px-0">
+          <CollapsibleSection title="Processamentos" persistKey="processamentos" badge={`${allRows.length} arquivo${allRows.length !== 1 ? "s" : ""}`} defaultOpen className="border-0 bg-transparent [&>summary]:px-0 [&>div]:border-0 [&>div]:px-0">
             <TableWrap>
               <DataTable className="[&_td]:text-left [&_th]:text-left">
                 <thead>

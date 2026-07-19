@@ -349,6 +349,7 @@ export function IngestTriageCard({
 
     const finish = () => {
       if (!cancelled) {
+        classifierCycleMonitorStopRef.current = null;
         void loadClassifierState();
       }
     };
@@ -408,6 +409,15 @@ export function IngestTriageCard({
       stopClassifierCycleMonitor();
     };
   }, [stopClassifierCycleMonitor]);
+
+  // Retomada do monitor: se o card (re)montou com um ciclo em andamento — ex.:
+  // o usuário navegou para outra tela e voltou — o acompanhamento ao vivo
+  // religa sozinho; sem isto o status congelava no último snapshot (ex.: 3/3)
+  useEffect(() => {
+    if (classifierCycleStatus?.running && !classifierCycleMonitorStopRef.current) {
+      startClassifierCycleMonitor();
+    }
+  }, [classifierCycleStatus?.running, startClassifierCycleMonitor]);
 
   useEffect(() => {
     if (!classifierCycleStatus?.running) {
@@ -529,7 +539,7 @@ export function IngestTriageCard({
       {isSingleProject && (
         <CollapsibleSection
           className="mt-2"
-          title="Classificador operacional"
+          title="Classificador operacional" persistKey="classificador-operacional"
           badge={
             <Badge className="ml-auto">
               {classifierStatus ? formatClassifierModeLabel(classifierStatus.effective_mode) : "carregando"}
@@ -840,7 +850,7 @@ export function IngestTriageCard({
       {isSingleProject && (
         <CollapsibleSection
           className="mt-2"
-          title="Classificação LLM"
+          title="Classificação LLM" persistKey="classificacao-llm"
           badge={
             <Badge variant={llmPolicy.enabled ? "success" : "destructive"} className="ml-auto">
               {llmPolicy.enabled ? "● ativado" : "○ desativado"}

@@ -15,6 +15,15 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.31.2] -- 2026-07-19
+
+### Corrigido
+
+- **Status do ciclo não congela mais ao navegar**: o monitor ao vivo (SSE) parava quando o card desmontava (troca de tela) e não era retomado na volta — o status ficava no último snapshot (ex.: "3/3") mesmo com o ciclo concluído no backend, até um reload. Agora, remontar com ciclo em andamento religa o monitor automaticamente.
+- **Estado de abas e colapsáveis sobrevive à navegação**: a aba ativa da Configuração e o aberto/fechado dos colapsáveis (Processamentos, Rejeitados, Classificador operacional, Classificação LLM) persistem em localStorage — navegar entre Painel/Assistente/Configuração não reseta mais a tela.
+
+---
+
 ## [0.31.1] -- 2026-07-19
 
 ### Corrigido

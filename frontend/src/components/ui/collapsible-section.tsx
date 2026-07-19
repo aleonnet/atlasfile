@@ -6,15 +6,35 @@ type Props = {
   /** Badge à direita do título: string (chip padrão) ou nó rico (ex.: <Badge/>). */
   badge?: React.ReactNode;
   defaultOpen?: boolean;
+  /** Persiste aberto/fechado em localStorage — o estado sobrevive a navegação entre telas. */
+  persistKey?: string;
   className?: string;
   children: React.ReactNode;
 };
 
+function readPersisted(persistKey: string | undefined, fallback: boolean): boolean {
+  if (!persistKey) return fallback;
+  try {
+    const stored = localStorage.getItem(`atlasfile-collapse-${persistKey}`);
+    return stored === null ? fallback : stored === "open";
+  } catch {
+    return fallback;
+  }
+}
+
 /** Seção colapsável nativa (details/summary) no padrão do design system. */
-export function CollapsibleSection({ title, badge, defaultOpen = false, className, children }: Props) {
+export function CollapsibleSection({ title, badge, defaultOpen = false, persistKey, className, children }: Props) {
   return (
     <details
-      open={defaultOpen}
+      open={readPersisted(persistKey, defaultOpen)}
+      onToggle={(e) => {
+        if (!persistKey) return;
+        try {
+          localStorage.setItem(`atlasfile-collapse-${persistKey}`, (e.target as HTMLDetailsElement).open ? "open" : "closed");
+        } catch {
+          /* storage indisponível */
+        }
+      }}
       className={cn("group rounded-lg border border-border bg-panel-strong/40 open:bg-transparent", className)}
     >
       <summary

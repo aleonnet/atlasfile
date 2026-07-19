@@ -98,7 +98,22 @@ export function ConfigView({
 }: Props) {
   return (
     <section className="flex flex-col">
-      <Tabs defaultValue="perfil">
+      <Tabs
+        defaultValue={(() => {
+          try {
+            return localStorage.getItem("atlasfile-config-tab") || "perfil";
+          } catch {
+            return "perfil";
+          }
+        })()}
+        onValueChange={(v) => {
+          try {
+            localStorage.setItem("atlasfile-config-tab", v);
+          } catch {
+            /* storage indisponível */
+          }
+        }}
+      >
         <TabsList aria-label="Configurações">
           <TabsTrigger value="perfil"><FolderTree aria-hidden /> Perfil do projeto</TabsTrigger>
           <TabsTrigger value="classificador"><Sparkles aria-hidden /> Classificador</TabsTrigger>
