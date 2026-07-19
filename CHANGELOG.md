@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.34.3] -- 2026-07-19
+
+### Corrigido
+
+- **Estrelas invisíveis no Chrome real (Metal)**: o shader emitia as estrelas como pixel premultiplicado inválido (cor > 0 com alfa 0) — comportamento indefinido por spec; o compositor Metal do Chrome interativo clampa cor≤alfa e as estrelas viravam preto, enquanto compositores de software (headless/Playwright) deixavam passar — por isso os screenshots de validação anteriores mentiam. Alfa agora deriva da luminância (`max(occ, maxComponent(luz))`), válido em qualquer compositor. Diagnóstico e validação feitos no ambiente real: captura de tela do Chrome interativo do usuário (ANGLE Metal, M3 Max) antes e depois.
+
+---
+
 ## [0.34.2] -- 2026-07-19
 
 ### Corrigido

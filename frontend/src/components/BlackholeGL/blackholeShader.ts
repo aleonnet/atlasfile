@@ -144,11 +144,14 @@ void main() {
   const float SKY_FOV = 0.05;
   float starVis = mix(0.70, 1.0, window) * shield;
 
-  // far field: sem textura para lentear — só o starfield dobrado (barato)
+  // far field: sem textura para lentear — só o starfield dobrado (barato).
+  // Alfa = luminância: premultiplicado com rgb > alfa é INVÁLIDO por spec e o
+  // compositor Metal do Chrome clampa para preto (o headless/software deixava
+  // passar — foi assim que este bug se escondeu dos screenshots).
   if (b >= bmax) {
     vec3 d = normalize(vec3(pr * SKY_FOV - (pr / b) * (2.0 / b), -1.0));
     vec3 st = stars(d) * uStarGain * starVis;
-    outColor = vec4(st, 0.0);
+    outColor = vec4(st, clamp(max(st.r, max(st.g, st.b)), 0.0, 1.0));
     return;
   }
 
@@ -224,10 +227,12 @@ void main() {
     bg = stars(normalize(vec3(nv.xy + pr * SKY_FOV, nv.z))) * uStarGain * starVis;
   }
 
-  // Saída premultiplicada: luz do disco/estrelas SOMA sobre a página; a sombra
-  // (raios capturados) e o disco opaco OCLUEM via alfa. blend: ONE, 1-SRC_ALPHA.
-  vec3 light = bg * trans + (vec3(1.0) - exp(-emitc * EXPOSURE));
+  // Saída premultiplicada VÁLIDA (alfa >= max componente da luz): a luz do
+  // disco/estrelas quase-soma sobre a página; sombra e disco opaco ocluem.
+  // blend: ONE, 1-SRC_ALPHA.
+  vec3 light = (bg * trans + (vec3(1.0) - exp(-emitc * EXPOSURE))) * vis;
   float occ = clamp((captured ? 0.94 : 0.0) + (1.0 - trans) * 0.85, 0.0, 1.0) * vis * window;
-  outColor = vec4(light * vis, occ);
+  float alpha = clamp(max(occ, max(light.r, max(light.g, light.b))), 0.0, 1.0);
+  outColor = vec4(light, alpha);
 }
 `;
