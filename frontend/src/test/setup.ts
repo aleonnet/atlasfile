@@ -1,5 +1,10 @@
 import "@testing-library/jest-dom/vitest";
-import "../i18n";
+import i18n from "../i18n";
+
+// jsdom expõe navigator.language = en-US; a suíte roda em PT-BR por contrato
+// (golden strings do catálogo). Testes de EN-US trocam o idioma explicitamente
+// e restauram no afterEach.
+await i18n.changeLanguage("pt-BR");
 
 // jsdom não implementa ResizeObserver/scrollIntoView (usados por cmdk/Radix)
 if (typeof globalThis.ResizeObserver === "undefined") {

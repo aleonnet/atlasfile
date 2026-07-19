@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { createTemplate, deleteTemplate, getTemplate, saveTemplate } from "../../api";
+import { formatDate } from "../../lib/format";
 import { useTemplatesQuery } from "../../lib/queries";
 import { qk } from "../../lib/queryKeys";
 import { Badge } from "../../components/ui/badge";
@@ -658,7 +659,7 @@ export function TemplateEditorView() {
                 <Badge variant={tmpl.source === "user" ? "purple" : "outline"}>{tmpl.source === "user" ? "user" : "builtin"}</Badge>
               </div>
               <p className="font-mono text-[0.7rem] text-tertiary">
-                {t("templates:list.cardMeta", { value: tmpl.areas_count, date: tmpl.updated_at ? new Date(tmpl.updated_at).toLocaleDateString("pt-BR") : "—" })}{" "}
+                {t("templates:list.cardMeta", { value: tmpl.areas_count, date: tmpl.updated_at ? formatDate(tmpl.updated_at) : "—" })}{" "}
                 <span className="text-muted-foreground">{tmpl.slug}.json</span>
               </p>
               {tmpl.description && <p className="line-clamp-2 text-xs text-muted-foreground">{tmpl.description}</p>}

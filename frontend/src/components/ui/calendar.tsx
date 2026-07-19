@@ -1,16 +1,19 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DayPicker, type DayPickerProps } from "react-day-picker";
-import { ptBR } from "react-day-picker/locale";
+import { enUS, ptBR } from "react-day-picker/locale";
+import i18n from "../../i18n";
 import { cn } from "../../lib/utils";
+
+const LOCALES = { "pt-BR": ptBR, "en-US": enUS } as const;
 
 /**
  * Calendário da marca sobre react-day-picker v10 (headless, estilizado 100%
- * via classNames → tokens). Locale fixo pt-BR — o app é PT-BR por contrato.
+ * via classNames → tokens). Locale segue o idioma ativo do app.
  */
 export function Calendar({ className, classNames, ...props }: DayPickerProps) {
   return (
     <DayPicker
-      locale={ptBR}
+      locale={LOCALES[i18n.language as keyof typeof LOCALES] ?? ptBR}
       showOutsideDays
       className={cn("select-none p-3", className)}
       classNames={{

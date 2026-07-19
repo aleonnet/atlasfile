@@ -19,7 +19,9 @@ def test_get_document_404(client: TestClient) -> None:
         mock_client.get.side_effect = Exception("not found")
         r = client.get("/api/documents/some-doc-id")
     assert r.status_code == 404
-    assert "nao encontrado" in r.json().get("detail", "").lower()
+    detail = r.json()["detail"]
+    assert detail["code"] == "DOCUMENT_NOT_FOUND"
+    assert "nao encontrado" in detail["message"].lower()
 
 
 def test_get_document_200(client: TestClient) -> None:

@@ -22,6 +22,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
 import { qk } from "./lib/queryKeys";
+import { ApiError } from "./lib/apiError";
 import { STORAGE_KEYS, storageGet } from "./lib/storage";
 import { useReconcileMonitor } from "./hooks/useReconcileMonitor";
 import {
@@ -106,7 +107,8 @@ function AppShell() {
   // atualiza in-place (id fixo) — progresso contínuo não vira spam de toasts.
   useEffect(() => {
     if (!status || status === t("painel:app.statusReady")) return;
-    const isError = /falha|erro|negado|inválid/i.test(status);
+    // Sniffing de severidade cobre os dois catálogos (PT/EN); "erro" ⊂ "error".
+    const isError = /falha|erro|negado|inválid|fail|denied|invalid/i.test(status);
     toast[isError ? "error" : "message"](status, { id: "app-status" });
   }, [status]);
 
@@ -304,7 +306,7 @@ function AppShell() {
       await reconcile.start(selectedProject === ALL_PROJECTS ? undefined : selectedProject, scopeLabel);
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("painel:app.reconcileFailed");
-      if (msg.includes("ja em andamento")) {
+      if (err instanceof ApiError && err.code === "RECONCILE_IN_PROGRESS") {
         setStatus(t("painel:app.reconcileAlreadyRunning"));
         void reconcile.start; // canal já acompanha via snapshot ativo
       } else {
@@ -516,17 +518,7 @@ function AppShell() {
 
         <div className={view === "config" ? "contents" : "hidden"}>
           {visitedViews.has("config") && (
-          <ConfigView
-            selectedProject={selectedProject}
-            selectedProjectLabel={selectedProjectLabel}
-            triageItems={triageItems}
-            onStatus={setStatus}
-            openaiApiKey={openaiApiKey}
-            anthropicApiKey={anthropicApiKey}
-            onOpenSettings={() => setSettingsOpen(true)}
-            selectedModelTriage={selectedModelTriage}
-            onChangeModelTriage={setSelectedModelTriage}
-          />
+          <ConfigView selectedProject={selectedProject} onStatus={setStatus} />
           )}
         </div>
 

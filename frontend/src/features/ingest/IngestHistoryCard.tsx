@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { moveDocument } from "../../api";
 import i18n from "../../i18n";
+import { formatDate } from "../../lib/format";
 import { useIngestHistoryQuery, useProjectProfileQuery } from "../../lib/queries";
 import { MoveDocumentModal } from "../../components/MoveDocumentModal";
 import { Badge } from "../../components/ui/badge";
@@ -208,7 +209,7 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                         <tr className={hasLlmDetail ? "cursor-pointer" : undefined} onClick={hasLlmDetail ? () => toggleLlmRow(row.key) : undefined}>
                           <td>{decisionIcon(row.decision)}</td>
                           <td className="whitespace-nowrap">
-                            {new Date(row.timestamp).toLocaleString("pt-BR", {
+                            {formatDate(row.timestamp, {
                               day: "2-digit", month: "2-digit", year: "2-digit",
                               hour: "2-digit", minute: "2-digit"
                             })}

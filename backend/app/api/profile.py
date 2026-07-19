@@ -7,6 +7,7 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel
 
 from ..config import settings
+from ..http_errors import http_error
 from ..profile_schema_v2 import ProfilePutRequest, ProjectProfileV2
 from ..profile_store import compute_profile_etag, ensure_profile, list_profile_history, load_profile, save_profile
 from ..project_profile import list_project_roots
@@ -30,7 +31,7 @@ def _resolve_project_root(project_ref: str) -> Path:
                 return proj
         except Exception:
             continue
-    raise HTTPException(status_code=404, detail=f"Projeto nao encontrado: {project_ref}")
+    raise http_error(404, "PROJECT_NOT_FOUND", f"Projeto nao encontrado: {project_ref}", project_id=project_ref)
 
 
 def _normalize_profile_for_project(profile: ProjectProfileV2, *, project_root: Path) -> ProjectProfileV2:

@@ -21,6 +21,7 @@ import { RejectedCard } from "../features/triage/RejectedCard";
 import { TriageQueue } from "../features/triage/TriageQueue";
 import { buildEvidenceGroups, topLocations } from "../features/search/searchFormatters";
 import { cn } from "../lib/utils";
+import { formatDate } from "../lib/format";
 import { invalidateAfterMove } from "../lib/mutations";
 import { useProcessing } from "../contexts/ProcessingContext";
 import { usePainelSearch } from "../hooks/usePainelSearch";
@@ -107,7 +108,7 @@ function formatTimestamp(value: string | null | undefined): string {
   if (!value) return "-";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR");
+  return formatDate(parsed, { dateStyle: "short", timeStyle: "medium" });
 }
 
 /** Chips de facet — filtros clicáveis com contagem (substituem os <select>). */

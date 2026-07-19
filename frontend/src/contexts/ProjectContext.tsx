@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchProjects } from "../api";
+import i18n from "../i18n";
 import { qk } from "../lib/queryKeys";
 import { STORAGE_KEYS, storageGet, storageSet } from "../lib/storage";
 import type { Project } from "../types";
@@ -53,7 +54,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const selectedProjectLabel = useMemo(
     () =>
       selectedProject === ALL_PROJECTS
-        ? "Todos os projetos"
+        ? i18n.t("common:allProjects")
         : projects.find((p) => p.project_id === selectedProject)?.project_label ?? "",
     [projects, selectedProject]
   );

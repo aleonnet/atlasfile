@@ -1,24 +1,34 @@
 import { useEffect, useRef } from "react";
 import { fetchReconcileStatus, getReconcileStatusStreamUrl, runReconcile } from "../api";
+import i18n from "../i18n";
 import { invalidateAfterReconcile } from "../lib/mutations";
 import { qk } from "../lib/queryKeys";
 import { useSseChannel } from "./useSseChannel";
 import type { ReconcileStatus } from "../types";
 
 function progressMessage(latest: ReconcileStatus): string {
-  const proj = latest.progress_project ?? "—";
-  const file = latest.progress_file ?? "—";
-  const skip = (latest.progress_skipped ?? 0) > 0 ? ` (skip: ${latest.progress_skipped})` : "";
-  return `Reconciliando: ${latest.progress_current ?? 0} / ${latest.progress_total ?? 0} docs | Projeto: ${proj} | Arquivo: ${file}${skip}`;
+  const skipped = latest.progress_skipped ?? 0;
+  return i18n.t("painel:reconcile.progress", {
+    current: latest.progress_current ?? 0,
+    total: latest.progress_total ?? 0,
+    project: latest.progress_project ?? "—",
+    file: latest.progress_file ?? "—",
+    skip: skipped > 0 ? i18n.t("painel:reconcile.progressSkip", { count: skipped }) : "",
+  });
 }
 
 function summaryMessage(latest: ReconcileStatus, scopeLabel?: string): string {
-  const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary?.skipped_docs} skip (inalterados)` : "";
-  const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary?.failed_docs} falha(s)` : "";
-  const orphanMsg =
-    Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary?.orphan_docs_deleted} orfao(s) removido(s)` : "";
-  const scope = scopeLabel ? ` (${scopeLabel})` : "";
-  return `Reconciliacao concluida${scope}: ${latest.summary?.adjustments_applied ?? 0} ajuste(s), ${latest.summary?.indexed_docs ?? 0} doc(s) indexado(s)${skipMsg}${failMsg}${orphanMsg}`;
+  const skipped = Number(latest.summary?.skipped_docs) || 0;
+  const failed = Number(latest.summary?.failed_docs) || 0;
+  const orphans = Number(latest.summary?.orphan_docs_deleted) || 0;
+  return i18n.t("painel:reconcile.summary", {
+    scope: scopeLabel ? i18n.t("painel:reconcile.scopeSuffix", { scope: scopeLabel }) : "",
+    adjustments: i18n.t("painel:reconcile.summaryAdjustments", { count: latest.summary?.adjustments_applied ?? 0 }),
+    indexed: i18n.t("painel:reconcile.summaryIndexed", { count: latest.summary?.indexed_docs ?? 0 }),
+    skip: skipped > 0 ? i18n.t("painel:reconcile.summarySkip", { count: skipped }) : "",
+    fail: failed > 0 ? i18n.t("painel:reconcile.summaryFail", { count: failed }) : "",
+    orphan: orphans > 0 ? i18n.t("painel:reconcile.summaryOrphan", { count: orphans }) : "",
+  });
 }
 
 /** Monitor de reconciliação sobre a ponte SSE→Query (F3): substitui as DUAS
@@ -62,7 +72,7 @@ export function useReconcileMonitor({ onStatus }: { onStatus: (msg: string) => v
     start: async (projectId: string | undefined, scopeLabel: string) => {
       scopeLabelRef.current = scopeLabel;
       startedHereRef.current = true;
-      onStatus(`Iniciando reconciliacao de ${scopeLabel}...`);
+      onStatus(i18n.t("painel:reconcile.starting", { scope: scopeLabel }));
       await runReconcile(projectId);
       await channel.refresh();
     },

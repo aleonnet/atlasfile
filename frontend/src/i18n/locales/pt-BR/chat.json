@@ -11,7 +11,7 @@
   "toolbar": {
     "modelLabel": "Modelo",
     "settingsTitle": "Configuração (modelo e API Key)",
-    "thinkingToggle": "Toggle assistant thinking/working output",
+    "thinkingToggle": "Mostrar/ocultar raciocínio do assistente",
     "thinkingUnsupported": "Este modelo não suporta reasoning/thinking",
     "newSession": "Nova sessão",
     "historyTitle": "Histórico de sessões",
@@ -90,6 +90,7 @@
     "label": "Pensando..."
   },
   "session": {
+    "autoTitle": "Conversa {{date}}",
     "saveFailed": "Falha ao salvar sessão automaticamente",
     "networkError": "Erro de rede. Verifique se a API está rodando (ex.: http://localhost:8000) e se o backend está acessível.",
     "chatError": "Erro no chat",

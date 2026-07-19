@@ -38,6 +38,8 @@ import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { EmptyState } from "../../components/ui/empty-state";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/utils";
+import { apiErrorMessage } from "../../lib/apiError";
+import { formatDateTimeShort, formatPercent } from "../../lib/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../lib/queryKeys";
 import { useSseChannel } from "../../hooks/useSseChannel";
@@ -72,7 +74,7 @@ const DEFAULT_LLM_POLICY: LLMPolicy = {
 
 function formatPct(value?: number | null): string {
   if (value == null || Number.isNaN(value)) return "—";
-  return `${(value * 100).toFixed(1)}%`;
+  return formatPercent(value);
 }
 
 /** Motivo do skip legível — o "skip" mudo já custou uma investigação. */
@@ -478,7 +480,7 @@ export function IngestTriageCard({
                       disabled={cancellingCycle || (!classifierCycleStatus?.running && datasetReadiness?.cycle_ready === false)}
                       title={
                         !classifierCycleStatus?.running && datasetReadiness?.cycle_ready === false
-                          ? datasetReadiness.blockers[0]?.message
+                          ? (datasetReadiness.blockers[0] && apiErrorMessage(datasetReadiness.blockers[0]))
                           : undefined
                       }
                       onClick={() => {
@@ -523,7 +525,7 @@ export function IngestTriageCard({
                 {datasetReadiness && !datasetReadiness.cycle_ready && !classifierCycleStatus?.running && (
                   <div className="mb-2.5 rounded-md border border-accent/30 bg-accent-soft/30 px-3 py-2.5">
                     {datasetReadiness.blockers.map((b) => (
-                      <p key={b.code} className="m-0 text-[0.8rem] text-foreground">{b.message}</p>
+                      <p key={b.code} className="m-0 text-[0.8rem] text-foreground">{apiErrorMessage(b)}</p>
                     ))}
                     <p className="m-0 mt-1 font-mono text-[0.68rem] text-tertiary">
                       {t("ingest:classifier.readinessStats", { labeled: datasetReadiness.validation.labeled, records: datasetReadiness.training.records })}
@@ -534,7 +536,7 @@ export function IngestTriageCard({
                   datasetReadiness.suggestions
                     .filter((s) => s.code === "sparse_gate_not_met" || s.code === "auto_backfill_on_run")
                     .map((s) => (
-                      <p key={s.code} className="mb-2 text-[0.75rem] text-muted-foreground">{s.message}</p>
+                      <p key={s.code} className="mb-2 text-[0.75rem] text-muted-foreground">{apiErrorMessage(s)}</p>
                     ))}
 
                 <p className="mb-2.5 text-[0.78rem] text-muted-foreground">
@@ -704,7 +706,7 @@ export function IngestTriageCard({
                     {classifierReports.slice(0, 8).map((report) => {
                       const isChampion = report.report_id === classifierStatus?.champion_report_id;
                       const ts = report.generated_at
-                        ? new Date(report.generated_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })
+                        ? formatDateTimeShort(report.generated_at)
                         : report.report_id;
                       return (
                         <tr key={report.report_id} className={isChampion ? "[&_td]:font-semibold" : ""}>

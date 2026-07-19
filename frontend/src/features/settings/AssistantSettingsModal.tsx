@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { BadgeCheck, ChevronRight, Eye, EyeOff, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import i18n from "../../i18n";
+import { formatDateTimeShort } from "../../lib/format";
 import {
   fetchCatalogConfig,
   fetchChannelConfig,
@@ -77,7 +78,7 @@ type ValidationState = { status: "idle" | "validating" | "valid" | "invalid"; de
 function formatRefreshedAt(iso: string | null | undefined): string {
   if (!iso) return i18n.t("settings:catalog.never");
   try {
-    return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    return formatDateTimeShort(iso);
   } catch {
     return iso;
   }
@@ -418,6 +419,7 @@ export function AssistantSettingsModal({
   const isSingleProject = selectedProject !== ALL_PROJECTS && !!selectedProject;
   const [activeTab, setActiveTab] = useState<"assistente" | "catalogo">("assistente");
   const [triageSaveStatus, setTriageSaveStatus] = useState("");
+  const [triageSaveError, setTriageSaveError] = useState(false);
   const [channelCfg, setChannelCfg] = useState<ChannelConfig>(DEFAULT_TG_CONFIG);
   const [channelStatus, setChannelStatus] = useState<ChannelStatusResponse | null>(null);
   const [expandedChannel, setExpandedChannel] = useState<string | null>(null);
@@ -496,6 +498,7 @@ export function AssistantSettingsModal({
     const model = rest.join("/");
     if (!provider || !model) return;
     setTriageSaveStatus(t("settings:assistant.triageSaving"));
+    setTriageSaveError(false);
     try {
       const current = await fetchProjectProfile(selectedProject);
       const basePolicy = current.profile.classification.llm_policy ?? {
@@ -525,6 +528,7 @@ export function AssistantSettingsModal({
       setTriageSaveStatus(t("settings:assistant.triageSaved", { project: selectedProjectLabel }));
     } catch {
       setTriageSaveStatus(t("settings:assistant.triageSaveFailed"));
+      setTriageSaveError(true);
     }
   }
 
@@ -590,7 +594,7 @@ export function AssistantSettingsModal({
             onValidated={addCustomModel}
             apiKeys={{ openai: openaiApiKey || undefined, anthropic: anthropicApiKey || undefined }}
           />
-          <span className={cn(hintClass, triageSaveStatus.startsWith("falha") && "text-destructive")}>
+          <span className={cn(hintClass, triageSaveError && "text-destructive")}>
             {triageSaveStatus || t("settings:assistant.triagePolicyHint")}
           </span>
         </>

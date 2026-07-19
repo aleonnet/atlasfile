@@ -23,12 +23,22 @@
     "ready": "Pronto",
     "online": "online"
   },
+  "allProjects": "Todos os projetos",
+  "dateFormat": {
+    "short": "dd/MM/yyyy"
+  },
+  "dateRange": {
+    "days7": "7 dias",
+    "days30": "30 dias",
+    "days90": "90 dias",
+    "months12": "12 meses"
+  },
   "unit": {
     "file_one": "{{count}} arquivo",
     "file_other": "{{count}} arquivos",
     "document_one": "{{count}} documento",
     "document_other": "{{count}} documentos",
-    "result_one": "{{count}} resultado(s)",
-    "result_other": "{{count}} resultado(s)"
+    "result_one": "{{count}} resultado",
+    "result_other": "{{count}} resultados"
   }
 }

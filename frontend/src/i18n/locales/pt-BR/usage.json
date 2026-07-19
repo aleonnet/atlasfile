@@ -3,20 +3,27 @@
     "web": "Web",
     "telegram": "TG"
   },
+  "dateFormat": {
+    "monthShort": "MMM/yy",
+    "weekShort": "dd/MM",
+    "dayShort": "dd MMM",
+    "monthLong": "MMMM 'de' yyyy",
+    "full": "dd/MM/yyyy"
+  },
   "granularity": {
     "day": "Dia",
     "week": "Semana",
     "month": "Mês"
   },
   "tokenType": {
-    "output": "Output",
-    "input": "Input",
-    "cache_write": "Cache Write",
-    "cache_read": "Cache Read"
+    "output": "Saída",
+    "input": "Entrada",
+    "cache_write": "Escrita de cache",
+    "cache_read": "Leitura de cache"
   },
   "process": {
     "assistant": "Assistente",
-    "classification": "Classificacao",
+    "classification": "Classificação",
     "training": "Treinamento"
   },
   "chart": {
@@ -55,11 +62,11 @@
   "modelTable": {
     "title": "Por modelo (Assistente)",
     "model": "Modelo",
-    "inputTokens": "Input (tokens)",
-    "outputTokens": "Output (tokens)",
-    "inputCost": "Input (custo)",
-    "outputCost": "Output (custo)",
-    "totalTokens": "Total tokens",
+    "inputTokens": "Entrada (tokens)",
+    "outputTokens": "Saída (tokens)",
+    "inputCost": "Entrada (custo)",
+    "outputCost": "Saída (custo)",
+    "totalTokens": "Total de tokens",
     "totalCost": "Custo total",
     "empty": "Nenhum dado no período.",
     "total": "Total",

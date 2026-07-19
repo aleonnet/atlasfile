@@ -82,7 +82,7 @@ describe("Sidebar", () => {
         <Sidebar healthOk={true} onSelectProject={onSelectProject} onNewProject={vi.fn()} onOpenSearch={vi.fn()} />
       </Providers>
     );
-    await waitFor(() => expect(screen.getByText(/2 projeto\(s\)/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/2 projetos/)).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText(/Projeto: /));
     const option = await screen.findByRole("button", { name: /Projeto 2/ });
     fireEvent.click(option);
@@ -108,12 +108,12 @@ describe("CommandPalette", () => {
         />
       </Providers>
     );
-    expect(screen.getByPlaceholderText("Search...")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Buscar...")).toBeInTheDocument();
     expect(screen.getByText("Navegação")).toBeInTheDocument();
     expect(screen.getByText("Tema")).toBeInTheDocument();
     expect(screen.getByText("Novo projeto")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Search..."), { target: { value: "assist" } });
+    fireEvent.change(screen.getByPlaceholderText("Buscar..."), { target: { value: "assist" } });
     expect(onQueryChange).toHaveBeenCalledWith("assist");
   });
 

@@ -1,0 +1,99 @@
+{
+  "tab": {
+    "assistente": "Assistant",
+    "catalogo": "Model catalog"
+  },
+  "catalog": {
+    "loadFailed": "Failed to load the catalog",
+    "sourceValid": "Valid source: {{total}} models ({{openai}} OpenAI, {{anthropic}} Anthropic), {{priced}} with pricing",
+    "sourceInvalid": "Invalid source",
+    "defaultRestored": "Default source restored",
+    "urlSaved": "Source URL saved",
+    "urlSaveFailed": "Failed to save the URL",
+    "refreshed": "Catalog refreshed: {{total}} models ({{priced}} with pricing)",
+    "refreshFailed": "Failed to refresh the catalog",
+    "never": "never",
+    "sourceLabel": "Catalog source (JSON)",
+    "sourceHint": "Parameters and prices aggregated from the official OpenAI/Anthropic pages (LiteLLM format).",
+    "useDefault": "use default",
+    "testSource": "Test source",
+    "saveUrl": "Save URL",
+    "refreshNow": "Refresh now",
+    "lastRefresh": "last refresh: {{date}}",
+    "modelsAvailable": "Available models ({{value}}) — prices per 1M tokens",
+    "model": "Model",
+    "context": "Context",
+    "maxOut": "Max out",
+    "reasoning": "Reasoning",
+    "inputCost": "$ input",
+    "outputCost": "$ output",
+    "origin": "Source",
+    "originRemote": "remote"
+  },
+  "combobox": {
+    "validatedByYou": "{{model}} (validated by you)",
+    "placeholder": "provider/model — type for new models",
+    "validateFailed": "Failed to validate",
+    "validate": "Validate",
+    "validateTitle": "Confirm with the provider API that the model exists",
+    "outsideCatalog": "Model not in the catalog — validate it before using."
+  },
+  "assistant": {
+    "title": "Assistant Settings",
+    "intro": "Keys are sent only with the request and are not stored on the server. New models can be typed in and validated against the provider API (the Catalog tab shows parameters and prices).",
+    "modelChat": "Chat model",
+    "modelTriageProject": "Triage model — project {{project}}",
+    "modelTriage": "Triage model",
+    "triageSaving": "saving...",
+    "triageSaved": "saved to project {{project}}",
+    "triageSaveFailed": "failed to save to the project",
+    "triagePolicyHint": "The triage LLM policy is per project — written to the profile when selected.",
+    "triagePolicySelectProject": "The triage LLM policy is per project. Select a project in the sidebar to configure it.",
+    "openaiKey": "OpenAI API Key",
+    "anthropicKey": "Anthropic API Key",
+    "autoTitle": "Generate session title via LLM (in the background)",
+    "autoTitleHint": "If disabled, the title will be the first message of the chat."
+  },
+  "config": {
+    "tabsAria": "Settings",
+    "tabPerfil": "Project profile",
+    "tabTemplates": "Templates",
+    "tabAcesso": "Access",
+    "tabPreferencias": "Preferences"
+  },
+  "apiAccess": {
+    "title": "API Access",
+    "saved": "AtlasFile API key saved in this browser.",
+    "removed": "API key removed.",
+    "description": "Only required when the backend runs with <c>API_AUTH_ENABLED=true</c>. The key stays in this browser only (localStorage) and is sent as <c>Authorization: Bearer</c>.",
+    "howtoTitle": "How to enable authentication",
+    "howtoIntro": "Authentication is a deployment decision — for security, it cannot be turned on from this UI (an interface without auth must not be able to enable auth). The simplest path is to re-run the installer on the server, which generates the key, configures the <c>.env</c> and rebuilds the API while preserving your data:",
+    "howtoManual": "Or manually: keys in <c>config/api_keys.json</c>, <c>API_AUTH_ENABLED=true</c> in .env and <c>docker compose up -d --build api mcp</c>. At the end, the generated key is shown in the terminal — paste it above in every browser that accesses AtlasFile."
+  },
+  "language": {
+    "title": "Language",
+    "label": "Interface language",
+    "description": "Interface language. The page reloads when switching to apply it across all screens.",
+    "ptBR": "Português (Brasil)",
+    "enUS": "English (US)"
+  },
+  "channels": {
+    "title": "Communication channels",
+    "intro": "Connect the assistant to external messaging channels. Channels are optional and do not affect the web chat.",
+    "connected": "Connected",
+    "error": "Error",
+    "disconnected": "Disconnected",
+    "noToken": "No token",
+    "botToken": "Bot Token",
+    "botFatherTitle": "Create a bot via @BotFather",
+    "hideToken": "Hide token",
+    "showToken": "Show token",
+    "botHintBefore": "Create a bot via",
+    "botHintAfter": ", copy the token and paste it above.",
+    "mirror": "Mirror replies to Telegram",
+    "mirrorHint": "When enabled, replies sent from the web chat in sessions that originated on Telegram are also forwarded to Telegram.",
+    "errorPrefix": "Error: {{error}}",
+    "saving": "Saving...",
+    "comingSoon": "Coming soon"
+  }
+}

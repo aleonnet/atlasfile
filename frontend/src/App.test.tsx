@@ -183,7 +183,7 @@ describe("App", () => {
       expect(screen.getByText(/documentos indexados/i)).toBeInTheDocument();
     });
     fireEvent.keyDown(document, { key: "k", metaKey: true });
-    const searchPlaceholder = await screen.findByPlaceholderText("Search...", {}, { timeout: 3000 });
+    const searchPlaceholder = await screen.findByPlaceholderText("Buscar...", {}, { timeout: 3000 });
     expect(searchPlaceholder).toBeInTheDocument();
   });
 
@@ -326,10 +326,10 @@ describe("App", () => {
       expect(screen.getByText(/documentos indexados/i)).toBeInTheDocument();
     });
     fireEvent.keyDown(document, { key: "k", metaKey: true });
-    const input = await screen.findByPlaceholderText("Search...");
+    const input = await screen.findByPlaceholderText("Buscar...");
     fireEvent.change(input, { target: { value: "Fornecedores" } });
 
-    expect(await screen.findByText(/Pagina 135 \/ 1o paragrafo/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Página 135 \/ 1º parágrafo/i)).toBeInTheDocument();
   });
 
   it("renders control card with stats and project table", async () => {

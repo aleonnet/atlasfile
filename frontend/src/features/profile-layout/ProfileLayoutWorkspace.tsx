@@ -59,6 +59,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
   const [cleanupEmptyDirs, setCleanupEmptyDirs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string>("");
+  const [validationOk, setValidationOk] = useState(false);
   const [saveAsTemplateOpen, setSaveAsTemplateOpen] = useState(false);
   useEscapeKey(saveAsTemplateOpen ? () => setSaveAsTemplateOpen(false) : null);
   const [templateName, setTemplateName] = useState("");
@@ -112,6 +113,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
     if (!draft) return;
     try {
       const result = await validateProfile(projectRef, draft);
+      setValidationOk(result.valid);
       if (result.valid) {
         setValidationMessage(t("profileLayout:workspace.validProfile"));
         onStatus?.(t("profileLayout:workspace.validatedStatus"));
@@ -121,6 +123,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
         onStatus?.(t("profileLayout:workspace.invalidStatus"));
       }
     } catch {
+      setValidationOk(false);
       setValidationMessage(t("profileLayout:workspace.invalidProfileShort"));
       onStatus?.(t("profileLayout:workspace.validateFailedStatus"));
     }
@@ -263,7 +266,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       {validationMessage && (
         <p
           className={
-            validationMessage.startsWith("Profile válido")
+            validationOk
               ? "rounded-md border border-success/30 bg-success-subtle px-3 py-2 text-[0.8rem] text-success"
               : "rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[0.8rem] text-destructive"
           }

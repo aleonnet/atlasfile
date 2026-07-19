@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..config import settings
+from ..http_errors import http_error
 from ..layout_service import apply_layout_migration, compute_plan_id, plan_layout_migration
 from ..profile_schema_v2 import ProjectProfileV2
 from ..profile_store import ensure_profile, load_profile, save_profile
@@ -44,7 +45,7 @@ def _resolve_project_root(project_ref: str) -> Path:
                 return proj
         except Exception:
             continue
-    raise HTTPException(status_code=404, detail=f"Projeto nao encontrado: {project_ref}")
+    raise http_error(404, "PROJECT_NOT_FOUND", f"Projeto nao encontrado: {project_ref}", project_id=project_ref)
 
 
 def _normalize_folder_rows(rows: list[dict] | None, *, key_field: str) -> list[tuple[str, str]]:
@@ -142,7 +143,7 @@ def post_layout_plan(project_ref: str, req: LayoutPlanRequest):
 @router.post("/api/projects/{project_ref}/layout/apply")
 def post_layout_apply(project_ref: str, req: LayoutApplyRequest):
     if not req.confirm:
-        raise HTTPException(status_code=400, detail="confirm=true é obrigatório para apply")
+        raise http_error(400, "LAYOUT_APPLY_CONFIRM_REQUIRED", "confirm=true é obrigatório para apply")
 
     project_root = _resolve_project_root(project_ref)
     current = load_profile(project_root)
@@ -155,11 +156,19 @@ def post_layout_apply(project_ref: str, req: LayoutApplyRequest):
     )
     expected_plan_id = compute_plan_id(plan)
     if expected_plan_id != req.plan_id:
-        raise HTTPException(status_code=409, detail="plan_id inválido para o estado atual do projeto")
+        raise http_error(409, "LAYOUT_PLAN_ID_STALE", "plan_id inválido para o estado atual do projeto")
 
     apply_summary = apply_layout_migration(plan, dry_run=False)
     if apply_summary.get("errors", 0) > 0:
-        raise HTTPException(status_code=500, detail={"message": "layout apply concluiu com erros", "summary": apply_summary})
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "LAYOUT_APPLY_COMPLETED_WITH_ERRORS",
+                "params": {},
+                "message": "layout apply concluiu com erros",
+                "summary": apply_summary,
+            },
+        )
 
     if_match = req.if_match_version if req.if_match_version is not None else current.version
     saved = save_profile(

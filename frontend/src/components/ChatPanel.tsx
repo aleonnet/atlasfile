@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import remarkGfm from "remark-gfm";
 import { fetchSuggestions, getFileDownloadUrl } from "../api";
 import { cn } from "../lib/utils";
+import { formatTimeShort } from "../lib/format";
 import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
 import { toast } from "./ui/sonner";
@@ -703,9 +704,7 @@ function ChatMessageBubble({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [imageModalUrl]);
-  const timeStr = timestamp
-    ? new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : "";
+  const timeStr = timestamp ? formatTimeShort(timestamp) : "";
   const modelShort = model ? model.replace(/^[^/]+\//, "") : "";
   const who = role === "user" ? t("chat:message.you") : (modelShort ? `${agentName} (${modelShort})` : agentName);
   const isUser = role === "user";

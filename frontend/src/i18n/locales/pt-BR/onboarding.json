@@ -21,7 +21,7 @@
     "displayLabel": "Label (exibicao)",
     "displayPlaceholder": "Meu Projeto",
     "templateLabel": "Template",
-    "nameRequired": "Nome do projeto e obrigatorio",
+    "nameRequired": "Nome do projeto é obrigatório",
     "nameInvalid": "Use apenas letras minusculas, numeros, _ e - (sem espacos ou acentos)",
     "createFailed": "Falha ao criar projeto",
     "back": "Voltar",
@@ -40,7 +40,7 @@
     "keyValid": "✓ Chave válida — a classificação LLM será ativada (tag_only) no projeto",
     "keyInvalid": "✗ Chave inválida — você pode continuar e ajustar depois em Configurações",
     "keyUnreachable": "Não foi possível verificar a chave agora (sem bloqueio — siga normalmente)",
-    "keyHint": "Salva localmente no navegador. Voce pode configurar depois em Configuracoes do Assistente.",
+    "keyHint": "Salva localmente no navegador. Você pode configurar depois em Configuracoes do Assistente.",
     "back": "Voltar",
     "skip": "Pular",
     "saveAndFinish": "Salvar e Concluir"

@@ -44,6 +44,7 @@ from .dataset_holdout import (
     dataset_readiness,
     route_labeled_document,
 )
+from .http_errors import http_error
 from .indexer import backfill_search_fields, index_document, read_text_excerpt
 from .ingest_history import append_ingest_entry, load_ingest_history, update_history_item
 from .ingestion import _append_index_md, process_inbox_file
@@ -889,7 +890,7 @@ def _resolve_project_root(project_id: str) -> Path:
                 return proj
         except Exception:
             continue
-    raise HTTPException(status_code=404, detail=f"Projeto nao encontrado: {project_id}")
+    raise http_error(404, "PROJECT_NOT_FOUND", f"Projeto nao encontrado: {project_id}", project_id=project_id)
 
 
 def _project_scope_filter(project_ref: str) -> dict[str, Any]:
@@ -1084,7 +1085,7 @@ def api_get_template(slug: str, auth: AuthContext = Depends(require_auth)) -> di
     try:
         return _get_template(slug)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Template não encontrado: {slug}")
+        raise http_error(404, "TEMPLATE_NOT_FOUND", f"Template não encontrado: {slug}", slug=slug)
 
 
 @app.post("/api/templates")
@@ -1109,7 +1110,7 @@ def api_create_template(body: dict[str, Any], auth: AuthContext = Depends(requir
             raise HTTPException(status_code=400, detail=str(e))
     slug = body.get("template_meta", {}).get("slug") or body.get("slug", "")
     if not slug:
-        raise HTTPException(status_code=400, detail="slug obrigatório")
+        raise http_error(400, "TEMPLATE_SLUG_REQUIRED", "slug obrigatório")
     try:
         return _save_template(slug, body)
     except ValueError as e:
@@ -1131,7 +1132,7 @@ def api_delete_template(slug: str, auth: AuthContext = Depends(require_auth)) ->
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Template não encontrado: {slug}")
+        raise http_error(404, "TEMPLATE_NOT_FOUND", f"Template não encontrado: {slug}", slug=slug)
     return {"status": "ok"}
 
 
@@ -1339,9 +1340,9 @@ def migrate_taxonomy(request: TaxonomyMigrateRequest, auth: AuthContext = Depend
     apply move documentos (sem disparar o hold-out), reescreve datasets por
     rótulo, pendências de triagem, templates e profiles (origem vira alias)."""
     if _classifier_cycle_status.get("running"):
-        raise HTTPException(status_code=409, detail="Aguarde o ciclo do classificador terminar")
+        raise http_error(409, "CLASSIFIER_CYCLE_IN_PROGRESS", "Aguarde o ciclo do classificador terminar")
     if _reconcile_status.get("running"):
-        raise HTTPException(status_code=409, detail="Aguarde a reconciliação terminar")
+        raise http_error(409, "RECONCILE_IN_PROGRESS", "Aguarde a reconciliação terminar")
     try:
         if request.dry_run:
             return plan_taxonomy_migration(
@@ -1418,7 +1419,7 @@ def resolve_label_conflict(
     bd = request.business_domain.strip()
     dt = request.document_type.strip()
     if not bd or not dt:
-        raise HTTPException(status_code=422, detail="business_domain e document_type são obrigatórios")
+        raise http_error(422, "LABEL_CONFLICT_FIELDS_REQUIRED", "business_domain e document_type são obrigatórios")
     try:
         result = resolve_conflict(sha256, bd, dt)
     except KeyError as exc:
@@ -1431,7 +1432,7 @@ def get_latest_classifier_report(auth: AuthContext = Depends(require_auth)) -> d
     registry = load_classifier_registry()
     report = load_classifier_report(registry.latest_report_id)
     if not report:
-        raise HTTPException(status_code=404, detail="Nenhum relatório de benchmark disponível")
+        raise http_error(404, "CLASSIFIER_REPORT_NOT_AVAILABLE", "Nenhum relatório de benchmark disponível")
     return report
 
 
@@ -1455,10 +1456,10 @@ def get_classifier_reports(limit: int = Query(10, ge=1, le=50), auth: AuthContex
 def delete_classifier_report(report_id: str, auth: AuthContext = Depends(require_auth)) -> Response:
     registry = load_classifier_registry()
     if report_id == registry.champion_report_id:
-        raise HTTPException(status_code=409, detail="Não é possível deletar o relatório campeão ativo")
+        raise http_error(409, "CLASSIFIER_CHAMPION_REPORT_PROTECTED", "Não é possível deletar o relatório campeão ativo")
     path = classifier_report_path(report_id)
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Report {report_id!r} não encontrado")
+        raise http_error(404, "CLASSIFIER_REPORT_NOT_FOUND", f"Report {report_id!r} não encontrado", report_id=report_id)
     path.unlink()
     return Response(status_code=204)
 
@@ -1488,13 +1489,13 @@ def set_classifier_override(project_id: str, body: dict[str, Any], auth: AuthCon
 def set_benchmark_enabled_modes(body: dict[str, Any], auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     modes_raw = body.get("benchmark_enabled_modes")
     if not isinstance(modes_raw, list):
-        raise HTTPException(status_code=400, detail="benchmark_enabled_modes must be a list")
+        raise http_error(400, "BENCHMARK_MODES_NOT_LIST", "benchmark_enabled_modes must be a list")
     modes = [str(m).strip() for m in modes_raw if str(m).strip()]
     for mode in modes:
         if mode not in SUPPORTED_CLASSIFIER_MODES:
-            raise HTTPException(status_code=400, detail=f"unsupported mode: {mode}")
+            raise http_error(400, "CLASSIFIER_MODE_UNSUPPORTED", f"unsupported mode: {mode}", mode=mode)
     if not modes:
-        raise HTTPException(status_code=400, detail="Pelo menos um modo deve estar habilitado")
+        raise http_error(400, "BENCHMARK_MODES_EMPTY", "Pelo menos um modo deve estar habilitado")
     registry = load_classifier_registry()
     registry.benchmark_enabled_modes = modes
     save_classifier_registry(registry)
@@ -1537,7 +1538,7 @@ def backfill_validation(
 ) -> dict[str, Any]:
     """Reserva ~20% do training pool para o validation set (estratificado, idempotente)."""
     if _classifier_cycle_status.get("running"):
-        raise HTTPException(status_code=409, detail="Aguarde o ciclo do classificador terminar")
+        raise http_error(409, "CLASSIFIER_CYCLE_IN_PROGRESS", "Aguarde o ciclo do classificador terminar")
     return backfill_validation_from_training_pool(dry_run=dry_run)
 
 
@@ -1549,7 +1550,7 @@ def start_classifier_cycle(
     auth: AuthContext = Depends(require_auth)
 ) -> JSONResponse:
     if _classifier_cycle_status.get("running"):
-        raise HTTPException(status_code=409, detail="Classifier cycle already in progress")
+        raise http_error(409, "CLASSIFIER_CYCLE_IN_PROGRESS", "Classifier cycle already in progress")
     readiness = dataset_readiness()
     auto_backfill_moved = 0
     if readiness.get("cycle_ready") and readiness.get("validation", {}).get("labeled", 0) == 0:
@@ -1558,8 +1559,15 @@ def start_classifier_cycle(
         readiness = dataset_readiness()
     if not readiness.get("cycle_ready"):
         blockers = readiness.get("blockers") or []
-        detail = blockers[0]["message"] if blockers else "Datasets do classificador ainda não estão prontos"
-        raise HTTPException(status_code=422, detail=detail)
+        if blockers:
+            blocker = blockers[0]
+            raise http_error(
+                422,
+                str(blocker.get("code", "classifier_datasets_not_ready")).upper(),
+                blocker["message"],
+                **(blocker.get("params") or {}),
+            )
+        raise http_error(422, "CLASSIFIER_DATASETS_NOT_READY", "Datasets do classificador ainda não estão prontos")
     registry = load_classifier_registry()
     enabled_modes = registry.benchmark_enabled_modes or ["bootstrap"]
     _classifier_cycle_status.update(
@@ -1597,7 +1605,7 @@ def start_classifier_cycle(
 @app.delete("/api/classifier/cycle")
 def cancel_classifier_cycle(auth: AuthContext = Depends(require_auth)) -> Response:
     if not _classifier_cycle_status.get("running"):
-        raise HTTPException(status_code=409, detail="Nenhum ciclo em andamento")
+        raise http_error(409, "CLASSIFIER_CYCLE_NOT_RUNNING", "Nenhum ciclo em andamento")
     _cycle_cancel_event.set()
     return Response(status_code=202)
 
@@ -1648,7 +1656,7 @@ def _run_reconcile_background(
 def reconcile_project(project_id: str, reindex_search: bool = True, auth: AuthContext = Depends(require_auth)):
     enforce_project_scope(auth, project_id)
     if _reconcile_status.get("running"):
-        raise HTTPException(status_code=409, detail="Reconcile already in progress")
+        raise http_error(409, "RECONCILE_IN_PROGRESS", "Reconcile already in progress")
     project_root = _resolve_project_root(project_id)
     thread = threading.Thread(
         target=_run_reconcile_background,
@@ -1663,7 +1671,7 @@ def reconcile_project(project_id: str, reindex_search: bool = True, auth: AuthCo
 @app.post("/api/reconcile")
 def reconcile_all_projects(reindex_search: bool = True, auth: AuthContext = Depends(require_auth)):
     if _reconcile_status.get("running"):
-        raise HTTPException(status_code=409, detail="Reconcile already in progress")
+        raise http_error(409, "RECONCILE_IN_PROGRESS", "Reconcile already in progress")
     roots = list_project_roots(Path(settings.projects_root))
     thread = threading.Thread(
         target=_run_reconcile_background,
@@ -1679,7 +1687,7 @@ def reconcile_all_projects(reindex_search: bool = True, auth: AuthContext = Depe
 def scan_project_inbox(project_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     enforce_project_scope(auth, project_id)
     if _ingest_status.get("running"):
-        raise HTTPException(status_code=409, detail="Ingest already in progress")
+        raise http_error(409, "INGEST_IN_PROGRESS", "Ingest already in progress")
     project_root = _resolve_project_root(project_id)
     profile, _ = _initialize_project_if_needed(project_root)
     inbox = project_root / inbox_rel(profile)
@@ -1808,9 +1816,9 @@ def delete_inbox_file(project_id: str, filename: str, auth: AuthContext = Depend
     target = (inbox / filename).resolve()
     # Prevent path traversal
     if not str(target).startswith(str(inbox.resolve())):
-        raise HTTPException(status_code=400, detail="Path invalido")
+        raise http_error(400, "PATH_INVALID", "Path invalido")
     if not target.exists():
-        raise HTTPException(status_code=404, detail=f"Arquivo nao encontrado na inbox: {filename}")
+        raise http_error(404, "INBOX_FILE_NOT_FOUND", f"Arquivo nao encontrado na inbox: {filename}", filename=filename)
     target.unlink()
     return {"status": "ok", "deleted": filename}
 
@@ -1834,12 +1842,12 @@ def download_file(
     try:
         relative = requested.relative_to(base)
     except ValueError:
-        raise HTTPException(status_code=403, detail="Caminho fora do diretorio de projetos")
+        raise http_error(403, "PATH_OUTSIDE_PROJECTS_ROOT", "Caminho fora do diretorio de projetos")
     # Escopo por projeto: o 1º segmento sob o projects root é a pasta do projeto.
     if relative.parts:
         enforce_project_scope(auth, relative.parts[0])
     if not requested.is_file():
-        raise HTTPException(status_code=404, detail="Arquivo nao encontrado")
+        raise http_error(404, "FILE_NOT_FOUND", "Arquivo nao encontrado")
     media_type, _ = mimetypes.guess_type(str(requested), strict=False)
     # Headers HTTP são latin-1: nomes acentuados vão via filename* (RFC 6266)
     # com fallback ASCII — filename= direto com UTF-8 estoura 500 no Starlette.
@@ -1857,20 +1865,20 @@ def _resolve_spreadsheet_path(doc_id: str, auth: AuthContext) -> Path:
     try:
         hit = os_client.get(index=settings.opensearch_index, id=doc_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+        raise http_error(404, "DOCUMENT_NOT_FOUND", f"Documento nao encontrado: {doc_id}", doc_id=doc_id)
     src = hit.get("_source", {})
     enforce_project_scope(auth, str(src.get("project_id") or ""))
     path_str = str(src.get("path") or "")
     if not path_str:
-        raise HTTPException(status_code=400, detail="Documento sem path registrado")
+        raise http_error(400, "DOCUMENT_PATH_MISSING", "Documento sem path registrado")
     base = Path(settings.projects_root).resolve()
     requested = Path(path_str).resolve()
     try:
         requested.relative_to(base)
     except ValueError:
-        raise HTTPException(status_code=403, detail="Caminho fora do diretorio de projetos")
+        raise http_error(403, "PATH_OUTSIDE_PROJECTS_ROOT", "Caminho fora do diretorio de projetos")
     if not requested.is_file():
-        raise HTTPException(status_code=404, detail=f"Arquivo nao encontrado no filesystem: {requested.name}")
+        raise http_error(404, "FILE_NOT_FOUND_ON_FILESYSTEM", f"Arquivo nao encontrado no filesystem: {requested.name}", path=requested.name)
     return requested
 
 
@@ -1944,10 +1952,10 @@ def get_document(doc_id: str, auth: AuthContext = Depends(require_auth)) -> dict
     try:
         hit = os_client.get(index=settings.opensearch_index, id=doc_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+        raise http_error(404, "DOCUMENT_NOT_FOUND", f"Documento nao encontrado: {doc_id}", doc_id=doc_id)
     src = hit.get("_source", {})
     if not src:
-        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+        raise http_error(404, "DOCUMENT_NOT_FOUND", f"Documento nao encontrado: {doc_id}", doc_id=doc_id)
     enforce_project_scope(auth, str(src.get("project_id") or ""))
     chunks = list(src.get("content_chunks") or [])
     content_from_chunks = "\n".join(c.get("text", "") for c in chunks)
@@ -1982,10 +1990,10 @@ def get_document_chunks(
     try:
         hit = os_client.get(index=settings.opensearch_index, id=doc_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+        raise http_error(404, "DOCUMENT_NOT_FOUND", f"Documento nao encontrado: {doc_id}", doc_id=doc_id)
     src = hit.get("_source", {})
     if not src:
-        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+        raise http_error(404, "DOCUMENT_NOT_FOUND", f"Documento nao encontrado: {doc_id}", doc_id=doc_id)
     enforce_project_scope(auth, str(src.get("project_id") or ""))
     all_chunks = list(src.get("content_chunks") or [])
     want = {loc.strip() for loc in locations if (loc or "").strip()}
@@ -2017,7 +2025,7 @@ def update_document_tags(doc_id: str, payload: DocumentTagsUpdate, auth: AuthCon
     try:
         hit = os_client.get(index=settings.opensearch_index, id=doc_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+        raise http_error(404, "DOCUMENT_NOT_FOUND", f"Documento nao encontrado: {doc_id}", doc_id=doc_id)
     src = hit["_source"]
     current_tags: list[str] = list(src.get("tags") or [])
     to_add = [t for t in (payload.add or []) if t and t.strip()]
@@ -2037,7 +2045,7 @@ def update_document_metadata(doc_id: str, payload: DocumentMetadataUpdate, auth:
     try:
         os_client.get(index=settings.opensearch_index, id=doc_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+        raise http_error(404, "DOCUMENT_NOT_FOUND", f"Documento nao encontrado: {doc_id}", doc_id=doc_id)
     doc_updates: dict[str, Any] = {}
     if payload.document_type is not None:
         doc_updates["document_type"] = payload.document_type
@@ -2063,16 +2071,16 @@ def move_document(project_id: str, doc_id: str, request: DocumentMoveRequest, au
     try:
         result = os_client.get(index=settings.opensearch_index, id=doc_id)
     except Exception:
-        raise HTTPException(status_code=404, detail=f"Documento nao encontrado: {doc_id}")
+        raise http_error(404, "DOCUMENT_NOT_FOUND", f"Documento nao encontrado: {doc_id}", doc_id=doc_id)
 
     source = result.get("_source", {})
     source_path_str = source.get("path", "")
     if not source_path_str:
-        raise HTTPException(status_code=400, detail="Documento sem path registrado")
+        raise http_error(400, "DOCUMENT_PATH_MISSING", "Documento sem path registrado")
 
     source_path = Path(source_path_str)
     if not source_path.exists():
-        raise HTTPException(status_code=400, detail=f"Arquivo nao encontrado no filesystem: {source_path}")
+        raise http_error(400, "FILE_NOT_FOUND_ON_FILESYSTEM", f"Arquivo nao encontrado no filesystem: {source_path}", path=str(source_path))
 
     old_business_domain = source.get("business_domain", "")
     old_document_type = source.get("document_type", "")
@@ -2210,11 +2218,11 @@ def refresh_models(
     """Atualiza o catálogo de modelos e preços a partir da fonte remota (chat + tool use only).
     dry_run=true valida a fonte (fetch + parse + contagens) sem persistir."""
     if url and not dry_run:
-        raise HTTPException(status_code=400, detail="URL alternativa só é aceita com dry_run=true — salve-a antes")
+        raise http_error(400, "CATALOG_URL_REQUIRES_DRY_RUN", "URL alternativa só é aceita com dry_run=true — salve-a antes")
     try:
         return refresh_catalog(dry_run=dry_run, url=url)
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Falha ao buscar o catálogo remoto: {exc}") from exc
+        raise http_error(502, "CATALOG_FETCH_FAILED", f"Falha ao buscar o catálogo remoto: {exc}", error=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -2244,7 +2252,7 @@ def update_models_catalog_config(
             refresh_catalog(dry_run=True, url=candidate)
         effective = set_catalog_source_url(candidate)
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"URL inacessível: {exc}") from exc
+        raise http_error(502, "CATALOG_URL_UNREACHABLE", f"URL inacessível: {exc}", error=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"url": effective, "default_url": LITELLM_CATALOG_URL, "refreshed_at": catalog_refreshed_at()}
@@ -2295,7 +2303,7 @@ def validate_provider_key(
     provider = body.provider.strip().lower()
     if provider == "openai":
         if not x_openai_api_key:
-            raise HTTPException(status_code=400, detail="Informe a chave OpenAI no header X-OpenAI-API-Key")
+            raise http_error(400, "OPENAI_KEY_HEADER_REQUIRED", "Informe a chave OpenAI no header X-OpenAI-API-Key")
         import openai as openai_sdk
 
         try:
@@ -2304,10 +2312,10 @@ def validate_provider_key(
         except openai_sdk.AuthenticationError:
             return {"valid": False, "detail": "Chave OpenAI inválida"}
         except Exception as exc:  # rede/timeout — não confundir com key inválida
-            raise HTTPException(status_code=502, detail=f"Falha ao consultar a OpenAI: {exc}")
+            raise http_error(502, "OPENAI_REQUEST_FAILED", f"Falha ao consultar a OpenAI: {exc}", error=str(exc))
     if provider == "anthropic":
         if not x_anthropic_api_key:
-            raise HTTPException(status_code=400, detail="Informe a chave Anthropic no header X-Anthropic-API-Key")
+            raise http_error(400, "ANTHROPIC_KEY_HEADER_REQUIRED", "Informe a chave Anthropic no header X-Anthropic-API-Key")
         import anthropic as anthropic_sdk
 
         try:
@@ -2316,8 +2324,8 @@ def validate_provider_key(
         except anthropic_sdk.AuthenticationError:
             return {"valid": False, "detail": "Chave Anthropic inválida"}
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Falha ao consultar a Anthropic: {exc}")
-    raise HTTPException(status_code=400, detail=f"Provedor não suportado: {provider}")
+            raise http_error(502, "ANTHROPIC_REQUEST_FAILED", f"Falha ao consultar a Anthropic: {exc}", error=str(exc))
+    raise http_error(400, "PROVIDER_UNSUPPORTED", f"Provedor não suportado: {provider}", provider=provider)
 
 
 @app.post("/api/models/validate")
@@ -2331,10 +2339,10 @@ def validate_model(
     provider = body.provider.strip().lower()
     model = body.model.strip()
     if not model:
-        raise HTTPException(status_code=400, detail="Informe o nome do modelo")
+        raise http_error(400, "MODEL_NAME_REQUIRED", "Informe o nome do modelo")
     if provider == "openai":
         if not x_openai_api_key:
-            raise HTTPException(status_code=400, detail="Configure a chave OpenAI antes de validar")
+            raise http_error(400, "OPENAI_KEY_NOT_CONFIGURED", "Configure a chave OpenAI antes de validar")
         import openai as openai_sdk
 
         try:
@@ -2343,12 +2351,12 @@ def validate_model(
         except openai_sdk.NotFoundError:
             return {"valid": False, "detail": f"Modelo '{model}' não existe na OpenAI"}
         except openai_sdk.AuthenticationError:
-            raise HTTPException(status_code=401, detail="Chave OpenAI inválida")
+            raise http_error(401, "OPENAI_KEY_INVALID", "Chave OpenAI inválida")
         except Exception as exc:  # rede/timeout — não confundir com inexistente
-            raise HTTPException(status_code=502, detail=f"Falha ao consultar a OpenAI: {exc}")
+            raise http_error(502, "OPENAI_REQUEST_FAILED", f"Falha ao consultar a OpenAI: {exc}", error=str(exc))
     if provider == "anthropic":
         if not x_anthropic_api_key:
-            raise HTTPException(status_code=400, detail="Configure a chave Anthropic antes de validar")
+            raise http_error(400, "ANTHROPIC_KEY_NOT_CONFIGURED", "Configure a chave Anthropic antes de validar")
         import anthropic as anthropic_sdk
 
         try:
@@ -2357,10 +2365,10 @@ def validate_model(
         except anthropic_sdk.NotFoundError:
             return {"valid": False, "detail": f"Modelo '{model}' não existe na Anthropic"}
         except anthropic_sdk.AuthenticationError:
-            raise HTTPException(status_code=401, detail="Chave Anthropic inválida")
+            raise http_error(401, "ANTHROPIC_KEY_INVALID", "Chave Anthropic inválida")
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Falha ao consultar a Anthropic: {exc}")
-    raise HTTPException(status_code=400, detail=f"Provedor não suportado: {provider}")
+            raise http_error(502, "ANTHROPIC_REQUEST_FAILED", f"Falha ao consultar a Anthropic: {exc}", error=str(exc))
+    raise http_error(400, "PROVIDER_UNSUPPORTED", f"Provedor não suportado: {provider}", provider=provider)
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -2401,11 +2409,12 @@ async def api_chat(
             x in err_msg.lower()
             for x in ("authentication", "api_key", "invalid api key", "incorrect api key", "no api key")
         ):
-            raise HTTPException(
-                status_code=503,
-                detail="Chave de API do provedor não configurada ou inválida. Configure OPENAI_API_KEY ou ANTHROPIC_API_KEY no backend (ou informe na configuração do assistente).",
+            raise http_error(
+                503,
+                "LLM_API_KEY_MISSING_OR_INVALID",
+                "Chave de API do provedor não configurada ou inválida. Configure OPENAI_API_KEY ou ANTHROPIC_API_KEY no backend (ou informe na configuração do assistente).",
             ) from e
-        raise HTTPException(status_code=503, detail=f"Erro no assistente: {err_msg}") from e
+        raise http_error(503, "CHAT_ASSISTANT_ERROR", f"Erro no assistente: {err_msg}", error=err_msg) from e
 
 
 _CHAT_SESSIONS_INDEX = settings.opensearch_chat_sessions_index
@@ -2486,7 +2495,7 @@ def list_chat_sessions(
     try:
         result = os_client.search(index=_CHAT_SESSIONS_INDEX, body=body)
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Erro ao listar sessões: {e!s}") from e
+        raise http_error(503, "CHAT_SESSIONS_LIST_FAILED", f"Erro ao listar sessões: {e!s}", error=str(e)) from e
     hits = (result.get("hits") or {}).get("hits") or []
     out: list[ChatSession] = []
     for hit in hits:
@@ -2502,7 +2511,7 @@ def get_chat_session(session_id: str, auth: AuthContext = Depends(require_auth))
     try:
         hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
     except Exception:
-        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        raise http_error(404, "CHAT_SESSION_NOT_FOUND", "Sessão não encontrada")
     src = hit.get("_source", {})
     return _session_doc_to_model(session_id, src)
 
@@ -2590,7 +2599,7 @@ async def _maybe_mirror_to_channel(
 async def update_chat_session(session_id: str, body: ChatSessionUpdate, auth: AuthContext = Depends(require_auth)) -> ChatSession:
     """Update session. Supports append_messages (atomic) or messages (full replace)."""
     if body.messages is not None and body.append_messages is not None:
-        raise HTTPException(status_code=400, detail="Envie 'messages' ou 'append_messages', não ambos")
+        raise http_error(400, "CHAT_SESSION_MESSAGES_CONFLICT", "Envie 'messages' ou 'append_messages', não ambos")
 
     partial: dict[str, Any] = {"updatedAt": int(time.time() * 1000)}
     if body.title is not None:
@@ -2610,7 +2619,7 @@ async def update_chat_session(session_id: str, body: ChatSessionUpdate, auth: Au
         try:
             hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
         except Exception:
-            raise HTTPException(status_code=404, detail="Sessão não encontrada")
+            raise http_error(404, "CHAT_SESSION_NOT_FOUND", "Sessão não encontrada")
         existing = hit["_source"].get("messages") or []
         existing.extend(m.model_dump() for m in body.append_messages)
         partial["messages"] = existing
@@ -2623,7 +2632,7 @@ async def update_chat_session(session_id: str, body: ChatSessionUpdate, auth: Au
             refresh=True,
         )
     except Exception:
-        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        raise http_error(404, "CHAT_SESSION_NOT_FOUND", "Sessão não encontrada")
 
     hit = os_client.get(index=_CHAT_SESSIONS_INDEX, id=session_id)
     session_src = hit["_source"]
@@ -2644,7 +2653,7 @@ def delete_chat_session(session_id: str, auth: AuthContext = Depends(require_aut
     try:
         os_client.delete(index=_CHAT_SESSIONS_INDEX, id=session_id, refresh=True)
     except Exception:
-        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        raise http_error(404, "CHAT_SESSION_NOT_FOUND", "Sessão não encontrada")
     return None
 
 
@@ -2681,9 +2690,9 @@ def get_usage_summary(
         end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d")
         end_ts = int((end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)).timestamp() * 1000)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Datas devem ser YYYY-MM-DD")
+        raise http_error(400, "DATE_FORMAT_INVALID", "Datas devem ser YYYY-MM-DD")
     if start_ts > end_ts:
-        raise HTTPException(status_code=400, detail="start_date deve ser anterior a end_date")
+        raise http_error(400, "DATE_RANGE_INVALID", "start_date deve ser anterior a end_date")
     body: dict[str, Any] = {
         "size": 10_000,
         "query": {"bool": {"must": [{"range": {"updatedAt": {"gte": start_ts, "lte": end_ts}}}]}},
@@ -2696,7 +2705,7 @@ def get_usage_summary(
     try:
         result = os_client.search(index=_CHAT_SESSIONS_INDEX, body=body)
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Erro ao agregar usage: {e!s}") from e
+        raise http_error(503, "USAGE_AGGREGATE_FAILED", f"Erro ao agregar usage: {e!s}", error=str(e)) from e
     hits = (result.get("hits") or {}).get("hits") or []
     total_tokens = 0
     total_input = 0
@@ -2830,9 +2839,9 @@ def get_usage_sessions(
         end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d")
         end_ts = int((end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)).timestamp() * 1000)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Datas devem ser YYYY-MM-DD")
+        raise http_error(400, "DATE_FORMAT_INVALID", "Datas devem ser YYYY-MM-DD")
     if start_ts > end_ts:
-        raise HTTPException(status_code=400, detail="start_date deve ser anterior a end_date")
+        raise http_error(400, "DATE_RANGE_INVALID", "start_date deve ser anterior a end_date")
     body: dict[str, Any] = {
         "size": limit,
         "query": {"bool": {"must": [{"range": {"updatedAt": {"gte": start_ts, "lte": end_ts}}}]}},
@@ -2845,7 +2854,7 @@ def get_usage_sessions(
     try:
         result = os_client.search(index=_CHAT_SESSIONS_INDEX, body=body)
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Erro ao listar sessões de usage: {e!s}") from e
+        raise http_error(503, "USAGE_SESSIONS_LIST_FAILED", f"Erro ao listar sessões de usage: {e!s}", error=str(e)) from e
     hits = (result.get("hits") or {}).get("hits") or []
     out: list[UsageSessionItem] = []
     for hit in hits:
@@ -2914,7 +2923,7 @@ def get_classification_usage(
         end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d")
         end_ts = int((end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)).timestamp() * 1000)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Datas devem ser YYYY-MM-DD")
+        raise http_error(400, "DATE_FORMAT_INVALID", "Datas devem ser YYYY-MM-DD")
 
     filters: list[dict[str, Any]] = [{"range": {"timestamp": {"gte": start_ts, "lte": end_ts}}}]
     if project_id and project_id.strip():
@@ -2951,7 +2960,7 @@ def get_classification_usage(
     try:
         result = os_client.search(index=_CLASSIFICATION_USAGE_INDEX, body=body)
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Erro ao agregar usage de classificação: {e!s}") from e
+        raise http_error(503, "CLASSIFICATION_USAGE_AGGREGATE_FAILED", f"Erro ao agregar usage de classificação: {e!s}", error=str(e)) from e
 
     aggs = result.get("aggregations") or {}
     by_model_list: list[ClassificationUsageByModel] = []
@@ -3006,7 +3015,7 @@ def get_training_usage(
         end_dt = datetime.strptime(end_date.strip(), "%Y-%m-%d")
         end_ts = int((end_dt.replace(hour=23, minute=59, second=59, microsecond=999999)).timestamp() * 1000)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Datas devem ser YYYY-MM-DD")
+        raise http_error(400, "DATE_FORMAT_INVALID", "Datas devem ser YYYY-MM-DD")
 
     filters: list[dict[str, Any]] = [{"range": {"timestamp": {"gte": start_ts, "lte": end_ts}}}]
 
@@ -3052,7 +3061,7 @@ def get_training_usage(
     try:
         result = os_client.search(index=_TRAINING_USAGE_INDEX, body=body)
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Erro ao agregar usage de treinamento: {e!s}") from e
+        raise http_error(503, "TRAINING_USAGE_AGGREGATE_FAILED", f"Erro ao agregar usage de treinamento: {e!s}", error=str(e)) from e
 
     aggs = result.get("aggregations") or {}
     by_model_list: list[TrainingUsageByModel] = []
@@ -3329,13 +3338,14 @@ def restore_rejected_triage(project_id: str, doc_id: str, auth: AuthContext = De
     rejected_dir = triage_rejected_dir(project_root)
     meta_path = rejected_dir / f"{doc_id}.json"
     if not meta_path.exists():
-        raise HTTPException(status_code=404, detail=f"Rejeitado nao encontrado: {doc_id}")
+        raise http_error(404, "TRIAGE_REJECTED_NOT_FOUND", f"Rejeitado nao encontrado: {doc_id}", doc_id=doc_id)
     data = json.loads(meta_path.read_text(encoding="utf-8"))
     file_path = Path(str(data.get("source_path") or data.get("path") or ""))
     if not file_path.is_file():
-        raise HTTPException(
-            status_code=400,
-            detail="Registro sem arquivo físico (órfão) — use excluir para limpar o registro",
+        raise http_error(
+            400,
+            "TRIAGE_REJECTED_ORPHAN",
+            "Registro sem arquivo físico (órfão) — use excluir para limpar o registro",
         )
     original_filename = str(data.get("original_filename") or file_path.name)
     pending_dir = triage_pending_dir(project_root)
@@ -3361,7 +3371,7 @@ def delete_rejected_triage(project_id: str, doc_id: str, auth: AuthContext = Dep
     project_root = _resolve_project_root(project_id)
     meta_path = triage_rejected_dir(project_root) / f"{doc_id}.json"
     if not meta_path.exists():
-        raise HTTPException(status_code=404, detail=f"Rejeitado nao encontrado: {doc_id}")
+        raise http_error(404, "TRIAGE_REJECTED_NOT_FOUND", f"Rejeitado nao encontrado: {doc_id}", doc_id=doc_id)
     data = json.loads(meta_path.read_text(encoding="utf-8"))
     file_path = Path(str(data.get("source_path") or data.get("path") or ""))
     # segurança: só apaga arquivo DENTRO da pasta rejected
@@ -3390,12 +3400,12 @@ def decide_triage(project_id: str, doc_id: str, request: TriageDecisionRequest, 
         original_meta.rename(pending_meta)
     except FileNotFoundError:
         if pending_meta.exists():
-            raise HTTPException(status_code=409, detail="Decisão já em andamento para este documento")
+            raise http_error(409, "TRIAGE_DECISION_IN_PROGRESS", "Decisão já em andamento para este documento")
         if (triage_resolved_dir(project_root) / f"{doc_id}.json").exists() or (
             triage_rejected_dir(project_root) / f"{doc_id}.json"
         ).exists():
-            raise HTTPException(status_code=409, detail="Este documento já foi decidido")
-        raise HTTPException(status_code=404, detail=f"Triage item nao encontrado: {doc_id}")
+            raise http_error(409, "TRIAGE_ALREADY_DECIDED", "Este documento já foi decidido")
+        raise http_error(404, "TRIAGE_ITEM_NOT_FOUND", f"Triage item nao encontrado: {doc_id}", doc_id=doc_id)
 
     _decision_status.update({
         "running": True,
@@ -3455,7 +3465,7 @@ def _process_claimed_triage_decision(
 
     action = request.action.lower().strip()
     if action not in {"approve", "correct", "reject"}:
-        raise HTTPException(status_code=400, detail="Acao invalida. Use approve, correct ou reject.")
+        raise http_error(400, "TRIAGE_ACTION_INVALID", "Acao invalida. Use approve, correct ou reject.")
 
     if action == "reject":
         _set_decision_phase("movendo_arquivo")
@@ -3509,12 +3519,12 @@ def _process_claimed_triage_decision(
         target_business_domain = request.target_business_domain
         target_document_type = request.target_document_type or target_document_type
         if not target_business_domain:
-            raise HTTPException(status_code=400, detail="target_business_domain obrigatorio para correct")
+            raise http_error(400, "TRIAGE_TARGET_BUSINESS_DOMAIN_REQUIRED", "target_business_domain obrigatorio para correct")
 
     if not target_business_domain:
-        raise HTTPException(status_code=400, detail="business_domain alvo nao definido para aprovacao/correcao")
+        raise http_error(400, "TRIAGE_BUSINESS_DOMAIN_UNDEFINED", "business_domain alvo nao definido para aprovacao/correcao")
     if not target_document_type:
-        raise HTTPException(status_code=400, detail="document_type alvo nao definido para aprovacao/correcao")
+        raise http_error(400, "TRIAGE_DOCUMENT_TYPE_UNDEFINED", "document_type alvo nao definido para aprovacao/correcao")
 
     original_filename = str(data.get("original_filename") or source_path.name)
     decision_value = "approved" if action == "approve" else "corrected"

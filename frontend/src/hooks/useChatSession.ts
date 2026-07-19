@@ -10,6 +10,7 @@ import {
   updateChatSession,
 } from "../api";
 import type { ChatAttachment } from "../components/ChatPanel";
+import { formatDate } from "../lib/format";
 import { useProject } from "../contexts/ProjectContext";
 import { useSettings } from "../contexts/SettingsContext";
 import type {
@@ -93,7 +94,7 @@ export function useChatSession() {
       return { role: m.role, content: c };
     });
     const titleMessages = [
-      { role: "system" as const, content: "Retorne apenas um título curto em uma linha, sem explicação." },
+      { role: "system" as const, content: "Retorne apenas um título curto em uma linha, sem explicação, no idioma da conversa." },
       ...textStart,
     ];
     const [provider, model] = selectedModel.split("/");
@@ -276,7 +277,7 @@ export function useChatSession() {
             : userMsg.content.map((p) => (p.type === "text" ? p.text : "")).join(" ").trim();
         const title =
           firstText.slice(0, 80) ||
-          `Conversa ${new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`;
+          t("chat:session.autoTitle", { date: formatDate(new Date(), { day: "2-digit", month: "2-digit" }) });
         const storedMsgs = messagesToStored(finalMessages);
         createChatSession({
           title,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchStats, searchDocuments } from "../api";
+import i18n from "../i18n";
 import { useNavigation } from "../contexts/NavigationContext";
 import { useProject } from "../contexts/ProjectContext";
 import { qk } from "../lib/queryKeys";
@@ -49,14 +50,14 @@ export function usePainelSearch({ onStatus }: UsePainelSearchOptions) {
     staleTime: 60_000,
   });
 
-  // Contagem de resultados como status (comportamento legado preservado)
+  // Contagem de resultados como status (comportamento preservado)
   useEffect(() => {
-    if (resultsQuery.data && submitted) onStatus(`${resultsQuery.data.total} resultado(s)`);
+    if (resultsQuery.data && submitted) onStatus(i18n.t("common:unit.result", { count: resultsQuery.data.total }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resultsQuery.data]);
 
   useEffect(() => {
-    if (resultsQuery.isError) onStatus("Falha na busca");
+    if (resultsQuery.isError) onStatus(i18n.t("errors:api.search"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resultsQuery.isError]);
 
@@ -72,7 +73,7 @@ export function usePainelSearch({ onStatus }: UsePainelSearchOptions) {
     setFullSearchInput("");
     setSearchFilters({});
     setSubmitted(null);
-    onStatus("Busca limpa");
+    onStatus(i18n.t("painel:app.searchCleared"));
   }
 
   // Handoff da paleta (intent de navegação): semeia e dispara a busca

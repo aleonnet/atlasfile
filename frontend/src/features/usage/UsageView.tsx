@@ -1,5 +1,4 @@
 import { differenceInCalendarDays, format, parseISO, startOfISOWeek, startOfMonth } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { BarChart3, ChevronLeft, ChevronRight, CircleDollarSign, Coins, GraduationCap, MessagesSquare, RefreshCw, Tags, Zap } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -7,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import i18n from "../../i18n";
 import { fetchClassificationUsage, fetchTrainingUsage, fetchUsageSessions, fetchUsageSummary } from "../../api";
 import { qk } from "../../lib/queryKeys";
+import { dateFnsLocale, formatDate, formatNumber, formatUsd as formatUsdIntl } from "../../lib/format";
 import { Button } from "../../components/ui/button";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { DateRangePicker } from "../../components/ui/date-range-picker";
@@ -23,21 +23,20 @@ const ALL_CHANNELS = "__all__";
 const PAGE_SIZE = 10;
 
 export function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  if (n >= 1_000_000) return `${formatNumber(n / 1_000_000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}m`;
+  if (n >= 10_000) return `${formatNumber(n / 1_000, { maximumFractionDigits: 0 })}k`;
+  if (n >= 1_000) return `${formatNumber(n / 1_000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}k`;
   return String(Math.round(n));
 }
 
 export function formatUsd(n: number): string {
   if (n === 0) return "—";
-  const rounded = Math.round(n * 100) / 100;
-  return `$${rounded.toFixed(2)}`;
+  return formatUsdIntl(n);
 }
 
 export function formatUsd4(n: number): string {
   if (n === 0) return "—";
-  const rounded = Math.round(n * 10000) / 10000;
-  return `$${rounded.toFixed(4)}`;
+  return formatUsdIntl(n, 4);
 }
 
 function toYyyyMmDd(d: Date): string {
@@ -65,16 +64,16 @@ function bucketKey(date: string, g: Granularity): string {
 
 function bucketLabel(key: string, g: Granularity): string {
   const d = parseISO(key);
-  if (g === "month") return format(d, "MMM/yy", { locale: ptBR }).replace(".", "");
-  if (g === "week") return format(d, "dd/MM");
-  return format(d, "dd MMM", { locale: ptBR }).replace(".", "");
+  if (g === "month") return format(d, i18n.t("usage:dateFormat.monthShort"), { locale: dateFnsLocale() }).replace(".", "");
+  if (g === "week") return format(d, i18n.t("usage:dateFormat.weekShort"), { locale: dateFnsLocale() });
+  return format(d, i18n.t("usage:dateFormat.dayShort"), { locale: dateFnsLocale() }).replace(".", "");
 }
 
 function bucketTooltip(key: string, g: Granularity): string {
   const d = parseISO(key);
-  if (g === "month") return format(d, "MMMM 'de' yyyy", { locale: ptBR });
-  if (g === "week") return i18n.t("usage:chart.weekOf", { date: format(d, "dd/MM/yyyy") });
-  return format(d, "dd/MM/yyyy");
+  if (g === "month") return format(d, i18n.t("usage:dateFormat.monthLong"), { locale: dateFnsLocale() });
+  if (g === "week") return i18n.t("usage:chart.weekOf", { date: format(d, i18n.t("usage:dateFormat.full"), { locale: dateFnsLocale() }) });
+  return format(d, i18n.t("usage:dateFormat.full"), { locale: dateFnsLocale() });
 }
 
 // Paleta de gráficos da marca (--chart-N em styles.css, dark + light)
@@ -649,7 +648,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                     const tokens = tot ? tot.total_tokens : 0;
                     const cost = tot ? tot.estimated_cost_usd : 0;
                     const dateStr = s.updatedAt
-                      ? new Date(s.updatedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+                      ? formatDate(s.updatedAt, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
                       : "—";
                     const modelKeys = s.usage_by_model ? Object.keys(s.usage_by_model) : [];
                     const stripProvider = (m: string) => m.replace(/^[^/]+\//, "");

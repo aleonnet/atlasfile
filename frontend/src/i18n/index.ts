@@ -2,6 +2,7 @@ import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 import { STORAGE_KEYS } from "../lib/storage";
+import { enUS } from "./locales/en-US";
 import { ptBR } from "./locales/pt-BR";
 
 /** i18n do AtlasFile (F4): recursos BUNDLED (sem lazy-HTTP — zero flash de
@@ -12,7 +13,7 @@ void i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    resources: { "pt-BR": ptBR },
+    resources: { "pt-BR": ptBR, "en-US": enUS },
     fallbackLng: "pt-BR",
     supportedLngs: ["pt-BR", "en-US"],
     defaultNS: "common",

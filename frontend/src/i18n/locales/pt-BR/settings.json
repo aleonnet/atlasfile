@@ -54,6 +54,29 @@
     "autoTitle": "Gerar título da sessão via LLM (em background)",
     "autoTitleHint": "Se desativado, o título será a primeira mensagem da conversa."
   },
+  "config": {
+    "tabsAria": "Configurações",
+    "tabPerfil": "Perfil do projeto",
+    "tabTemplates": "Templates",
+    "tabAcesso": "Acesso",
+    "tabPreferencias": "Preferências"
+  },
+  "apiAccess": {
+    "title": "Acesso à API",
+    "saved": "API key do AtlasFile salva neste navegador.",
+    "removed": "API key removida.",
+    "description": "Necessária apenas quando o backend está com <c>API_AUTH_ENABLED=true</c>. A key fica somente neste navegador (localStorage) e é enviada como <c>Authorization: Bearer</c>.",
+    "howtoTitle": "Como habilitar a autenticação",
+    "howtoIntro": "A autenticação é uma decisão de deployment — por segurança, não pode ser ligada por esta UI (uma interface sem auth não deve conseguir ativar auth). O caminho mais simples é re-executar o instalador no servidor, que gera a key, configura o <c>.env</c> e reconstrói a API preservando seus dados:",
+    "howtoManual": "Ou manualmente: keys em <c>config/api_keys.json</c>, <c>API_AUTH_ENABLED=true</c> no .env e <c>docker compose up -d --build api mcp</c>. Ao final, a key gerada é exibida no terminal — cole-a acima em cada navegador que acessa o AtlasFile."
+  },
+  "language": {
+    "title": "Idioma",
+    "label": "Idioma da interface",
+    "description": "Idioma da interface. A página recarrega ao trocar para aplicar em todas as telas.",
+    "ptBR": "Português (Brasil)",
+    "enUS": "English (US)"
+  },
   "channels": {
     "title": "Canais de comunicação",
     "intro": "Conecte o assistente a canais de mensagem externos. Canais são opcionais e não afetam o chat web.",

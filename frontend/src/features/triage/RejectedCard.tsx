@@ -5,6 +5,7 @@ import { useRejectedTriageQuery } from "../../lib/queries";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { qk } from "../../lib/queryKeys";
+import { formatDateTimeShort } from "../../lib/format";
 import { ProcessingAura } from "../../components/ui/processing-aura";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -21,7 +22,7 @@ type Props = {
 function formatWhen(iso: string): string {
   if (!iso) return "—";
   try {
-    return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    return formatDateTimeShort(iso);
   } catch {
     return iso;
   }
