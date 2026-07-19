@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.28.1] -- 2026-07-18
+
+### Corrigido
+
+- **Key curta no wizard não validava**: um guard de "mínimo 15 caracteres" fazia entradas como `123` passarem em silêncio, sem ✗ nem verificação. Agora qualquer key não-vazia é validada (o backend responde `Chave OpenAI inválida` para lixo — confirmado contra a API real) — nunca silêncio.
+
+---
+
 ## [0.28.0] -- 2026-07-18
 
 ### Adicionado

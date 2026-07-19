@@ -76,9 +76,10 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
     if (step === "projects") void loadTemplates();
   }, [step, loadTemplates]);
 
-  // Validação não-impeditiva da key: badge ✓/✗ ao digitar; nunca trava o Avançar
+  // Validação não-impeditiva da key: badge ✓/✗ ao digitar; nunca trava o Avançar.
+  // Qualquer valor não-vazio valida — key curta tipo "123" mostra ✗, nunca silêncio.
   useEffect(() => {
-    if (step !== "llm" || llmKey.trim().length < 15) {
+    if (step !== "llm" || llmKey.trim().length === 0) {
       setKeyCheck("idle");
       return;
     }

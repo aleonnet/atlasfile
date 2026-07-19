@@ -224,6 +224,22 @@ describe("OnboardingWizard", () => {
     expect(profile.classification.llm_policy).toMatchObject({ enabled: true, provider: "openai", mode: "tag_only" });
   });
 
+  it("key curta tipo '123' também valida e mostra ✗ — nunca silêncio", async () => {
+    const api = await import("../../api");
+    vi.mocked(api.validateProviderKey).mockResolvedValue({ valid: false, detail: "Chave OpenAI inválida" });
+    render(<OnboardingWizard {...defaultProps()} />);
+    await waitFor(() => expect(screen.getByText(/Comecar/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Comecar/));
+    await waitFor(() => expect(screen.getByLabelText(/Nome do projeto/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/Nome do projeto/), { target: { value: "proj_teste" } });
+    fireEvent.click(screen.getByText(/Criar e Continuar/));
+    await waitFor(() => expect(screen.getByText(/Configure o assistente/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/API Key/), { target: { value: "123" } });
+    await waitFor(() => expect(api.validateProviderKey).toHaveBeenCalledWith("openai", "123"), { timeout: 3000 });
+    await screen.findByText(/Chave inválida — você pode continuar/);
+  });
+
   it("key inválida não impede concluir e não ativa o LLM", async () => {
     const api = await import("../../api");
     vi.mocked(api.validateProviderKey).mockResolvedValue({ valid: false, detail: "Chave OpenAI inválida" });
