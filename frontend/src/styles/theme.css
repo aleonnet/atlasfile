@@ -180,16 +180,18 @@
   }
 }
 
-/* "Pensando..." com varredura de gradiente (shimmer de texto, Apple-like) */
+/* "Pensando..." com varredura de gradiente (shimmer de texto, Apple-like).
+   Base em --text (não --muted): o rótulo fica legível sobre a aura/scrim e o
+   shimmer continua sendo só o realce que varre. */
 .atlas-thinking-text {
   background: linear-gradient(
     90deg,
-    var(--muted) 0%,
-    var(--muted) 35%,
+    var(--text) 0%,
+    var(--text) 35%,
     var(--accent) 50%,
     var(--accent-purple) 58%,
-    var(--muted) 72%,
-    var(--muted) 100%
+    var(--text) 72%,
+    var(--text) 100%
   );
   background-size: 220% 100%;
   -webkit-background-clip: text;
@@ -207,7 +209,7 @@
   .atlas-thinking-text {
     animation: none;
     background: none;
-    color: var(--muted);
+    color: var(--text);
   }
 }
 

@@ -236,10 +236,12 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
     queryFn: fetchClassifierCycleStatus,
     enabled: false,
   });
-  const running = !!cycleQuery.data?.running;
+  // Documento sendo puxado: ciclo do classificador OU ingestão/decisão de
+  // triagem (atlas:ingest-active) — ambos viram o buraco negro no orb.
+  const running = !!cycleQuery.data?.running || ingestActive;
   // Exibição mínima: num corpus pequeno o ciclo dura ~150ms e o swap viraria
-  // um pisca — ciclo curto segura o buraco negro por alguns segundos; ciclo
-  // longo fica o tempo real.
+  // um pisca — atividade curta segura o buraco negro por alguns segundos;
+  // atividade longa fica o tempo real.
   const MIN_SHOW_MS = 4000;
   const [holdUntil, setHoldUntil] = useState(0);
   useEffect(() => {

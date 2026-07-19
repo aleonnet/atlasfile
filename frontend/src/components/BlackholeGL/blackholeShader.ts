@@ -134,10 +134,18 @@ void main() {
   float bmax = rout + 3.0;
   float Z0 = max(14.0, rout + 5.0);
 
+  // Visibilidade do céu: o original prendia as estrelas ao redor do buraco
+  // (window) porque o "céu" era o texto do terminal; aqui o céu é nosso —
+  // base visível na tela toda, reforço perto da lente. O termo pr*FOV dá a
+  // variação por pixel de uma câmera (longe do buraco a direção do raio
+  // tenderia a uma constante e o céu inteiro amostraria um ponto só).
+  const float SKY_FOV = 0.05;
+  float starVis = mix(0.45, 1.0, window) * shield;
+
   // far field: sem textura para lentear — só o starfield dobrado (barato)
   if (b >= bmax) {
-    vec3 d = normalize(vec3(-(pr / b) * (2.0 / b), -1.0));
-    vec3 st = stars(d) * uStarGain * window * shield;
+    vec3 d = normalize(vec3(pr * SKY_FOV - (pr / b) * (2.0 / b), -1.0));
+    vec3 st = stars(d) * uStarGain * starVis;
     outColor = vec4(st, 0.0);
     return;
   }
@@ -209,7 +217,10 @@ void main() {
   if (!captured && dot(x, x) < 4.0) captured = true;
 
   vec3 bg = vec3(0.0);
-  if (!captured) bg = stars(normalize(v)) * uStarGain * window * shield;
+  if (!captured) {
+    vec3 nv = normalize(v);
+    bg = stars(normalize(vec3(nv.xy + pr * SKY_FOV, nv.z))) * uStarGain * starVis;
+  }
 
   // Saída premultiplicada: luz do disco/estrelas SOMA sobre a página; a sombra
   // (raios capturados) e o disco opaco OCLUEM via alfa. blend: ONE, 1-SRC_ALPHA.

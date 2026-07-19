@@ -15,6 +15,16 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.34.1] -- 2026-07-19
+
+### Corrigido
+
+- **Starfield visível no céu inteiro** do BlackholeGL: longe do buraco a direção do raio tendia a uma constante e toda a tela amostrava um único ponto do céu (fundo preto) — adicionado campo de visão de câmera (`SKY_FOV`) para variação por pixel, com base de visibilidade em toda a tela e reforço perto da lente.
+- **Contraste do rótulo de processamento** ("Aprovando — indexando para busca" e afins): o shimmer `atlas-thinking-text` usava `--muted` como base — agora `--text`, legível sobre a aura/scrim nos dois temas.
+- **Orb da sidebar também vira buraco negro em ingestão/decisão de triagem** (`atlas:ingest-active`), não só no ciclo do classificador — aprovar um documento é "documento sendo puxado", com a mesma exibição mínima de 4s.
+
+---
+
 ## [0.34.0] -- 2026-07-19
 
 ### Adicionado
