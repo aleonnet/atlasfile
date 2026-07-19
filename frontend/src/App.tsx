@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   fetchChannelConfig,
   fetchChannelStatus,
@@ -60,6 +61,7 @@ const TG_TOKEN_STORAGE_KEY = STORAGE_KEYS.telegramBotToken;
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
 function AppShell() {
+  const { t } = useTranslation();
   const { view, setView, requestSearch } = useNavigation();
   const {
     theme,
@@ -98,12 +100,12 @@ function AppShell() {
   useEffect(() => {
     setVisitedViews((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
   }, [view]);
-  const [status, setStatus] = useState("Pronto");
+  const [status, setStatus] = useState(t("painel:app.statusReady"));
 
   // O footer .status morreu: mensagens de status viram um toast único que se
   // atualiza in-place (id fixo) — progresso contínuo não vira spam de toasts.
   useEffect(() => {
-    if (!status || status === "Pronto") return;
+    if (!status || status === t("painel:app.statusReady")) return;
     const isError = /falha|erro|negado|inválid/i.test(status);
     toast[isError ? "error" : "message"](status, { id: "app-status" });
   }, [status]);
@@ -135,7 +137,7 @@ function AppShell() {
         setAuthRequired(true);
         return;
       }
-      setStatus(`Acesso negado: ${detail || "API key sem permissão para este projeto."}`);
+      setStatus(t("painel:app.accessDenied", { detail: detail || t("painel:app.accessDeniedDefault") }));
     });
     return () => setUnauthorizedHandler(null);
   }, []);
@@ -293,17 +295,17 @@ function AppShell() {
     setTemplateModalProject(null);
     await refreshProjects();
     if (ref) setSelectedProject(ref);
-    setStatus("Projeto inicializado com sucesso");
+    setStatus(t("painel:app.projectInitialized"));
   }
 
   async function handleReconcileNow() {
-    const scopeLabel = selectedProject === ALL_PROJECTS ? "todos os projetos" : selectedProjectLabel || selectedProject;
+    const scopeLabel = selectedProject === ALL_PROJECTS ? t("painel:app.allProjectsScope") : selectedProjectLabel || selectedProject;
     try {
       await reconcile.start(selectedProject === ALL_PROJECTS ? undefined : selectedProject, scopeLabel);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Falha ao reconciliar";
+      const msg = err instanceof Error ? err.message : t("painel:app.reconcileFailed");
       if (msg.includes("ja em andamento")) {
-        setStatus("Reconciliacao ja em andamento; acompanhando progresso...");
+        setStatus(t("painel:app.reconcileAlreadyRunning"));
         void reconcile.start; // canal já acompanha via snapshot ativo
       } else {
         setStatus(msg);
@@ -312,7 +314,7 @@ function AppShell() {
   }
 
   async function openCorrectModal(item: TriageItem) {
-    setStatus(`Carregando catálogo de classificação de ${projectLabelById.get(item.project_id) || item.project_id}...`);
+    setStatus(t("painel:app.loadingCatalog", { project: projectLabelById.get(item.project_id) || item.project_id }));
     try {
       const resp = await fetchProjectProfile(item.project_id);
       const classification = resp.profile.classification || {};
@@ -322,7 +324,7 @@ function AppShell() {
         label: area.label || area.key,
       }));
       if (!areas.length) {
-        setStatus("Projeto sem domínios configurados para correção");
+        setStatus(t("painel:app.noDomainsForCorrection"));
         return;
       }
       const suggestedDomain = item.suggested_business_domain || "";
@@ -333,7 +335,7 @@ function AppShell() {
         folder: entry.folder,
       }));
       if (!documentTypes.length) {
-        setStatus("Projeto sem tipos documentais configurados para correção");
+        setStatus(t("painel:app.noTypesForCorrection"));
         return;
       }
       const suggestedDocumentType = item.suggested_document_type || "";
@@ -344,9 +346,9 @@ function AppShell() {
       setCorrectBusinessDomainValue(suggestedDomainExists ? suggestedDomain : areas[0].key);
       setCorrectDocumentTypeValue(suggestedDocumentTypeExists ? suggestedDocumentType : documentTypes[0].key);
       setCorrectModalItem(item);
-      setStatus("Selecione domínio e tipo documental para aprovar com correção");
+      setStatus(t("painel:app.selectDomainAndType"));
     } catch {
-      setStatus("Falha ao carregar catálogo para correção");
+      setStatus(t("painel:app.loadCatalogFailed"));
     }
   }
 
@@ -363,10 +365,10 @@ function AppShell() {
     triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
       .then(() => {
         invalidateAfterTriageDecision();
-        setStatus(`Documento aprovado por correção e movido para ${businessDomainValue}/${documentTypeValue}`);
+        setStatus(t("painel:app.correctedAndMoved", { businessDomain: businessDomainValue, documentType: documentTypeValue }));
       })
       .catch(() => {
-        setStatus("Falha ao registrar correção");
+        setStatus(t("painel:app.correctionFailed"));
         invalidateAfterTriageDecision();
       })
       .finally(() => processing.finish());
@@ -388,12 +390,12 @@ function AppShell() {
       await triageDecision(item.project_id, item.doc_id, action);
       invalidateAfterTriageDecision();
       if (action === "reject") {
-        setStatus("Documento rejeitado e movido para rejected com nome original");
+        setStatus(t("painel:app.rejectedAndMoved"));
       } else {
-        setStatus(`Decisao registrada: ${action}`);
+        setStatus(t("painel:app.decisionRecorded", { action }));
       }
     } catch {
-      setStatus("Falha ao registrar decisao");
+      setStatus(t("painel:app.decisionFailed"));
     } finally {
       processing.finish();
     }
@@ -455,8 +457,8 @@ function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar>
           {appEnv === "dev" && (
-            <Button variant="secondary" size="sm" onClick={handleReplayOnboarding} title="Replay Onboarding (dev only)">
-              <RefreshCw /> Onboarding
+            <Button variant="secondary" size="sm" onClick={handleReplayOnboarding} title={t("painel:app.replayOnboardingTitle")}>
+              <RefreshCw /> {t("painel:app.onboarding")}
             </Button>
           )}
         </Topbar>
@@ -549,7 +551,7 @@ function AppShell() {
         <button
           type="button"
           onClick={() => setView("painel")}
-          title="Voltar ao Painel"
+          title={t("painel:app.backToPainel")}
           className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-full border border-border bg-panel py-2 pl-3 pr-4 font-mono text-[0.75rem] text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition-transform hover:scale-[1.03]"
         >
           <MiniOrb />
@@ -634,37 +636,37 @@ function AppShell() {
               if (kind === "business_domain") setCorrectBusinessDomainValue(key);
               else setCorrectDocumentTypeValue(key);
             })
-            .catch(() => setStatus("Falha ao recarregar catálogo após criação"));
+            .catch(() => setStatus(t("painel:app.reloadCatalogFailed")));
         }}
       />
 
       {newProjectModalOpen && (
-        <ModalShell label="Novo projeto" title="Novo projeto" size="sm">
-          <label className={fieldLabelClass} htmlFor="new-project-name">Nome do projeto (slug)</label>
+        <ModalShell label={t("painel:app.newProjectTitle")} title={t("painel:app.newProjectTitle")} size="sm">
+          <label className={fieldLabelClass} htmlFor="new-project-name">{t("painel:app.projectNameLabel")}</label>
           <Input
             id="new-project-name"
             type="text"
             className="font-mono"
             value={newProjectName}
             onChange={(e) => setNewProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-            placeholder="meu_projeto"
+            placeholder={t("painel:app.projectNamePlaceholder")}
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter") handleNewProjectConfirm();
             }}
           />
-          <p className="mt-1.5 text-[0.72rem] text-tertiary">Apenas letras minúsculas, números, _ e - (sem espaços ou acentos)</p>
+          <p className="mt-1.5 text-[0.72rem] text-tertiary">{t("painel:app.projectNameHint")}</p>
           {newProjectName && !SLUG_RE.test(newProjectName) && (
             <p className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-[0.8rem] text-destructive">
-              Nome inválido
+              {t("painel:app.invalidName")}
             </p>
           )}
           <ModalActions>
             <Button variant="secondary" onClick={() => setNewProjectModalOpen(false)}>
-              Cancelar
+              {t("common:action.cancel")}
             </Button>
             <Button disabled={!newProjectName || !SLUG_RE.test(newProjectName)} onClick={handleNewProjectConfirm}>
-              Continuar
+              {t("painel:app.continue")}
             </Button>
           </ModalActions>
         </ModalShell>

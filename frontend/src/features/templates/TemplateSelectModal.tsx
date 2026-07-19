@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getTemplate, initializeProject, listTemplates } from "../../api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -19,6 +20,7 @@ type Props = {
 };
 
 export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, onInitialized, onCreateTemplate }: Props) {
+  const { t } = useTranslation();
   useEscapeKey(open ? onClose : null);
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
   const [selected, setSelected] = useState("default");
@@ -74,10 +76,9 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
     : [];
 
   return (
-    <ModalShell label="Selecionar template" title={`Inicializar projeto: ${projectLabel}`}>
+    <ModalShell label={t("templates:select.label")} title={t("templates:select.title", { project: projectLabel })}>
       <p className="text-xs text-muted-foreground">
-        Selecione um template para configurar o projeto. Domínios, tipos documentais, layout e catálogo de entidades
-        podem ser ajustados depois.
+        {t("templates:select.intro")}
       </p>
 
       {loading && (
@@ -88,12 +89,12 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
       )}
 
       <div className="mt-3 flex max-h-64 flex-col gap-2 overflow-y-auto">
-        {templates.map((t) => (
+        {templates.map((tmpl) => (
           <label
-            key={t.slug}
+            key={tmpl.slug}
             className={cn(
               "flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 transition-[border-color,box-shadow]",
-              selected === t.slug
+              selected === tmpl.slug
                 ? "border-accent/50 bg-accent-soft/40 shadow-[0_0_16px_var(--accent-soft)]"
                 : "border-border bg-card hover:border-border-strong"
             )}
@@ -102,17 +103,17 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
               type="radio"
               name="template"
               className="mt-1 size-3.5 accent-[var(--accent)]"
-              value={t.slug}
-              checked={selected === t.slug}
-              onChange={() => setSelected(t.slug)}
+              value={tmpl.slug}
+              checked={selected === tmpl.slug}
+              onChange={() => setSelected(tmpl.slug)}
             />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
-                <strong className="font-display text-sm font-semibold text-foreground-strong">{t.name}</strong>
-                {t.slug === "default" && <Badge>default</Badge>}
-                <span className="font-mono text-[0.68rem] text-tertiary">{t.areas_count} domínios</span>
+                <strong className="font-display text-sm font-semibold text-foreground-strong">{tmpl.name}</strong>
+                {tmpl.slug === "default" && <Badge>default</Badge>}
+                <span className="font-mono text-[0.68rem] text-tertiary">{t("templates:select.domainsCount", { value: tmpl.areas_count })}</span>
               </div>
-              {t.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{t.description}</p>}
+              {tmpl.description && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{tmpl.description}</p>}
             </div>
           </label>
         ))}
@@ -121,7 +122,7 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
       {previewAreas.length > 0 && (
         <details className="group mt-3 rounded-lg border border-border">
           <summary className="cursor-pointer select-none px-3 py-2 font-display text-xs font-semibold text-foreground-strong [&::-webkit-details-marker]:hidden [&::marker]:content-none">
-            Preview do template selecionado
+            {t("templates:select.preview")}
           </summary>
           <div className="max-h-40 space-y-1 overflow-y-auto border-t border-border px-3 py-2">
             {previewAreas.map((a, i) => (
@@ -141,14 +142,14 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
         {onCreateTemplate && (
           <Button variant="link" className="mr-auto px-0" onClick={onCreateTemplate}>
             <Plus />
-            Criar novo template
+            {t("templates:select.createNew")}
           </Button>
         )}
         <Button variant="secondary" onClick={onClose} disabled={initializing}>
-          Cancelar
+          {t("common:action.cancel")}
         </Button>
         <Button onClick={handleInit} disabled={initializing || !selected}>
-          {initializing ? "Inicializando..." : "Inicializar com template"}
+          {initializing ? t("templates:select.initializing") : t("templates:select.init")}
         </Button>
       </ModalActions>
     </ModalShell>

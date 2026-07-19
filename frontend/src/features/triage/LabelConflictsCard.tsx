@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { Check, GitCompareArrows, Pencil, PlusCircle, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { createTaxonomyEntry, resolveLabelConflict } from "../../api";
 import { useLabelConflictsQuery, useTaxonomyQuery } from "../../lib/queries";
 import { useQueryClient } from "@tanstack/react-query";
@@ -32,6 +33,7 @@ function sourceLabel(ref: string): string {
  * corrigir escolhendo o rótulo canônico. Some quando não há pendências.
  */
 export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) {
+  const { t } = useTranslation();
   const reducedMotion = useReducedMotion();
   // Reativo via cache: decisões/correções invalidam label-conflicts — o card
   // aparece/some sozinho; taxonomia é quase-estática (staleTime longo)
@@ -91,8 +93,8 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
           created_from: `conflito:${creating.conflict.sha256.slice(0, 12)}`,
         });
         toast.success(
-          `${item.kind === "document_type" ? "Tipo" : "Domínio"} \`${result.key}\` criado no template` +
-            (result.updated_projects.length ? ` e em ${result.updated_projects.length} projeto(s)` : "")
+          t("triage:conflicts.createdToast", { kindLabel: t(`triage:conflicts.kindShort.${item.kind}`), key: result.key }) +
+            (result.updated_projects.length ? t("triage:conflicts.createdSuffix", { count: result.updated_projects.length }) : "")
         );
       }
       await queryClient.invalidateQueries({ queryKey: qk.taxonomy() });
@@ -100,7 +102,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
       setCreating(null);
       await resolve(conflict, businessDomain, documentType);
     } catch {
-      toast.error("Falha ao criar entrada de taxonomia");
+      toast.error(t("triage:conflicts.createFailed"));
       setSubmitting(null);
     }
   }
@@ -110,14 +112,14 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
     try {
       const result = await resolveLabelConflict(conflict.sha256, businessDomain, documentType);
       toast.success(
-        `Rótulo canônico aplicado: ${businessDomain}/${documentType}` +
-          (result.labeled_by === "human_confirmed_llm" ? " (proposta do LLM confirmada)" : "")
+        t("triage:conflicts.resolvedToast", { pair: `${businessDomain}/${documentType}` }) +
+          (result.labeled_by === "human_confirmed_llm" ? t("triage:conflicts.llmConfirmedSuffix") : "")
       );
       reloadConflicts();
       setCorrecting(null);
       onResolved?.();
     } catch {
-      toast.error("Falha ao aplicar a resolução do conflito");
+      toast.error(t("triage:conflicts.resolveFailed"));
     } finally {
       setSubmitting(null);
     }
@@ -143,7 +145,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <GitCompareArrows size={15} className="text-accent" aria-hidden />
-            Conflitos de rótulo
+            {t("triage:conflicts.title")}
             <span className="relative inline-flex">
               <Badge variant="purple">{conflicts.length}</Badge>
               <span
@@ -153,8 +155,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
             </span>
           </CardTitle>
           <CardDescription>
-            O mesmo arquivo recebeu rótulos diferentes em curadorias distintas — escolha o canônico. A decisão
-            atualiza os dados de treino/validação do classificador.
+            {t("triage:conflicts.description")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -191,8 +192,8 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                     <div className="mt-2.5 rounded-md border border-accent-purple/25 bg-accent-purple/[0.07] p-2.5">
                       <p className="flex items-center gap-1.5 font-mono text-[0.7rem] text-accent-purple">
                         <Sparkles size={12} aria-hidden />
-                        proposta do LLM: <strong>{proposal.business_domain}/{proposal.document_type}</strong>
-                        {proposal.confidence != null && <span className="text-tertiary">conf {proposal.confidence.toFixed(2)}</span>}
+                        {t("triage:conflicts.llmProposalLabel")} <strong>{proposal.business_domain}/{proposal.document_type}</strong>
+                        {proposal.confidence != null && <span className="text-tertiary">{t("triage:conflicts.confidence", { value: proposal.confidence.toFixed(2) })}</span>}
                       </p>
                       {proposal.justificativa && (
                         <p className="mt-1 text-[0.78rem] leading-relaxed text-muted-foreground">{proposal.justificativa}</p>
@@ -200,7 +201,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                       {missingEntries(proposal.business_domain!, proposal.document_type!).length > 0 && (
                         <p className="mt-1.5 flex items-center gap-1.5 font-mono text-[0.68rem] text-accent">
                           <PlusCircle size={11} aria-hidden />
-                          usa taxonomia nova — aceitar vai propor a criação no template
+                          {t("triage:conflicts.newTaxonomyNotice")}
                         </p>
                       )}
                     </div>
@@ -213,11 +214,11 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                       onClick={() => resolveOrCreate(conflict, proposal.business_domain!, proposal.document_type!)}
                     >
                       <Check />
-                      {busy ? "Aplicando..." : "Aceitar proposta"}
+                      {busy ? t("triage:conflicts.applying") : t("triage:conflicts.acceptProposal")}
                     </Button>
                     <Button size="sm" variant="secondary" disabled={busy} onClick={() => openCorrect(conflict)}>
                       <Pencil />
-                      Corrigir
+                      {t("common:action.correct")}
                     </Button>
                   </div>
                 </motion.li>
@@ -228,12 +229,12 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
       </Card>
 
       {correcting && (
-        <ModalShell label="Resolver conflito de rótulo" title="Resolver conflito de rótulo">
+        <ModalShell label={t("triage:conflicts.resolveTitle")} title={t("triage:conflicts.resolveTitle")}>
           <p className="text-sm">
-            Arquivo: <strong className="text-foreground-strong">{fileName(correcting.refs[0] || "")}</strong>
+            {t("triage:conflicts.fileLabel")} <strong className="text-foreground-strong">{fileName(correcting.refs[0] || "")}</strong>
           </p>
 
-          <label className={fieldLabelClass} htmlFor="conflict-choice">Rótulo canônico</label>
+          <label className={fieldLabelClass} htmlFor="conflict-choice">{t("triage:conflicts.canonicalLabel")}</label>
           <select
             id="conflict-choice"
             className={nativeSelectClass}
@@ -242,7 +243,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
           >
             {correcting.llm_proposal?.business_domain && correcting.llm_proposal?.document_type && (
               <option value={`${correcting.llm_proposal.business_domain}/${correcting.llm_proposal.document_type}`}>
-                {correcting.llm_proposal.business_domain}/{correcting.llm_proposal.document_type} — proposta do LLM
+                {t("triage:conflicts.proposalOption", { pair: `${correcting.llm_proposal.business_domain}/${correcting.llm_proposal.document_type}` })}
               </option>
             )}
             {[...new Set(correcting.sources.map((s) => `${s.business_domain}/${s.document_type}`))].map((pair) => (
@@ -250,7 +251,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                 {pair}
               </option>
             ))}
-            <option value={CUSTOM}>Personalizado…</option>
+            <option value={CUSTOM}>{t("triage:conflicts.customOption")}</option>
           </select>
 
           {choice === CUSTOM && (
@@ -262,7 +263,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                   className={cn(nativeSelectClass, "font-mono")}
                   value={customBd}
                   onChange={(e) => setCustomBd(e.target.value)}
-                  placeholder="ex: operacoes"
+                  placeholder={t("triage:conflicts.customBdPlaceholder")}
                 />
               </div>
               <div>
@@ -272,7 +273,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                   className={cn(nativeSelectClass, "font-mono")}
                   value={customDt}
                   onChange={(e) => setCustomDt(e.target.value)}
-                  placeholder="ex: plano"
+                  placeholder={t("triage:conflicts.customDtPlaceholder")}
                 />
               </div>
             </div>
@@ -280,7 +281,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
 
           <ModalActions>
             <Button variant="secondary" disabled={submitting !== null} onClick={() => setCorrecting(null)}>
-              Cancelar
+              {t("common:action.cancel")}
             </Button>
             <Button
               disabled={
@@ -293,31 +294,31 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                 resolveOrCreate(correcting, bd, dt);
               }}
             >
-              {submitting !== null ? "Aplicando..." : "Aplicar canônico"}
+              {submitting !== null ? t("triage:conflicts.applying") : t("triage:conflicts.applyCanonical")}
             </Button>
           </ModalActions>
         </ModalShell>
       )}
 
       {creating && (
-        <ModalShell label="Criar taxonomia" title="Criar no template e aplicar">
+        <ModalShell label={t("triage:conflicts.createLabel")} title={t("triage:conflicts.createTitle")}>
           <p className="text-sm text-muted-foreground">
-            A escolha{" "}
+            {t("triage:conflicts.createIntroChoice")}{" "}
             <strong className="font-mono text-foreground-strong">
               {creating.businessDomain}/{creating.documentType}
             </strong>{" "}
-            usa {creating.missing.length === 1 ? "uma entrada que não existe" : "entradas que não existem"} na
-            taxonomia. Criar agora atualiza o template <code className="font-mono text-accent">default</code> e os
-            profiles de todos os projetos — o classificador bootstrap passa a reconhecer imediatamente pelos aliases.
+            {t("triage:conflicts.createIntroUsage", { count: creating.missing.length })}{" "}
+            <code className="font-mono text-accent">default</code>{" "}
+            {t("triage:conflicts.createIntroAfter")}
           </p>
 
           {creating.missing.map((item, idx) => (
             <div key={item.kind} className="mt-4 rounded-md border border-border bg-panel-strong/40 p-3">
               <p className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">
-                {item.kind === "document_type" ? "Novo tipo documental" : "Novo domínio de negócio"}:{" "}
+                {t(`triage:conflicts.newEntry.${item.kind}`)}:{" "}
                 <span className="text-accent">{item.key}</span>
               </p>
-              <label className={fieldLabelClass} htmlFor={`tax-label-${idx}`}>Label</label>
+              <label className={fieldLabelClass} htmlFor={`tax-label-${idx}`}>{t("triage:conflicts.labelField")}</label>
               <input
                 id={`tax-label-${idx}`}
                 className={cn(nativeSelectClass)}
@@ -334,7 +335,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                 }
               />
               <label className={fieldLabelClass} htmlFor={`tax-aliases-${idx}`}>
-                Aliases (vírgula) — é o que o bootstrap usa para classificar
+                {t("triage:conflicts.aliasesLabel")}
               </label>
               <input
                 id={`tax-aliases-${idx}`}
@@ -350,18 +351,18 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
                       : prev
                   )
                 }
-                placeholder="ex: plano, plano de trabalho, cronograma"
+                placeholder={t("triage:conflicts.aliasesPlaceholder")}
               />
             </div>
           ))}
 
           <ModalActions>
             <Button variant="secondary" disabled={submitting !== null} onClick={() => setCreating(null)}>
-              Cancelar
+              {t("common:action.cancel")}
             </Button>
             <Button disabled={submitting !== null} onClick={() => void confirmCreateAndResolve()}>
               <PlusCircle />
-              {submitting !== null ? "Criando..." : "Criar e aplicar"}
+              {submitting !== null ? t("triage:conflicts.creating") : t("triage:conflicts.createAndApply")}
             </Button>
           </ModalActions>
         </ModalShell>

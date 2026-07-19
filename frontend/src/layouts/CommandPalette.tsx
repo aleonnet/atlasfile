@@ -8,9 +8,12 @@ import {
   Moon,
   Plus,
   Search,
+  Sparkles,
   Sun,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { getFileDownloadUrl } from "../api";
+import i18n from "../i18n";
 import {
   Command,
   CommandEmpty,
@@ -42,15 +45,16 @@ type Props = {
 };
 
 const NAV_ITEMS: Array<{ view: ViewKind; label: string; icon: React.ReactNode }> = [
-  { view: "painel", label: "Painel", icon: <LayoutDashboard /> },
-  { view: "assistente", label: "Assistente", icon: <MessageCircle /> },
-  { view: "config", label: "Configuração", icon: <FolderCog /> },
+  { view: "painel", label: i18n.t("painel:shell.navPainel"), icon: <LayoutDashboard /> },
+  { view: "assistente", label: i18n.t("painel:shell.navAssistente"), icon: <MessageCircle /> },
+  { view: "classificador", label: i18n.t("painel:shell.navClassificador"), icon: <Sparkles /> },
+  { view: "config", label: i18n.t("painel:shell.navConfig"), icon: <FolderCog /> },
 ];
 
 const THEME_ITEMS: Array<{ mode: ThemeMode; label: string; icon: React.ReactNode }> = [
-  { mode: "system", label: "Tema do sistema", icon: <Monitor /> },
-  { mode: "light", label: "Tema claro", icon: <Sun /> },
-  { mode: "dark", label: "Tema escuro", icon: <Moon /> },
+  { mode: "system", label: i18n.t("painel:shell.themeItemSystem"), icon: <Monitor /> },
+  { mode: "light", label: i18n.t("painel:shell.themeItemLight"), icon: <Sun /> },
+  { mode: "dark", label: i18n.t("painel:shell.themeItemDark"), icon: <Moon /> },
 ];
 
 function matches(label: string, query: string): boolean {
@@ -91,6 +95,7 @@ export function CommandPalette({
   onSelectProject,
   onNewProject,
 }: Props) {
+  const { t } = useTranslation();
   const { view, setView } = useNavigation();
   const { setTheme } = useSettings();
   const { projects, selectedProject, projectLabelById } = useProject();
@@ -107,16 +112,16 @@ export function CommandPalette({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl overflow-hidden border-accent-soft p-0 [&>button]:hidden">
-        <DialogTitle className="sr-only">Busca e comandos</DialogTitle>
+        <DialogTitle className="sr-only">{t("painel:shell.paletteTitle")}</DialogTitle>
         <Command
           shouldFilter={false}
           loop
           className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[0.68rem] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-tertiary"
         >
-          <CommandInput placeholder="Search..." value={query} onValueChange={onQueryChange} autoFocus />
+          <CommandInput placeholder={t("painel:shell.searchPlaceholder")} value={query} onValueChange={onQueryChange} autoFocus />
           <CommandList>
           {searching && (
-            <CommandGroup heading={loading ? "Buscando documentos..." : "Documentos"}>
+            <CommandGroup heading={loading ? t("painel:shell.searchingDocs") : t("painel:shell.documents")}>
               {hits.map((hit) => (
                 <CommandItem
                   key={`doc-${hit.doc_id}`}
@@ -155,7 +160,7 @@ export function CommandPalette({
                 >
                   <Search />
                   <span>
-                    Listar todos os resultados para <strong className="text-accent">“{q}”</strong>
+                    {t("painel:shell.listAllResults")} <strong className="text-accent">“{q}”</strong>
                   </span>
                   <CommandShortcut>↵</CommandShortcut>
                 </CommandItem>
@@ -164,7 +169,7 @@ export function CommandPalette({
           )}
 
           {navMatches.length > 0 && (
-            <CommandGroup heading="Navegação">
+            <CommandGroup heading={t("painel:shell.navigationGroup")}>
               {navMatches.map((item) => (
                 <CommandItem
                   key={`nav-${item.view}`}
@@ -176,7 +181,7 @@ export function CommandPalette({
                 >
                   {item.icon}
                   <span>{item.label}</span>
-                  {view === item.view && <CommandShortcut>atual</CommandShortcut>}
+                  {view === item.view && <CommandShortcut>{t("painel:shell.current")}</CommandShortcut>}
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -185,7 +190,7 @@ export function CommandPalette({
           {projectMatches.length > 0 && (
             <>
               <CommandSeparator />
-              <CommandGroup heading="Projetos">
+              <CommandGroup heading={t("painel:shell.projectsGroup")}>
                 {!searching && (
                   <CommandItem
                     value="project-all"
@@ -195,8 +200,8 @@ export function CommandPalette({
                     }}
                   >
                     <Layers />
-                    <span>Geral (todos os projetos)</span>
-                    {selectedProject === ALL_PROJECTS && <CommandShortcut>atual</CommandShortcut>}
+                    <span>{t("painel:shell.allProjects")}</span>
+                    {selectedProject === ALL_PROJECTS && <CommandShortcut>{t("painel:shell.current")}</CommandShortcut>}
                   </CommandItem>
                 )}
                 {projectMatches.map((project) => (
@@ -216,7 +221,7 @@ export function CommandPalette({
                       {projectInitial(project.project_label)}
                     </span>
                     <span className="truncate">{project.project_label}</span>
-                    {selectedProject === project.project_id && <CommandShortcut>atual</CommandShortcut>}
+                    {selectedProject === project.project_id && <CommandShortcut>{t("painel:shell.current")}</CommandShortcut>}
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -226,7 +231,7 @@ export function CommandPalette({
           {themeMatches.length > 0 && (
             <>
               <CommandSeparator />
-              <CommandGroup heading="Tema">
+              <CommandGroup heading={t("painel:shell.themeGroup")}>
                 {themeMatches.map((item) => (
                   <CommandItem
                     key={`theme-${item.mode}`}
@@ -247,7 +252,7 @@ export function CommandPalette({
           {(!searching || matches("novo projeto", q)) && (
             <>
               <CommandSeparator />
-              <CommandGroup heading="Ações">
+              <CommandGroup heading={t("painel:shell.actionsGroup")}>
                 <CommandItem
                   value="new-project"
                   onSelect={() => {
@@ -256,14 +261,14 @@ export function CommandPalette({
                   }}
                 >
                   <Plus />
-                  <span>Novo projeto</span>
+                  <span>{t("painel:shell.newProject")}</span>
                 </CommandItem>
               </CommandGroup>
             </>
           )}
 
           {searching && !loading && hits.length === 0 && navMatches.length === 0 && projectMatches.length === 0 && (
-            <CommandEmpty>Nenhum resultado para “{q}”.</CommandEmpty>
+            <CommandEmpty>{t("painel:shell.noResultsFor", { query: q })}</CommandEmpty>
           )}
           </CommandList>
         </Command>

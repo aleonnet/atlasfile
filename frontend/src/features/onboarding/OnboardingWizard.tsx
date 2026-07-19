@@ -1,5 +1,6 @@
 import { Check, ChevronLeft, ChevronRight, FolderOpen, Info, Plus, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { fetchProjectProfile, fetchProjects, fetchSetupStatus, initializeProject, listTemplates, updateProjectProfile, validateProviderKey } from "../../api";
 import { AuroraField } from "../../components/AuroraField";
 import { Orb } from "../../components/OrbGL";
@@ -30,6 +31,7 @@ type Step = "welcome" | "projects" | "llm" | "done";
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
 export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropicApiKey, onChangeOpenAiKey, onChangeAnthropicKey }: Props) {
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>("welcome");
 
   const handleCancel = onCancel ?? (() => onComplete());
@@ -115,11 +117,11 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
   async function handleCreateProject() {
     const name = projectName.trim();
     if (!name) {
-      setCreateError("Nome do projeto e obrigatorio");
+      setCreateError(t("onboarding:projects.nameRequired"));
       return;
     }
     if (!SLUG_RE.test(name)) {
-      setCreateError("Use apenas letras minusculas, numeros, _ e - (sem espacos ou acentos)");
+      setCreateError(t("onboarding:projects.nameInvalid"));
       return;
     }
     setCreating(true);
@@ -129,7 +131,7 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
       setCreatedProjectId(name);
       setStep("llm");
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Falha ao criar projeto");
+      setCreateError(err instanceof Error ? err.message : t("onboarding:projects.createFailed"));
     } finally {
       setCreating(false);
     }
@@ -199,8 +201,8 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
           <button
             className="absolute right-4 top-4 rounded-md border-0 bg-transparent p-1 text-tertiary shadow-none transition-colors hover:bg-panel-strong hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={handleCancel}
-            title="Fechar (ESC)"
-            aria-label="Fechar onboarding"
+            title={t("onboarding:close.title")}
+            aria-label={t("onboarding:close.aria")}
           >
             <X size={18} aria-hidden />
           </button>
@@ -212,9 +214,9 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
               <Orb state="alive" size={112} />
               <Wordmark className="h-14 w-80" />
             </div>
-            <h2 className="mt-5 font-display text-lg font-bold text-foreground-strong">Bem-vindo ao AtlasFile</h2>
+            <h2 className="mt-5 font-display text-lg font-bold text-foreground-strong">{t("onboarding:welcome.title")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Sistema de gestao documental inteligente para projetos.
+              {t("onboarding:welcome.subtitle")}
             </p>
 
             {/* Só o caminho físico do host interessa ao usuário (foi o que ele
@@ -223,8 +225,8 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
             {setupStatus?.projects_host_root ? (
               <div className="mt-5">
                 <label className={fieldLabelClass}>
-                  <FolderOpen size={13} aria-hidden /> Seus arquivos ficarao em
-                  <span title="Pasta escolhida na instalacao. Para alterar, edite PROJECTS_HOST_ROOT no .env e reinicie os containers.">
+                  <FolderOpen size={13} aria-hidden /> {t("onboarding:welcome.filesLocationLabel")}
+                  <span title={t("onboarding:welcome.filesLocationInfo")}>
                     <Info size={11} aria-hidden />
                   </span>
                 </label>
@@ -232,14 +234,17 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
                   {setupStatus.projects_host_root}
                 </div>
                 <p className={hintClass}>
-                  Escolhida na instalacao. Para alterar, edite <code className="text-accent-light">.env</code> e reinicie os containers.
+                  <Trans
+                    i18nKey="onboarding:welcome.filesLocationHint"
+                    components={{ code: <code className="text-accent-light" /> }}
+                  />
                 </p>
               </div>
             ) : null}
 
             <div className={actionsClass}>
               <Button className="ml-auto" onClick={goToProjects}>
-                Comecar <ChevronRight />
+                {t("onboarding:welcome.start")} <ChevronRight />
               </Button>
             </div>
           </div>
@@ -247,7 +252,7 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
 
         {step === "projects" && (
           <div>
-            <h2 className="font-display text-lg font-bold text-foreground-strong">{isReplay && !showCreateForm ? "Seus projetos" : "Crie seu primeiro projeto"}</h2>
+            <h2 className="font-display text-lg font-bold text-foreground-strong">{isReplay && !showCreateForm ? t("onboarding:projects.replayTitle") : t("onboarding:projects.createTitle")}</h2>
 
             {isReplay && !showCreateForm && (
               <>
@@ -263,7 +268,7 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
                   ))}
                 </div>
                 <Button variant="outline" size="sm" className="mt-3" onClick={() => setShowCreateForm(true)}>
-                  <Plus /> Criar novo projeto
+                  <Plus /> {t("onboarding:projects.newProject")}
                 </Button>
               </>
             )}
@@ -271,32 +276,32 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
             {(showCreateForm || !isReplay) && (
               <div className="mt-4 space-y-4">
                 <div>
-                  <label className={fieldLabelClass} htmlFor="ob-proj-name">Nome do projeto *</label>
+                  <label className={fieldLabelClass} htmlFor="ob-proj-name">{t("onboarding:projects.nameLabel")}</label>
                   <Input
                     id="ob-proj-name"
                     type="text"
                     className="font-mono"
                     value={projectName}
                     onChange={(e) => { setProjectName(e.target.value); setCreateError(null); }}
-                    placeholder="meu_projeto"
+                    placeholder={t("onboarding:projects.namePlaceholder")}
                     autoFocus
                   />
-                  <p className={hintClass}>Sera criado como subpasta em Projects/</p>
+                  <p className={hintClass}>{t("onboarding:projects.nameHint")}</p>
                 </div>
 
                 <div>
-                  <label className={fieldLabelClass} htmlFor="ob-proj-label">Label (exibicao)</label>
+                  <label className={fieldLabelClass} htmlFor="ob-proj-label">{t("onboarding:projects.displayLabel")}</label>
                   <Input
                     id="ob-proj-label"
                     type="text"
                     value={projectLabel}
                     onChange={(e) => setProjectLabel(e.target.value)}
-                    placeholder="Meu Projeto"
+                    placeholder={t("onboarding:projects.displayPlaceholder")}
                   />
                 </div>
 
                 <div>
-                  <label className={fieldLabelClass}>Template</label>
+                  <label className={fieldLabelClass}>{t("onboarding:projects.templateLabel")}</label>
                   <div className="flex max-h-40 flex-col gap-1.5 overflow-y-auto">
                     {templates.map((t) => (
                       <label
@@ -333,16 +338,16 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
 
             <div className={actionsClass}>
               <Button variant="secondary" onClick={() => setStep("welcome")}>
-                <ChevronLeft /> Voltar
+                <ChevronLeft /> {t("onboarding:projects.back")}
               </Button>
               <span className="flex-1" />
               {isReplay && !showCreateForm ? (
                 <Button onClick={handleContinueWithoutCreate}>
-                  Continuar <ChevronRight />
+                  {t("onboarding:projects.continue")} <ChevronRight />
                 </Button>
               ) : (
                 <Button onClick={handleCreateProject} disabled={creating}>
-                  {creating ? "Criando..." : "Criar e Continuar"}
+                  {creating ? t("onboarding:projects.creating") : t("onboarding:projects.createAndContinue")}
                 </Button>
               )}
             </div>
@@ -352,14 +357,14 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
         {step === "llm" && (
           <div>
             <h2 className="flex items-center gap-2 font-display text-lg font-bold text-foreground-strong">
-              <Sparkles size={17} className="text-accent" aria-hidden /> Configure o assistente (opcional)
+              <Sparkles size={17} className="text-accent" aria-hidden /> {t("onboarding:llm.title")}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              O AtlasFile pode usar um LLM para classificar documentos e responder perguntas sobre seus projetos.
+              {t("onboarding:llm.subtitle")}
             </p>
 
             <div className="mt-4">
-              <label className={fieldLabelClass}>Provedor</label>
+              <label className={fieldLabelClass}>{t("onboarding:llm.providerLabel")}</label>
               <div className="flex gap-2">
                 {(["openai", "anthropic"] as const).map((provider) => (
                   <label
@@ -386,42 +391,42 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
             </div>
 
             <div className="mt-4">
-              <label className={fieldLabelClass} htmlFor="ob-llm-key">API Key</label>
+              <label className={fieldLabelClass} htmlFor="ob-llm-key">{t("onboarding:llm.keyLabel")}</label>
               <Input
                 id="ob-llm-key"
                 type="password"
                 className="font-mono"
                 value={llmKey}
                 onChange={(e) => setLlmKey(e.target.value)}
-                placeholder={llmProvider === "openai" ? "sk-..." : "sk-ant-..."}
+                placeholder={llmProvider === "openai" ? t("onboarding:llm.keyPlaceholderOpenai") : t("onboarding:llm.keyPlaceholderAnthropic")}
               />
               {keyCheck === "checking" && (
-                <p className={cn(hintClass, "text-muted-foreground")}>Verificando a chave…</p>
+                <p className={cn(hintClass, "text-muted-foreground")}>{t("onboarding:llm.keyChecking")}</p>
               )}
               {keyCheck === "valid" && (
                 <p className={cn(hintClass, "!text-success")}>
-                  ✓ Chave válida — a classificação LLM será ativada (tag_only) no projeto
+                  {t("onboarding:llm.keyValid")}
                 </p>
               )}
               {keyCheck === "invalid" && (
                 <p className={cn(hintClass, "!text-destructive")}>
-                  ✗ Chave inválida — você pode continuar e ajustar depois em Configurações
+                  {t("onboarding:llm.keyInvalid")}
                 </p>
               )}
               {keyCheck === "unreachable" && (
-                <p className={hintClass}>Não foi possível verificar a chave agora (sem bloqueio — siga normalmente)</p>
+                <p className={hintClass}>{t("onboarding:llm.keyUnreachable")}</p>
               )}
               <p className={hintClass}>
-                Salva localmente no navegador. Voce pode configurar depois em Configuracoes do Assistente.
+                {t("onboarding:llm.keyHint")}
               </p>
             </div>
 
             <div className={actionsClass}>
-              <Button variant="secondary" onClick={() => setStep("projects")}><ChevronLeft /> Voltar</Button>
+              <Button variant="secondary" onClick={() => setStep("projects")}><ChevronLeft /> {t("onboarding:llm.back")}</Button>
               <span className="flex-1" />
-              <Button variant="ghost" onClick={handleSkipLlm}>Pular</Button>
+              <Button variant="ghost" onClick={handleSkipLlm}>{t("onboarding:llm.skip")}</Button>
               <Button onClick={handleSaveLlm}>
-                Salvar e Concluir
+                {t("onboarding:llm.saveAndFinish")}
               </Button>
             </div>
           </div>
@@ -432,27 +437,37 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
             <div className="flex size-16 items-center justify-center rounded-full bg-success-subtle text-success shadow-[0_0_28px_var(--ok-subtle)]">
               <Check size={30} aria-hidden />
             </div>
-            <h2 className="mt-4 font-display text-lg font-bold text-foreground-strong">Tudo pronto!</h2>
+            <h2 className="mt-4 font-display text-lg font-bold text-foreground-strong">{t("onboarding:done.title")}</h2>
             {createdProjectId && (
               <p className="mt-2 text-sm text-muted-foreground">
-                Projeto <strong className="text-foreground">{projectLabel || createdProjectId}</strong> criado.<br />
-                Arraste seus arquivos em <strong className="text-foreground">qualquer tela</strong> — o portal envia e
-                processa tudo automaticamente (classificação, roteamento, indexação e busca).
+                <Trans
+                  i18nKey="onboarding:done.projectCreated"
+                  values={{ label: projectLabel || createdProjectId }}
+                  components={{ strong: <strong className="text-foreground" /> }}
+                />
               </p>
             )}
             {llmActivated && (
               <p className="mt-2 text-sm text-success">
-                ✓ Classificação LLM ativada (tag_only) — os documentos já serão enriquecidos na ingestão.
+                {t("onboarding:done.llmActivated")}
               </p>
             )}
             <p className="mt-2 text-sm text-muted-foreground">
-              Alternativa manual: copiar arquivos para{" "}
-              <code className="font-mono text-[0.78rem] text-accent-light">Projects/{createdProjectId ?? "<projeto>"}/_INBOX_DROP/</code>{" "}
-              e clicar em <strong className="text-foreground">Processar INBOX</strong> no Painel.
+              <Trans
+                i18nKey="onboarding:done.manualAlternative"
+                components={{
+                  path: (
+                    <code className="font-mono text-[0.78rem] text-accent-light">
+                      Projects/{createdProjectId ?? t("onboarding:done.projectPlaceholder")}/_INBOX_DROP/
+                    </code>
+                  ),
+                  strong: <strong className="text-foreground" />,
+                }}
+              />
             </p>
             <div className="mt-6">
               <Button onClick={handleFinish}>
-                Abrir Dashboard
+                {t("onboarding:done.openDashboard")}
               </Button>
             </div>
           </div>
@@ -460,7 +475,7 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
 
         {step !== "done" && (
           <div className="mt-6 flex items-center justify-center gap-2">
-            {["Bem-vindo", "Projetos", "Assistente"].map((label, i) => (
+            {[t("onboarding:steps.welcome"), t("onboarding:steps.projects"), t("onboarding:steps.assistant")].map((label, i) => (
               <span
                 key={label}
                 title={label}

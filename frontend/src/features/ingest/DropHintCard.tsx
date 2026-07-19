@@ -1,5 +1,6 @@
 import { Command, FileUp, Search, Sparkles } from "lucide-react";
 import { useRef } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Card, CardContent } from "../../components/ui/card";
 
 /**
@@ -10,6 +11,7 @@ import { Card, CardContent } from "../../components/ui/card";
  * portal global (evento atlas:pick-files consumido pelo GlobalDropPortal).
  */
 export function DropHintCard() {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handlePicked(event: React.ChangeEvent<HTMLInputElement>) {
@@ -25,7 +27,7 @@ export function DropHintCard() {
       className="cursor-pointer overflow-hidden transition-[border-color,box-shadow] duration-200 hover:border-accent/40 hover:shadow-[0_0_24px_var(--accent-soft)]"
       role="button"
       tabIndex={0}
-      aria-label="Selecionar arquivos para enviar"
+      aria-label={t("ingest:dropHint.pickAria")}
       onClick={() => inputRef.current?.click()}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -58,21 +60,20 @@ export function DropHintCard() {
 
         <div className="min-w-0 flex-1">
           <h3 className="font-display text-base font-bold text-foreground-strong">
-            Solte arquivos em qualquer lugar — ou clique para selecionar
+            {t("ingest:dropHint.title")}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Arraste PDF, DOCX, XLSX, PPTX, MSG, EML ou imagens (JPG/PNG, via OCR) para <strong className="text-foreground">qualquer tela</strong> —
-            o portal envia à INBOX e o pipeline cuida do resto: classificação, roteamento, indexação e busca.
+            <Trans i18nKey="ingest:dropHint.description" components={[<strong key="0" className="text-foreground" />]} />
           </p>
           <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-panel px-2.5 py-1 font-mono text-[0.68rem] text-muted-foreground">
-              <Command className="size-3 text-accent" aria-hidden /> ⌘K busca tudo
+              <Command className="size-3 text-accent" aria-hidden /> {t("ingest:dropHint.chipSearchAll")}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-panel px-2.5 py-1 font-mono text-[0.68rem] text-muted-foreground">
-              <Sparkles className="size-3 text-accent-purple" aria-hidden /> classificação automática
+              <Sparkles className="size-3 text-accent-purple" aria-hidden /> {t("ingest:dropHint.chipAutoClassification")}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-panel px-2.5 py-1 font-mono text-[0.68rem] text-muted-foreground">
-              <Search className="size-3 text-accent" aria-hidden /> busca híbrida com citações
+              <Search className="size-3 text-accent" aria-hidden /> {t("ingest:dropHint.chipHybridSearch")}
             </span>
           </div>
         </div>

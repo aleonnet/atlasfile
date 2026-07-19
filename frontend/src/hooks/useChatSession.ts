@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   createChatSession,
   deleteChatSession,
@@ -31,6 +32,7 @@ function messagesToStored(messages: ChatMessageType[]): StoredChatMessage[] {
 
 /** Estado e ações do assistente: mensagens, sessões persistidas, usage e SSE. */
 export function useChatSession() {
+  const { t } = useTranslation();
   const { selectedProjectScope } = useProject();
   const { selectedModel, setSelectedModel, openaiApiKey, anthropicApiKey, showThinking, autoTitleLLM } = useSettings();
 
@@ -292,7 +294,7 @@ export function useChatSession() {
               generateTitleInBackground(created.id, finalMessages, created.usage_totals ?? null, created.usage_by_model ?? {});
             }
           })
-          .catch(() => setChatError("Falha ao salvar sessão automaticamente"));
+          .catch(() => setChatError(t("chat:session.saveFailed")));
       }
       if (res.context_pressure) {
         setContextPressureRatio(res.context_pressure.context_pressure_ratio);
@@ -303,8 +305,8 @@ export function useChatSession() {
       const err = e as Error;
       const msg =
         err.message && (err.message.includes("fetch") || err.message.includes("NetworkError"))
-          ? "Erro de rede. Verifique se a API está rodando (ex.: http://localhost:8000) e se o backend está acessível."
-          : err.message || "Erro no chat";
+          ? t("chat:session.networkError")
+          : err.message || t("chat:session.chatError");
       setChatError(msg);
       setChatSending(false);
       setChatAbortRef(null);
@@ -333,7 +335,7 @@ export function useChatSession() {
         setSessions(list);
       })
       .catch(() => {
-        setChatError("Falha ao carregar histórico de sessões");
+        setChatError(t("chat:session.historyLoadFailed"));
       })
       .finally(() => setSessionsLoading(false));
   }
@@ -355,7 +357,7 @@ export function useChatSession() {
         setChatError(null);
         setHistoryModalOpen(false);
       })
-      .catch(() => setChatError("Falha ao carregar sessão"));
+      .catch(() => setChatError(t("chat:session.sessionLoadFailed")));
   }
 
   function handleEditSession(sessionId: string, newTitle: string) {

@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { deleteInboxFile } from "../../api";
 import { useInboxFilesQuery } from "../../lib/queries";
 import { qk } from "../../lib/queryKeys";
@@ -12,6 +13,7 @@ type Props = {
 /** Fila da INBOX visível: o usuário vê O QUE o Processar INBOX vai processar,
  *  com remoção por arquivo — nada de scans misteriosos de sobras invisíveis. */
 export function InboxQueueChips({ projectId, onStatus }: Props) {
+  const { t } = useTranslation();
   // Reativo via cache: scans invalidam inbox-files — a fila atualiza sozinha
   const queryClient = useQueryClient();
   const { data } = useInboxFilesQuery(projectId);
@@ -22,7 +24,7 @@ export function InboxQueueChips({ projectId, onStatus }: Props) {
   return (
     <div className="rounded-md border border-border bg-elevated px-3 py-2.5">
       <p className="font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">
-        Na fila da INBOX ({files.length})
+        {t("ingest:queue.title", { count: files.length })}
       </p>
       <ul className="m-0 mt-1.5 flex list-none flex-wrap gap-1.5 p-0">
         {files.map((file) => (
@@ -36,11 +38,11 @@ export function InboxQueueChips({ projectId, onStatus }: Props) {
             <button
               type="button"
               className={rowDeleteButtonClass}
-              aria-label={`Remover ${file.filename} da inbox`}
+              aria-label={t("ingest:queue.removeAria", { filename: file.filename })}
               onClick={() => {
                 void deleteInboxFile(projectId, file.filename)
                   .then(() => queryClient.invalidateQueries({ queryKey: qk.inboxFiles(projectId) }))
-                  .catch(() => onStatus("Falha ao remover arquivo da inbox"));
+                  .catch(() => onStatus(t("ingest:queue.removeFailed")));
               }}
             >
               ×

@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { Orb, type OrbGLState } from "../components/OrbGL";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
@@ -31,10 +33,10 @@ const EXPANDED_WIDTH = 248;
 const COLLAPSED_WIDTH = 64;
 
 const NAV_ITEMS: Array<{ view: ViewKind; label: string; icon: React.ReactNode }> = [
-  { view: "painel", label: "Painel", icon: <LayoutDashboard size={18} strokeWidth={2} aria-hidden /> },
-  { view: "assistente", label: "Assistente", icon: <MessageCircle size={18} strokeWidth={2} aria-hidden /> },
-  { view: "classificador", label: "Classificador", icon: <Sparkles size={18} strokeWidth={2} aria-hidden /> },
-  { view: "config", label: "Configuração", icon: <FolderCog size={18} strokeWidth={2} aria-hidden /> },
+  { view: "painel", label: i18n.t("painel:shell.navPainel"), icon: <LayoutDashboard size={18} strokeWidth={2} aria-hidden /> },
+  { view: "assistente", label: i18n.t("painel:shell.navAssistente"), icon: <MessageCircle size={18} strokeWidth={2} aria-hidden /> },
+  { view: "classificador", label: i18n.t("painel:shell.navClassificador"), icon: <Sparkles size={18} strokeWidth={2} aria-hidden /> },
+  { view: "config", label: i18n.t("painel:shell.navConfig"), icon: <FolderCog size={18} strokeWidth={2} aria-hidden /> },
 ];
 
 const THEME_CYCLE: Record<ThemeMode, ThemeMode> = { system: "light", light: "dark", dark: "system" };
@@ -43,7 +45,11 @@ const THEME_ICON: Record<ThemeMode, React.ReactNode> = {
   light: <Sun size={16} aria-hidden />,
   dark: <Moon size={16} aria-hidden />,
 };
-const THEME_LABEL: Record<ThemeMode, string> = { system: "Tema: sistema", light: "Tema: claro", dark: "Tema: escuro" };
+const THEME_LABEL: Record<ThemeMode, string> = {
+  system: i18n.t("painel:shell.themeSystem"),
+  light: i18n.t("painel:shell.themeLight"),
+  dark: i18n.t("painel:shell.themeDark"),
+};
 
 type Props = {
   healthOk: boolean | null;
@@ -69,6 +75,7 @@ function ProjectSwitcher({
   onSelectProject: (projectId: string) => void;
   onNewProject: () => void;
 }) {
+  const { t } = useTranslation();
   const { projects, selectedProject, selectedProjectLabel } = useProject();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
@@ -92,7 +99,7 @@ function ProjectSwitcher({
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={`Projeto: ${selectedProjectLabel}`}
+          aria-label={t("painel:shell.projectAria", { label: selectedProjectLabel })}
           title={collapsed ? selectedProjectLabel : undefined}
           className={cn(
             "group flex w-full items-center gap-2.5 rounded-lg border border-border bg-panel-strong text-left shadow-none",
@@ -115,7 +122,7 @@ function ProjectSwitcher({
                   {selectedProjectLabel}
                 </span>
                 <span className="block font-mono text-[0.65rem] text-tertiary">
-                  {isAll ? `${projects.length} projeto(s)` : "projeto ativo"}
+                  {isAll ? t("painel:shell.projectCount", { count: projects.length }) : t("painel:shell.activeProject")}
                 </span>
               </span>
               <ChevronsUpDown size={14} className="shrink-0 text-tertiary transition-colors group-hover:text-muted-foreground" aria-hidden />
@@ -129,7 +136,7 @@ function ProjectSwitcher({
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filtrar projetos..."
+            placeholder={t("painel:shell.filterProjectsPlaceholder")}
             className="h-7 w-full rounded-none border-0 bg-transparent p-0 text-xs text-foreground shadow-none outline-none placeholder:text-tertiary focus:shadow-none"
             autoFocus
           />
@@ -147,7 +154,7 @@ function ProjectSwitcher({
             }}
           >
             <Layers size={14} className="text-muted-foreground" aria-hidden />
-            <span className="flex-1 truncate">Geral (todos os projetos)</span>
+            <span className="flex-1 truncate">{t("painel:shell.allProjects")}</span>
             {isAll && <Check size={14} className="text-accent" aria-hidden />}
           </button>
           {filtered.map((project) => (
@@ -172,13 +179,13 @@ function ProjectSwitcher({
               </span>
               <span className="flex-1 truncate">
                 {project.project_label}
-                {!project.initialized && <span className="ml-1 font-mono text-[0.62rem] text-tertiary">(não inicializado)</span>}
+                {!project.initialized && <span className="ml-1 font-mono text-[0.62rem] text-tertiary">{t("painel:shell.notInitialized")}</span>}
               </span>
               {selectedProject === project.project_id && <Check size={14} className="text-accent" aria-hidden />}
             </button>
           ))}
           {filtered.length === 0 && (
-            <p className="px-2 py-3 text-center text-xs text-tertiary">Nenhum projeto encontrado.</p>
+            <p className="px-2 py-3 text-center text-xs text-tertiary">{t("painel:shell.noProjectsFound")}</p>
           )}
         </div>
         <div className="border-t border-border pt-1">
@@ -191,7 +198,7 @@ function ProjectSwitcher({
             }}
           >
             <Plus size={14} aria-hidden />
-            Novo projeto
+            {t("painel:shell.newProject")}
           </button>
         </div>
       </PopoverContent>
@@ -201,6 +208,7 @@ function ProjectSwitcher({
 
 /** Sidebar colapsável: navegação, project switcher rico e status — a coluna viva do shell. */
 export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch }: Props) {
+  const { t } = useTranslation();
   const { view, setView } = useNavigation();
   const { theme, setTheme } = useSettings();
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -232,7 +240,7 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
   return (
     <TooltipProvider delayDuration={300}>
       <motion.aside
-        aria-label="Navegação principal"
+        aria-label={t("painel:shell.mainNavAria")}
         initial={false}
         animate={{ width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH }}
         transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 34 }}
@@ -263,8 +271,8 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
           <button
             type="button"
             onClick={onOpenSearch}
-            title="Buscar (⌘K)"
-            aria-label="Buscar (Cmd/Ctrl + K)"
+            title={t("painel:shell.searchTitle")}
+            aria-label={t("painel:shell.searchAria")}
             className={cn(
               "flex w-full items-center gap-2 rounded-md border border-border bg-background/40 text-tertiary shadow-none",
               "transition-colors hover:border-border-strong hover:text-muted-foreground",
@@ -275,16 +283,16 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
             <Search size={14} aria-hidden />
             {!collapsed && (
               <>
-                <span className="flex-1 text-left text-xs">Search...</span>
+                <span className="flex-1 text-left text-xs">{t("painel:shell.searchPlaceholder")}</span>
                 <kbd className="rounded border border-border bg-panel-strong px-1 font-mono text-[0.62rem]">⌘K</kbd>
               </>
             )}
           </button>
         </div>
 
-        <nav aria-label="Visão" className={cn("relative mt-5 flex flex-col gap-0.5", collapsed ? "px-2" : "px-3")}>
+        <nav aria-label={t("painel:shell.viewNavAria")} className={cn("relative mt-5 flex flex-col gap-0.5", collapsed ? "px-2" : "px-3")}>
           {!collapsed && (
-            <p className="px-2.5 pb-1 font-mono text-[0.62rem] uppercase tracking-widest text-tertiary">Workspace</p>
+            <p className="px-2.5 pb-1 font-mono text-[0.62rem] uppercase tracking-widest text-tertiary">{t("painel:shell.workspace")}</p>
           )}
           {NAV_ITEMS.map((item) => {
             const active = view === item.view;
@@ -329,7 +337,7 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
           <div className={cn("flex items-center gap-1", collapsed ? "flex-col" : "justify-between px-1")}>
             <span
               className="flex items-center gap-1.5 font-mono text-[0.65rem] text-tertiary"
-              title={healthOk === true ? "API OK" : healthOk === false ? "API offline" : "Verificando..."}
+              title={healthOk === true ? t("painel:shell.apiOk") : healthOk === false ? t("painel:shell.apiOffline") : t("painel:shell.apiChecking")}
             >
               <span
                 aria-hidden
@@ -340,7 +348,7 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
                   healthOk === null && "bg-tertiary"
                 )}
               />
-              {!collapsed && (healthOk === true ? "online" : healthOk === false ? "offline" : "...")}
+              {!collapsed && (healthOk === true ? t("painel:shell.online") : healthOk === false ? t("painel:shell.offline") : "...")}
             </span>
             <div className={cn("flex items-center gap-0.5", collapsed && "flex-col")}>
               <button
@@ -355,8 +363,8 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
               <button
                 type="button"
                 onClick={toggleCollapsed}
-                title={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
-                aria-label={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
+                title={collapsed ? t("painel:shell.expandSidebar") : t("painel:shell.collapseSidebar")}
+                aria-label={collapsed ? t("painel:shell.expandSidebar") : t("painel:shell.collapseSidebar")}
                 aria-expanded={!collapsed}
                 className="rounded-md border-0 bg-transparent p-1.5 text-tertiary shadow-none transition-colors hover:bg-panel-strong hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >

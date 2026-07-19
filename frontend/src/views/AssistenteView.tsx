@@ -1,5 +1,6 @@
 import { BarChart3, MessageCircle } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChatPanel } from "../components/ChatPanel";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { UsageView } from "../features/usage/UsageView";
@@ -31,6 +32,7 @@ export function AssistenteView({
   telegramConnected,
   onToggleTelegram,
 }: Props) {
+  const { t } = useTranslation();
   const [assistenteTab, setAssistenteTab] = useState("chat");
   // O chat vive AQUI (keep-alive da view preserva a sessão entre navegações) —
   // era elevado ao App só por causa do unmount, que não existe mais
@@ -39,14 +41,14 @@ export function AssistenteView({
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4">
       <Tabs value={assistenteTab} onValueChange={setAssistenteTab} className="flex min-h-0 flex-1 flex-col">
-        <TabsList aria-label="Assistente">
-          <TabsTrigger value="chat"><MessageCircle aria-hidden /> Chat</TabsTrigger>
-          <TabsTrigger value="usage"><BarChart3 aria-hidden /> Uso e custo</TabsTrigger>
+        <TabsList aria-label={t("chat:view.tabListAria")}>
+          <TabsTrigger value="chat"><MessageCircle aria-hidden /> {t("chat:view.tabChat")}</TabsTrigger>
+          <TabsTrigger value="usage"><BarChart3 aria-hidden /> {t("chat:view.tabUsage")}</TabsTrigger>
         </TabsList>
         <div className="mt-4 flex min-h-0 flex-1 flex-col">
           {assistenteTab === "chat" ? (
             <ChatPanel
-              agentName="Assistente"
+              agentName={t("chat:view.agentName")}
               agentAvatarUrl={null}
               messages={chat.chatMessages
                 .filter((m): m is ChatMessageType & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")

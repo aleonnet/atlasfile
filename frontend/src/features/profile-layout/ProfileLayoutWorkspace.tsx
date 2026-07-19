@@ -1,5 +1,6 @@
 import { AlertTriangle, Download, FolderCog } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { createTemplate } from "../../api";
 import { Badge } from "../../components/ui/badge";
@@ -48,6 +49,7 @@ function comparableProfile(profile: ProjectProfileV2): Record<string, unknown> {
 }
 
 export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus }: Props) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState(false);
   const [draft, setDraft] = useState<ProjectProfileV2 | null>(null);
@@ -111,35 +113,35 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
     try {
       const result = await validateProfile(projectRef, draft);
       if (result.valid) {
-        setValidationMessage("Profile válido.");
-        onStatus?.("Profile validado com sucesso");
+        setValidationMessage(t("profileLayout:workspace.validProfile"));
+        onStatus?.(t("profileLayout:workspace.validatedStatus"));
       } else {
         const errs = (result as { errors?: string[] }).errors ?? [];
-        setValidationMessage(`Profile inválido: ${errs.join("; ") || "erro de validação"}`);
-        onStatus?.("Profile inválido");
+        setValidationMessage(t("profileLayout:workspace.invalidProfile", { errors: errs.join("; ") || t("profileLayout:workspace.validationError") }));
+        onStatus?.(t("profileLayout:workspace.invalidStatus"));
       }
     } catch {
-      setValidationMessage("Profile inválido.");
-      onStatus?.("Falha ao validar profile");
+      setValidationMessage(t("profileLayout:workspace.invalidProfileShort"));
+      onStatus?.(t("profileLayout:workspace.validateFailedStatus"));
     }
   }
 
   async function handleSave() {
     if (!draft || !profile) return;
     if (!isDirty) {
-      onStatus?.("Sem alterações para salvar");
+      onStatus?.(t("profileLayout:workspace.noChangesToSave"));
       return;
     }
     setSaving(true);
     try {
       const saved = await saveProfile(projectRef, draft, profile.version);
       setDraft(saved.profile);
-      onStatus?.(saved.version === profile.version ? "Sem alterações no profile" : "Profile salvo");
+      onStatus?.(saved.version === profile.version ? t("profileLayout:workspace.noProfileChanges") : t("profileLayout:workspace.profileSaved"));
       invalidateAfterProfileChange(projectRef);
       await loadWorkspace();
     } catch {
-      onStatus?.("Falha ao salvar profile");
-      setError("Não foi possível salvar o profile (versão desatualizada ou payload inválido).");
+      onStatus?.(t("profileLayout:workspace.saveFailedStatus"));
+      setError(t("profileLayout:workspace.saveFailedError"));
     } finally {
       setSaving(false);
     }
@@ -148,7 +150,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
   async function handlePlan() {
     if (!draft) return;
     if (!layoutChanged) {
-      onStatus?.("Sem alterações de layout para planejar");
+      onStatus?.(t("profileLayout:workspace.noLayoutChangesToPlan"));
       return;
     }
     setSaving(true);
@@ -157,9 +159,9 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       const next = await planLayout(projectRef, draft, { strategy: conflictStrategy, cleanup_empty_dirs: cleanupEmptyDirs });
       setPlan(next);
       setApplyConfirmed(false);
-      onStatus?.(`Plano gerado: ${next.summary.ops} operação(ões)`);
+      onStatus?.(t("profileLayout:workspace.planGenerated", { count: next.summary.ops }));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Falha ao gerar plano";
+      const msg = err instanceof Error ? err.message : t("profileLayout:workspace.planFailed");
       onStatus?.(msg);
       setError(msg);
     } finally {
@@ -176,12 +178,12 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
         strategy: conflictStrategy,
         cleanup_empty_dirs: cleanupEmptyDirs
       });
-      onStatus?.("Layout aplicado com sucesso");
+      onStatus?.(t("profileLayout:workspace.layoutApplied"));
       invalidateAfterProfileChange(projectRef);
       await loadWorkspace();
     } catch {
-      onStatus?.("Falha ao aplicar layout");
-      setError("Aplicação de layout falhou.");
+      onStatus?.(t("profileLayout:workspace.applyFailedStatus"));
+      setError(t("profileLayout:workspace.applyFailedError"));
     } finally {
       setSaving(false);
       setApplying(false);
@@ -205,14 +207,14 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle className="flex min-h-9 items-center gap-2">
             <FolderCog className="size-4 text-accent" aria-hidden />
-            Perfil e Organização
+            {t("profileLayout:workspace.title")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <EmptyState
             icon={<FolderCog aria-hidden />}
-            title="Nenhum projeto selecionado"
-            description="Selecione um projeto específico para editar perfil e organização."
+            title={t("profileLayout:workspace.emptyTitle")}
+            description={t("profileLayout:workspace.emptyDescription")}
           />
         </CardContent>
       </Card>
@@ -226,13 +228,13 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
         <CardHeader className="flex-row flex-wrap items-center justify-between space-y-0 pb-0">
           <CardTitle className="flex min-h-9 items-center gap-2">
             <FolderCog className="size-4 text-accent" aria-hidden />
-            Projeto: {draft.project_label}
-            <Badge variant="outline">Profile v2 JSON</Badge>
+            {t("profileLayout:workspace.projectTitle", { label: draft.project_label })}
+            <Badge variant="outline">{t("profileLayout:workspace.profileBadge")}</Badge>
           </CardTitle>
           <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[0.7rem] text-tertiary">
-            <span>ID: <span className="text-muted-foreground">{draft.project_id}</span></span>
-            <span>Versão: <span className="text-foreground">{draft.version}</span></span>
-            {draft.updated_by && <span>Última: <span className="text-foreground">{draft.updated_by}</span></span>}
+            <span>{t("profileLayout:workspace.idLabel")} <span className="text-muted-foreground">{draft.project_id}</span></span>
+            <span>{t("profileLayout:workspace.versionLabel")} <span className="text-foreground">{draft.version}</span></span>
+            {draft.updated_by && <span>{t("profileLayout:workspace.lastLabel")} <span className="text-foreground">{draft.updated_by}</span></span>}
           </div>
         </CardHeader>
       )}
@@ -241,16 +243,16 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       {/* ── Barra de ações ── */}
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={() => void loadWorkspace()} disabled={loading || saving}>
-          Recarregar
+          {t("common:action.reload")}
         </Button>
         <Button variant="secondary" onClick={() => void handleValidate()} disabled={!draft || loading || saving}>
-          Validar alterações
+          {t("profileLayout:workspace.validateChanges")}
         </Button>
         <Button onClick={() => void handleSave()} disabled={!draft || !isDirty || loading || saving}>
-          Salvar Profile
+          {t("profileLayout:workspace.saveProfile")}
         </Button>
         <Button variant="outline" onClick={() => setSaveAsTemplateOpen(true)} disabled={!profile || loading}>
-          Salvar como Template
+          {t("profileLayout:workspace.saveAsTemplate")}
         </Button>
       </div>
 
@@ -270,7 +272,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
         </p>
       )}
       {!isDirty && draft && !error && (
-        <p className="font-mono text-[0.7rem] text-tertiary">Sem alterações pendentes no profile.</p>
+        <p className="font-mono text-[0.7rem] text-tertiary">{t("profileLayout:workspace.noPendingChanges")}</p>
       )}
 
       {/* ── Editor (modo, raízes, áreas, geral) ── */}
@@ -283,17 +285,17 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
             <div className="flex items-start gap-2.5 rounded-md border border-accent/30 bg-accent-soft px-3 py-2.5">
               <AlertTriangle size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
               <div>
-                <p className="text-[0.82rem] font-medium text-foreground">Alterações detectadas em layout (areas_root/business_domain_folders)</p>
-                <p className="text-[0.72rem] text-muted-foreground">Salvar o profile NÃO move arquivos automaticamente.</p>
+                <p className="text-[0.82rem] font-medium text-foreground">{t("profileLayout:workspace.layoutChangesDetected")}</p>
+                <p className="text-[0.72rem] text-muted-foreground">{t("profileLayout:workspace.layoutChangesHint")}</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <Button variant="secondary" onClick={() => void handlePlan()} disabled={!draft || !layoutChanged || loading || saving}>
-                Simular
+                {t("profileLayout:workspace.simulate")}
               </Button>
-              <span className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">Estratégia conflito:</span>
+              <span className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">{t("profileLayout:workspace.conflictStrategy")}</span>
               <div className="flex gap-3">
-                {([["rename_with_suffix", "renomear"], ["skip", "pular"], ["overwrite", "sobrescrever"]] as const).map(([val, label]) => (
+                {(["rename_with_suffix", "skip", "overwrite"] as const).map((val) => (
                   <label key={val} className="flex items-center gap-1.5 text-sm">
                     <input
                       type="radio"
@@ -304,7 +306,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
                       onChange={() => setConflictStrategy(val)}
                       disabled={loading || saving}
                     />
-                    <span>{label}</span>
+                    <span>{t(`profileLayout:strategy.${val}`)}</span>
                   </label>
                 ))}
               </div>
@@ -316,12 +318,12 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
                   onChange={(e) => setCleanupEmptyDirs(e.target.checked)}
                   disabled={loading || saving}
                 />
-                <span>Excluir pastas vazias</span>
+                <span>{t("profileLayout:workspace.cleanupEmptyDirs")}</span>
               </label>
             </div>
           </div>
         ) : (
-          <p className="font-mono text-[0.7rem] text-tertiary">Sem alterações de layout pendentes. Edite raízes ou mapeamento de áreas para simular.</p>
+          <p className="font-mono text-[0.7rem] text-tertiary">{t("profileLayout:workspace.noLayoutChanges")}</p>
         )}
       </section>
 
@@ -330,17 +332,17 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
 
       {plan && (
         <div className="relative isolate space-y-2.5 rounded-lg">
-          {applying && <ProcessingAura label="Aplicando layout — movendo pastas e atualizando o profile" />}
+          {applying && <ProcessingAura label={t("profileLayout:workspace.applyingAura")} />}
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => void handleApply()} disabled={!applyConfirmed || loading || saving}>
-              Aplicar migração
+              {t("profileLayout:workspace.applyMigration")}
             </Button>
             <Button variant="secondary" onClick={() => setPlan(null)}>
-              Cancelar
+              {t("common:action.cancel")}
             </Button>
             <Button variant="outline" onClick={handleDownloadPlan}>
               <Download />
-              Baixar plano (.json)
+              {t("profileLayout:workspace.downloadPlan")}
             </Button>
           </div>
           <label className="flex items-center gap-2 text-sm">
@@ -350,14 +352,14 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
               checked={applyConfirmed}
               onChange={(e) => setApplyConfirmed(e.target.checked)}
             />
-            <span>Confirmo a aplicação do plano de layout no projeto selecionado.</span>
+            <span>{t("profileLayout:workspace.confirmApply")}</span>
           </label>
         </div>
       )}
 
       {/* ── Histórico ── */}
       {history.length > 0 && (
-        <CollapsibleSection title="Histórico" badge={String(history.length)}>
+        <CollapsibleSection title={t("profileLayout:workspace.history")} badge={String(history.length)}>
           <div className="space-y-1">
             {history.slice(0, 8).map((entry) => (
               <div key={entry.entry} className="flex items-baseline justify-between gap-2 font-mono text-[0.72rem]">
@@ -369,20 +371,20 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
         </CollapsibleSection>
       )}
       {saveAsTemplateOpen && (
-        <ModalShell label="Salvar como template" title="Salvar profile como template">
-            <label className={fieldLabelClass} htmlFor="tmpl-save-name">Nome</label>
+        <ModalShell label={t("profileLayout:workspace.saveTemplateLabel")} title={t("profileLayout:workspace.saveTemplateTitle")}>
+            <label className={fieldLabelClass} htmlFor="tmpl-save-name">{t("profileLayout:workspace.name")}</label>
             <Input id="tmpl-save-name" value={templateName} onChange={(e) => {
               setTemplateName(e.target.value);
               if (!templateSlug || templateSlug === templateName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")) {
                 setTemplateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, ""));
               }
             }} />
-            <label className={fieldLabelClass} htmlFor="tmpl-save-slug">Slug</label>
+            <label className={fieldLabelClass} htmlFor="tmpl-save-slug">{t("profileLayout:workspace.slug")}</label>
             <Input id="tmpl-save-slug" className="font-mono" value={templateSlug} onChange={(e) => setTemplateSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} />
-            <label className={fieldLabelClass} htmlFor="tmpl-save-desc">Descrição</label>
+            <label className={fieldLabelClass} htmlFor="tmpl-save-desc">{t("profileLayout:workspace.description")}</label>
             <Textarea id="tmpl-save-desc" value={templateDesc} onChange={(e) => setTemplateDesc(e.target.value)} />
             <ModalActions>
-              <Button variant="secondary" onClick={() => setSaveAsTemplateOpen(false)} disabled={templateSaving}>Cancelar</Button>
+              <Button variant="secondary" onClick={() => setSaveAsTemplateOpen(false)} disabled={templateSaving}>{t("common:action.cancel")}</Button>
               <Button
                 disabled={templateSaving || !templateSlug || !templateName}
                 onClick={async () => {
@@ -394,19 +396,19 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
                       name: templateName,
                       description: templateDesc,
                     });
-                    onStatus?.("Template salvo com sucesso");
+                    onStatus?.(t("profileLayout:workspace.templateSaved"));
                     setSaveAsTemplateOpen(false);
                     setTemplateName("");
                     setTemplateSlug("");
                     setTemplateDesc("");
                   } catch {
-                    onStatus?.("Falha ao salvar template");
+                    onStatus?.(t("profileLayout:workspace.templateSaveFailed"));
                   } finally {
                     setTemplateSaving(false);
                   }
                 }}
               >
-                {templateSaving ? "Salvando..." : "Salvar template"}
+                {templateSaving ? t("profileLayout:workspace.saving") : t("profileLayout:workspace.saveTemplate")}
               </Button>
             </ModalActions>
         </ModalShell>

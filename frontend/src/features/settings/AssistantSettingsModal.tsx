@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { BadgeCheck, ChevronRight, Eye, EyeOff, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import i18n from "../../i18n";
 import {
   fetchCatalogConfig,
   fetchChannelConfig,
@@ -73,7 +75,7 @@ function normalizeModelValue(raw: string): string {
 type ValidationState = { status: "idle" | "validating" | "valid" | "invalid"; detail?: string };
 
 function formatRefreshedAt(iso: string | null | undefined): string {
-  if (!iso) return "nunca";
+  if (!iso) return i18n.t("settings:catalog.never");
   try {
     return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
   } catch {
@@ -85,6 +87,7 @@ const fmt1m = (v: number | null) => (v == null ? "—" : `$${v.toFixed(2)}`);
 
 /** Aba Catálogo: fonte (URL editável com validação dry-run) + tabela de modelos/preços. */
 function CatalogTab({ onCatalogChanged }: { onCatalogChanged: () => Promise<void> }) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<CatalogConfig | null>(null);
   const [detail, setDetail] = useState<ModelCatalogDetail | null>(null);
   const [urlDraft, setUrlDraft] = useState("");
@@ -97,7 +100,7 @@ function CatalogTab({ onCatalogChanged }: { onCatalogChanged: () => Promise<void
       setDetail(det);
       setUrlDraft(cfg.url);
     } catch {
-      toast.error("Falha ao carregar o catálogo");
+      toast.error(i18n.t("settings:catalog.loadFailed"));
     }
   }, []);
 
@@ -109,9 +112,9 @@ function CatalogTab({ onCatalogChanged }: { onCatalogChanged: () => Promise<void
     setBusy("test");
     try {
       const r = await refreshModelCatalog({ dryRun: true, url: urlDraft.trim() || undefined });
-      toast.success(`Fonte válida: ${r.models_total} modelos (${r.openai} OpenAI, ${r.anthropic} Anthropic), ${r.priced_models} com preço`);
+      toast.success(t("settings:catalog.sourceValid", { total: r.models_total, openai: r.openai, anthropic: r.anthropic, priced: r.priced_models }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Fonte inválida");
+      toast.error(e instanceof Error ? e.message : t("settings:catalog.sourceInvalid"));
     } finally {
       setBusy("");
     }
@@ -123,9 +126,9 @@ function CatalogTab({ onCatalogChanged }: { onCatalogChanged: () => Promise<void
       const cfg = await updateCatalogConfig(urlDraft.trim());
       setConfig(cfg);
       setUrlDraft(cfg.url);
-      toast.success(cfg.url === cfg.default_url ? "Fonte padrão restaurada" : "URL da fonte salva");
+      toast.success(cfg.url === cfg.default_url ? t("settings:catalog.defaultRestored") : t("settings:catalog.urlSaved"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao salvar a URL");
+      toast.error(e instanceof Error ? e.message : t("settings:catalog.urlSaveFailed"));
     } finally {
       setBusy("");
     }
@@ -136,9 +139,9 @@ function CatalogTab({ onCatalogChanged }: { onCatalogChanged: () => Promise<void
     try {
       const r = await refreshModelCatalog();
       await Promise.all([load(), onCatalogChanged()]);
-      toast.success(`Catálogo atualizado: ${r.models_total} modelos (${r.priced_models} com preço)`);
+      toast.success(t("settings:catalog.refreshed", { total: r.models_total, priced: r.priced_models }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Falha ao atualizar o catálogo");
+      toast.error(e instanceof Error ? e.message : t("settings:catalog.refreshFailed"));
     } finally {
       setBusy("");
     }
@@ -148,7 +151,7 @@ function CatalogTab({ onCatalogChanged }: { onCatalogChanged: () => Promise<void
 
   return (
     <div>
-      <label className={fieldLabelClass} htmlFor="catalog-source-url">Fonte do catálogo (JSON)</label>
+      <label className={fieldLabelClass} htmlFor="catalog-source-url">{t("settings:catalog.sourceLabel")}</label>
       <Input
         id="catalog-source-url"
         className="font-mono text-[0.72rem]"
@@ -158,41 +161,41 @@ function CatalogTab({ onCatalogChanged }: { onCatalogChanged: () => Promise<void
         autoComplete="off"
       />
       <span className={hintClass}>
-        Parâmetros e preços agregados das páginas oficiais OpenAI/Anthropic (formato LiteLLM).{" "}
+        {t("settings:catalog.sourceHint")}{" "}
         {!isDefaultUrl && config && (
           <button type="button" className="border-0 bg-transparent p-0 text-accent shadow-none hover:underline" onClick={() => setUrlDraft(config.default_url)}>
-            usar padrão
+            {t("settings:catalog.useDefault")}
           </button>
         )}
       </span>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <Button variant="secondary" size="sm" disabled={busy !== ""} onClick={() => void handleTestUrl()}>
-          {busy === "test" ? <Loader2 className="animate-spin" /> : <BadgeCheck />} Testar fonte
+          {busy === "test" ? <Loader2 className="animate-spin" /> : <BadgeCheck />} {t("settings:catalog.testSource")}
         </Button>
         <Button variant="secondary" size="sm" disabled={busy !== "" || urlDraft.trim() === config?.url} onClick={() => void handleSaveUrl()}>
-          Salvar URL
+          {t("settings:catalog.saveUrl")}
         </Button>
         <Button size="sm" disabled={busy !== ""} onClick={() => void handleRefreshNow()}>
-          <RefreshCw className={busy === "refresh" ? "animate-spin" : ""} /> Atualizar agora
+          <RefreshCw className={busy === "refresh" ? "animate-spin" : ""} /> {t("settings:catalog.refreshNow")}
         </Button>
-        <span className="font-mono text-[0.68rem] text-tertiary">último refresh: {formatRefreshedAt(detail?.refreshed_at)}</span>
+        <span className="font-mono text-[0.68rem] text-tertiary">{t("settings:catalog.lastRefresh", { date: formatRefreshedAt(detail?.refreshed_at) })}</span>
       </div>
 
       <div className="mt-4">
         <label className={cn(fieldLabelClass, "mt-0")}>
-          Modelos disponíveis ({detail?.models.length ?? 0}) — preços por 1M tokens
+          {t("settings:catalog.modelsAvailable", { value: detail?.models.length ?? 0 })}
         </label>
         <TableWrap className="max-h-72 overflow-y-auto">
           <DataTable>
             <thead>
               <tr>
-                <th className="left">Modelo</th>
-                <th>Contexto</th>
-                <th>Max out</th>
-                <th>Reasoning</th>
-                <th>$ entrada</th>
-                <th>$ saída</th>
-                <th className="left">Origem</th>
+                <th className="left">{t("settings:catalog.model")}</th>
+                <th>{t("settings:catalog.context")}</th>
+                <th>{t("settings:catalog.maxOut")}</th>
+                <th>{t("settings:catalog.reasoning")}</th>
+                <th>{t("settings:catalog.inputCost")}</th>
+                <th>{t("settings:catalog.outputCost")}</th>
+                <th className="left">{t("settings:catalog.origin")}</th>
               </tr>
             </thead>
             <tbody>
@@ -204,7 +207,7 @@ function CatalogTab({ onCatalogChanged }: { onCatalogChanged: () => Promise<void
                   <td>{m.supports_reasoning_effort ? "✓" : "—"}</td>
                   <td>{fmt1m(m.input_cost_per_1m)}</td>
                   <td>{fmt1m(m.output_cost_per_1m)}</td>
-                  <td className="left">{m.source === "builtin" ? "builtin" : "remoto"}</td>
+                  <td className="left">{m.source === "builtin" ? "builtin" : t("settings:catalog.originRemote")}</td>
                 </tr>
               ))}
             </tbody>
@@ -238,6 +241,7 @@ function ModelCombobox({
   onValidated: (value: string) => void;
   apiKeys: { openai?: string; anthropic?: string };
 }) {
+  const { t } = useTranslation();
   const [validation, setValidation] = useState<ValidationState>({ status: "idle" });
   const [draft, setDraft] = useState(value);
   const [listOpen, setListOpen] = useState(false);
@@ -251,7 +255,7 @@ function ModelCombobox({
     ...models.map((m) => ({ value: `${m.provider}/${m.model}`, label: m.label })),
     ...customModels
       .filter((c) => !models.some((m) => `${m.provider}/${m.model}` === c))
-      .map((c) => ({ value: c, label: `${c} (validado por você)` })),
+      .map((c) => ({ value: c, label: t("settings:combobox.validatedByYou", { model: c }) })),
   ];
   // Com o valor ativo intacto no campo, mostrar a lista inteira; filtrar só ao digitar
   const filter = draft.trim() === value.trim() ? "" : draft.trim().toLowerCase();
@@ -281,7 +285,7 @@ function ModelCombobox({
         setValidation({ status: "invalid", detail: result.detail });
       }
     } catch (e) {
-      setValidation({ status: "invalid", detail: e instanceof Error ? e.message : "Falha ao validar" });
+      setValidation({ status: "invalid", detail: e instanceof Error ? e.message : t("settings:combobox.validateFailed") });
     }
   }
 
@@ -301,7 +305,7 @@ function ModelCombobox({
               "w-full font-mono text-[0.8rem] [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
             )}
             value={draft}
-            placeholder="provider/modelo — digite para modelos novos"
+            placeholder={t("settings:combobox.placeholder")}
             onFocus={() => {
               setListOpen(true);
               setHighlighted(0);
@@ -371,15 +375,15 @@ function ModelCombobox({
             size="sm"
             onClick={() => void handleValidate()}
             disabled={validation.status === "validating"}
-            title="Confirmar na API do provedor que o modelo existe"
+            title={t("settings:combobox.validateTitle")}
           >
             {validation.status === "validating" ? <Loader2 className="animate-spin" /> : <BadgeCheck />}
-            Validar
+            {t("settings:combobox.validate")}
           </Button>
         )}
       </div>
       {isCustom && validation.status === "idle" && (
-        <span className={hintClass}>Modelo fora do catálogo — valide antes de usar.</span>
+        <span className={hintClass}>{t("settings:combobox.outsideCatalog")}</span>
       )}
       {validation.status === "valid" && (
         <span className={cn(hintClass, "text-success")}>{validation.detail}</span>
@@ -408,6 +412,7 @@ export function AssistantSettingsModal({
 }: Props) {
   useEscapeKey(open ? onClose : null);
 
+  const { t } = useTranslation();
   const { customModels, addCustomModel, reloadModels } = useSettings();
   const { selectedProject, selectedProjectLabel } = useProject();
   const isSingleProject = selectedProject !== ALL_PROJECTS && !!selectedProject;
@@ -490,7 +495,7 @@ export function AssistantSettingsModal({
     const [provider, ...rest] = value.split("/");
     const model = rest.join("/");
     if (!provider || !model) return;
-    setTriageSaveStatus("salvando...");
+    setTriageSaveStatus(t("settings:assistant.triageSaving"));
     try {
       const current = await fetchProjectProfile(selectedProject);
       const basePolicy = current.profile.classification.llm_policy ?? {
@@ -517,9 +522,9 @@ export function AssistantSettingsModal({
         },
       };
       await updateProjectProfile(selectedProject, updated, current.version);
-      setTriageSaveStatus(`salvo no projeto ${selectedProjectLabel}`);
+      setTriageSaveStatus(t("settings:assistant.triageSaved", { project: selectedProjectLabel }));
     } catch {
-      setTriageSaveStatus("falha ao salvar no projeto");
+      setTriageSaveStatus(t("settings:assistant.triageSaveFailed"));
     }
   }
 
@@ -533,9 +538,9 @@ export function AssistantSettingsModal({
   const tgStatus = channelStatus?.channels.find((c) => c.channel_id === "telegram");
 
   return (
-    <ModalShell label="Configuração do Assistente" title="Configuração do Assistente" className="max-h-[85vh] overflow-y-auto">
+    <ModalShell label={t("settings:assistant.title")} title={t("settings:assistant.title")} className="max-h-[85vh] overflow-y-auto">
       <div className="mb-3 flex gap-1.5">
-        {([["assistente", "Assistente"], ["catalogo", "Catálogo de modelos"]] as const).map(([key, label]) => (
+        {(["assistente", "catalogo"] as const).map((key) => (
           <button
             key={key}
             type="button"
@@ -547,7 +552,7 @@ export function AssistantSettingsModal({
             )}
             onClick={() => setActiveTab(key)}
           >
-            {label}
+            {t(`settings:tab.${key}`)}
           </button>
         ))}
       </div>
@@ -557,11 +562,10 @@ export function AssistantSettingsModal({
       {activeTab === "assistente" && (
       <>
       <p className="text-xs text-muted-foreground">
-        Chaves são enviadas só na requisição e não ficam no servidor. Modelos novos podem ser digitados e validados na
-        API do provedor (aba Catálogo mostra parâmetros e preços).
+        {t("settings:assistant.intro")}
       </p>
 
-      <label className={fieldLabelClass} htmlFor="settings-model-chat">Modelo chat</label>
+      <label className={fieldLabelClass} htmlFor="settings-model-chat">{t("settings:assistant.modelChat")}</label>
       <ModelCombobox
         id="settings-model-chat"
         value={selectedModel}
@@ -575,7 +579,7 @@ export function AssistantSettingsModal({
       {isSingleProject ? (
         <>
           <label className={fieldLabelClass} htmlFor="settings-model-triage">
-            Modelo triagem — projeto {selectedProjectLabel}
+            {t("settings:assistant.modelTriageProject", { project: selectedProjectLabel })}
           </label>
           <ModelCombobox
             id="settings-model-triage"
@@ -587,21 +591,21 @@ export function AssistantSettingsModal({
             apiKeys={{ openai: openaiApiKey || undefined, anthropic: anthropicApiKey || undefined }}
           />
           <span className={cn(hintClass, triageSaveStatus.startsWith("falha") && "text-destructive")}>
-            {triageSaveStatus || "A política LLM de triagem é por projeto — gravada no perfil ao selecionar."}
+            {triageSaveStatus || t("settings:assistant.triagePolicyHint")}
           </span>
         </>
       ) : (
         <>
-          <label className={fieldLabelClass}>Modelo triagem</label>
+          <label className={fieldLabelClass}>{t("settings:assistant.modelTriage")}</label>
           <span className={hintClass}>
-            A política LLM de triagem é por projeto. Selecione um projeto na barra lateral para configurá-la.
+            {t("settings:assistant.triagePolicySelectProject")}
           </span>
         </>
       )}
 
       {needOpenAI && (
         <>
-          <label className={fieldLabelClass} htmlFor="settings-openai-key">OpenAI API Key</label>
+          <label className={fieldLabelClass} htmlFor="settings-openai-key">{t("settings:assistant.openaiKey")}</label>
           <Input
             id="settings-openai-key"
             type="password"
@@ -615,7 +619,7 @@ export function AssistantSettingsModal({
       )}
       {needAnthropic && (
         <>
-          <label className={fieldLabelClass} htmlFor="settings-anthropic-key">Anthropic API Key</label>
+          <label className={fieldLabelClass} htmlFor="settings-anthropic-key">{t("settings:assistant.anthropicKey")}</label>
           <Input
             id="settings-anthropic-key"
             type="password"
@@ -635,15 +639,15 @@ export function AssistantSettingsModal({
           checked={autoTitleLLM}
           onChange={(e) => onChangeAutoTitleLLM(e.target.checked)}
         />
-        Gerar título da sessão via LLM (em background)
+        {t("settings:assistant.autoTitle")}
       </label>
-      <span className={hintClass}>Se desativado, o título será a primeira mensagem da conversa.</span>
+      <span className={hintClass}>{t("settings:assistant.autoTitleHint")}</span>
 
       {/* ── Channels ── */}
       <hr className="my-4 border-0 border-t border-border" />
-      <h4 className="font-display text-sm font-bold text-foreground-strong">Canais de comunicação</h4>
+      <h4 className="font-display text-sm font-bold text-foreground-strong">{t("settings:channels.title")}</h4>
       <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
-        Conecte o assistente a canais de mensagem externos. Canais são opcionais e não afetam o chat web.
+        {t("settings:channels.intro")}
       </p>
 
       {/* Telegram */}
@@ -675,18 +679,18 @@ export function AssistantSettingsModal({
                 tgStatus?.connected ? "bg-success" : tgStatus?.error ? "bg-destructive" : "bg-tertiary"
               )}
             />
-            {tgStatus?.connected ? "Conectado" : tgStatus?.error ? "Erro" : channelCfg.telegram.bot_token ? "Desconectado" : "Sem token"}
+            {tgStatus?.connected ? t("settings:channels.connected") : tgStatus?.error ? t("settings:channels.error") : channelCfg.telegram.bot_token ? t("settings:channels.disconnected") : t("settings:channels.noToken")}
           </span>
         </button>
         {expandedChannel === "telegram" && (
           <div className="mt-3">
             <label className={cn(fieldLabelClass, "mt-0 flex items-center gap-1.5")} htmlFor="ch-tg-token">
-              Bot Token
+              {t("settings:channels.botToken")}
               <a
                 href="https://t.me/BotFather"
                 target="_blank"
                 rel="noopener noreferrer"
-                title="Criar bot via @BotFather"
+                title={t("settings:channels.botFatherTitle")}
                 className="inline-flex text-accent"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -707,18 +711,18 @@ export function AssistantSettingsModal({
                 variant="secondary"
                 size="icon"
                 onClick={() => setShowToken(!showToken)}
-                title={showToken ? "Ocultar token" : "Mostrar token"}
-                aria-label={showToken ? "Ocultar token" : "Mostrar token"}
+                title={showToken ? t("settings:channels.hideToken") : t("settings:channels.showToken")}
+                aria-label={showToken ? t("settings:channels.hideToken") : t("settings:channels.showToken")}
               >
                 {showToken ? <EyeOff /> : <Eye />}
               </Button>
             </div>
             <span className={hintClass}>
-              Crie um bot via{" "}
+              {t("settings:channels.botHintBefore")}{" "}
               <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
                 @BotFather
               </a>
-              , copie o token e cole acima.
+              {t("settings:channels.botHintAfter")}
             </span>
             <label className="mt-3 flex items-center gap-2 text-sm">
               <input
@@ -727,14 +731,13 @@ export function AssistantSettingsModal({
                 checked={channelCfg.telegram.mirror_responses}
                 onChange={(e) => updateTelegram({ mirror_responses: e.target.checked })}
               />
-              Espelhar respostas para o Telegram
+              {t("settings:channels.mirror")}
             </label>
             <span className={hintClass}>
-              Quando ativado, respostas enviadas pelo chat web em sessões originadas no Telegram também são encaminhadas
-              ao Telegram.
+              {t("settings:channels.mirrorHint")}
             </span>
-            {tgStatus?.error && <p className="mt-2 text-[0.8rem] text-destructive">Erro: {tgStatus.error}</p>}
-            {saving && <p className={hintClass}>Salvando...</p>}
+            {tgStatus?.error && <p className="mt-2 text-[0.8rem] text-destructive">{t("settings:channels.errorPrefix", { error: tgStatus.error })}</p>}
+            {saving && <p className={hintClass}>{t("settings:channels.saving")}</p>}
           </div>
         )}
       </div>
@@ -743,13 +746,13 @@ export function AssistantSettingsModal({
       <div className={cn(channelCardClass, "mb-2 opacity-50")}>
         <div className="flex items-center justify-between">
           <strong className="font-display text-sm text-foreground-strong">Discord</strong>
-          <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[0.68rem] text-tertiary">Em breve</span>
+          <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[0.68rem] text-tertiary">{t("settings:channels.comingSoon")}</span>
         </div>
       </div>
       <div className={cn(channelCardClass, "opacity-50")}>
         <div className="flex items-center justify-between">
           <strong className="font-display text-sm text-foreground-strong">Slack</strong>
-          <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[0.68rem] text-tertiary">Em breve</span>
+          <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[0.68rem] text-tertiary">{t("settings:channels.comingSoon")}</span>
         </div>
       </div>
 
@@ -757,7 +760,7 @@ export function AssistantSettingsModal({
       )}
 
       <ModalActions>
-        <Button onClick={onClose}>Fechar</Button>
+        <Button onClick={onClose}>{t("common:action.close")}</Button>
       </ModalActions>
     </ModalShell>
   );

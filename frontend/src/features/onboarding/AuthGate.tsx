@@ -1,5 +1,6 @@
 import { KeyRound, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { fetchSetupStatus, setApiKey } from "../../api";
 import { Orb } from "../../components/OrbGL";
 import { Wordmark } from "../../components/Wordmark";
@@ -13,6 +14,7 @@ import { Input } from "../../components/ui/input";
  * qualquer outro fluxo (onboarding incluído). Validada contra a API na hora.
  */
 export function AuthGate() {
+  const { t } = useTranslation();
   const [keyValue, setKeyValue] = useState("");
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
@@ -29,7 +31,7 @@ export function AuthGate() {
       window.location.reload();
     } catch {
       setApiKey("");
-      setError("API key inválida ou sem permissão. Confira a key exibida ao final da instalação.");
+      setError(t("onboarding:authGate.invalidKey"));
       setChecking(false);
     }
   }
@@ -43,19 +45,20 @@ export function AuthGate() {
         </div>
         <h2 className="mt-5 flex items-center justify-center gap-2 font-display text-lg font-bold text-foreground-strong">
           <KeyRound className="size-4 text-accent" aria-hidden />
-          Esta instalação exige uma API key
+          {t("onboarding:authGate.title")}
         </h2>
         <p className="mt-1 text-center text-sm text-muted-foreground">
-          A autenticação está habilitada neste servidor. Cole a key exibida ao final da instalação
-          (<code className="rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light">install.sh --enable-auth</code>).
-          Ela fica somente neste navegador.
+          <Trans
+            i18nKey="onboarding:authGate.subtitle"
+            components={{ code: <code className="rounded bg-panel-strong px-1 py-0.5 font-mono text-[0.72rem] text-accent-light" /> }}
+          />
         </p>
         <div className="mt-4">
           <Input
             type="password"
             className="font-mono"
             value={keyValue}
-            placeholder="atlas_sk_..."
+            placeholder={t("onboarding:authGate.keyPlaceholder")}
             autoComplete="off"
             autoFocus
             onChange={(e) => setKeyValue(e.target.value)}
@@ -67,7 +70,7 @@ export function AuthGate() {
         </div>
         <Button className="mt-3 w-full" disabled={checking || !keyValue.trim()} onClick={() => void handleSubmit()}>
           {checking ? <Loader2 className="animate-spin" /> : <KeyRound />}
-          {checking ? "Validando..." : "Entrar"}
+          {checking ? t("onboarding:authGate.validating") : t("onboarding:authGate.enter")}
         </Button>
       </div>
     </div>
