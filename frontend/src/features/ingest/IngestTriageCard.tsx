@@ -38,6 +38,7 @@ import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "..
 import { cn } from "../../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../lib/queryKeys";
+import { useSseChannel } from "../../hooks/useSseChannel";
 import { invalidateAfterProfileChange } from "../../lib/mutations";
 import { MiniOrb } from "../../components/ui/processing-aura";
 
@@ -180,8 +181,19 @@ export function IngestTriageCard({
   const [classifierSaving, setClassifierSaving] = useState(false);
   const [confirmCancelCycle, setConfirmCancelCycle] = useState(false);
   const [cancellingCycle, setCancellingCycle] = useState(false);
-  const [classifierCycleStatus, setClassifierCycleStatus] = useState<ClassifierCycleStatus | null>(null);
-  const classifierCycleMonitorStopRef = useRef<(() => void) | null>(null);
+  // Ciclo do classificador: ponte SSE→Query — snapshot no cache, retoma sozinho
+  // ao remontar com ciclo rodando, e o término invalida report/champion/readiness
+  const cycleChannel = useSseChannel<ClassifierCycleStatus>({
+    queryKey: qk.classifier.cycleStatus(),
+    fetchSnapshot: fetchClassifierCycleStatus,
+    streamUrl: getClassifierCycleStatusStreamUrl,
+    isActive: (s) => !!s.running,
+    onFinished: (s) => {
+      if (s.last_run_finished_at) void queryClient.invalidateQueries({ queryKey: qk.classifier.scope() });
+    },
+    pollMs: 500,
+  });
+  const classifierCycleStatus = cycleChannel.data ?? null;
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
 
@@ -246,18 +258,7 @@ export function IngestTriageCard({
   const classifierReports = isSingleProject ? reportsQuery.data ?? [] : [];
   const classifierReport = isSingleProject ? latestReportQuery.data ?? null : null;
 
-  // Snapshot inicial do ciclo (o SSE do monitor assume a partir do Rodar ciclo)
-  useEffect(() => {
-    fetchClassifierCycleStatus().then(setClassifierCycleStatus).catch(() => {});
-  }, []);
-
   const loadClassifierState = useCallback(async () => {
-    // status do ciclo continua imperativo (alimentado pelo SSE do monitor)
-    try {
-      setClassifierCycleStatus(await fetchClassifierCycleStatus());
-    } catch {
-      /* ignore */
-    }
     await queryClient.invalidateQueries({ queryKey: qk.classifier.scope() });
   }, [queryClient]);
 
@@ -321,98 +322,7 @@ export function IngestTriageCard({
     void persistLlmPolicy(nextPolicy);
   }
 
-  const stopClassifierCycleMonitor = useCallback(() => {
-    classifierCycleMonitorStopRef.current?.();
-    classifierCycleMonitorStopRef.current = null;
-  }, []);
 
-  const startClassifierCycleMonitor = useCallback(() => {
-    stopClassifierCycleMonitor();
-    let cancelled = false;
-    let stream: EventSource | null = null;
-
-    const closeStream = () => {
-      stream?.close();
-      stream = null;
-    };
-
-    const applyStatus = (data: ClassifierCycleStatus) => {
-      if (!cancelled) {
-        setClassifierCycleStatus(data);
-      }
-    };
-
-    const finish = () => {
-      if (!cancelled) {
-        classifierCycleMonitorStopRef.current = null;
-        void loadClassifierState();
-      }
-    };
-
-    const pollUntilFinished = async (): Promise<void> => {
-      while (!cancelled) {
-        try {
-          const latest = await fetchClassifierCycleStatus();
-          if (cancelled) return;
-          applyStatus(latest);
-          if (latest.running && typeof window !== "undefined" && typeof window.EventSource !== "undefined") {
-            closeStream();
-            stream = new window.EventSource(getClassifierCycleStatusStreamUrl());
-            stream.onmessage = (event) => {
-              try {
-                const data = JSON.parse(event.data) as ClassifierCycleStatus;
-                applyStatus(data);
-                if (!data.running) {
-                  closeStream();
-                  finish();
-                }
-              } catch {
-                /* ignore */
-              }
-            };
-            stream.onerror = () => {
-              closeStream();
-              if (!cancelled) {
-                void pollUntilFinished();
-              }
-            };
-            return;
-          }
-          if (!latest.running) {
-            finish();
-            return;
-          }
-        } catch {
-          /* ignore */
-        }
-        await sleep(250);
-      }
-    };
-
-    void pollUntilFinished();
-
-    const stop = () => {
-      cancelled = true;
-      closeStream();
-    };
-    classifierCycleMonitorStopRef.current = stop;
-    return stop;
-  }, [loadClassifierState, stopClassifierCycleMonitor]);
-
-  useEffect(() => {
-    return () => {
-      stopClassifierCycleMonitor();
-    };
-  }, [stopClassifierCycleMonitor]);
-
-  // Retomada do monitor: se o card (re)montou com um ciclo em andamento — ex.:
-  // o usuário navegou para outra tela e voltou — o acompanhamento ao vivo
-  // religa sozinho; sem isto o status congelava no último snapshot (ex.: 3/3)
-  useEffect(() => {
-    if (classifierCycleStatus?.running && !classifierCycleMonitorStopRef.current) {
-      startClassifierCycleMonitor();
-    }
-  }, [classifierCycleStatus?.running, startClassifierCycleMonitor]);
 
   useEffect(() => {
     if (!classifierCycleStatus?.running) {
@@ -466,11 +376,12 @@ export function IngestTriageCard({
   }
 
   async function handleStartClassifierCycle() {
-    setClassifierCycleStatus((previous) => buildPendingClassifierCycleStatus(previous));
+    void queryClient.cancelQueries({ queryKey: qk.classifier.cycleStatus() });
+    queryClient.setQueryData(qk.classifier.cycleStatus(), buildPendingClassifierCycleStatus(classifierCycleStatus));
     try {
       // Key do navegador viaja no header — o benchmark llm roda no servidor sem key persistida
       const started = await startClassifierCycle({ openaiApiKey: openaiApiKey || undefined });
-      startClassifierCycleMonitor();
+      void cycleChannel.refresh();
       const moved = started.auto_backfill_moved ?? 0;
       onStatus(
         moved > 0
@@ -478,8 +389,7 @@ export function IngestTriageCard({
           : "Ciclo do classificador iniciado"
       );
     } catch {
-      stopClassifierCycleMonitor();
-      void fetchClassifierCycleStatus().then(setClassifierCycleStatus).catch(() => {});
+      void cycleChannel.refresh();
       onStatus("Falha ao iniciar ciclo do classificador");
     }
   }

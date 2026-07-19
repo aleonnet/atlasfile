@@ -101,6 +101,9 @@ vi.mock("./api", () => ({
   fetchIngestHistory: vi.fn(() => Promise.resolve({ project_id: "p1", entries: [] })),
   fetchRejectedTriage: vi.fn(() => Promise.resolve([])),
   listTemplates: vi.fn(() => Promise.resolve([])),
+  getReconcileStatusStreamUrl: vi.fn(() => "http://localhost/api/reconcile/status/stream"),
+  fetchChannelStatus: vi.fn(() => Promise.resolve({ channels: [] })),
+  fetchChannelConfig: vi.fn(() => Promise.resolve({ channels_enabled: false, telegram: { enabled: false, bot_token: "", mirror_responses: false } })),
   getTemplate: vi.fn(() => Promise.resolve({ slug: "default", name: "Default", description: "", profile: {} })),
   fetchInboxFiles: vi.fn(() => Promise.resolve({ files: [] })),
   fetchDecisionStatus: vi.fn(() => Promise.resolve({ running: false, phase: "idle", doc_id: null, project_id: null, filename: null, action: null, started_at: null })),
@@ -351,7 +354,7 @@ describe("App", () => {
       expect(screen.getByText(/projetos inicializados/)).toBeInTheDocument();
     }, { timeout: 5000 });
     expect(screen.getByText(/documentos indexados/)).toBeInTheDocument();
-    expect(screen.getByText(/\.PDF/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/\.PDF/)).toBeInTheDocument());
     // o label vem da query de projetos (async) — aguardar o cache resolver
     await waitFor(() => {
       const miniTable = document.querySelector(".mini-table");

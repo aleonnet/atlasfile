@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { STORAGE_KEYS, storageGet, storageSet } from "../lib/storage";
 import { FolderTree, KeyRound, LayoutTemplate, Sparkles } from "lucide-react";
 import { getApiKey, setApiKey } from "../api";
 import { Button } from "../components/ui/button";
@@ -99,20 +100,8 @@ export function ConfigView({
   return (
     <section className="flex flex-col">
       <Tabs
-        defaultValue={(() => {
-          try {
-            return localStorage.getItem("atlasfile-config-tab") || "perfil";
-          } catch {
-            return "perfil";
-          }
-        })()}
-        onValueChange={(v) => {
-          try {
-            localStorage.setItem("atlasfile-config-tab", v);
-          } catch {
-            /* storage indisponível */
-          }
-        }}
+        defaultValue={storageGet(STORAGE_KEYS.configTab) || "perfil"}
+        onValueChange={(v) => storageSet(STORAGE_KEYS.configTab, v)}
       >
         <TabsList aria-label="Configurações">
           <TabsTrigger value="perfil"><FolderTree aria-hidden /> Perfil do projeto</TabsTrigger>

@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { collapseStorageKey, storageGet, storageSet } from "../../lib/storage";
 
 type Props = {
   title: string;
@@ -14,12 +15,8 @@ type Props = {
 
 function readPersisted(persistKey: string | undefined, fallback: boolean): boolean {
   if (!persistKey) return fallback;
-  try {
-    const stored = localStorage.getItem(`atlasfile-collapse-${persistKey}`);
-    return stored === null ? fallback : stored === "open";
-  } catch {
-    return fallback;
-  }
+  const stored = storageGet(collapseStorageKey(persistKey));
+  return stored === null ? fallback : stored === "open";
 }
 
 /** Seção colapsável nativa (details/summary) no padrão do design system. */
@@ -29,11 +26,7 @@ export function CollapsibleSection({ title, badge, defaultOpen = false, persistK
       open={readPersisted(persistKey, defaultOpen)}
       onToggle={(e) => {
         if (!persistKey) return;
-        try {
-          localStorage.setItem(`atlasfile-collapse-${persistKey}`, (e.target as HTMLDetailsElement).open ? "open" : "closed");
-        } catch {
-          /* storage indisponível */
-        }
+        storageSet(collapseStorageKey(persistKey), (e.target as HTMLDetailsElement).open ? "open" : "closed");
       }}
       className={cn("group rounded-lg border border-border bg-panel-strong/40 open:bg-transparent", className)}
     >

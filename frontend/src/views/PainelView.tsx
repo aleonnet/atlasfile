@@ -21,6 +21,7 @@ import { buildEvidenceGroups, topLocations } from "../features/search/searchForm
 import { cn } from "../lib/utils";
 import { invalidateAfterMove } from "../lib/mutations";
 import { useProcessing } from "../contexts/ProcessingContext";
+import type { useSearch } from "../hooks/useSearch";
 import type {
   Project,
   ProjectArea,
@@ -46,19 +47,8 @@ type Props = {
   onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => void;
   onStatus: (msg: string) => void;
   onScanComplete: () => void;
-  fullQuery: string;
-  fullResults: SearchHit[];
-  fullPage: number;
-  fullTotalPages: number;
-  fullTotal: number;
-  fullLoading: boolean;
-  fullSearchInput: string;
-  searchFilters: SearchFilters;
-  searchStats: StatsResponse | null;
-  onFullSearchInputChange: (value: string) => void;
-  onRunFullSearch: (page?: number, overrideQuery?: string, overrideFilters?: SearchFilters) => void;
-  onSearchFiltersChange: (filters: SearchFilters) => void;
-  onClearSearch: () => void;
+  /** Estado/ações de busca (instância única do App — compartilhada com a ⌘K). */
+  search: ReturnType<typeof useSearch>;
 };
 
 function extractFolder(path: string): string {
@@ -264,20 +254,23 @@ export function PainelView({
   onDecision,
   onStatus,
   onScanComplete,
-  fullQuery,
-  fullResults,
-  fullPage,
-  fullTotalPages,
-  fullTotal,
-  fullLoading,
-  fullSearchInput,
-  searchFilters,
-  searchStats,
-  onFullSearchInputChange,
-  onRunFullSearch,
-  onSearchFiltersChange,
-  onClearSearch,
+  search,
 }: Props) {
+  const {
+    fullQuery,
+    fullResults,
+    fullPage,
+    fullTotalPages,
+    fullTotal,
+    fullLoading,
+    fullSearchInput,
+    searchFilters,
+    searchStats,
+    setFullSearchInput: onFullSearchInputChange,
+    runFullSearch: onRunFullSearch,
+    setSearchFilters: onSearchFiltersChange,
+    clearSearch: onClearSearch,
+  } = search;
   const { active: processingOp } = useProcessing();
   const [moveHit, setMoveHit] = useState<SearchHit | null>(null);
   const [moveSubmitting, setMoveSubmitting] = useState(false);

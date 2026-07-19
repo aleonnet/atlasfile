@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchProjects } from "../api";
 import { qk } from "../lib/queryKeys";
+import { STORAGE_KEYS, storageGet, storageSet } from "../lib/storage";
 import type { Project } from "../types";
 
 export const ALL_PROJECTS = "__all__";
@@ -19,14 +20,8 @@ type ProjectContextValue = {
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
 
-const SELECTED_PROJECT_STORAGE_KEY = "atlasfile_selected_project";
-
 function readStoredProject(): string {
-  try {
-    return localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY) || ALL_PROJECTS;
-  } catch {
-    return ALL_PROJECTS;
-  }
+  return storageGet(STORAGE_KEYS.selectedProject) || ALL_PROJECTS;
 }
 
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
@@ -38,11 +33,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [selectedProject, setSelectedProject] = useState<string>(readStoredProject);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, selectedProject);
-    } catch {
-      /* storage indisponível — seleção só não persiste */
-    }
+    storageSet(STORAGE_KEYS.selectedProject, selectedProject);
   }, [selectedProject]);
 
   const refreshProjects = useCallback(async () => {

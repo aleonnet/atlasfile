@@ -5,12 +5,9 @@ import {
   fetchChannelStatus,
   fetchHealth,
   fetchProjectProfile,
-  fetchReconcileStatus,
   fetchSetupStatus,
   fetchStats,
   fetchTriage,
-  getReconcileStatusStreamUrl,
-  runReconcile,
   setUnauthorizedHandler,
   triageDecision,
   updateChannelConfig,
@@ -24,6 +21,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
 import { qk } from "./lib/queryKeys";
+import { STORAGE_KEYS, storageGet } from "./lib/storage";
+import { useReconcileMonitor } from "./hooks/useReconcileMonitor";
 import {
   invalidateAfterReconcile,
   invalidateAfterScan,
@@ -33,7 +32,6 @@ import { NavigationProvider, useNavigation, type ViewKind } from "./contexts/Nav
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
 import { formatDecisionAction, formatDecisionPhase, ProcessingProvider, useProcessing } from "./contexts/ProcessingContext";
-import { useChatSession } from "./hooks/useChatSession";
 import { useSearch } from "./hooks/useSearch";
 import { CommandPalette } from "./layouts/CommandPalette";
 import { Sidebar } from "./layouts/Sidebar";
@@ -56,8 +54,8 @@ import type {
   TriageItem,
 } from "./types";
 
-const ONBOARDING_DONE_KEY = "atlasfile-onboarding-done";
-const TG_TOKEN_STORAGE_KEY = "atlasfile-telegram-bot-token";
+const ONBOARDING_DONE_KEY = STORAGE_KEYS.onboardingDone;
+const TG_TOKEN_STORAGE_KEY = STORAGE_KEYS.telegramBotToken;
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
 function AppShell() {
@@ -109,10 +107,9 @@ function AppShell() {
     toast[isError ? "error" : "message"](status, { id: "app-status" });
   }, [status]);
 
-  const [reconcileStatus, setReconcileStatus] = useState<ReconcileStatus | null>(null);
 
   const [initializingProjectId] = useState<string | null>(null);
-  const [reconcilingNow, setReconcilingNow] = useState(false);
+
   const [correctModalItem, setCorrectModalItem] = useState<TriageItem | null>(null);
   const [correctBusinessDomainOptions, setCorrectBusinessDomainOptions] = useState<ProjectArea[]>([]);
   const [correctBusinessDomainValue, setCorrectBusinessDomainValue] = useState("");
@@ -123,14 +120,11 @@ function AppShell() {
   const [templateModalProject, setTemplateModalProject] = useState<{ ref: string; label: string } | null>(null);
   const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
-  const [telegramConnected, setTelegramConnected] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [appEnv, setAppEnv] = useState("production");
-  const reconcileEsRef = useRef<EventSource | null>(null);
 
   const search = useSearch({ onStatus: setStatus });
-  const chat = useChatSession();
 
   useEffect(() => {
     setUnauthorizedHandler((httpStatus, detail) => {
@@ -145,44 +139,37 @@ function AppShell() {
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
-    // Debounce + retry adaptativo: 1 blip transitório (restart de container,
-    // rede) não pode tremer o orb em "error" — exige 2 falhas seguidas; e em
-    // erro re-verifica a cada 5s (não 30s) para recuperar rápido sem reload.
-    let failures = 0;
-    let timer: number | undefined;
-    async function check() {
-      let ok = false;
+  // Health: query com poll adaptativo (30s ok / 5s em falha) e debounce de 2
+  // falhas seguidas — 1 blip transitório não pode tremer o orb em "error"
+  const healthQuery = useQuery({
+    queryKey: qk.health(),
+    queryFn: async () => {
       try {
-        ok = (await fetchHealth()).ok;
+        return (await fetchHealth()).ok;
       } catch {
-        ok = false;
+        return false;
       }
-      if (!mounted) return;
-      failures = ok ? 0 : failures + 1;
-      if (ok) setHealthOk(true);
-      else if (failures >= 2) setHealthOk(false);
-      timer = window.setTimeout(check, failures > 0 ? 5000 : 30000);
-    }
-    void check();
-    return () => {
-      mounted = false;
-      window.clearTimeout(timer);
-    };
-  }, []);
-
-  // Auto-connect Telegram do localStorage no boot + poll de status
+    },
+    refetchInterval: (query) => (query.state.data === false ? 5000 : 30000),
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+  const healthFailuresRef = useRef(0);
   useEffect(() => {
-    let mounted = true;
+    if (healthQuery.data === undefined) return;
+    if (healthQuery.data) {
+      healthFailuresRef.current = 0;
+      setHealthOk(true);
+    } else {
+      healthFailuresRef.current += 1;
+      if (healthFailuresRef.current >= 2) setHealthOk(false);
+    }
+  }, [healthQuery.data, healthQuery.dataUpdatedAt]);
+
+  // Auto-connect Telegram do localStorage no boot (one-shot); status via query 15s
+  useEffect(() => {
     async function autoConnect() {
-      const savedToken = (() => {
-        try {
-          return localStorage.getItem(TG_TOKEN_STORAGE_KEY) || "";
-        } catch {
-          return "";
-        }
-      })();
+      const savedToken = storageGet(TG_TOKEN_STORAGE_KEY) || "";
       if (!savedToken) return;
       try {
         const cfg = await fetchChannelConfig();
@@ -195,27 +182,18 @@ function AppShell() {
       } catch {
         /* backend ainda não pronto */
       }
-      try {
-        const st = await fetchChannelStatus();
-        if (mounted) setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
-      } catch {
-        /* ignore */
-      }
     }
-    autoConnect();
-    const poll = setInterval(async () => {
-      try {
-        const st = await fetchChannelStatus();
-        if (mounted) setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
-      } catch {
-        /* ignore */
-      }
-    }, 15000);
-    return () => {
-      mounted = false;
-      clearInterval(poll);
-    };
+    void autoConnect();
   }, []);
+  const channelStatusQuery = useQuery({
+    queryKey: qk.channelStatus(),
+    queryFn: fetchChannelStatus,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+  const telegramConnected =
+    channelStatusQuery.data?.channels.some((c) => c.channel_id === "telegram" && c.connected) ?? false;
 
   const handleToggleTelegram = async () => {
     const savedToken = (() => {
@@ -232,7 +210,7 @@ function AppShell() {
           channels_enabled: false,
           telegram: { enabled: false, bot_token: savedToken, mirror_responses: cfg.telegram.mirror_responses },
         });
-        setTelegramConnected(false);
+        void queryClient.invalidateQueries({ queryKey: qk.channelStatus() });
       } catch {
         /* ignore */
       }
@@ -247,8 +225,7 @@ function AppShell() {
           channels_enabled: true,
           telegram: { enabled: true, bot_token: savedToken, mirror_responses: cfg.telegram.mirror_responses },
         });
-        const st = await fetchChannelStatus();
-        setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
+        void queryClient.invalidateQueries({ queryKey: qk.channelStatus() });
       } catch {
         /* ignore */
       }
@@ -287,84 +264,14 @@ function AppShell() {
   const statsQuery = useQuery({ queryKey: qk.stats(), queryFn: () => fetchStats() });
   const dashboardStats: StatsResponse | null = statsQuery.data ?? null;
 
-  useEffect(() => {
-    if (showOnboarding) return;
-    let cancelled = false;
-    (async () => {
-      // Boot é best-effort: falha aqui (API subindo, backend zerado no wizard)
-      // não vira toast — conectividade é sinalizada pelo orb de health
-      const [, currentReconcile] = await Promise.all([
-        refreshProjects().catch(() => undefined),
-        fetchReconcileStatus().catch(() => null),
-      ]);
-      if (cancelled) return;
-      if (currentReconcile) setReconcileStatus(currentReconcile);
+  // Reconciliação: ponte SSE→Query única (boot retoma sozinho se estiver rodando)
+  const reconcile = useReconcileMonitor({ onStatus: setStatus });
+  const reconcileStatus = reconcile.reconcileStatus;
+  const reconcilingNow = reconcile.reconciling;
 
-      if (!currentReconcile?.running) return;
-      setReconcilingNow(true);
-      setStatus("Reconciliacao ja em andamento; atualizando progresso...");
-      const applyStatusMessage = (latest: ReconcileStatus) => {
-        if (latest.running) {
-          const proj = latest.progress_project ?? "—";
-          const file = latest.progress_file ?? "—";
-          setStatus(
-            `Reconciliando: ${latest.progress_current ?? 0} / ${latest.progress_total ?? 0} docs | Projeto: ${proj} | Arquivo: ${file}${(latest.progress_skipped ?? 0) > 0 ? ` (skip: ${latest.progress_skipped})` : ""}`
-          );
-        }
-      };
-      const finishReconcileFromLoad = async (latest: ReconcileStatus) => {
-        if (cancelled) return;
-        invalidateAfterReconcile();
-        const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
-        const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
-        const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
-        setStatus(
-          `Reconciliacao concluida: ${latest.summary?.adjustments_applied ?? 0} ajuste(s), ${latest.summary?.indexed_docs ?? 0} doc(s) indexado(s)${skipMsg}${failMsg}${orphanMsg}`
-        );
-        setReconcilingNow(false);
-      };
-      const streamUrl = getReconcileStatusStreamUrl();
-      const es = new EventSource(streamUrl);
-      reconcileEsRef.current = es;
-      es.onmessage = async (e: MessageEvent) => {
-        if (cancelled) return;
-        const latest: ReconcileStatus = JSON.parse(e.data);
-        setReconcileStatus(latest);
-        applyStatusMessage(latest);
-        if (!latest.running) {
-          es.close();
-          reconcileEsRef.current = null;
-          await finishReconcileFromLoad(latest);
-        }
-      };
-      es.onerror = async () => {
-        es.close();
-        reconcileEsRef.current = null;
-        if (cancelled) return;
-        const latest = await fetchReconcileStatus();
-        setReconcileStatus(latest);
-        if (!latest.running) {
-          await finishReconcileFromLoad(latest);
-          return;
-        }
-        let running: boolean = !!latest.running;
-        while (running && !cancelled) {
-          await new Promise((r) => setTimeout(r, 1500));
-          const next = await fetchReconcileStatus();
-          setReconcileStatus(next);
-          applyStatusMessage(next);
-          running = !!next.running;
-        }
-        if (!cancelled) await finishReconcileFromLoad(await fetchReconcileStatus());
-      };
-    })().catch((err) => setStatus(`Falha ao carregar dados: ${err instanceof Error ? err.message : "erro desconhecido"}`));
-    return () => {
-      cancelled = true;
-      reconcileEsRef.current?.close();
-      reconcileEsRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showOnboarding]);
+  // Boot: projects/stats/reconcile são queries — nada a orquestrar aqui; o
+  // canal de reconcile retoma sozinho se houver operação em andamento.
+
 
   async function handleSelectProject(nextProject: string) {
     if (nextProject === ALL_PROJECTS) {
@@ -390,73 +297,15 @@ function AppShell() {
 
   async function handleReconcileNow() {
     const scopeLabel = selectedProject === ALL_PROJECTS ? "todos os projetos" : selectedProjectLabel || selectedProject;
-    setReconcilingNow(true);
-    setStatus(`Iniciando reconciliacao de ${scopeLabel}...`);
-
-    const applyStatusMessage = (latest: ReconcileStatus) => {
-      if (latest.running) {
-        const proj = latest.progress_project ?? "—";
-        const file = latest.progress_file ?? "—";
-        setStatus(
-          `Reconciliando: ${latest.progress_current ?? 0} / ${latest.progress_total ?? 0} docs | Projeto: ${proj} | Arquivo: ${file}${(latest.progress_skipped ?? 0) > 0 ? ` (skip: ${latest.progress_skipped})` : ""}`
-        );
-      }
-    };
-
-    const finishReconcile = async (latest: ReconcileStatus) => {
-      invalidateAfterReconcile();
-      const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
-      const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
-      const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
-      setStatus(
-        `Reconciliacao concluida (${scopeLabel}): ${latest.summary?.adjustments_applied ?? 0} ajuste(s), ${latest.summary?.indexed_docs ?? 0} doc(s) indexado(s)${skipMsg}${failMsg}${orphanMsg}`
-      );
-      setReconcilingNow(false);
-    };
-
-    const subscribeToReconcileStream = () => {
-      const streamUrl = getReconcileStatusStreamUrl();
-      const es = new EventSource(streamUrl);
-      es.onmessage = async (e: MessageEvent) => {
-        const latest: ReconcileStatus = JSON.parse(e.data);
-        setReconcileStatus(latest);
-        applyStatusMessage(latest);
-        if (!latest.running) {
-          es.close();
-          await finishReconcile(latest);
-        }
-      };
-      es.onerror = async () => {
-        es.close();
-        const latest = await fetchReconcileStatus();
-        setReconcileStatus(latest);
-        if (!latest.running) {
-          await finishReconcile(latest);
-          return;
-        }
-        let running: boolean = !!latest.running;
-        while (running) {
-          await new Promise((r) => setTimeout(r, 1500));
-          const next = await fetchReconcileStatus();
-          setReconcileStatus(next);
-          applyStatusMessage(next);
-          running = !!next.running;
-        }
-        await finishReconcile(await fetchReconcileStatus());
-      };
-    };
-
     try {
-      await runReconcile(selectedProject === ALL_PROJECTS ? undefined : selectedProject);
-      subscribeToReconcileStream();
+      await reconcile.start(selectedProject === ALL_PROJECTS ? undefined : selectedProject, scopeLabel);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Falha ao reconciliar";
       if (msg.includes("ja em andamento")) {
         setStatus("Reconciliacao ja em andamento; acompanhando progresso...");
-        subscribeToReconcileStream();
+        void reconcile.start; // canal já acompanha via snapshot ativo
       } else {
         setStatus(msg);
-        setReconcilingNow(false);
       }
     }
   }
@@ -626,19 +475,7 @@ function AppShell() {
             onDecision={handleDecision}
             onStatus={setStatus}
             onScanComplete={handleDataChanged}
-            fullQuery={search.fullQuery}
-            fullResults={search.fullResults}
-            fullPage={search.fullPage}
-            fullTotalPages={search.fullTotalPages}
-            fullTotal={search.fullTotal}
-            fullLoading={search.fullLoading}
-            fullSearchInput={search.fullSearchInput}
-            searchFilters={search.searchFilters}
-            searchStats={search.searchStats}
-            onFullSearchInputChange={search.setFullSearchInput}
-            onRunFullSearch={search.runFullSearch}
-            onSearchFiltersChange={search.setSearchFilters}
-            onClearSearch={search.clearSearch}
+            search={search}
           />
           )}
         </div>
@@ -647,30 +484,12 @@ function AppShell() {
           {visitedViews.has("assistente") && (
           <AssistenteView
             selectedProject={selectedProject}
-            chatMessages={chat.chatMessages}
-            chatSending={chat.chatSending}
-            chatError={chat.chatError}
-            lastToolCalls={chat.lastToolCalls}
-            contextPressureRatio={chat.contextPressureRatio}
             selectedModel={selectedModel}
             models={models}
             onModelChange={setSelectedModel}
             onOpenSettings={() => setSettingsOpen(true)}
-            onSend={chat.handleChatSend}
-            onAbort={chat.handleChatAbort}
-            onNewSession={chat.handleChatNewSession}
             showThinking={showThinking}
             onShowThinkingChange={setShowThinking}
-            sessions={chat.sessions}
-            sessionsLoading={chat.sessionsLoading}
-            activeSessionId={chat.activeSessionId}
-            historyModalOpen={chat.historyModalOpen}
-            onOpenHistory={chat.openHistoryModal}
-            onCloseHistory={() => chat.setHistoryModalOpen(false)}
-            onSelectSession={chat.handleSelectSession}
-            onEditSession={chat.handleEditSession}
-            onDeleteSession={chat.handleDeleteSession}
-            savingSession={chat.savingSession}
             telegramConnected={telegramConnected}
             onToggleTelegram={handleToggleTelegram}
           />

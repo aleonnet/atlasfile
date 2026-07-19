@@ -1,3 +1,4 @@
+import { STORAGE_KEYS } from "../lib/storage";
 import {
   Check,
   ChevronsUpDown,
@@ -24,7 +25,7 @@ import { useSettings, type ThemeMode } from "../contexts/SettingsContext";
 import { cn } from "../lib/utils";
 import { projectColor, projectInitial } from "./projectVisual";
 
-const SIDEBAR_COLLAPSED_KEY = "atlasfile-sidebar-collapsed";
+const SIDEBAR_COLLAPSED_KEY = STORAGE_KEYS.sidebarCollapsed;
 const EXPANDED_WIDTH = 248;
 const COLLAPSED_WIDTH = 64;
 

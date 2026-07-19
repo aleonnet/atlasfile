@@ -1,12 +1,10 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { fetchIngestStatus, getIngestStatusStreamUrl } from "../../../api";
+import { useSseChannel } from "../../../hooks/useSseChannel";
+import { invalidateAfterScan } from "../../../lib/mutations";
+import { qk } from "../../../lib/queryKeys";
 import type { IngestOperationStatus } from "../../../types";
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
 
 function buildPendingIngestStatus(projectId: string | null): IngestOperationStatus {
   return {
@@ -25,102 +23,51 @@ function buildPendingIngestStatus(projectId: string | null): IngestOperationStat
   };
 }
 
+/** Monitor de ingestão sobre a ponte única SSE→Query (F3): o snapshot vive no
+ *  cache, o SSE alimenta, o poll só assume com o stream caído, e o término
+ *  invalida os recursos afetados pelo scan. API pública preservada. */
 export function useIngestMonitor() {
-  const [ingestStatus, setIngestStatus] = useState<IngestOperationStatus | null>(null);
-  const monitorStopRef = useRef<(() => void) | null>(null);
+  const queryClient = useQueryClient();
+  const channel = useSseChannel<IngestOperationStatus>({
+    queryKey: qk.ingestStatus(),
+    fetchSnapshot: fetchIngestStatus,
+    streamUrl: getIngestStatusStreamUrl,
+    isActive: (status) => !!status.running,
+    onFinished: (status) => {
+      if (status.last_run_finished_at) invalidateAfterScan();
+    },
+    pollMs: 500,
+  });
 
-  const stopMonitor = useCallback(() => {
-    monitorStopRef.current?.();
-    monitorStopRef.current = null;
-  }, []);
+  const setPending = useCallback(
+    (projectId: string | null) => {
+      // Cancela snapshot em voo: um idle atrasado não pode atropelar o placeholder
+      void queryClient.cancelQueries({ queryKey: qk.ingestStatus() });
+      queryClient.setQueryData(qk.ingestStatus(), buildPendingIngestStatus(projectId));
+    },
+    [queryClient]
+  );
 
   const startMonitor = useCallback(
     (requestPromise: Promise<unknown>) => {
-      stopMonitor();
-      let cancelled = false;
-      let requestSettled = false;
-      let stream: EventSource | null = null;
-
-      void requestPromise.finally(() => {
-        requestSettled = true;
-      });
-
-      const closeStream = () => {
-        stream?.close();
-        stream = null;
-      };
-
-      const applyStatus = (data: IngestOperationStatus) => {
-        if (!cancelled) {
-          setIngestStatus(data);
-        }
-      };
-
-      const pollUntilFinished = async (): Promise<void> => {
-        while (!cancelled) {
-          try {
-            const latest = await fetchIngestStatus();
-            if (cancelled) return;
-            applyStatus(latest);
-            if (latest.running && typeof window !== "undefined" && typeof window.EventSource !== "undefined") {
-              closeStream();
-              stream = new window.EventSource(getIngestStatusStreamUrl());
-              stream.onmessage = (event) => {
-                try {
-                  const data = JSON.parse(event.data) as IngestOperationStatus;
-                  applyStatus(data);
-                  if (!data.running) {
-                    closeStream();
-                  }
-                } catch {
-                  /* ignore */
-                }
-              };
-              stream.onerror = () => {
-                closeStream();
-                if (!cancelled) {
-                  void pollUntilFinished();
-                }
-              };
-              return;
-            }
-            if (!latest.running && requestSettled) {
-              return;
-            }
-          } catch {
-            if (requestSettled) {
-              return;
-            }
-          }
-          await sleep(250);
-        }
-      };
-
-      void pollUntilFinished();
-
-      const stop = () => {
-        cancelled = true;
-        closeStream();
-      };
-      monitorStopRef.current = stop;
-      return stop;
+      // O canal liga sozinho ao ver running=true; ao settle da request, um
+      // refresh garante o snapshot final mesmo se o SSE não tiver aberto.
+      void requestPromise.finally(() => void channel.refresh());
     },
-    [stopMonitor]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
   );
 
-  const setPending = useCallback((projectId: string | null) => {
-    setIngestStatus(buildPendingIngestStatus(projectId));
-  }, []);
-
   const refreshStatus = useCallback(() => {
-    void fetchIngestStatus().then(setIngestStatus).catch(() => {});
+    void channel.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {
-    ingestStatus,
-    setIngestStatus,
+    ingestStatus: channel.data ?? null,
     startMonitor,
-    stopMonitor,
+    /** Sem-op: o canal fecha sozinho quando running=false (mantido por compat). */
+    stopMonitor: () => {},
     setPending,
     refreshStatus,
   };

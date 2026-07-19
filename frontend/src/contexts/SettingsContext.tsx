@@ -1,17 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { STORAGE_KEYS, storageGet, storageSet } from "../lib/storage";
 import { useQuery } from "@tanstack/react-query";
 import { fetchModels } from "../api";
 import { qk } from "../lib/queryKeys";
 import type { ModelOption } from "../types";
 
-const THEME_STORAGE_KEY = "atlasfile-theme";
-const CHAT_MODEL_STORAGE_KEY = "atlasfile-chat-model";
-const TRIAGE_MODEL_STORAGE_KEY = "atlasfile-triage-model";
-const CHAT_SHOW_THINKING_KEY = "atlasfile-chat-show-thinking";
-const OPENAI_API_KEY_STORAGE = "atlasfile-openai-api-key";
-const ANTHROPIC_API_KEY_STORAGE = "atlasfile-anthropic-api-key";
-const AUTO_TITLE_LLM_KEY = "atlasfile-auto-title-llm";
-const CUSTOM_MODELS_KEY = "atlasfile-custom-models";
+const THEME_STORAGE_KEY = STORAGE_KEYS.theme;
+const CHAT_MODEL_STORAGE_KEY = STORAGE_KEYS.chatModel;
+const TRIAGE_MODEL_STORAGE_KEY = STORAGE_KEYS.triageModel;
+const CHAT_SHOW_THINKING_KEY = STORAGE_KEYS.showThinking;
+const OPENAI_API_KEY_STORAGE = STORAGE_KEYS.openaiApiKey;
+const ANTHROPIC_API_KEY_STORAGE = STORAGE_KEYS.anthropicApiKey;
+const AUTO_TITLE_LLM_KEY = STORAGE_KEYS.autoTitleLLM;
+const CUSTOM_MODELS_KEY = STORAGE_KEYS.customModels;
 
 function readCustomModels(): string[] {
   try {
@@ -25,20 +26,11 @@ function readCustomModels(): string[] {
 export type ThemeMode = "system" | "light" | "dark";
 
 function readStorage(key: string, fallback = ""): string {
-  try {
-    return localStorage.getItem(key) ?? fallback;
-  } catch {
-    return fallback;
-  }
+  return storageGet(key) ?? fallback;
 }
 
 function writeStorage(key: string, value: string | null): void {
-  try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    /* storage indisponível */
-  }
+  storageSet(key, value);
 }
 
 function getStoredTheme(): ThemeMode {

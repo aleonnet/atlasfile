@@ -36,6 +36,7 @@ import type {
   UsageSummaryResponse,
   UsageTotals
 } from "./types";
+import { STORAGE_KEYS, storageGet, storageSet } from "./lib/storage";
 
 const API_BASE =
   import.meta.env.VITE_API_URL ||
@@ -46,23 +47,12 @@ export const API_URL = API_BASE;
 
 /* ── Autenticação (API key + escopo de projeto) ── */
 
-const API_KEY_STORAGE = "atlasfile_api_key";
-
 export function getApiKey(): string {
-  try {
-    return localStorage.getItem(API_KEY_STORAGE) ?? "";
-  } catch {
-    return "";
-  }
+  return storageGet(STORAGE_KEYS.apiKey) ?? "";
 }
 
 export function setApiKey(value: string): void {
-  try {
-    if (value.trim()) localStorage.setItem(API_KEY_STORAGE, value.trim());
-    else localStorage.removeItem(API_KEY_STORAGE);
-  } catch {
-    /* storage indisponível (ex.: modo privado) — segue sem persistir */
-  }
+  storageSet(STORAGE_KEYS.apiKey, value.trim());
 }
 
 type UnauthorizedHandler = (status: number, detail: string) => void;
