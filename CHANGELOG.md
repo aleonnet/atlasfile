@@ -24,6 +24,9 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 - **Formatação regional central** (`lib/format.ts`): números, datas, percentuais e moeda via `Intl.*` no idioma ativo (pt-BR: "US$ 1,23", "92,0%", "19/07/2026"; en-US: "$1.23", "92.0%", "7/19/26"); date-fns e calendário com locale dinâmico; padrões de data por idioma no catálogo.
 - **Gate de integridade i18n** na suíte: toda chave `t()` estática do código é validada contra o catálogo; paridade PT×EN falha o build se divergirem.
 - **Prompts do assistente cientes de idioma**: resposta sempre no idioma das mensagens do usuário; títulos de gráfico e título automático de sessão no idioma da conversa (prompt canônico único, sem duplicação por idioma).
+- **Troca de idioma AO VIVO**: alterar o idioma (Preferências, gate ou wizard) aplica instantaneamente em toda a interface — sem reload, sem blink; a escolha persiste no navegador.
+- **Classificação bilíngue para corpus misto** (modelo SKOS/EuroVoc — key canônico + sinônimos multilíngues): o template `default` ganha ~146 aliases EN nos domínios/tipos e +20 termos EN nas detection_rules (documentos em inglês voltam a auto-rotear no bootstrap, sem mudança de código); `topics_v1.yaml` vira multilíngue (+315 sinônimos EN nos 94 tópicos, `language: multi`).
+- **Template `default-en`** (M&A / Carve-out em inglês): pastas, keys, labels, aliases e regras 100% EN para instalações EN-nativas; wizard e modal de novo projeto pré-selecionam o template pelo idioma da UI (o usuário pode escolher qualquer um).
 
 ### Mudado
 

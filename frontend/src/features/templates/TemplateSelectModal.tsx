@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getTemplate, initializeProject, listTemplates } from "../../api";
+import { suggestedTemplateSlug } from "../../lib/templates";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { ModalActions, ModalShell } from "../../components/ui/modal-shell";
@@ -23,7 +24,7 @@ export function TemplateSelectModal({ open, projectRef, projectLabel, onClose, o
   const { t } = useTranslation();
   useEscapeKey(open ? onClose : null);
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
-  const [selected, setSelected] = useState("default");
+  const [selected, setSelected] = useState(suggestedTemplateSlug);
   const [preview, setPreview] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(false);

@@ -1,5 +1,5 @@
 version: 1
-language: pt-BR
+language: multi
 max_topics_per_document: 8
 
 topics:
@@ -15,6 +15,9 @@ topics:
       - performance
       - dashboard
       - painel
+      - key performance indicators
+      - metrics
+      - scorecard
     area_bias: [juridica, financeiro, pessoas, processos_tsa, entregaveis]
 
   - key: estrutura_organizacional
@@ -29,6 +32,9 @@ topics:
       - gerência
       - headcount
       - hc
+      - organizational structure
+      - organization chart
+      - reporting lines
     area_bias: [pessoas, juridica, entregaveis]
 
   - key: cronograma
@@ -42,6 +48,9 @@ topics:
       - milestones
       - plano de acao
       - plano de ação
+      - schedule
+      - project timeline
+      - action plan
     area_bias: [entregaveis, processos_tsa, sistemas_migracao]
 
   - key: status_report
@@ -55,6 +64,9 @@ topics:
       - update
       - comite
       - comitê
+      - status report
+      - progress report
+      - steering committee update
     area_bias: [entregaveis, processos_tsa, juridica, financeiro]
 
   - key: governanca
@@ -68,6 +80,9 @@ topics:
       - rito
       - ritos
       - cadence
+      - governance
+      - steering committee
+      - operating model
     area_bias: [entregaveis, processos_tsa]
 
   - key: riscos
@@ -82,6 +97,9 @@ topics:
       - impedimentos
       - mitigacao
       - mitigação
+      - risks
+      - risk assessment
+      - mitigation
     area_bias: [entregaveis, processos_tsa, juridica]
 
   - key: escopo
@@ -95,6 +113,9 @@ topics:
       - abrangência
       - delimitacao
       - delimitação
+      - scope of work
+      - perimeter
+      - boundaries
     area_bias: [entregaveis, ativos, processos_tsa]
 
   - key: inventario
@@ -106,6 +127,9 @@ topics:
       - listagem
       - catalogo
       - catálogo
+      - inventory
+      - asset list
+      - catalog
     area_bias: [ativos, entregaveis, sistemas_migracao]
 
   - key: segregacao
@@ -119,6 +143,9 @@ topics:
       - separação
       - perimetro
       - perímetro
+      - segregation
+      - separation
+      - divestiture
     area_bias: [ativos, financeiro, sistemas_migracao, entregaveis]
 
   - key: tsa
@@ -133,6 +160,9 @@ topics:
       - pós closing
       - pos-closing
       - pós-closing
+      - transition services agreement
+      - post-closing
+      - reverse tsa
     area_bias: [processos_tsa, entregaveis, juridica]
 
   - key: sox_controles
@@ -145,6 +175,9 @@ topics:
       - auditoria
       - audit
       - 404
+      - internal controls
+      - sox compliance
+      - control testing
     area_bias: [processos_tsa, financeiro]
 
   - key: sap
@@ -156,6 +189,9 @@ topics:
       - s/4
       - hana
       - ecc
+      - sap s/4hana
+      - erp system
+      - enterprise resource planning
     area_bias: [sistemas_migracao, financeiro]
 
   - key: sistemas_integracoes
@@ -169,6 +205,9 @@ topics:
       - apis
       - api
       - middleware
+      - systems
+      - integration
+      - system interface
     area_bias: [sistemas_migracao]
 
   - key: migracao
@@ -181,6 +220,9 @@ topics:
       - transição
       - move
       - moving
+      - migration
+      - data migration
+      - transition
     area_bias: [sistemas_migracao, processos_tsa]
 
   - key: arquitetura
@@ -192,6 +234,9 @@ topics:
       - as-is
       - to-be
       - desenho
+      - architecture
+      - solution architecture
+      - system design
     area_bias: [sistemas_migracao]
 
   - key: cmdb
@@ -203,6 +248,9 @@ topics:
       - configuration management
       - item de configuracao
       - item de configuração
+      - configuration item
+      - configuration database
+      - asset repository
     area_bias: [ativos, sistemas_migracao]
 
   - key: ativos_imobilizado
@@ -217,6 +265,10 @@ topics:
       - equipamentos
       - doacao
       - doação
+      - assets
+      - fixed assets
+      - property, plant and equipment
+      - capex
     area_bias: [ativos]
 
   - key: rede_infra
@@ -230,6 +282,9 @@ topics:
       - data center
       - colo
       - colocation
+      - network
+      - infrastructure
+      - network infrastructure
     area_bias: [ativos, sistemas_migracao]
 
   - key: contratos
@@ -244,6 +299,10 @@ topics:
       - mss
       - msa
       - mla
+      - contract
+      - contracts
+      - amendment
+      - master agreement
     area_bias: [juridica, contratos_comunicacao]
 
   - key: fornecedores
@@ -255,6 +314,10 @@ topics:
       - procurement
       - compras
       - rfp
+      - supplier
+      - suppliers
+      - vendors
+      - sourcing
     area_bias: [contratos_comunicacao, financeiro]
 
   - key: clientes
@@ -266,6 +329,10 @@ topics:
       - receita
       - faturamento
       - churn
+      - client
+      - customers
+      - revenue
+      - customer base
     area_bias: [contratos_comunicacao, financeiro]
 
   - key: docusign
@@ -277,6 +344,9 @@ topics:
       - signed
       - sign
       - envelope
+      - signature
+      - electronic signature
+      - e-signature
     area_bias: [juridica, contratos_comunicacao]
 
   - key: spa
@@ -288,6 +358,9 @@ topics:
       - purchase agreement
       - contrato de compra
       - contrato de venda
+      - sale and purchase agreement
+      - stock purchase
+      - closing
     area_bias: [juridica]
 
   - key: nda
@@ -298,6 +371,9 @@ topics:
       - non disclosure
       - non-disclosure
       - sigilo
+      - confidentiality
+      - confidentiality agreement
+      - non-disclosure agreement
     area_bias: [juridica]
 
   - key: procuracao
@@ -309,6 +385,10 @@ topics:
       - poderes
       - poderes de representacao
       - poderes de representação
+      - power of attorney
+      - proxy
+      - attorney-in-fact
+      - representation powers
     area_bias: [juridica]
 
   - key: parecer
@@ -320,6 +400,9 @@ topics:
       - nota jurídica
       - legal memo
       - memorandum
+      - legal opinion
+      - opinion
+      - legal memorandum
     area_bias: [juridica]
 
   - key: contencioso
@@ -333,6 +416,10 @@ topics:
       - acao
       - ação
       - judicial
+      - litigation
+      - lawsuit
+      - legal proceedings
+      - dispute
     area_bias: [juridica]
 
   - key: contingencias
@@ -345,6 +432,10 @@ topics:
       - provisao
       - provisão
       - exposure
+      - contingency
+      - contingencies
+      - liability
+      - provision
     area_bias: [juridica, financeiro]
 
   - key: falencia_rj
@@ -358,6 +449,10 @@ topics:
       - chapter 11
       - assembleia de credores
       - assembleia geral de credores
+      - bankruptcy
+      - judicial reorganization
+      - insolvency
+      - creditors meeting
     area_bias: [juridica, financeiro]
 
   - key: compliance
@@ -371,6 +466,10 @@ topics:
       - ética
       - codigo de conduta
       - código de conduta
+      - anti-corruption
+      - ethics
+      - code of conduct
+      - integrity
     area_bias: [juridica, processos_tsa]
 
   - key: privacidade_lgpd
@@ -382,6 +481,10 @@ topics:
       - dpo
       - encarregado
       - tratamento de dados
+      - privacy
+      - data protection
+      - personal data
+      - gdpr
     area_bias: [juridica, sistemas_migracao]
 
   - key: societario
@@ -396,6 +499,11 @@ topics:
       - fusao
       - fusão
       - holdings
+      - corporate
+      - merger
+      - spin-off
+      - incorporation
+      - corporate restructuring
     area_bias: [societario_fiscal]
 
   - key: cnpj_filiais
@@ -411,6 +519,11 @@ topics:
       - inscrição estadual
       - inscricao municipal
       - inscrição municipal
+      - branch
+      - branches
+      - tax id
+      - legal entity
+      - establishment
     area_bias: [societario_fiscal]
 
   - key: fiscal_tributos
@@ -425,6 +538,10 @@ topics:
       - cofins
       - irpj
       - csll
+      - tax
+      - taxes
+      - taxation
+      - tax burden
     area_bias: [societario_fiscal, financeiro]
 
   - key: contabilidade
@@ -438,6 +555,10 @@ topics:
       - dre
       - ebitda
       - fechamento
+      - accounting
+      - balance sheet
+      - financial statements
+      - bookkeeping
     area_bias: [financeiro]
 
   - key: fluxo_caixa
@@ -448,6 +569,9 @@ topics:
       - cash flow
       - tesouraria
       - treasury
+      - cash
+      - cash management
+      - liquidity
     area_bias: [financeiro]
 
   - key: garantias
@@ -460,6 +584,11 @@ topics:
       - seguro garantia
       - carta fiança
       - aval
+      - guarantee
+      - guarantees
+      - surety bond
+      - collateral
+      - letter of guarantee
     area_bias: [financeiro, juridica]
 
   - key: seguros
@@ -470,6 +599,10 @@ topics:
       - apolice
       - apólice
       - sinistro
+      - insurance
+      - insurance policy
+      - claim
+      - coverage
     area_bias: [financeiro]
 
   - key: precificacao
@@ -482,6 +615,10 @@ topics:
       - precificação
       - modelagem
       - business case
+      - pricing
+      - price
+      - financial model
+      - modeling
     area_bias: [financeiro]
 
   - key: faturamento
@@ -495,6 +632,9 @@ topics:
       - nota fiscal
       - nfs-e
       - nfse
+      - revenue
+      - invoicing
+      - invoices
     area_bias: [financeiro, contratos_comunicacao]
 
   - key: rh_beneficios
@@ -508,6 +648,11 @@ topics:
       - plano de saúde
       - vale
       - sindicato
+      - human resources
+      - hr
+      - benefits
+      - health plan
+      - employee benefits
     area_bias: [pessoas]
 
   - key: folha_pagamento
@@ -521,6 +666,10 @@ topics:
       - bonus
       - bônus
       - plr
+      - salary
+      - compensation
+      - wages
+      - remuneration
     area_bias: [pessoas, financeiro]
 
   - key: contratos_trabalhistas
@@ -532,6 +681,11 @@ topics:
       - sindicato
       - dissidio
       - dissídio
+      - labor
+      - labor relations
+      - collective bargaining
+      - union agreement
+      - employment
     area_bias: [pessoas, juridica]
 
   - key: comunicacao
@@ -543,6 +697,10 @@ topics:
       - stakeholders
       - comunicados
       - alinhamento
+      - communication
+      - communications
+      - stakeholder management
+      - announcement
     area_bias: [contratos_comunicacao, entregaveis]
 
   - key: apresentacao
@@ -555,6 +713,9 @@ topics:
       - pptx
       - slides
       - slide
+      - presentation
+      - slide deck
+      - slideshow
     area_bias: [entregaveis, juridica, financeiro, pessoas]
 
   - key: minuta_template
@@ -566,6 +727,9 @@ topics:
       - padrao
       - padrão
       - boilerplate
+      - draft
+      - model
+      - standard form
     area_bias: [juridica, contratos_comunicacao, societario_fiscal]
 
   - key: decisao_sentenca
@@ -579,6 +743,10 @@ topics:
       - acordao
       - despacho
       - liminar
+      - ruling
+      - court decision
+      - judgment
+      - injunction
     area_bias: [juridica]
 
   - key: due_diligence
@@ -591,6 +759,9 @@ topics:
       - levantamento
       - data room
       - vdr
+      - diligence
+      - virtual data room
+      - document request
     area_bias: [entregaveis, juridica, financeiro]
 
   - key: dados_bases
@@ -604,6 +775,11 @@ topics:
       - csv
       - extracao
       - extração
+      - database
+      - spreadsheet
+      - spreadsheets
+      - data extraction
+      - dataset
     area_bias: [ativos, financeiro, pessoas, sistemas_migracao]
 
   - key: email_correspondencia
@@ -616,6 +792,9 @@ topics:
       - correspondencia
       - correspondência
       - mensagem
+      - correspondence
+      - message
+      - mailing
     area_bias: [juridica, contratos_comunicacao, financeiro]
 
   - key: archive_zip
@@ -626,6 +805,10 @@ topics:
       - compactado
       - anexos
       - anexo
+      - archive
+      - compressed file
+      - attachment
+      - attachments
     area_bias: [entregaveis, juridica, contratos_comunicacao]
 
   - key: ma
@@ -637,6 +820,9 @@ topics:
       - acquisition
       - aquisicao
       - aquisição
+      - "m&a transaction"
+      - mergers and acquisitions
+      - deal
 
   - key: carve_out
     label: Carve-out
@@ -646,6 +832,9 @@ topics:
       - carveout
       - segregacao
       - segregação
+      - divestiture
+      - spin-off
+      - separation
 
   - key: board
     label: Board / Conselho
@@ -654,6 +843,9 @@ topics:
       - conselho
       - conselho de administracao
       - conselho de administração
+      - board of directors
+      - board meeting
+      - directors
 
   - key: cap_table
     label: Cap Table / Capital Social
@@ -662,12 +854,19 @@ topics:
       - capital social
       - quadro societario
       - quadro societário
+      - capitalization table
+      - share capital
+      - shareholding structure
+      - equity ownership
 
   - key: fato_relevante
     label: Fato Relevante
     surface_forms:
       - fato relevante
       - comunicado ao mercado
+      - material fact
+      - market announcement
+      - notice to the market
 
   - key: ata_reuniao
     label: Ata de Reunião
@@ -676,6 +875,9 @@ topics:
       - ata de reunião
       - reuniao de conselho
       - reunião de conselho
+      - meeting minutes
+      - minutes of the meeting
+      - board minutes
 
   - key: controladoria
     label: Controladoria
@@ -683,6 +885,9 @@ topics:
       - controladoria
       - fechamento gerencial
       - reporting gerencial
+      - controllership
+      - management reporting
+      - financial control
 
   - key: tesouraria
     label: Tesouraria
@@ -690,6 +895,9 @@ topics:
       - tesouraria
       - treasury
       - caixa corporativo
+      - corporate treasury
+      - cash management
+      - treasury operations
 
   - key: contas_a_pagar
     label: Contas a Pagar
@@ -697,6 +905,9 @@ topics:
       - contas a pagar
       - contas payable
       - fornecedores a pagar
+      - accounts payable
+      - payables
+      - supplier payments
 
   - key: contas_a_receber
     label: Contas a Receber
@@ -705,6 +916,9 @@ topics:
       - accounts receivable
       - recebiveis
       - recebíveis
+      - receivables
+      - collections
+      - billing receivables
 
   - key: orcamento
     label: Orçamento
@@ -713,6 +927,9 @@ topics:
       - orçamento
       - budget
       - forecast
+      - budgeting
+      - financial forecast
+      - annual budget
 
   - key: retencoes
     label: Retenções
@@ -721,6 +938,9 @@ topics:
       - retenção
       - retencoes
       - retenções
+      - withholding
+      - withholding tax
+      - tax withholding
 
   - key: nfe
     label: NFe
@@ -729,6 +949,9 @@ topics:
       - nf-e
       - nota fiscal eletronica
       - nota fiscal eletrônica
+      - electronic invoice
+      - e-invoice
+      - electronic tax invoice
 
   - key: recrutamento
     label: Recrutamento
@@ -738,6 +961,9 @@ topics:
       - hiring
       - selecao
       - seleção
+      - recruitment
+      - recruiting
+      - talent acquisition
 
   - key: trabalhista
     label: Trabalhista
@@ -747,6 +973,10 @@ topics:
       - acordo coletivo
       - dissidio
       - dissídio
+      - labor
+      - employment law
+      - collective agreement
+      - labor claims
 
   - key: treinamento
     label: Treinamento
@@ -755,6 +985,9 @@ topics:
       - capacitação
       - capacitacao
       - onboarding
+      - training
+      - learning and development
+      - capacity building
 
   - key: infra_ti
     label: Infraestrutura de TI
@@ -762,6 +995,9 @@ topics:
       - infraestrutura de ti
       - infra de ti
       - cloud infrastructure
+      - it infrastructure
+      - servers
+      - network infrastructure
 
   - key: api
     label: API
@@ -770,6 +1006,9 @@ topics:
       - apis
       - rest
       - webhook
+      - rest api
+      - web service
+      - endpoint
 
   - key: cloud
     label: Cloud
@@ -778,6 +1017,9 @@ topics:
       - aws
       - azure
       - gcp
+      - cloud computing
+      - public cloud
+      - iaas
 
   - key: runbook
     label: Runbook
@@ -785,6 +1027,9 @@ topics:
       - runbook
       - playbook operacional
       - manual operacional
+      - operational playbook
+      - operations manual
+      - standard operating procedure
 
   - key: implantacao
     label: Implantação
@@ -793,18 +1038,27 @@ topics:
       - implantação
       - go-live
       - rollout
+      - implementation
+      - deployment
+      - go live plan
 
   - key: anatel
     label: Anatel
     surface_forms:
       - anatel
       - agência nacional de telecomunicações
+      - telecom regulator
+      - telecommunications agency
+      - brazilian telecom regulator
 
   - key: cvm
     label: CVM
     surface_forms:
       - cvm
       - comissão de valores mobiliários
+      - securities commission
+      - securities regulator
+      - brazilian sec
 
   - key: cade
     label: Cade
@@ -812,12 +1066,18 @@ topics:
       - cade
       - conselho administrativo de defesa economica
       - conselho administrativo de defesa econômica
+      - antitrust
+      - antitrust authority
+      - competition authority
 
   - key: anuencia_previa
     label: Anuência Prévia
     surface_forms:
       - anuencia previa
       - anuência prévia
+      - prior consent
+      - prior approval
+      - regulatory consent
 
   - key: licencas
     label: Licenças
@@ -826,6 +1086,10 @@ topics:
       - licença
       - licencas
       - licenças
+      - license
+      - licenses
+      - permit
+      - permits
 
   - key: obrigacoes_regulatorias
     label: Obrigações Regulatórias
@@ -834,6 +1098,9 @@ topics:
       - obrigações regulatórias
       - condicionante regulatoria
       - condicionante regulatória
+      - regulatory obligations
+      - regulatory requirements
+      - regulatory conditions
 
   - key: auditoria
     label: Auditoria
@@ -841,6 +1108,9 @@ topics:
       - auditoria
       - audit
       - auditor
+      - internal audit
+      - external audit
+      - audit report
 
   - key: anticorrupcao
     label: Anticorrupção
@@ -848,6 +1118,9 @@ topics:
       - anticorrupcao
       - anticorrupção
       - bribery
+      - anti-corruption
+      - anti-bribery
+      - fcpa
 
   - key: codigo_conduta
     label: Código de Conduta
@@ -855,12 +1128,18 @@ topics:
       - codigo de conduta
       - código de conduta
       - code of conduct
+      - ethics code
+      - business conduct
+      - ethics policy
 
   - key: risk_register
     label: Risk Register
     surface_forms:
       - risk register
       - registro de riscos
+      - risk log
+      - risk matrix
+      - risk map
 
   - key: cutover
     label: Cutover
@@ -868,6 +1147,9 @@ topics:
       - cutover
       - virada
       - janela de virada
+      - cutover window
+      - switchover
+      - migration weekend
 
   - key: depreciacao
     label: Depreciação
@@ -875,16 +1157,25 @@ topics:
       - depreciacao
       - depreciação
       - depreciado
+      - depreciation
+      - amortization
+      - depreciated
 
   - key: icms
     label: ICMS
     surface_forms:
       - icms
+      - state vat
+      - state sales tax
+      - vat on goods and services
 
   - key: iss
     label: ISS
     surface_forms:
       - iss
+      - municipal service tax
+      - service tax
+      - tax on services
 
   - key: nfse
     label: NFS-e
@@ -893,6 +1184,9 @@ topics:
       - nfs-e
       - nota fiscal de servico eletronica
       - nota fiscal de serviço eletrônica
+      - electronic service invoice
+      - service invoice
+      - e-invoice for services
 
   - key: pis_cofins
     label: PIS / COFINS
@@ -900,6 +1194,9 @@ topics:
       - pis
       - cofins
       - pis/cofins
+      - social contribution tax
+      - federal social contributions
+      - revenue tax
 
   - key: spe
     label: SPE
@@ -907,11 +1204,17 @@ topics:
       - spe
       - sociedade de proposito especifico
       - sociedade de propósito específico
+      - special purpose entity
+      - special purpose vehicle
+      - spv
 
   - key: sped
     label: SPED
     surface_forms:
       - sped
+      - digital tax bookkeeping
+      - digital bookkeeping system
+      - electronic tax records
 
   - key: compras_procurement
     label: Compras / Procurement
@@ -921,6 +1224,9 @@ topics:
       - sourcing
       - strategic sourcing
       - vendor management
+      - purchasing
+      - purchase orders
+      - supplier management
 
   - key: rfp_rfq
     label: RFP / RFQ / Edital
@@ -931,6 +1237,9 @@ topics:
       - request for quotation
       - edital
       - procedimento competitivo
+      - tender
+      - bid
+      - invitation to bid
 
   - key: plano_projeto
     label: Plano / Projeto
@@ -941,6 +1250,9 @@ topics:
       - wbs
       - work breakdown structure
       - cronograma detalhado
+      - plan
+      - master plan
+      - project planning
 
   - key: minuta
     label: Minuta
@@ -949,3 +1261,6 @@ topics:
       - draft
       - minuta padrao
       - minuta padrão
+      - draft agreement
+      - template document
+      - standard draft

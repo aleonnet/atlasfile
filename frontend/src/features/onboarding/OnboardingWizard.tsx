@@ -11,6 +11,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
+import { suggestedTemplateSlug } from "../../lib/templates";
 import type { Project, TemplateMeta } from "../../types";
 import type { SetupStatus } from "../../api";
 
@@ -41,7 +42,7 @@ export function OnboardingWizard({ onComplete, onCancel, openaiApiKey, anthropic
   const [existingProjects, setExistingProjects] = useState<Project[]>([]);
 
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState("default");
+  const [selectedTemplate, setSelectedTemplate] = useState(suggestedTemplateSlug);
   const [projectName, setProjectName] = useState("");
   const [projectLabel, setProjectLabel] = useState("");
   const [creating, setCreating] = useState(false);
