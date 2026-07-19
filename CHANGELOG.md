@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.32.0] -- 2026-07-19
+
+### Mudado
+
+- **Keep-alive global de telas** (Painel/Assistente/Configuração): cada tela monta na primeira visita e **nunca mais desmonta** — navegar apenas alterna a visibilidade (CSS). TODO o estado sobrevive à navegação: chat em andamento, abas, colapsáveis, rascunhos de formulário, filtros de busca e monitores ao vivo (ciclo do classificador continua atualizando mesmo com a tela oculta). Padrão tab-navigator (React Navigation/Vue KeepAlive/React Activity). A persistência em localStorage (abas/colapsáveis) permanece para sobreviver a reload.
+
+---
+
 ## [0.31.2] -- 2026-07-19
 
 ### Corrigido

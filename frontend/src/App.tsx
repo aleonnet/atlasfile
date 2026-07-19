@@ -21,7 +21,7 @@ import { fieldLabelClass, ModalActions, ModalShell } from "./components/ui/modal
 import { Toaster, toast } from "./components/ui/sonner";
 import { MiniOrb } from "./components/ui/processing-aura";
 import { emitDataRefresh, onDataRefresh } from "./lib/refreshBus";
-import { NavigationProvider, useNavigation } from "./contexts/NavigationContext";
+import { NavigationProvider, useNavigation, type ViewKind } from "./contexts/NavigationContext";
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
 import { formatDecisionAction, formatDecisionPhase, ProcessingProvider, useProcessing } from "./contexts/ProcessingContext";
@@ -84,6 +84,13 @@ function AppShell() {
 
   const processing = useProcessing();
   const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  // Keep-alive de telas: monta na primeira visita e NUNCA desmonta (esconde
+  // com CSS) — todo estado de tela (chat, abas, colapsáveis, rascunhos,
+  // monitores ao vivo) sobrevive à navegação. Padrão tab-navigator/Activity.
+  const [visitedViews, setVisitedViews] = useState<Set<ViewKind>>(() => new Set([view]));
+  useEffect(() => {
+    setVisitedViews((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
+  }, [view]);
   const [status, setStatus] = useState("Pronto");
 
   // O footer .status morreu: mensagens de status viram um toast único que se
@@ -613,7 +620,8 @@ function AppShell() {
         </Topbar>
 
         <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden px-7 pb-8 pt-6 [-webkit-overflow-scrolling:touch]">
-        {view === "painel" && (
+        <div className={view === "painel" ? "contents" : "hidden"}>
+          {visitedViews.has("painel") && (
           <PainelView
             projects={projects}
             selectedProject={selectedProject}
@@ -640,9 +648,11 @@ function AppShell() {
             onSearchFiltersChange={search.setSearchFilters}
             onClearSearch={search.clearSearch}
           />
-        )}
+          )}
+        </div>
 
-        {view === "assistente" && (
+        <div className={view === "assistente" ? "contents" : "hidden"}>
+          {visitedViews.has("assistente") && (
           <AssistenteView
             selectedProject={selectedProject}
             chatMessages={chat.chatMessages}
@@ -672,9 +682,11 @@ function AppShell() {
             telegramConnected={telegramConnected}
             onToggleTelegram={handleToggleTelegram}
           />
-        )}
+          )}
+        </div>
 
-        {view === "config" && (
+        <div className={view === "config" ? "contents" : "hidden"}>
+          {visitedViews.has("config") && (
           <ConfigView
             selectedProject={selectedProject}
             selectedProjectLabel={selectedProjectLabel}
@@ -686,7 +698,8 @@ function AppShell() {
             selectedModelTriage={selectedModelTriage}
             onChangeModelTriage={setSelectedModelTriage}
           />
-        )}
+          )}
+        </div>
 
         </main>
       </div>

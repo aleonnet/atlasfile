@@ -356,6 +356,19 @@ describe("App", () => {
 });
 
 describe("AuthGate", () => {
+  it("keep-alive: telas visitadas permanecem montadas ao navegar (estado preservado)", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Configuração" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Configuração" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Perfil do projeto/ })).toBeInTheDocument());
+
+    // volta ao Painel — a Configuração NÃO desmonta, só fica oculta
+    fireEvent.click(screen.getByRole("button", { name: "Painel" }));
+    await waitFor(() => expect(screen.getByText(/documentos indexados/)).toBeInTheDocument());
+    expect(screen.getByRole("tab", { name: /Perfil do projeto/, hidden: true })).toBeInTheDocument();
+  });
+
   it("shows the auth gate as first screen when the API returns 401", async () => {
     const { setUnauthorizedHandler } = await import("./api");
     let capturedHandler: ((status: number, detail: string) => void) | null = null;
