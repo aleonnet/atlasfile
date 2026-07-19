@@ -496,8 +496,8 @@ function AppShell() {
     const documentTypeValue = correctDocumentTypeValue;
     setCorrectModalItem(null);
     setCorrectSubmitting(false);
-    setTriageItems((prev) => prev.filter((i) => i.doc_id !== item.doc_id));
-    setStatus("Registrando correcao em segundo plano...");
+    // O card permanece na fila durante o processamento — é o palco da aura
+    // focal (Processamento Focal); o bus o remove quando a decisão conclui
     processing.start({ docId: item.doc_id, projectId: item.project_id, filename: item.filename, action: "correct" });
     triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
       .then(() => {

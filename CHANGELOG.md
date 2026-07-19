@@ -15,6 +15,15 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.31.1] -- 2026-07-19
+
+### Corrigido
+
+- **Rota do decision-status**: `/api/triage/decision-status` colidia com `GET /api/triage/{project_id}` (o path virava project_id) — movida para `/api/triage-decision-status` (pego no E2E real).
+- **Aura focal no fluxo de correção**: o card era removido da fila otimisticamente ("em segundo plano") antes do processamento — sem palco para a aura. Agora o card permanece processando com aura/fases, como no aprovar/rejeitar; o bus o remove ao concluir.
+
+---
+
 ## [0.31.0] -- 2026-07-19
 
 ### Adicionado
