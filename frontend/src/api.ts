@@ -574,7 +574,7 @@ export async function fetchDecisionStatus(): Promise<{
   action: string | null;
   started_at: string | null;
 }> {
-  const res = await apiFetch(`${API_URL}/api/triage/decision-status`);
+  const res = await apiFetch(`${API_URL}/api/triage-decision-status`);
   if (!res.ok) throw new Error("Falha ao consultar status da decisão");
   return res.json();
 }

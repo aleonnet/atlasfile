@@ -3173,7 +3173,7 @@ def _set_decision_phase(phase: str) -> None:
         _decision_status["phase"] = phase
 
 
-@app.get("/api/triage/decision-status")
+@app.get("/api/triage-decision-status")
 def get_triage_decision_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     return dict(_decision_status)
 
