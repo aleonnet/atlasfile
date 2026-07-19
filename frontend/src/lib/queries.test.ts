@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { qk } from "./queryKeys";
 import { queryClient } from "./queryClient";
-import { emitDataRefresh, installRefreshBusQueryAdapter } from "./refreshBus";
+import {
+  invalidateAfterScan,
+  invalidateAfterTriageDecision,
+} from "./mutations";
 
 vi.mock("../api", () => ({}));
 
@@ -23,18 +26,30 @@ describe("queryKeys", () => {
   });
 });
 
-describe("adaptador bus→invalidation (F1, transitório)", () => {
-  it("emit legado marca as queries dos antigos assinantes como stale", () => {
+describe("invalidations por domínio (F2)", () => {
+  it("decisão de triagem derruba fila, stats, histórico, conflitos e classificador", () => {
     const spy = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
-    const uninstall = installRefreshBusQueryAdapter();
     try {
-      emitDataRefresh();
+      invalidateAfterTriageDecision();
       const keys = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
       expect(keys).toContain(JSON.stringify(qk.triage.scope()));
       expect(keys).toContain(JSON.stringify(["stats"]));
-      expect(keys).toContain(JSON.stringify(qk.projects()));
+      expect(keys).toContain(JSON.stringify(["ingest-history"]));
+      expect(keys).toContain(JSON.stringify(qk.labelConflicts()));
+      expect(keys).toContain(JSON.stringify(qk.classifier.scope()));
     } finally {
-      uninstall();
+      spy.mockRestore();
+    }
+  });
+
+  it("scan derruba a fila da inbox além de triagem/stats/histórico", () => {
+    const spy = vi.spyOn(queryClient, "invalidateQueries").mockResolvedValue();
+    try {
+      invalidateAfterScan();
+      const keys = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
+      expect(keys).toContain(JSON.stringify(["inbox-files"]));
+      expect(keys).toContain(JSON.stringify(qk.triage.scope()));
+    } finally {
       spy.mockRestore();
     }
   });

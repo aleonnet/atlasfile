@@ -22,7 +22,13 @@ import { Toaster, toast } from "./components/ui/sonner";
 import { MiniOrb } from "./components/ui/processing-aura";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
-import { emitDataRefresh, installRefreshBusQueryAdapter, onDataRefresh } from "./lib/refreshBus";
+import { useQuery } from "@tanstack/react-query";
+import { qk } from "./lib/queryKeys";
+import {
+  invalidateAfterReconcile,
+  invalidateAfterScan,
+  invalidateAfterTriageDecision,
+} from "./lib/mutations";
 import { NavigationProvider, useNavigation, type ViewKind } from "./contexts/NavigationContext";
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
@@ -90,8 +96,6 @@ function AppShell() {
   // com CSS) — todo estado de tela (chat, abas, colapsáveis, rascunhos,
   // monitores ao vivo) sobrevive à navegação. Padrão tab-navigator/Activity.
   const [visitedViews, setVisitedViews] = useState<Set<ViewKind>>(() => new Set([view]));
-  // F1 (migração TanStack Query): eventos legados do bus viram invalidations
-  useEffect(() => installRefreshBusQueryAdapter(), []);
   useEffect(() => {
     setVisitedViews((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
   }, [view]);
@@ -104,9 +108,9 @@ function AppShell() {
     const isError = /falha|erro|negado|inválid/i.test(status);
     toast[isError ? "error" : "message"](status, { id: "app-status" });
   }, [status]);
-  const [triageItems, setTriageItems] = useState<TriageItem[]>([]);
+
   const [reconcileStatus, setReconcileStatus] = useState<ReconcileStatus | null>(null);
-  const [dashboardStats, setDashboardStats] = useState<StatsResponse | null>(null);
+
   const [initializingProjectId] = useState<string | null>(null);
   const [reconcilingNow, setReconcilingNow] = useState(false);
   const [correctModalItem, setCorrectModalItem] = useState<TriageItem | null>(null);
@@ -266,25 +270,22 @@ function AppShell() {
       .catch(() => {});
   }, []);
 
-  async function loadTriage() {
-    if (!selectedProject) return;
-    try {
+  // Fila de triagem e stats do painel: caches — mutações invalidam, aqui só lê
+  const projectIds = projects.map((p) => p.project_id);
+  const triageQuery = useQuery({
+    queryKey: [...qk.triage.list(selectedProject || "none"), projectIds],
+    queryFn: async () => {
       if (selectedProject === ALL_PROJECTS) {
-        const batches = await Promise.all(projects.map((p) => fetchTriage(p.project_id)));
-        setTriageItems(batches.flat());
-      } else {
-        const data = await fetchTriage(selectedProject);
-        setTriageItems(data);
+        const batches = await Promise.all(projectIds.map((id) => fetchTriage(id)));
+        return batches.flat();
       }
-    } catch {
-      setStatus("Falha ao carregar triagem");
-    }
-  }
-
-  useEffect(() => {
-    void loadTriage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProject, projects]);
+      return fetchTriage(selectedProject);
+    },
+    enabled: !!selectedProject && (selectedProject !== ALL_PROJECTS || projectIds.length > 0),
+  });
+  const triageItems: TriageItem[] = triageQuery.data ?? [];
+  const statsQuery = useQuery({ queryKey: qk.stats(), queryFn: () => fetchStats() });
+  const dashboardStats: StatsResponse | null = statsQuery.data ?? null;
 
   useEffect(() => {
     if (showOnboarding) return;
@@ -298,7 +299,6 @@ function AppShell() {
       ]);
       if (cancelled) return;
       if (currentReconcile) setReconcileStatus(currentReconcile);
-      fetchStats().then(setDashboardStats).catch(() => {});
 
       if (!currentReconcile?.running) return;
       setReconcilingNow(true);
@@ -314,7 +314,7 @@ function AppShell() {
       };
       const finishReconcileFromLoad = async (latest: ReconcileStatus) => {
         if (cancelled) return;
-        emitDataRefresh();
+        invalidateAfterReconcile();
         const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
         const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
         const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
@@ -404,7 +404,7 @@ function AppShell() {
     };
 
     const finishReconcile = async (latest: ReconcileStatus) => {
-      emitDataRefresh();
+      invalidateAfterReconcile();
       const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
       const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
       const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
@@ -512,33 +512,21 @@ function AppShell() {
     processing.start({ docId: item.doc_id, projectId: item.project_id, filename: item.filename, action: "correct" });
     triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
       .then(() => {
-        emitDataRefresh();
+        invalidateAfterTriageDecision();
         setStatus(`Documento aprovado por correção e movido para ${businessDomainValue}/${documentTypeValue}`);
       })
       .catch(() => {
         setStatus("Falha ao registrar correção");
-        void loadTriage();
+        invalidateAfterTriageDecision();
       })
       .finally(() => processing.finish());
   }
 
-  /** Fonte única de reatividade: TODA mutação emite no bus; o App assina o
-   *  bus para triagem + stats (estado que vive aqui e nunca remonta), e os
-   *  cards derivados (histórico, inbox, rejeitados, projetos) assinam cada um
-   *  o seu — zero reloads de página, zero pontos esquecidos. */
+  /** Pós-scan (portal ou botão): invalidations finas — os caches certos
+   *  refetcham e todos os consumidores (cards, contexts) atualizam sozinhos. */
   const handleDataChanged = useCallback(() => {
-    emitDataRefresh();
+    invalidateAfterScan();
   }, []);
-
-  useEffect(
-    () =>
-      onDataRefresh(() => {
-        void loadTriage();
-        fetchStats().then(setDashboardStats).catch(() => {});
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedProject, projects]
-  );
 
   async function handleDecision(item: TriageItem, action: "approve" | "correct" | "reject") {
     if (action === "correct") {
@@ -548,7 +536,7 @@ function AppShell() {
     processing.start({ docId: item.doc_id, projectId: item.project_id, filename: item.filename, action });
     try {
       await triageDecision(item.project_id, item.doc_id, action);
-      emitDataRefresh();
+      invalidateAfterTriageDecision();
       if (action === "reject") {
         setStatus("Documento rejeitado e movido para rejected com nome original");
       } else {

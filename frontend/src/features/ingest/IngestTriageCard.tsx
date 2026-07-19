@@ -38,7 +38,7 @@ import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "..
 import { cn } from "../../lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../lib/queryKeys";
-import { emitDataRefresh } from "../../lib/refreshBus";
+import { invalidateAfterProfileChange } from "../../lib/mutations";
 import { MiniOrb } from "../../components/ui/processing-aura";
 
 /* Bloco de progresso de operação (ingest / ciclo do classificador) */
@@ -278,7 +278,7 @@ export function IngestTriageCard({
       setFullProfile(resp.profile);
       setProfileVersion(resp.version);
       setLlmPolicy({ ...DEFAULT_LLM_POLICY, ...resp.profile.classification?.llm_policy });
-      emitDataRefresh();
+      invalidateAfterProfileChange(selectedProject);
     } catch {
       onStatus("Falha ao salvar política LLM no profile");
     } finally {

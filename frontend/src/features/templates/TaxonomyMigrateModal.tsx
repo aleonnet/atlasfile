@@ -11,7 +11,7 @@ import { Button } from "../../components/ui/button";
 import { toast } from "../../components/ui/sonner";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/utils";
-import { emitDataRefresh } from "../../lib/refreshBus";
+import { invalidateAfterTaxonomyChange } from "../../lib/mutations";
 
 type Kind = "document_type" | "business_domain";
 
@@ -89,7 +89,7 @@ export function TaxonomyMigrateModal({ open, onClose, onChanged }: Props) {
       })) as TaxonomyMigrationResult;
       setResult(applied);
       setPlan(null);
-      emitDataRefresh();
+      invalidateAfterTaxonomyChange();
       toast.success(
         `Migração concluída: ${applied.moved_total} documento(s) movidos, ` +
           `${Object.values(applied.datasets).reduce((s, n) => s + n, 0)} registro(s) de dataset reescritos`
@@ -111,7 +111,7 @@ export function TaxonomyMigrateModal({ open, onClose, onChanged }: Props) {
       setFromKey("");
       setPlan(null);
       fetchTaxonomy().then(setTaxonomy).catch(() => {});
-      emitDataRefresh();
+      invalidateAfterTaxonomyChange();
       onChanged?.();
     } catch (e) {
       // 409 do backend explica o uso ativo e aponta para a migração

@@ -19,7 +19,7 @@ import { RejectedCard } from "../features/triage/RejectedCard";
 import { TriageQueue } from "../features/triage/TriageQueue";
 import { buildEvidenceGroups, topLocations } from "../features/search/searchFormatters";
 import { cn } from "../lib/utils";
-import { emitDataRefresh } from "../lib/refreshBus";
+import { invalidateAfterMove } from "../lib/mutations";
 import { useProcessing } from "../contexts/ProcessingContext";
 import type {
   Project,
@@ -317,7 +317,7 @@ export function PainelView({
       onStatus(`Documento movido para ${targetBd}/${targetDt}`);
       setMoveHit(null);
       setMoveError(null);
-      emitDataRefresh();
+      invalidateAfterMove();
       onRunFullSearch(fullPage);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Falha ao mover documento";

@@ -11,7 +11,7 @@ import { Input, Textarea } from "../../components/ui/input";
 import { fieldLabelClass, ModalActions, ModalShell } from "../../components/ui/modal-shell";
 import { Skeleton } from "../../components/ui/skeleton";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
-import { emitDataRefresh } from "../../lib/refreshBus";
+import { invalidateAfterProfileChange } from "../../lib/mutations";
 import { ProcessingAura } from "../../components/ui/processing-aura";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../lib/queryKeys";
@@ -135,7 +135,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       const saved = await saveProfile(projectRef, draft, profile.version);
       setDraft(saved.profile);
       onStatus?.(saved.version === profile.version ? "Sem alterações no profile" : "Profile salvo");
-      emitDataRefresh();
+      invalidateAfterProfileChange(projectRef);
       await loadWorkspace();
     } catch {
       onStatus?.("Falha ao salvar profile");
@@ -177,7 +177,7 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
         cleanup_empty_dirs: cleanupEmptyDirs
       });
       onStatus?.("Layout aplicado com sucesso");
-      emitDataRefresh();
+      invalidateAfterProfileChange(projectRef);
       await loadWorkspace();
     } catch {
       onStatus?.("Falha ao aplicar layout");
