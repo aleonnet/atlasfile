@@ -3,6 +3,7 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IngestTriageCard } from "./IngestTriageCard";
+import { renderWithProviders } from "../../test/utils";
 
 const mockProfile = {
   profile: {
@@ -177,7 +178,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("renders header without operational scan button (config-only card)", async () => {
-    render(<IngestTriageCard {...defaultProps()} />);
+    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
     await waitFor(() => {
       expect(screen.getByText(/^Classificador$/)).toBeInTheDocument();
     });
@@ -185,7 +186,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("shows Classificação LLM collapsible for single project", async () => {
-    render(<IngestTriageCard {...defaultProps()} />);
+    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
     await waitFor(() => {
       expect(screen.getByText(/Classificação LLM/i)).toBeInTheDocument();
     });
@@ -193,7 +194,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("renders classifier section with benchmark summary", async () => {
-    render(<IngestTriageCard {...defaultProps()} />);
+    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
     await waitFor(() => {
       expect(screen.getByText(/Classificador operacional/i)).toBeInTheDocument();
     });
@@ -202,7 +203,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("shows empty state when all projects selected", async () => {
-    render(<IngestTriageCard {...defaultProps({ selectedProject: "__all__" })} />);
+    renderWithProviders(<IngestTriageCard {...defaultProps({ selectedProject: "__all__" })} />);
     await waitFor(() => {
       expect(screen.getByText(/Nenhum projeto selecionado/i)).toBeInTheDocument();
     });
@@ -211,7 +212,7 @@ describe("IngestTriageCard", () => {
 
   it("toggles LLM and opens settings modal when no key", async () => {
     const onOpenSettings = vi.fn();
-    render(
+    renderWithProviders(
       <IngestTriageCard {...defaultProps({ openaiApiKey: "", onOpenSettings })} />
     );
     await waitFor(() => {
@@ -226,7 +227,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("toggles LLM on when key is available and shows mode selector", async () => {
-    render(<IngestTriageCard {...defaultProps()} />);
+    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
     await waitFor(() => {
       expect(screen.getByText(/Classificação LLM/i)).toBeInTheDocument();
     });
@@ -246,7 +247,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("saves manual classifier override", async () => {
-    render(<IngestTriageCard {...defaultProps()} />);
+    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
     await waitFor(() => {
       expect(screen.getByLabelText(/Override do classificador/i)).toBeInTheDocument();
     });
@@ -300,7 +301,7 @@ describe("IngestTriageCard", () => {
         .mockResolvedValueOnce(idleCycle)
         .mockResolvedValueOnce(runningCycle);
 
-      render(<IngestTriageCard {...defaultProps()} />);
+      renderWithProviders(<IngestTriageCard {...defaultProps()} />);
       await waitFor(() => {
         expect(screen.getByText(/Rodar ciclo/i)).toBeInTheDocument();
       });

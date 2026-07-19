@@ -352,9 +352,12 @@ describe("App", () => {
     }, { timeout: 5000 });
     expect(screen.getByText(/documentos indexados/)).toBeInTheDocument();
     expect(screen.getByText(/\.PDF/)).toBeInTheDocument();
-    const miniTable = document.querySelector(".mini-table");
-    expect(miniTable).toBeInTheDocument();
-    expect(miniTable!.textContent).toContain("Projeto 1");
+    // o label vem da query de projetos (async) — aguardar o cache resolver
+    await waitFor(() => {
+      const miniTable = document.querySelector(".mini-table");
+      expect(miniTable).toBeInTheDocument();
+      expect(miniTable!.textContent).toContain("Projeto 1");
+    });
   });
 });
 

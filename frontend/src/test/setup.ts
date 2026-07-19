@@ -27,3 +27,12 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+
+// O App de produção usa o queryClient singleton — limpar o cache entre testes
+// garante que mocks por teste não sejam mascarados por dados de teste anterior.
+import { afterEach } from "vitest";
+import { queryClient } from "../lib/queryClient";
+
+afterEach(() => {
+  queryClient.clear();
+});

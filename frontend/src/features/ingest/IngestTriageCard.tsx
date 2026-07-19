@@ -36,6 +36,8 @@ import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { EmptyState } from "../../components/ui/empty-state";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
 import { cn } from "../../lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { qk } from "../../lib/queryKeys";
 import { emitDataRefresh } from "../../lib/refreshBus";
 import { MiniOrb } from "../../components/ui/processing-aura";
 
@@ -168,11 +170,10 @@ export function IngestTriageCard({
   const [llmPolicy, setLlmPolicy] = useState<LLMPolicy>(DEFAULT_LLM_POLICY);
   const [profileVersion, setProfileVersion] = useState<number>(0);
   const [llmSaving, setLlmSaving] = useState(false);
-  const [models, setModels] = useState<ModelOption[]>([]);
+  const queryClient = useQueryClient();
+  const modelsQuery = useQuery({ queryKey: qk.models(), queryFn: fetchModels, staleTime: 5 * 60_000 });
+  const models = modelsQuery.data ?? [];
   const [fullProfile, setFullProfile] = useState<ProjectProfileV2 | null>(null);
-  const [classifierStatus, setClassifierStatus] = useState<ClassifierStatusResponse | null>(null);
-  const [classifierReport, setClassifierReport] = useState<ClassifierReport | null>(null);
-  const [classifierReports, setClassifierReports] = useState<ClassifierReportSummary[]>([]);
   const [expandedBenchmarkMode, setExpandedBenchmarkMode] = useState<string | null>(null);
   const [confirmDeleteReportId, setConfirmDeleteReportId] = useState<string | null>(null);
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
@@ -180,7 +181,6 @@ export function IngestTriageCard({
   const [confirmCancelCycle, setConfirmCancelCycle] = useState(false);
   const [cancellingCycle, setCancellingCycle] = useState(false);
   const [classifierCycleStatus, setClassifierCycleStatus] = useState<ClassifierCycleStatus | null>(null);
-  const [datasetReadiness, setDatasetReadiness] = useState<DatasetReadiness | null>(null);
   const classifierCycleMonitorStopRef = useRef<(() => void) | null>(null);
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
@@ -221,52 +221,47 @@ export function IngestTriageCard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModelTriage]);
 
+  // Leituras do classificador via cache — decisões/ciclos invalidam qk.classifier
+  const readinessQuery = useQuery({
+    queryKey: qk.classifier.datasetReadiness(),
+    queryFn: () => fetchDatasetReadiness().catch(() => null),
+  });
+  const classifierStatusQuery = useQuery({
+    queryKey: qk.classifier.status(selectedProject),
+    queryFn: () => fetchClassifierStatus(selectedProject),
+    enabled: isSingleProject,
+  });
+  const reportsQuery = useQuery({
+    queryKey: qk.classifier.reports(),
+    queryFn: () => fetchClassifierReports(8),
+    enabled: isSingleProject,
+  });
+  const latestReportQuery = useQuery({
+    queryKey: qk.classifier.reportLatest(),
+    queryFn: () => fetchClassifierReportLatest().catch(() => null),
+    enabled: isSingleProject,
+  });
+  const datasetReadiness = readinessQuery.data ?? null;
+  const classifierStatus = isSingleProject ? classifierStatusQuery.data ?? null : null;
+  const classifierReports = isSingleProject ? reportsQuery.data ?? [] : [];
+  const classifierReport = isSingleProject ? latestReportQuery.data ?? null : null;
+
+  // Snapshot inicial do ciclo (o SSE do monitor assume a partir do Rodar ciclo)
+  useEffect(() => {
+    fetchClassifierCycleStatus().then(setClassifierCycleStatus).catch(() => {});
+  }, []);
+
   const loadClassifierState = useCallback(async () => {
+    // status do ciclo continua imperativo (alimentado pelo SSE do monitor)
     try {
-      const [cycle, readiness] = await Promise.all([
-        fetchClassifierCycleStatus(),
-        fetchDatasetReadiness().catch(() => null)
-      ]);
-      setClassifierCycleStatus(cycle);
-      setDatasetReadiness(readiness);
+      setClassifierCycleStatus(await fetchClassifierCycleStatus());
     } catch {
       /* ignore */
     }
+    await queryClient.invalidateQueries({ queryKey: qk.classifier.scope() });
+  }, [queryClient]);
 
-    if (!isSingleProject) {
-      setClassifierStatus(null);
-      setClassifierReport(null);
-      setClassifierReports([]);
-      return;
-    }
 
-    try {
-      const [status, reports, latest] = await Promise.all([
-        fetchClassifierStatus(selectedProject),
-        fetchClassifierReports(8),
-        fetchClassifierReportLatest().catch(() => null)
-      ]);
-      setClassifierStatus(status);
-      setClassifierReports(reports);
-      setClassifierReport(latest);
-    } catch {
-      setClassifierStatus(null);
-      setClassifierReports([]);
-      setClassifierReport(null);
-    }
-  }, [isSingleProject, selectedProject]);
-
-  useEffect(() => {
-    void loadClassifierState();
-  }, [loadClassifierState]);
-
-  useEffect(() => {
-    if (models.length === 0) {
-      fetchModels()
-        .then(setModels)
-        .catch(() => {});
-    }
-  }, [models.length]);
 
   async function persistLlmPolicy(nextPolicy: LLMPolicy) {
     if (!fullProfile) return;
@@ -431,7 +426,7 @@ export function IngestTriageCard({
     setClassifierSaving(true);
     try {
       const status = await updateClassifierOverride(selectedProject, nextValue);
-      setClassifierStatus(status);
+      queryClient.setQueryData(qk.classifier.status(selectedProject), status);
       onStatus(nextValue ? `Override do classificador salvo: ${nextValue}` : "Override do classificador limpo");
     } catch {
       onStatus("Falha ao salvar override do classificador");
@@ -447,7 +442,7 @@ export function IngestTriageCard({
     setDeletingReportId(reportId);
     try {
       await deleteClassifierReport(reportId);
-      setClassifierReports(prev => prev.filter(r => r.report_id !== reportId));
+      await queryClient.invalidateQueries({ queryKey: qk.classifier.reports() });
     } catch {
       // falha silenciosa — o relatório permanece na lista
     } finally {
@@ -462,7 +457,7 @@ export function IngestTriageCard({
     setClassifierSaving(true);
     try {
       const status = await updateBenchmarkEnabledModes(next);
-      setClassifierStatus(status);
+      queryClient.setQueryData(qk.classifier.status(selectedProject), status);
     } catch {
       onStatus("Falha ao salvar modos de benchmark");
     } finally {

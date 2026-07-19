@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchModels } from "../api";
+import { qk } from "../lib/queryKeys";
 import type { ModelOption } from "../types";
 
 const THEME_STORAGE_KEY = "atlasfile-theme";
@@ -81,7 +83,6 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
-  const [models, setModels] = useState<ModelOption[]>([]);
   const [customModels, setCustomModels] = useState<string[]>(readCustomModels);
   const [selectedModel, setSelectedModel] = useState<string>(() => readStorage(CHAT_MODEL_STORAGE_KEY));
   const [selectedModelTriage, setSelectedModelTriage] = useState<string>(() => readStorage(TRIAGE_MODEL_STORAGE_KEY));
@@ -109,22 +110,20 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => writeStorage(ANTHROPIC_API_KEY_STORAGE, anthropicApiKey || null), [anthropicApiKey]);
   useEffect(() => writeStorage(AUTO_TITLE_LLM_KEY, String(autoTitleLLM)), [autoTitleLLM]);
 
+  const modelsQuery = useQuery({ queryKey: qk.models(), queryFn: fetchModels, staleTime: 5 * 60_000 });
+  const models = modelsQuery.data ?? [];
   useEffect(() => {
-    if (models.length > 0) return;
-    fetchModels()
-      .then((list) => {
-        setModels(list);
-        // Modelos custom validados contam como conhecidos — sem isso a seleção
-        // do usuário seria resetada para o primeiro do catálogo a cada load.
-        const values = [...list.map((m) => `${m.provider}/${m.model}`), ...customModels];
-        const first = values[0];
-        if (first) {
-          setSelectedModel((s) => (!s || !values.includes(s) ? first : s));
-          setSelectedModelTriage((s) => (!s || !values.includes(s) ? first : s));
-        }
-      })
-      .catch(() => setModels([]));
-  }, [models.length, customModels]);
+    if (models.length === 0) return;
+    // Modelos custom validados contam como conhecidos — sem isso a seleção
+    // do usuário seria resetada para o primeiro do catálogo a cada load.
+    const values = [...models.map((m) => `${m.provider}/${m.model}`), ...customModels];
+    const first = values[0];
+    if (first) {
+      setSelectedModel((s) => (!s || !values.includes(s) ? first : s));
+      setSelectedModelTriage((s) => (!s || !values.includes(s) ? first : s));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, customModels]);
 
   const addCustomModel = useMemo(
     () => (value: string) => {
@@ -140,9 +139,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const reloadModels = useMemo(
     () => async () => {
-      const list = await fetchModels();
-      setModels(list);
+      await modelsQuery.refetch();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 

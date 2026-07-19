@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderWithProviders } from "../../test/utils";
 import { useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NavigationProvider } from "../../contexts/NavigationContext";
@@ -39,7 +40,7 @@ async function waitForSelection(projectId: string) {
 }
 
 function renderPortal(projectId: string, onScanComplete = vi.fn()) {
-  return render(
+  return renderWithProviders(
     <SettingsProvider>
       <ProjectProvider>
         <NavigationProvider>
