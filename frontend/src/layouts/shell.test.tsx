@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderWithProviders } from "../test/utils";
 import { useEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NavigationProvider } from "../contexts/NavigationContext";
@@ -45,7 +46,7 @@ describe("Sidebar", () => {
   });
 
   it("renderiza navegação e alterna a view ativa", () => {
-    render(
+    renderWithProviders(
       <Providers>
         <Sidebar healthOk={true} onSelectProject={vi.fn()} onNewProject={vi.fn()} onOpenSearch={vi.fn()} />
       </Providers>
@@ -59,7 +60,7 @@ describe("Sidebar", () => {
   });
 
   it("colapsa, persiste e expande", () => {
-    render(
+    renderWithProviders(
       <Providers>
         <Sidebar healthOk={true} onSelectProject={vi.fn()} onNewProject={vi.fn()} onOpenSearch={vi.fn()} />
       </Providers>
@@ -76,12 +77,12 @@ describe("Sidebar", () => {
 
   it("project switcher lista projetos e seleciona", async () => {
     const onSelectProject = vi.fn();
-    render(
+    renderWithProviders(
       <Providers>
         <Sidebar healthOk={true} onSelectProject={onSelectProject} onNewProject={vi.fn()} onOpenSearch={vi.fn()} />
       </Providers>
     );
-    await waitFor(() => expect(screen.getByText(/2 projeto\(s\)/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/2 projetos/)).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText(/Projeto: /));
     const option = await screen.findByRole("button", { name: /Projeto 2/ });
     fireEvent.click(option);
@@ -92,7 +93,7 @@ describe("Sidebar", () => {
 describe("CommandPalette", () => {
   it("mostra grupos de comandos e filtra por texto", async () => {
     const onQueryChange = vi.fn();
-    render(
+    renderWithProviders(
       <Providers>
         <CommandPalette
           open
@@ -107,18 +108,18 @@ describe("CommandPalette", () => {
         />
       </Providers>
     );
-    expect(screen.getByPlaceholderText("Search...")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Buscar...")).toBeInTheDocument();
     expect(screen.getByText("Navegação")).toBeInTheDocument();
     expect(screen.getByText("Tema")).toBeInTheDocument();
     expect(screen.getByText("Novo projeto")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Search..."), { target: { value: "assist" } });
+    fireEvent.change(screen.getByPlaceholderText("Buscar..."), { target: { value: "assist" } });
     expect(onQueryChange).toHaveBeenCalledWith("assist");
   });
 
   it("com query, mostra documentos e ação de listar todos", () => {
     const onSubmitSearch = vi.fn();
-    render(
+    renderWithProviders(
       <Providers>
         <CommandPalette
           open

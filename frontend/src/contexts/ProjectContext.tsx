@@ -1,13 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchProjects } from "../api";
-import { onDataRefresh } from "../lib/refreshBus";
+import { useTranslation } from "react-i18next";
+import { qk } from "../lib/queryKeys";
+import { STORAGE_KEYS, storageGet, storageSet } from "../lib/storage";
 import type { Project } from "../types";
 
 export const ALL_PROJECTS = "__all__";
 
 type ProjectContextValue = {
   projects: Project[];
-  setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
   selectedProject: string;
   setSelectedProject: React.Dispatch<React.SetStateAction<string>>;
   /** undefined quando "todos os projetos" — pronto para passar à API. */
@@ -19,48 +21,45 @@ type ProjectContextValue = {
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
 
-const SELECTED_PROJECT_STORAGE_KEY = "atlasfile_selected_project";
-
 function readStoredProject(): string {
-  try {
-    return localStorage.getItem(SELECTED_PROJECT_STORAGE_KEY) || ALL_PROJECTS;
-  } catch {
-    return ALL_PROJECTS;
-  }
+  return storageGet(STORAGE_KEYS.selectedProject) || ALL_PROJECTS;
 }
 
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
-  const [projects, setProjects] = useState<Project[]>([]);
+  // useTranslation (e não i18n direto): inscreve o provider na troca de idioma
+  // ao vivo — o rótulo "Todos os projetos" memoizado recalcula na hora.
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const projectsQuery = useQuery({ queryKey: qk.projects(), queryFn: fetchProjects });
+  const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
   // Persistido: a seleção de projeto sobrevive ao reload da página; se o
   // projeto salvo não existir mais, refreshProjects volta para "todos"
   const [selectedProject, setSelectedProject] = useState<string>(readStoredProject);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(SELECTED_PROJECT_STORAGE_KEY, selectedProject);
-    } catch {
-      /* storage indisponível — seleção só não persiste */
-    }
+    storageSet(STORAGE_KEYS.selectedProject, selectedProject);
   }, [selectedProject]);
 
   const refreshProjects = useCallback(async () => {
-    const data = await fetchProjects();
-    setProjects(data);
-    setSelectedProject((current) =>
-      current !== ALL_PROJECTS && !data.some((p) => p.project_id === current) ? ALL_PROJECTS : current
-    );
-  }, []);
+    await queryClient.invalidateQueries({ queryKey: qk.projects() });
+  }, [queryClient]);
 
-  // Reativo via bus: salvar profile (label), scans e decisões recarregam a
-  // lista de projetos — o switcher da sidebar reflete sem reload de página
-  useEffect(() => onDataRefresh(() => void refreshProjects().catch(() => {})), [refreshProjects]);
+  // Se o projeto persistido não existe mais (lista recarregada), volta a "todos"
+  useEffect(() => {
+    if (projectsQuery.data) {
+      const data = projectsQuery.data;
+      setSelectedProject((current) =>
+        current !== ALL_PROJECTS && !data.some((p) => p.project_id === current) ? ALL_PROJECTS : current
+      );
+    }
+  }, [projectsQuery.data]);
 
   const selectedProjectLabel = useMemo(
     () =>
       selectedProject === ALL_PROJECTS
-        ? "Todos os projetos"
+        ? t("common:allProjects")
         : projects.find((p) => p.project_id === selectedProject)?.project_label ?? "",
-    [projects, selectedProject]
+    [projects, selectedProject, t]
   );
 
   const projectLabelById = useMemo(() => {
@@ -72,7 +71,6 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<ProjectContextValue>(
     () => ({
       projects,
-      setProjects,
       selectedProject,
       setSelectedProject,
       selectedProjectScope: selectedProject === ALL_PROJECTS ? undefined : selectedProject,

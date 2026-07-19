@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, File as FileIcon, FileSpreadsheet, FileText, Loader2, Presentation, UploadCloud, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { triggerScan, uploadFileWithProgress } from "../../api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { toast } from "../../components/ui/sonner";
@@ -63,6 +64,7 @@ function ConvergingParticles() {
 
 /** Drag'n'drop global: overlay "portal" + fila de upload com progresso por arquivo. */
 export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
+  const { t } = useTranslation();
   const { projects, selectedProject, selectedProjectLabel } = useProject();
   const reducedMotion = useReducedMotion();
   const [dragging, setDragging] = useState(false);
@@ -112,16 +114,16 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
             if (result.failed_count > 0) {
               const firstError = result.errors?.[0];
               toast.error(
-                `${result.processed_count} processado(s), ${result.failed_count} falha(s)` +
+                `${t("ingest:count.processed", { count: result.processed_count })}, ${t("ingest:count.failure", { count: result.failed_count })}` +
                   (firstError ? ` — ${firstError.filename}: ${firstError.error}` : ""),
                 { duration: 8000 }
               );
             } else {
-              toast.success(`Inbox processada: ${result.processed_count} documento(s)`);
+              toast.success(t("ingest:portal.scanSuccess", { count: result.processed_count }));
             }
             onScanComplete();
           })
-          .catch(() => toast.error("Upload concluído, mas o processamento da inbox falhou"))
+          .catch(() => toast.error(t("ingest:portal.scanFailed")))
           .finally(() => {
             setScanning(false);
             window.setTimeout(() => {
@@ -251,12 +253,12 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
                 <UploadCloud size={28} className="text-accent" aria-hidden />
                 {isAll ? (
                   <>
-                    <p className="font-display text-base font-bold text-white">Solte para enviar</p>
-                    <p className="max-w-44 font-mono text-[0.7rem] text-white/70">você escolhe o projeto em seguida</p>
+                    <p className="font-display text-base font-bold text-white">{t("ingest:portal.dropToSend")}</p>
+                    <p className="max-w-44 font-mono text-[0.7rem] text-white/70">{t("ingest:portal.chooseProjectNext")}</p>
                   </>
                 ) : (
                   <>
-                    <p className="font-display text-base font-bold text-white">Enviar para</p>
+                    <p className="font-display text-base font-bold text-white">{t("ingest:portal.sendTo")}</p>
                     <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
                       <span
                         aria-hidden
@@ -279,9 +281,9 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
       <Dialog open={pendingFiles !== null} onOpenChange={(open) => !open && setPendingFiles(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Para qual projeto?</DialogTitle>
+            <DialogTitle>{t("ingest:portal.whichProject")}</DialogTitle>
             <DialogDescription>
-              {pendingFiles?.length ?? 0} arquivo(s) aguardando destino.
+              {t("ingest:portal.filesWaiting", { count: pendingFiles?.length ?? 0 })}
             </DialogDescription>
           </DialogHeader>
           <div className="flex max-h-64 flex-col gap-1 overflow-y-auto">
@@ -322,15 +324,15 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
             <div className="mb-2 flex items-center justify-between">
               <p className="font-display text-xs font-semibold text-foreground-strong">
                 {scanning
-                  ? "Processando inbox..."
-                  : `Upload — ${projects.find((p) => p.project_id === queueProject)?.project_label ?? queueProject ?? ""}`}
+                  ? t("ingest:scan.processingInbox")
+                  : t("ingest:portal.uploadTitle", { project: projects.find((p) => p.project_id === queueProject)?.project_label ?? queueProject ?? "" })}
               </p>
               {scanning ? (
                 <Loader2 size={13} className="animate-spin text-accent" aria-hidden />
               ) : (
                 <button
                   type="button"
-                  aria-label="Fechar fila de upload"
+                  aria-label={t("ingest:portal.closeQueueAria")}
                   className="rounded border-0 bg-transparent p-0.5 text-tertiary shadow-none hover:text-foreground"
                   onClick={() => {
                     setQueue([]);
@@ -355,7 +357,7 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
                       <span className="shrink-0 font-mono text-[0.65rem] text-accent">{item.progress}%</span>
                     )}
                     {item.status === "aguardando" && (
-                      <span className="shrink-0 font-mono text-[0.65rem] text-tertiary">aguardando</span>
+                      <span className="shrink-0 font-mono text-[0.65rem] text-tertiary">{t("ingest:portal.statusWaiting")}</span>
                     )}
                   </div>
                   <div className="mt-1 h-1 overflow-hidden rounded-full bg-panel-strong">

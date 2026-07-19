@@ -1,6 +1,8 @@
 import { Database, File, FileSpreadsheet, FileText, FolderOpen, Inbox, Presentation, RefreshCw, Search, X } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { fetchProjectProfile, getFileDownloadUrl, moveDocument } from "../api";
 import { MoveDocumentModal } from "../components/MoveDocumentModal";
 import { AnimatedNumber } from "../components/ui/animated-number";
@@ -19,8 +21,10 @@ import { RejectedCard } from "../features/triage/RejectedCard";
 import { TriageQueue } from "../features/triage/TriageQueue";
 import { buildEvidenceGroups, topLocations } from "../features/search/searchFormatters";
 import { cn } from "../lib/utils";
-import { emitDataRefresh } from "../lib/refreshBus";
+import { formatDate } from "../lib/format";
+import { invalidateAfterMove } from "../lib/mutations";
 import { useProcessing } from "../contexts/ProcessingContext";
+import { usePainelSearch } from "../hooks/usePainelSearch";
 import type {
   Project,
   ProjectArea,
@@ -29,6 +33,7 @@ import type {
   SearchFilters,
   SearchHit,
   StatsResponse,
+  StatusSeverity,
   TriageItem,
 } from "../types";
 
@@ -44,21 +49,9 @@ type Props = {
   reconcilingNow: boolean;
   onReconcile: () => void;
   onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => void;
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
   onScanComplete: () => void;
-  fullQuery: string;
-  fullResults: SearchHit[];
-  fullPage: number;
-  fullTotalPages: number;
-  fullTotal: number;
-  fullLoading: boolean;
-  fullSearchInput: string;
-  searchFilters: SearchFilters;
-  searchStats: StatsResponse | null;
-  onFullSearchInputChange: (value: string) => void;
-  onRunFullSearch: (page?: number, overrideQuery?: string, overrideFilters?: SearchFilters) => void;
-  onSearchFiltersChange: (filters: SearchFilters) => void;
-  onClearSearch: () => void;
+
 };
 
 function extractFolder(path: string): string {
@@ -79,7 +72,7 @@ function cleanSnippetHtml(snippet: string): string {
 }
 
 function bestSnippet(highlights: string[]): string {
-  if (!highlights.length) return "Sem trecho destacado para esta busca.";
+  if (!highlights.length) return i18n.t("painel:results.noHighlightedSnippet");
   const withEmphasis = highlights.find((h) => h.includes("<em>")) || highlights[0];
   return cleanSnippetHtml(withEmphasis);
 }
@@ -116,7 +109,7 @@ function formatTimestamp(value: string | null | undefined): string {
   if (!value) return "-";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("pt-BR");
+  return formatDate(parsed, { dateStyle: "short", timeStyle: "medium" });
 }
 
 /** Chips de facet — filtros clicáveis com contagem (substituem os <select>). */
@@ -131,6 +124,7 @@ function FacetChips({
   active: string | undefined;
   onSelect: (value: string | undefined) => void;
 }) {
+  const { t } = useTranslation();
   if (!buckets.length) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -143,7 +137,7 @@ function FacetChips({
           !active ? "bg-accent-soft text-accent" : "bg-panel-strong text-muted-foreground hover:text-foreground"
         )}
       >
-        todos
+        {t("painel:results.facetAll")}
       </button>
       {buckets.map((bucket) => (
         <button
@@ -178,6 +172,7 @@ function ResultTile({
   onMove: (hit: SearchHit) => void;
   index: number;
 }) {
+  const { t } = useTranslation();
   const reducedMotion = useReducedMotion();
   const groups = buildEvidenceGroups(hit.evidences ?? []);
   const hasSemantic = groups.some((g) => g.semantic);
@@ -211,7 +206,7 @@ function ResultTile({
           className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
           onClick={() => onMove(hit)}
         >
-          Mover
+          {t("painel:results.move")}
         </Button>
       </div>
       {groups.length > 0 ? (
@@ -220,7 +215,7 @@ function ResultTile({
             <div key={`evg-${hit.doc_id}-${group.key}-${i}`}>
               <span className="flex items-center gap-1.5 font-mono text-[0.68rem] text-tertiary">
                 {group.label}
-                {group.semantic && <Badge variant="purple">semântico</Badge>}
+                {group.semantic && <Badge variant="purple">{t("painel:results.semanticBadge")}</Badge>}
               </span>
               {group.snippets.map((snippet, j) => (
                 <div
@@ -232,7 +227,9 @@ function ResultTile({
             </div>
           ))}
           {Number(hit.omitted_evidences) > 0 && (
-            <div className="font-mono text-[0.68rem] text-tertiary">+ {hit.omitted_evidences} outro(s) trecho(s)</div>
+            <div className="font-mono text-[0.68rem] text-tertiary">
+              {t("painel:results.omittedEvidences", { count: Number(hit.omitted_evidences) })}
+            </div>
           )}
         </div>
       ) : (
@@ -243,7 +240,7 @@ function ResultTile({
           />
           {topLocations(hit.match_locations).length > 0 && (
             <div className="mt-1 font-mono text-[0.68rem] text-tertiary">
-              Local: {topLocations(hit.match_locations).join(" | ")}
+              {t("painel:results.location", { locations: topLocations(hit.match_locations).join(" | ") })}
             </div>
           )}
         </div>
@@ -264,20 +261,25 @@ export function PainelView({
   onDecision,
   onStatus,
   onScanComplete,
-  fullQuery,
-  fullResults,
-  fullPage,
-  fullTotalPages,
-  fullTotal,
-  fullLoading,
-  fullSearchInput,
-  searchFilters,
-  searchStats,
-  onFullSearchInputChange,
-  onRunFullSearch,
-  onSearchFiltersChange,
-  onClearSearch,
 }: Props) {
+  const { t } = useTranslation();
+  // Busca completa: o Painel é o dono (padrão benchmark) — resultados no cache,
+  // handoff da paleta chega via intent de navegação
+  const {
+    fullQuery,
+    fullResults,
+    fullPage,
+    fullTotalPages,
+    fullTotal,
+    fullLoading,
+    fullSearchInput,
+    searchFilters,
+    searchStats,
+    setFullSearchInput: onFullSearchInputChange,
+    runFullSearch: onRunFullSearch,
+    setSearchFilters: onSearchFiltersChange,
+    clearSearch: onClearSearch,
+  } = usePainelSearch({ onStatus });
   const { active: processingOp } = useProcessing();
   const [moveHit, setMoveHit] = useState<SearchHit | null>(null);
   const [moveSubmitting, setMoveSubmitting] = useState(false);
@@ -297,14 +299,14 @@ export function PainelView({
       const bds = (classification.business_domains || []).map((d) => ({ key: d.key, label: d.label || d.key }));
       const dts = (classification.document_types || []).map((d) => ({ key: d.key, label: d.label || d.key }));
       if (!bds.length || !dts.length) {
-        onStatus("Projeto sem domínios/tipos configurados");
+        onStatus(t("painel:moveModal.noTaxonomy"), "error");
         return;
       }
       setMoveBdOptions(bds);
       setMoveDtOptions(dts);
       setMoveHit(hit);
     } catch {
-      onStatus("Falha ao carregar profile para move");
+      onStatus(t("painel:moveModal.loadProfileFailed"), "error");
     }
   }
 
@@ -314,15 +316,15 @@ export function PainelView({
     setMoveError(null);
     try {
       await moveDocument(moveHit.project_id, moveHit.doc_id, targetBd, targetDt);
-      onStatus(`Documento movido para ${targetBd}/${targetDt}`);
+      onStatus(t("painel:moveModal.moved", { businessDomain: targetBd, documentType: targetDt }));
       setMoveHit(null);
       setMoveError(null);
-      emitDataRefresh();
+      invalidateAfterMove();
       onRunFullSearch(fullPage);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Falha ao mover documento";
+      const msg = e instanceof Error ? e.message : t("painel:moveModal.moveFailed");
       setMoveError(msg);
-      onStatus(msg);
+      onStatus(msg, "error");
     } finally {
       setMoveSubmitting(false);
     }
@@ -350,7 +352,7 @@ export function PainelView({
       )}
       <Card>
         <CardHeader>
-          <CardTitle>Painel</CardTitle>
+          <CardTitle>{t("painel:card.title")}</CardTitle>
         </CardHeader>
         <CardContent>
           {reconcileStatus?.running ? (
@@ -374,16 +376,21 @@ export function PainelView({
                 />
               </div>
               <p className="font-display text-sm font-semibold text-foreground-strong">
-                {reconcileStatus.progress_current ?? 0} / {reconcileStatus.progress_total ?? 0} docs
+                {t("painel:card.reconcileProgress", {
+                  current: reconcileStatus.progress_current ?? 0,
+                  total: reconcileStatus.progress_total ?? 0,
+                })}
                 {(reconcileStatus.progress_skipped ?? 0) > 0 && (
-                  <span className="ml-1 font-normal text-muted-foreground">(skip: {reconcileStatus.progress_skipped})</span>
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    {t("painel:card.reconcileSkipped", { count: reconcileStatus.progress_skipped })}
+                  </span>
                 )}
               </p>
               <p className="text-xs text-muted-foreground">
-                Projeto: <strong className="text-foreground">{reconcileStatus.progress_project ?? "—"}</strong>
+                {t("painel:card.projectLabel")} <strong className="text-foreground">{reconcileStatus.progress_project ?? "—"}</strong>
               </p>
               <p className="truncate font-mono text-[0.7rem] text-tertiary">
-                Arquivo: <span title={reconcileStatus.progress_file ?? ""}>{reconcileStatus.progress_file ?? "—"}</span>
+                {t("painel:card.fileLabel")} <span title={reconcileStatus.progress_file ?? ""}>{reconcileStatus.progress_file ?? "—"}</span>
               </p>
             </div>
           ) : (
@@ -393,21 +400,21 @@ export function PainelView({
                   <StatTile
                     icon={<FolderOpen aria-hidden />}
                     value={initializedCount}
-                    label="projetos inicializados"
-                    hint={projects.length > initializedCount ? `de ${projects.length} no total` : undefined}
+                    label={t("painel:card.statProjects")}
+                    hint={projects.length > initializedCount ? t("painel:card.statProjectsHint", { total: projects.length }) : undefined}
                   />
                   <StatTile
                     icon={<Database aria-hidden />}
                     value={dashboardStats?.total_documents ?? 0}
-                    label="documentos indexados"
+                    label={t("painel:card.statDocuments")}
                   />
-                  <StatTile icon={<Inbox aria-hidden />} value={triageItems.length} label="pendentes triagem" />
+                  <StatTile icon={<Inbox aria-hidden />} value={triageItems.length} label={t("painel:card.statTriage")} />
                 </div>
                 {(dashboardStats?.by_project_id?.length ?? 0) > 0 && (
                   <div className="mini-table overflow-hidden rounded-lg border border-border">
                     <div className="mini-row header grid grid-cols-[1fr_auto] gap-2 border-b border-border bg-panel-strong px-3 py-1.5 font-mono text-[0.68rem] uppercase tracking-wide text-tertiary">
-                      <span>Projeto</span>
-                      <span>Docs</span>
+                      <span>{t("painel:card.tableProject")}</span>
+                      <span>{t("painel:card.tableDocs")}</span>
                     </div>
                     {dashboardStats!.by_project_id.map((b) => (
                       <div
@@ -449,36 +456,36 @@ export function PainelView({
                   />
                   <Button disabled={reconcilingNow} onClick={onReconcile}>
                     <RefreshCw className={reconcilingNow ? "animate-spin" : ""} />
-                    {reconcilingNow ? "Reconciliando..." : "Reconciliar INDEX"}
+                    {reconcilingNow ? t("painel:card.reconciling") : t("painel:card.reconcileButton")}
                   </Button>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  Ultima reconciliacao:{" "}
+                  {t("painel:card.lastReconcile")}{" "}
                   <strong className="text-foreground">{formatTimestamp(reconcileStatus?.last_run_finished_at)}</strong>
                 </span>
                 {(reconcileStatus?.summary.adjustments_applied ?? 0) > 0 && (
                   <span className="text-xs text-muted-foreground">
-                    Ajustes: <strong className="text-foreground">{reconcileStatus!.summary.adjustments_applied}</strong>
+                    {t("painel:card.adjustments")} <strong className="text-foreground">{reconcileStatus!.summary.adjustments_applied}</strong>
                   </span>
                 )}
                 {(reconcileStatus?.summary.indexed_docs ?? 0) > 0 && (
                   <span className="text-xs text-muted-foreground">
-                    Reindexados: <strong className="text-foreground">{reconcileStatus!.summary.indexed_docs}</strong>
+                    {t("painel:card.reindexed")} <strong className="text-foreground">{reconcileStatus!.summary.indexed_docs}</strong>
                   </span>
                 )}
                 {(reconcileStatus?.summary.skipped_docs ?? 0) > 0 && (
                   <span className="text-xs text-muted-foreground">
-                    Skip: <strong className="text-foreground">{reconcileStatus!.summary.skipped_docs}</strong>
+                    {t("painel:card.skip")} <strong className="text-foreground">{reconcileStatus!.summary.skipped_docs}</strong>
                   </span>
                 )}
                 {(reconcileStatus?.summary.failed_docs ?? 0) > 0 && (
                   <span className="text-xs text-destructive">
-                    Falhas: <strong>{reconcileStatus!.summary.failed_docs}</strong>
+                    {t("painel:card.failures")} <strong>{reconcileStatus!.summary.failed_docs}</strong>
                   </span>
                 )}
                 {(reconcileStatus?.summary.orphan_docs_deleted ?? 0) > 0 && (
                   <span className="text-xs text-muted-foreground">
-                    Orfaos: <strong className="text-foreground">{reconcileStatus!.summary.orphan_docs_deleted}</strong>
+                    {t("painel:card.orphans")} <strong className="text-foreground">{reconcileStatus!.summary.orphan_docs_deleted}</strong>
                   </span>
                 )}
               </div>
@@ -504,12 +511,12 @@ export function PainelView({
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="flex items-center gap-2">
               <Search size={15} className="text-accent" aria-hidden />
-              Resultados completos
-              <span className="font-mono text-xs font-normal text-tertiary">{fullTotal} resultado(s)</span>
+              {t("painel:results.title")}
+              <span className="font-mono text-xs font-normal text-tertiary">{t("painel:results.count", { count: fullTotal })}</span>
             </CardTitle>
             <Button variant="ghost" size="sm" onClick={onClearSearch}>
               <X />
-              Limpar busca
+              {t("painel:results.clearSearch")}
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -523,7 +530,7 @@ export function PainelView({
                   onKeyDown={(e) => {
                     if (e.key === "Enter") onRunFullSearch(1, fullSearchInput);
                   }}
-                  placeholder="Refinar busca..."
+                  placeholder={t("painel:results.refinePlaceholder")}
                 />
               </div>
               <Button
@@ -531,26 +538,26 @@ export function PainelView({
                 disabled={fullLoading || fullSearchInput.trim().length < 2}
                 onClick={() => onRunFullSearch(1, fullSearchInput)}
               >
-                Buscar
+                {t("painel:results.searchButton")}
               </Button>
             </div>
 
             {searchStats && (
               <div className="space-y-1.5">
                 <FacetChips
-                  label="Formato"
+                  label={t("painel:results.facetFormat")}
                   buckets={searchStats.by_doc_kind}
                   active={searchFilters.doc_kind}
                   onSelect={(v) => applyFilter({ doc_kind: v })}
                 />
                 <FacetChips
-                  label="Tipo"
+                  label={t("painel:results.facetType")}
                   buckets={searchStats.by_document_type}
                   active={searchFilters.document_type}
                   onSelect={(v) => applyFilter({ document_type: v })}
                 />
                 <FacetChips
-                  label="Domínio"
+                  label={t("painel:results.facetDomain")}
                   buckets={searchStats.by_business_domain}
                   active={searchFilters.business_domain}
                   onSelect={(v) => applyFilter({ business_domain: v })}
@@ -561,8 +568,8 @@ export function PainelView({
             {fullResults.length === 0 && !fullLoading ? (
               <EmptyState
                 icon={<Search aria-hidden />}
-                title="Nenhum resultado"
-                description={`Nada encontrado para “${fullQuery}” com os filtros atuais.`}
+                title={t("painel:results.emptyTitle")}
+                description={t("painel:results.emptyDescription", { query: fullQuery })}
               />
             ) : (
               <ul className="m-0 list-none space-y-2.5 p-0">
@@ -581,14 +588,14 @@ export function PainelView({
 
             <div className="flex items-center justify-between border-t border-border pt-3">
               <span className="font-mono text-xs text-tertiary">
-                pagina {fullPage}/{fullTotalPages}
+                {t("painel:results.page", { page: fullPage, totalPages: fullTotalPages })}
               </span>
               <div className="flex gap-2">
                 <Button variant="secondary" size="sm" disabled={fullLoading || fullPage <= 1} onClick={() => onRunFullSearch(fullPage - 1)}>
-                  Anterior
+                  {t("painel:results.previous")}
                 </Button>
                 <Button variant="secondary" size="sm" disabled={fullLoading || fullPage >= fullTotalPages} onClick={() => onRunFullSearch(fullPage + 1)}>
-                  Proxima
+                  {t("painel:results.next")}
                 </Button>
               </div>
             </div>

@@ -15,6 +15,42 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.33.0] -- 2026-07-19
+
+### Adicionado
+
+- **Internacionalização completa (PT-BR + EN-US)**: toda a interface passa a ser servida por catálogos i18next (12 namespaces, ~1.000 chaves por idioma, plurais reais e interpolação). PT-BR é o idioma-fonte e fallback; EN-US completo com teste automatizado de paridade estrutural (chaves e interpolações). Detecção automática pelo navegador no primeiro acesso, com seletor persistido em **Configuração → Preferências** (aba nova) e alternador discreto nas telas de primeiro acesso (gate de API key e wizard de onboarding).
+- **Códigos de erro estáveis no backend**: `HTTPException.detail` passa a ser `{code, params, message}` (62 codes SCREAMING_SNAKE, helper `app/http_errors.py`); blockers/suggestions de prontidão de datasets ganham `params`. O frontend resolve `code` → tradução do catálogo (`lib/apiError.ts`); mensagens dinâmicas de exceções de domínio seguem como texto cru por design. Lógica condicional usa exclusivamente `ApiError.code` — nunca texto exibido.
+- **Formatação regional central** (`lib/format.ts`): números, datas, percentuais e moeda via `Intl.*` no idioma ativo (pt-BR: "US$ 1,23", "92,0%", "19/07/2026"; en-US: "$1.23", "92.0%", "7/19/26"); date-fns e calendário com locale dinâmico; padrões de data por idioma no catálogo.
+- **Gate de integridade i18n** na suíte: toda chave `t()` estática do código é validada contra o catálogo; paridade PT×EN falha o build se divergirem.
+- **Prompts do assistente cientes de idioma**: resposta sempre no idioma das mensagens do usuário; títulos de gráfico e título automático de sessão no idioma da conversa (prompt canônico único, sem duplicação por idioma).
+- **Troca de idioma AO VIVO**: alterar o idioma (Preferências, gate ou wizard) aplica instantaneamente em toda a interface — sem reload, sem blink; a escolha persiste no navegador.
+- **Classificação bilíngue para corpus misto** (modelo SKOS/EuroVoc — key canônico + sinônimos multilíngues): o template `default` ganha ~146 aliases EN nos domínios/tipos e +20 termos EN nas detection_rules (documentos em inglês voltam a auto-rotear no bootstrap, sem mudança de código); `topics_v1.yaml` vira multilíngue (+315 sinônimos EN nos 94 tópicos, `language: multi`).
+- **Template `default-en`** (M&A / Carve-out em inglês): pastas, keys, labels, aliases e regras 100% EN para instalações EN-nativas; wizard e modal de novo projeto pré-selecionam o template pelo idioma da UI (o usuário pode escolher qualquer um).
+
+### Mudado
+
+- **Estado de servidor consolidado no TanStack Query v5** (F1–F3 do plano): cache por chave com invalidação por domínio substitui o bus de eventos manual; SSE alimenta o cache por uma ponte única (`useSseChannel`) com fallback-poll exclusivo; polls viram `refetchInterval`; `App.tsx` enxuto (busca e chat descem para as views; ~44 props eliminadas); persistência local centralizada em `lib/storage.ts`.
+- **Classificador promovido a tela de primeiro nível** na sidebar (era aba da Configuração) — é um agente operacional como o Assistente. Configuração fica com Perfil/Templates/Acesso/Preferências.
+- **Severidade de status estrutural**: toasts de erro/informação são classificados pelo emissor (`onStatus(msg, severity)`), não por regex sobre o texto.
+- **Ortografia PT-BR corrigida no catálogo**: 47 strings sem acentuação herdadas da UI legada ("Ultima reconciliacao", "Decisao registrada", "correcao"...) e 9 em inglês técnico agora em PT correto; plurais "(s)"/"(ões)" viraram plurais gramaticais reais.
+
+### Corrigido
+
+- Paleta ⌘K não listava o Classificador no grupo Navegação.
+- Motivo de rejeição (`sem_texto_extraivel`) e status do último ciclo (`succeeded`) exibidos como código cru — agora traduzidos.
+- Detail de erro do backend em formato dict quebrava a exibição (`[object Object]`) — parse central em `lib/apiError.ts` com fallback.
+
+---
+
+## [0.32.1] -- 2026-07-19
+
+### Corrigido
+
+- **Keep-alive também nas abas da Configuração**: alternar entre Perfil/Classificador/Templates/Acesso desmontava o conteúdo da aba inativa (Radix Tabs default) — o Perfil do projeto voltava ao estado inicial. Agora as abas usam `forceMount` (inativa fica oculta, não desmontada): rascunhos, colapsáveis e estado interno sobrevivem à alternância, no mesmo padrão do keep-alive das telas.
+
+---
+
 ## [0.32.0] -- 2026-07-19
 
 ### Mudado

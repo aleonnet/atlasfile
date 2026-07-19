@@ -1,0 +1,100 @@
+{
+  "view": {
+    "tabListAria": "Assistente",
+    "agentName": "Assistente",
+    "tabChat": "Chat",
+    "tabUsage": "Uso e custo"
+  },
+  "panel": {
+    "savingSession": "Salvando sessão…"
+  },
+  "toolbar": {
+    "modelLabel": "Modelo",
+    "settingsTitle": "Configuração (modelo e API Key)",
+    "thinkingToggle": "Mostrar/ocultar raciocínio do assistente",
+    "thinkingUnsupported": "Este modelo não suporta reasoning/thinking",
+    "newSession": "Nova sessão",
+    "historyTitle": "Histórico de sessões",
+    "historyClose": "Fechar histórico de sessões",
+    "telegramConnectedTitle": "Telegram conectado — clique para desconectar",
+    "telegramDisconnectedTitle": "Telegram desconectado — clique para conectar",
+    "telegramDisconnectAria": "Desconectar Telegram",
+    "telegramConnectAria": "Conectar Telegram"
+  },
+  "history": {
+    "searchPlaceholder": "Buscar…",
+    "searchAria": "Filtrar sessões por título",
+    "loading": "Carregando…",
+    "empty": "Nenhuma sessão encontrada.",
+    "untitled": "Sem título",
+    "editTitle": "Editar título",
+    "deleteSession": "Excluir sessão",
+    "groups": {
+      "today": "Hoje",
+      "oneDay": "1 dia",
+      "twoDays": "2 dias",
+      "threeDays": "3 dias",
+      "fourDays": "4 dias",
+      "fiveDays": "5 dias",
+      "sixDays": "6 dias",
+      "oneWeek": "1 semana",
+      "twoWeeks": "2 semanas",
+      "threeWeeks": "3 semanas",
+      "oneMonth": "1 mês",
+      "threeMonths": "3 meses",
+      "previous": "Anterior"
+    }
+  },
+  "empty": {
+    "title": "Como posso ajudar?",
+    "subtitle": "Pergunto ao acervo do projeto e cito as fontes. Use Config para modelo e API Key."
+  },
+  "starters": {
+    "whatsNewLabel": "O que chegou de novo?",
+    "whatsNewPrompt": "Quais documentos foram adicionados recentemente ao projeto?",
+    "overviewLabel": "Panorama por área",
+    "overviewPrompt": "Me dê um panorama do acervo: quantos documentos por área de negócio?",
+    "proposalsLabel": "Buscar propostas",
+    "proposalsPrompt": "Encontre propostas comerciais no acervo e liste as principais."
+  },
+  "compose": {
+    "placeholder": "Mensagem (↵ enviar, Shift+↵ quebra de linha, cole imagens)",
+    "placeholderWithAttachments": "Adicione uma mensagem ou cole mais imagens...",
+    "messageLabel": "Mensagem",
+    "attachmentAlt": "Anexo",
+    "removeAttachment": "Remover anexo",
+    "stop": "Parar",
+    "send": "Enviar"
+  },
+  "message": {
+    "you": "Você",
+    "userInitial": "U",
+    "viewImageLarger": "Ver imagem em tamanho maior",
+    "attachmentAlt": "Anexo",
+    "imageModalAria": "Imagem em tamanho maior",
+    "attachedImageAlt": "Imagem anexada",
+    "close": "Fechar",
+    "toolsUsed": "Ferramentas usadas"
+  },
+  "citation": {
+    "openTitle": "Abrir {{filename}}",
+    "notFound": "Documento citado não encontrado no índice: {{filename}}",
+    "resolveFailed": "Falha ao localizar o documento citado"
+  },
+  "context": {
+    "tooltip": "Contexto da sessão: {{pct}}% utilizado",
+    "criticalTooltip": "Contexto: {{pct}}% utilizado — clique para iniciar uma nova sessão."
+  },
+  "thinking": {
+    "aria": "Pensando",
+    "label": "Pensando..."
+  },
+  "session": {
+    "autoTitle": "Conversa {{date}}",
+    "saveFailed": "Falha ao salvar sessão automaticamente",
+    "networkError": "Erro de rede. Verifique se a API está rodando (ex.: http://localhost:8000) e se o backend está acessível.",
+    "chatError": "Erro no chat",
+    "historyLoadFailed": "Falha ao carregar histórico de sessões",
+    "sessionLoadFailed": "Falha ao carregar sessão"
+  }
+}

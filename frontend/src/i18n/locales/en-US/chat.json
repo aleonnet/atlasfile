@@ -1,0 +1,100 @@
+{
+  "view": {
+    "tabListAria": "Assistant",
+    "agentName": "Assistant",
+    "tabChat": "Chat",
+    "tabUsage": "Usage & cost"
+  },
+  "panel": {
+    "savingSession": "Saving session…"
+  },
+  "toolbar": {
+    "modelLabel": "Model",
+    "settingsTitle": "Settings (model and API Key)",
+    "thinkingToggle": "Show/hide assistant reasoning",
+    "thinkingUnsupported": "This model does not support reasoning/thinking",
+    "newSession": "New session",
+    "historyTitle": "Session history",
+    "historyClose": "Close session history",
+    "telegramConnectedTitle": "Telegram connected — click to disconnect",
+    "telegramDisconnectedTitle": "Telegram disconnected — click to connect",
+    "telegramDisconnectAria": "Disconnect Telegram",
+    "telegramConnectAria": "Connect Telegram"
+  },
+  "history": {
+    "searchPlaceholder": "Search…",
+    "searchAria": "Filter sessions by title",
+    "loading": "Loading…",
+    "empty": "No sessions found.",
+    "untitled": "Untitled",
+    "editTitle": "Edit title",
+    "deleteSession": "Delete session",
+    "groups": {
+      "today": "Today",
+      "oneDay": "1 day",
+      "twoDays": "2 days",
+      "threeDays": "3 days",
+      "fourDays": "4 days",
+      "fiveDays": "5 days",
+      "sixDays": "6 days",
+      "oneWeek": "1 week",
+      "twoWeeks": "2 weeks",
+      "threeWeeks": "3 weeks",
+      "oneMonth": "1 month",
+      "threeMonths": "3 months",
+      "previous": "Older"
+    }
+  },
+  "empty": {
+    "title": "How can I help?",
+    "subtitle": "I query the project library and cite my sources. Use Settings for model and API Key."
+  },
+  "starters": {
+    "whatsNewLabel": "What's new?",
+    "whatsNewPrompt": "Which documents were recently added to the project?",
+    "overviewLabel": "Overview by area",
+    "overviewPrompt": "Give me an overview of the library: how many documents per business area?",
+    "proposalsLabel": "Find proposals",
+    "proposalsPrompt": "Find business proposals in the library and list the main ones."
+  },
+  "compose": {
+    "placeholder": "Message (↵ to send, Shift+↵ for a new line, paste images)",
+    "placeholderWithAttachments": "Add a message or paste more images...",
+    "messageLabel": "Message",
+    "attachmentAlt": "Attachment",
+    "removeAttachment": "Remove attachment",
+    "stop": "Stop",
+    "send": "Send"
+  },
+  "message": {
+    "you": "You",
+    "userInitial": "U",
+    "viewImageLarger": "View image at full size",
+    "attachmentAlt": "Attachment",
+    "imageModalAria": "Full-size image",
+    "attachedImageAlt": "Attached image",
+    "close": "Close",
+    "toolsUsed": "Tools used"
+  },
+  "citation": {
+    "openTitle": "Open {{filename}}",
+    "notFound": "Cited document not found in the index: {{filename}}",
+    "resolveFailed": "Failed to locate the cited document"
+  },
+  "context": {
+    "tooltip": "Session context: {{pct}}% used",
+    "criticalTooltip": "Context: {{pct}}% used — click to start a new session."
+  },
+  "thinking": {
+    "aria": "Thinking",
+    "label": "Thinking..."
+  },
+  "session": {
+    "autoTitle": "Chat {{date}}",
+    "saveFailed": "Failed to auto-save session",
+    "networkError": "Network error. Check that the API is running (e.g. http://localhost:8000) and the backend is reachable.",
+    "chatError": "Chat error",
+    "historyLoadFailed": "Failed to load session history",
+    "sessionLoadFailed": "Failed to load session"
+  }
+}

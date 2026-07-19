@@ -2,6 +2,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InboxScanCard } from "./InboxScanCard";
+import { renderWithProviders } from "../../test/utils";
 
 vi.mock("../../api", () => ({
   triggerScan: vi.fn(() =>
@@ -42,7 +43,7 @@ describe("InboxScanCard", () => {
 
   it("calls triggerScan on button click and notifies completion", async () => {
     const props = defaultProps();
-    render(<InboxScanCard {...props} />);
+    renderWithProviders(<InboxScanCard {...props} />);
 
     await act(async () => {
       fireEvent.click(screen.getByText(/Processar INBOX/i));
@@ -97,7 +98,7 @@ describe("InboxScanCard", () => {
         .mockResolvedValueOnce(idle as never)
         .mockResolvedValueOnce(running as never);
 
-      render(<InboxScanCard {...defaultProps()} />);
+      renderWithProviders(<InboxScanCard {...defaultProps()} />);
       await act(async () => {
         fireEvent.click(screen.getByText(/Processar INBOX/i));
       });

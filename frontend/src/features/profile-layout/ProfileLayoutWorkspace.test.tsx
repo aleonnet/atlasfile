@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ProfileLayoutWorkspace } from "./ProfileLayoutWorkspace";
+import { renderWithProviders } from "../../test/utils";
 
 const baseProfile = {
   profile_version: 2 as const,
@@ -80,7 +81,7 @@ vi.mock("./api", () => ({
 
 describe("ProfileLayoutWorkspace", () => {
   it("mostra mensagem de projeto específico quando disabled", () => {
-    render(<ProfileLayoutWorkspace projectRef="ALL_PROJECTS" disabled />);
+    renderWithProviders(<ProfileLayoutWorkspace projectRef="ALL_PROJECTS" disabled />);
     expect(screen.getByText(/Selecione um projeto específico/i)).toBeInTheDocument();
   });
 
@@ -88,7 +89,7 @@ describe("ProfileLayoutWorkspace", () => {
     const onStatus = vi.fn();
     const api = await import("./api");
 
-    render(<ProfileLayoutWorkspace projectRef="proj1" onStatus={onStatus} />);
+    renderWithProviders(<ProfileLayoutWorkspace projectRef="proj1" onStatus={onStatus} />);
 
     await waitFor(() => {
       expect(screen.getByText(/Estrutura de Layout/i)).toBeInTheDocument();
@@ -118,7 +119,7 @@ describe("ProfileLayoutWorkspace", () => {
   });
 
   it("desabilita salvar quando não há mudança e habilita ao editar", async () => {
-    render(<ProfileLayoutWorkspace projectRef="proj1" />);
+    renderWithProviders(<ProfileLayoutWorkspace projectRef="proj1" />);
 
     await waitFor(() => {
       expect(screen.getByText(/Estrutura de Layout/i)).toBeInTheDocument();

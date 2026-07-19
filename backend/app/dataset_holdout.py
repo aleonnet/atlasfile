@@ -378,6 +378,7 @@ def dataset_readiness() -> dict[str, Any]:
             blockers.append(
                 {
                     "code": "validation_empty",
+                    "params": {},
                     "message": (
                         "O conjunto de validação não tem documentos rotulados. Aprove ou corrija "
                         "documentos na triagem — a partir da 2ª decisão, uma passa a compor a "
@@ -390,6 +391,7 @@ def dataset_readiness() -> dict[str, Any]:
         suggestions.append(
             {
                 "code": "sparse_gate_not_met",
+                "params": {"records": len(records)},
                 "message": (
                     f"Benchmark sparse será pulado: são necessários 100 documentos de treino "
                     f"(há {len(records)})."

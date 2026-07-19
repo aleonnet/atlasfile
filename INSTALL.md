@@ -217,6 +217,8 @@ docker compose ps
 
 Abra <http://localhost:5173> — a interface deve carregar com o seletor de projetos no header.
 
+O idioma da interface (PT-BR ou EN-US) é detectado pelo navegador no primeiro acesso; para trocar manualmente, use **Configuração → Preferências → Idioma** (ou o alternador no rodapé da tela de API key / onboarding). A escolha persiste no navegador.
+
 ### Backend
 
 ```bash

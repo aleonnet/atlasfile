@@ -1,0 +1,44 @@
+{
+  "action": {
+    "approve": "Aprovar",
+    "correct": "Corrigir",
+    "reject": "Rejeitar",
+    "restore": "Restaurar",
+    "delete": "Excluir",
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "close": "Fechar",
+    "back": "Voltar",
+    "skip": "Pular",
+    "confirm": "Confirmar",
+    "reload": "Recarregar",
+    "update": "Atualizar",
+    "show": "mostrar",
+    "hide": "ocultar",
+    "no": "Não"
+  },
+  "state": {
+    "loading": "Carregando...",
+    "processing": "processando",
+    "ready": "Pronto",
+    "online": "online"
+  },
+  "allProjects": "Todos os projetos",
+  "dateFormat": {
+    "short": "dd/MM/yyyy"
+  },
+  "dateRange": {
+    "days7": "7 dias",
+    "days30": "30 dias",
+    "days90": "90 dias",
+    "months12": "12 meses"
+  },
+  "unit": {
+    "file_one": "{{count}} arquivo",
+    "file_other": "{{count}} arquivos",
+    "document_one": "{{count}} documento",
+    "document_other": "{{count}} documentos",
+    "result_one": "{{count}} resultado",
+    "result_other": "{{count}} resultados"
+  }
+}

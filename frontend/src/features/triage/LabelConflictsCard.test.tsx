@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LabelConflictsCard } from "./LabelConflictsCard";
+import { renderWithProviders } from "../../test/utils";
 
 const mockConflict = {
   sha256: "abc123",
@@ -42,14 +43,14 @@ describe("LabelConflictsCard", () => {
 
   it("não renderiza nada sem conflitos", async () => {
     vi.mocked(fetchLabelConflicts).mockResolvedValue({ total: 0, items: [] });
-    const { container } = render(<LabelConflictsCard />);
+    const { container } = renderWithProviders(<LabelConflictsCard />);
     await waitFor(() => expect(fetchLabelConflicts).toHaveBeenCalled());
     expect(container.firstChild).toBeNull();
   });
 
   it("mostra conflito com fontes e proposta do LLM", async () => {
     vi.mocked(fetchLabelConflicts).mockResolvedValue({ total: 1, items: [mockConflict] });
-    render(<LabelConflictsCard />);
+    renderWithProviders(<LabelConflictsCard />);
     expect(await screen.findByText("Conflitos de rótulo")).toBeInTheDocument();
     expect(screen.getByText("Plano Twist2.pdf")).toBeInTheDocument();
     expect(screen.getByText("operacoes/contrato")).toBeInTheDocument();
@@ -62,8 +63,11 @@ describe("LabelConflictsCard", () => {
     vi.mocked(fetchLabelConflicts).mockResolvedValue({ total: 1, items: [mockConflict] });
     vi.mocked(resolveLabelConflict).mockResolvedValue({ status: "ok", labeled_by: "human_confirmed_llm" });
     const onResolved = vi.fn();
-    render(<LabelConflictsCard onResolved={onResolved} />);
+    renderWithProviders(<LabelConflictsCard onResolved={onResolved} />);
+    // após resolver, o backend deixa de listar o conflito — o refetch da
+    // invalidation traz a lista vazia (era remoção otimista local antes)
     fireEvent.click(await screen.findByText("Aceitar proposta"));
+    vi.mocked(fetchLabelConflicts).mockResolvedValue({ total: 0, items: [] });
     await waitFor(() =>
       expect(resolveLabelConflict).toHaveBeenCalledWith("abc123", "operacoes", "plano")
     );
@@ -74,7 +78,7 @@ describe("LabelConflictsCard", () => {
   it("corrigir permite escolher uma das fontes", async () => {
     vi.mocked(fetchLabelConflicts).mockResolvedValue({ total: 1, items: [mockConflict] });
     vi.mocked(resolveLabelConflict).mockResolvedValue({ status: "ok", labeled_by: "human" });
-    render(<LabelConflictsCard />);
+    renderWithProviders(<LabelConflictsCard />);
     fireEvent.click(await screen.findByText("Corrigir"));
     fireEvent.change(screen.getByLabelText("Rótulo canônico"), { target: { value: "operacoes/apresentacao" } });
     fireEvent.click(screen.getByText("Aplicar canônico"));
@@ -91,7 +95,7 @@ describe("LabelConflictsCard", () => {
     vi.mocked(fetchLabelConflicts).mockResolvedValue({ total: 1, items: [conflictNovoTipo] });
     vi.mocked(createTaxonomyEntry).mockResolvedValue({ status: "ok", key: "memorando", updated_projects: ["p1"] });
     vi.mocked(resolveLabelConflict).mockResolvedValue({ status: "ok", labeled_by: "human_confirmed_llm" });
-    render(<LabelConflictsCard />);
+    renderWithProviders(<LabelConflictsCard />);
 
     expect(await screen.findByText(/usa taxonomia nova/)).toBeInTheDocument();
     fireEvent.click(screen.getByText("Aceitar proposta"));

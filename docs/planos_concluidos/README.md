@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.33.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [frontend_sota_tanstack_query_i18n_ptbr_enus_v0330](frontend_sota_tanstack_query_i18n_ptbr_enus_v0330.plan.md) | Consolidação SOTA do frontend em 6 fases: TanStack Query v5 como camada única de server-state (bus de eventos aposentado, SSE→cache via ponte única, App slim); i18n completo PT-BR/EN-US (i18next, 12 namespaces, ~1.000 chaves/idioma, paridade testada, detecção + seletor persistido + alternador no gate/wizard); códigos de erro estáveis no backend (`{code, params, message}`, 62 codes) resolvidos pela UI; formatação regional via Intl (`lib/format.ts`); Classificador promovido a tela da sidebar; severidade de status estrutural; ortografia PT do catálogo corrigida |
+
+---
+
 ## 0.26.0
 
 | # | Plano | Escopo |

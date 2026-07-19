@@ -1,0 +1,89 @@
+{
+  "queue": {
+    "title": "Triagem pendente",
+    "waiting_one": "{{count}} documento aguardando decisão",
+    "waiting_other": "{{count}} documentos aguardando decisão",
+    "suggestion": "sugestão:",
+    "noSuggestion": "sem sugestão",
+    "noExtractableText": "sem texto extraível (OCR vazio) — decida manualmente",
+    "confidence": "confiança",
+    "noDomainSuggestion": "Sem sugestão de domínio"
+  },
+  "rejected": {
+    "title": "Rejeitados",
+    "orphanRecord": "registro órfão (sem arquivo)",
+    "rejected": "rejeitado",
+    "restoreTitle": "Devolver à fila de triagem",
+    "deleteAria": "Excluir {{filename}} definitivamente",
+    "confirmDelete": "Excluir definitivamente? O arquivo será apagado do disco.",
+    "restored": "\"{{filename}}\" devolvido à fila de triagem",
+    "deleted": "\"{{filename}}\" excluído definitivamente",
+    "restoreFailed": "Falha ao restaurar",
+    "deleteFailed": "Falha ao excluir",
+    "restoring": "Restaurando — devolvendo à fila de triagem",
+    "deleting": "Excluindo — apagando arquivo e registro",
+    "reason": {
+      "sem_texto_extraivel": "sem texto extraível (OCR vazio)",
+      "below_triage_min": "confiança abaixo do mínimo"
+    }
+  },
+  "correctModal": {
+    "label": "Aprovar com correção",
+    "title": "Aprovar com correção",
+    "fileLabel": "Arquivo:",
+    "domainMissingBefore": "A sugestão de domínio",
+    "domainMissingAfter": "não existe na taxonomia do projeto. Selecione um domínio já configurado.",
+    "llmDomainMissingBefore": "O domínio proposto pelo LLM",
+    "llmDomainMissingAfter": "não está configurado no projeto. Escolha um domínio válido do catálogo.",
+    "typeMissingBefore": "O tipo documental sugerido",
+    "typeMissingAfter": "não existe no profile atual. Selecione um tipo já configurado.",
+    "targetDomain": "Domínio destino",
+    "documentType": "Tipo documental",
+    "createLink": "+ O destino certo não existe? Criar novo tipo ou domínio",
+    "approving": "Aprovando — movendo e indexando…",
+    "submit": "Aprovar e mover"
+  },
+  "conflicts": {
+    "title": "Conflitos de rótulo",
+    "description": "O mesmo arquivo recebeu rótulos diferentes em curadorias distintas — escolha o canônico. A decisão atualiza os dados de treino/validação do classificador.",
+    "llmProposalLabel": "proposta do LLM:",
+    "confidence": "conf {{value}}",
+    "newTaxonomyNotice": "usa taxonomia nova — aceitar vai propor a criação no template",
+    "applying": "Aplicando...",
+    "acceptProposal": "Aceitar proposta",
+    "resolveTitle": "Resolver conflito de rótulo",
+    "fileLabel": "Arquivo:",
+    "canonicalLabel": "Rótulo canônico",
+    "proposalOption": "{{pair}} — proposta do LLM",
+    "customOption": "Personalizado…",
+    "customBdPlaceholder": "ex: operacoes",
+    "customDtPlaceholder": "ex: plano",
+    "applyCanonical": "Aplicar canônico",
+    "createLabel": "Criar taxonomia",
+    "createTitle": "Criar no template e aplicar",
+    "createIntroChoice": "A escolha",
+    "createIntroUsage_one": "usa uma entrada que não existe na taxonomia. Criar agora atualiza o template",
+    "createIntroUsage_other": "usa entradas que não existem na taxonomia. Criar agora atualiza o template",
+    "createIntroAfter": "e os profiles de todos os projetos — o classificador bootstrap passa a reconhecer imediatamente pelos aliases.",
+    "newEntry": {
+      "document_type": "Novo tipo documental",
+      "business_domain": "Novo domínio de negócio"
+    },
+    "labelField": "Label",
+    "aliasesLabel": "Aliases (vírgula) — é o que o bootstrap usa para classificar",
+    "aliasesPlaceholder": "ex: plano, plano de trabalho, cronograma",
+    "creating": "Criando...",
+    "createAndApply": "Criar e aplicar",
+    "kindShort": {
+      "document_type": "Tipo",
+      "business_domain": "Domínio"
+    },
+    "createdToast": "{{kindLabel}} `{{key}}` criado no template",
+    "createdSuffix_one": " e em {{count}} projeto",
+    "createdSuffix_other": " e em {{count}} projetos",
+    "createFailed": "Falha ao criar entrada de taxonomia",
+    "resolvedToast": "Rótulo canônico aplicado: {{pair}}",
+    "llmConfirmedSuffix": " (proposta do LLM confirmada)",
+    "resolveFailed": "Falha ao aplicar a resolução do conflito"
+  }
+}

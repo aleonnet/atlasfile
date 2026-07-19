@@ -1,16 +1,14 @@
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   fetchChannelConfig,
   fetchChannelStatus,
   fetchHealth,
   fetchProjectProfile,
-  fetchReconcileStatus,
   fetchSetupStatus,
   fetchStats,
   fetchTriage,
-  getReconcileStatusStreamUrl,
-  runReconcile,
   setUnauthorizedHandler,
   triageDecision,
   updateChannelConfig,
@@ -20,16 +18,27 @@ import { Input } from "./components/ui/input";
 import { fieldLabelClass, ModalActions, ModalShell } from "./components/ui/modal-shell";
 import { Toaster, toast } from "./components/ui/sonner";
 import { MiniOrb } from "./components/ui/processing-aura";
-import { emitDataRefresh, onDataRefresh } from "./lib/refreshBus";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
+import { qk } from "./lib/queryKeys";
+import { ApiError } from "./lib/apiError";
+import { STORAGE_KEYS, storageGet } from "./lib/storage";
+import { useReconcileMonitor } from "./hooks/useReconcileMonitor";
+import {
+  invalidateAfterReconcile,
+  invalidateAfterScan,
+  invalidateAfterTriageDecision,
+} from "./lib/mutations";
 import { NavigationProvider, useNavigation, type ViewKind } from "./contexts/NavigationContext";
 import { ALL_PROJECTS, ProjectProvider, useProject } from "./contexts/ProjectContext";
 import { SettingsProvider, useSettings } from "./contexts/SettingsContext";
 import { formatDecisionAction, formatDecisionPhase, ProcessingProvider, useProcessing } from "./contexts/ProcessingContext";
-import { useChatSession } from "./hooks/useChatSession";
-import { useSearch } from "./hooks/useSearch";
+import { useQuickSearch } from "./hooks/useQuickSearch";
 import { CommandPalette } from "./layouts/CommandPalette";
 import { Sidebar } from "./layouts/Sidebar";
 import { Topbar } from "./layouts/Topbar";
+import { ClassificadorView } from "./views/ClassificadorView";
 import { ConfigView } from "./views/ConfigView";
 import { PainelView } from "./views/PainelView";
 import { AssistantSettingsModal } from "./features/settings/AssistantSettingsModal";
@@ -45,15 +54,17 @@ import type {
   ProjectDocumentType,
   ReconcileStatus,
   StatsResponse,
+  StatusSeverity,
   TriageItem,
 } from "./types";
 
-const ONBOARDING_DONE_KEY = "atlasfile-onboarding-done";
-const TG_TOKEN_STORAGE_KEY = "atlasfile-telegram-bot-token";
+const ONBOARDING_DONE_KEY = STORAGE_KEYS.onboardingDone;
+const TG_TOKEN_STORAGE_KEY = STORAGE_KEYS.telegramBotToken;
 const SLUG_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
 function AppShell() {
-  const { view, setView } = useNavigation();
+  const { t } = useTranslation();
+  const { view, setView, requestSearch } = useNavigation();
   const {
     theme,
     setTheme,
@@ -91,20 +102,26 @@ function AppShell() {
   useEffect(() => {
     setVisitedViews((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
   }, [view]);
-  const [status, setStatus] = useState("Pronto");
+  const [status, setStatus] = useState<{ text: string; severity: StatusSeverity }>(() => ({
+    text: t("painel:app.statusReady"),
+    severity: "info",
+  }));
+  // Canal de status estrutural: cada emissor declara a severidade (default
+  // "info") — zero sniffing de texto, funciona igual em qualquer idioma.
+  const handleStatus = useCallback((msg: string, severity: StatusSeverity = "info") => {
+    setStatus({ text: msg, severity });
+  }, []);
 
   // O footer .status morreu: mensagens de status viram um toast único que se
   // atualiza in-place (id fixo) — progresso contínuo não vira spam de toasts.
   useEffect(() => {
-    if (!status || status === "Pronto") return;
-    const isError = /falha|erro|negado|inválid/i.test(status);
-    toast[isError ? "error" : "message"](status, { id: "app-status" });
+    if (!status.text || status.text === t("painel:app.statusReady")) return;
+    toast[status.severity === "error" ? "error" : "message"](status.text, { id: "app-status" });
   }, [status]);
-  const [triageItems, setTriageItems] = useState<TriageItem[]>([]);
-  const [reconcileStatus, setReconcileStatus] = useState<ReconcileStatus | null>(null);
-  const [dashboardStats, setDashboardStats] = useState<StatsResponse | null>(null);
+
+
   const [initializingProjectId] = useState<string | null>(null);
-  const [reconcilingNow, setReconcilingNow] = useState(false);
+
   const [correctModalItem, setCorrectModalItem] = useState<TriageItem | null>(null);
   const [correctBusinessDomainOptions, setCorrectBusinessDomainOptions] = useState<ProjectArea[]>([]);
   const [correctBusinessDomainValue, setCorrectBusinessDomainValue] = useState("");
@@ -115,14 +132,11 @@ function AppShell() {
   const [templateModalProject, setTemplateModalProject] = useState<{ ref: string; label: string } | null>(null);
   const [newProjectModalOpen, setNewProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
-  const [telegramConnected, setTelegramConnected] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [appEnv, setAppEnv] = useState("production");
-  const reconcileEsRef = useRef<EventSource | null>(null);
 
-  const search = useSearch({ onStatus: setStatus });
-  const chat = useChatSession();
+  const quickSearch = useQuickSearch();
 
   useEffect(() => {
     setUnauthorizedHandler((httpStatus, detail) => {
@@ -132,49 +146,42 @@ function AppShell() {
         setAuthRequired(true);
         return;
       }
-      setStatus(`Acesso negado: ${detail || "API key sem permissão para este projeto."}`);
+      handleStatus(t("painel:app.accessDenied", { detail: detail || t("painel:app.accessDeniedDefault") }), "error");
     });
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
-    // Debounce + retry adaptativo: 1 blip transitório (restart de container,
-    // rede) não pode tremer o orb em "error" — exige 2 falhas seguidas; e em
-    // erro re-verifica a cada 5s (não 30s) para recuperar rápido sem reload.
-    let failures = 0;
-    let timer: number | undefined;
-    async function check() {
-      let ok = false;
+  // Health: query com poll adaptativo (30s ok / 5s em falha) e debounce de 2
+  // falhas seguidas — 1 blip transitório não pode tremer o orb em "error"
+  const healthQuery = useQuery({
+    queryKey: qk.health(),
+    queryFn: async () => {
       try {
-        ok = (await fetchHealth()).ok;
+        return (await fetchHealth()).ok;
       } catch {
-        ok = false;
+        return false;
       }
-      if (!mounted) return;
-      failures = ok ? 0 : failures + 1;
-      if (ok) setHealthOk(true);
-      else if (failures >= 2) setHealthOk(false);
-      timer = window.setTimeout(check, failures > 0 ? 5000 : 30000);
-    }
-    void check();
-    return () => {
-      mounted = false;
-      window.clearTimeout(timer);
-    };
-  }, []);
-
-  // Auto-connect Telegram do localStorage no boot + poll de status
+    },
+    refetchInterval: (query) => (query.state.data === false ? 5000 : 30000),
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+  const healthFailuresRef = useRef(0);
   useEffect(() => {
-    let mounted = true;
+    if (healthQuery.data === undefined) return;
+    if (healthQuery.data) {
+      healthFailuresRef.current = 0;
+      setHealthOk(true);
+    } else {
+      healthFailuresRef.current += 1;
+      if (healthFailuresRef.current >= 2) setHealthOk(false);
+    }
+  }, [healthQuery.data, healthQuery.dataUpdatedAt]);
+
+  // Auto-connect Telegram do localStorage no boot (one-shot); status via query 15s
+  useEffect(() => {
     async function autoConnect() {
-      const savedToken = (() => {
-        try {
-          return localStorage.getItem(TG_TOKEN_STORAGE_KEY) || "";
-        } catch {
-          return "";
-        }
-      })();
+      const savedToken = storageGet(TG_TOKEN_STORAGE_KEY) || "";
       if (!savedToken) return;
       try {
         const cfg = await fetchChannelConfig();
@@ -187,27 +194,18 @@ function AppShell() {
       } catch {
         /* backend ainda não pronto */
       }
-      try {
-        const st = await fetchChannelStatus();
-        if (mounted) setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
-      } catch {
-        /* ignore */
-      }
     }
-    autoConnect();
-    const poll = setInterval(async () => {
-      try {
-        const st = await fetchChannelStatus();
-        if (mounted) setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
-      } catch {
-        /* ignore */
-      }
-    }, 15000);
-    return () => {
-      mounted = false;
-      clearInterval(poll);
-    };
+    void autoConnect();
   }, []);
+  const channelStatusQuery = useQuery({
+    queryKey: qk.channelStatus(),
+    queryFn: fetchChannelStatus,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+  const telegramConnected =
+    channelStatusQuery.data?.channels.some((c) => c.channel_id === "telegram" && c.connected) ?? false;
 
   const handleToggleTelegram = async () => {
     const savedToken = (() => {
@@ -224,7 +222,7 @@ function AppShell() {
           channels_enabled: false,
           telegram: { enabled: false, bot_token: savedToken, mirror_responses: cfg.telegram.mirror_responses },
         });
-        setTelegramConnected(false);
+        void queryClient.invalidateQueries({ queryKey: qk.channelStatus() });
       } catch {
         /* ignore */
       }
@@ -239,8 +237,7 @@ function AppShell() {
           channels_enabled: true,
           telegram: { enabled: true, bot_token: savedToken, mirror_responses: cfg.telegram.mirror_responses },
         });
-        const st = await fetchChannelStatus();
-        setTelegramConnected(st.channels.some((c) => c.channel_id === "telegram" && c.connected));
+        void queryClient.invalidateQueries({ queryKey: qk.channelStatus() });
       } catch {
         /* ignore */
       }
@@ -262,105 +259,31 @@ function AppShell() {
       .catch(() => {});
   }, []);
 
-  async function loadTriage() {
-    if (!selectedProject) return;
-    try {
+  // Fila de triagem e stats do painel: caches — mutações invalidam, aqui só lê
+  const projectIds = projects.map((p) => p.project_id);
+  const triageQuery = useQuery({
+    queryKey: [...qk.triage.list(selectedProject || "none"), projectIds],
+    queryFn: async () => {
       if (selectedProject === ALL_PROJECTS) {
-        const batches = await Promise.all(projects.map((p) => fetchTriage(p.project_id)));
-        setTriageItems(batches.flat());
-      } else {
-        const data = await fetchTriage(selectedProject);
-        setTriageItems(data);
+        const batches = await Promise.all(projectIds.map((id) => fetchTriage(id)));
+        return batches.flat();
       }
-    } catch {
-      setStatus("Falha ao carregar triagem");
-    }
-  }
+      return fetchTriage(selectedProject);
+    },
+    enabled: !!selectedProject && (selectedProject !== ALL_PROJECTS || projectIds.length > 0),
+  });
+  const triageItems: TriageItem[] = triageQuery.data ?? [];
+  const statsQuery = useQuery({ queryKey: qk.stats(), queryFn: () => fetchStats() });
+  const dashboardStats: StatsResponse | null = statsQuery.data ?? null;
 
-  useEffect(() => {
-    void loadTriage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProject, projects]);
+  // Reconciliação: ponte SSE→Query única (boot retoma sozinho se estiver rodando)
+  const reconcile = useReconcileMonitor({ onStatus: handleStatus });
+  const reconcileStatus = reconcile.reconcileStatus;
+  const reconcilingNow = reconcile.reconciling;
 
-  useEffect(() => {
-    if (showOnboarding) return;
-    let cancelled = false;
-    (async () => {
-      // Boot é best-effort: falha aqui (API subindo, backend zerado no wizard)
-      // não vira toast — conectividade é sinalizada pelo orb de health
-      const [, currentReconcile] = await Promise.all([
-        refreshProjects().catch(() => undefined),
-        fetchReconcileStatus().catch(() => null),
-      ]);
-      if (cancelled) return;
-      if (currentReconcile) setReconcileStatus(currentReconcile);
-      fetchStats().then(setDashboardStats).catch(() => {});
+  // Boot: projects/stats/reconcile são queries — nada a orquestrar aqui; o
+  // canal de reconcile retoma sozinho se houver operação em andamento.
 
-      if (!currentReconcile?.running) return;
-      setReconcilingNow(true);
-      setStatus("Reconciliacao ja em andamento; atualizando progresso...");
-      const applyStatusMessage = (latest: ReconcileStatus) => {
-        if (latest.running) {
-          const proj = latest.progress_project ?? "—";
-          const file = latest.progress_file ?? "—";
-          setStatus(
-            `Reconciliando: ${latest.progress_current ?? 0} / ${latest.progress_total ?? 0} docs | Projeto: ${proj} | Arquivo: ${file}${(latest.progress_skipped ?? 0) > 0 ? ` (skip: ${latest.progress_skipped})` : ""}`
-          );
-        }
-      };
-      const finishReconcileFromLoad = async (latest: ReconcileStatus) => {
-        if (cancelled) return;
-        emitDataRefresh();
-        const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
-        const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
-        const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
-        setStatus(
-          `Reconciliacao concluida: ${latest.summary?.adjustments_applied ?? 0} ajuste(s), ${latest.summary?.indexed_docs ?? 0} doc(s) indexado(s)${skipMsg}${failMsg}${orphanMsg}`
-        );
-        setReconcilingNow(false);
-      };
-      const streamUrl = getReconcileStatusStreamUrl();
-      const es = new EventSource(streamUrl);
-      reconcileEsRef.current = es;
-      es.onmessage = async (e: MessageEvent) => {
-        if (cancelled) return;
-        const latest: ReconcileStatus = JSON.parse(e.data);
-        setReconcileStatus(latest);
-        applyStatusMessage(latest);
-        if (!latest.running) {
-          es.close();
-          reconcileEsRef.current = null;
-          await finishReconcileFromLoad(latest);
-        }
-      };
-      es.onerror = async () => {
-        es.close();
-        reconcileEsRef.current = null;
-        if (cancelled) return;
-        const latest = await fetchReconcileStatus();
-        setReconcileStatus(latest);
-        if (!latest.running) {
-          await finishReconcileFromLoad(latest);
-          return;
-        }
-        let running: boolean = !!latest.running;
-        while (running && !cancelled) {
-          await new Promise((r) => setTimeout(r, 1500));
-          const next = await fetchReconcileStatus();
-          setReconcileStatus(next);
-          applyStatusMessage(next);
-          running = !!next.running;
-        }
-        if (!cancelled) await finishReconcileFromLoad(await fetchReconcileStatus());
-      };
-    })().catch((err) => setStatus(`Falha ao carregar dados: ${err instanceof Error ? err.message : "erro desconhecido"}`));
-    return () => {
-      cancelled = true;
-      reconcileEsRef.current?.close();
-      reconcileEsRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showOnboarding]);
 
   async function handleSelectProject(nextProject: string) {
     if (nextProject === ALL_PROJECTS) {
@@ -381,84 +304,26 @@ function AppShell() {
     setTemplateModalProject(null);
     await refreshProjects();
     if (ref) setSelectedProject(ref);
-    setStatus("Projeto inicializado com sucesso");
+    handleStatus(t("painel:app.projectInitialized"));
   }
 
   async function handleReconcileNow() {
-    const scopeLabel = selectedProject === ALL_PROJECTS ? "todos os projetos" : selectedProjectLabel || selectedProject;
-    setReconcilingNow(true);
-    setStatus(`Iniciando reconciliacao de ${scopeLabel}...`);
-
-    const applyStatusMessage = (latest: ReconcileStatus) => {
-      if (latest.running) {
-        const proj = latest.progress_project ?? "—";
-        const file = latest.progress_file ?? "—";
-        setStatus(
-          `Reconciliando: ${latest.progress_current ?? 0} / ${latest.progress_total ?? 0} docs | Projeto: ${proj} | Arquivo: ${file}${(latest.progress_skipped ?? 0) > 0 ? ` (skip: ${latest.progress_skipped})` : ""}`
-        );
-      }
-    };
-
-    const finishReconcile = async (latest: ReconcileStatus) => {
-      emitDataRefresh();
-      const skipMsg = Number(latest.summary?.skipped_docs) > 0 ? `, ${latest.summary.skipped_docs} skip (inalterados)` : "";
-      const failMsg = Number(latest.summary?.failed_docs) > 0 ? `, ${latest.summary.failed_docs} falha(s)` : "";
-      const orphanMsg = Number(latest.summary?.orphan_docs_deleted) > 0 ? `, ${latest.summary.orphan_docs_deleted} orfao(s) removido(s)` : "";
-      setStatus(
-        `Reconciliacao concluida (${scopeLabel}): ${latest.summary?.adjustments_applied ?? 0} ajuste(s), ${latest.summary?.indexed_docs ?? 0} doc(s) indexado(s)${skipMsg}${failMsg}${orphanMsg}`
-      );
-      setReconcilingNow(false);
-    };
-
-    const subscribeToReconcileStream = () => {
-      const streamUrl = getReconcileStatusStreamUrl();
-      const es = new EventSource(streamUrl);
-      es.onmessage = async (e: MessageEvent) => {
-        const latest: ReconcileStatus = JSON.parse(e.data);
-        setReconcileStatus(latest);
-        applyStatusMessage(latest);
-        if (!latest.running) {
-          es.close();
-          await finishReconcile(latest);
-        }
-      };
-      es.onerror = async () => {
-        es.close();
-        const latest = await fetchReconcileStatus();
-        setReconcileStatus(latest);
-        if (!latest.running) {
-          await finishReconcile(latest);
-          return;
-        }
-        let running: boolean = !!latest.running;
-        while (running) {
-          await new Promise((r) => setTimeout(r, 1500));
-          const next = await fetchReconcileStatus();
-          setReconcileStatus(next);
-          applyStatusMessage(next);
-          running = !!next.running;
-        }
-        await finishReconcile(await fetchReconcileStatus());
-      };
-    };
-
+    const scopeLabel = selectedProject === ALL_PROJECTS ? t("painel:app.allProjectsScope") : selectedProjectLabel || selectedProject;
     try {
-      await runReconcile(selectedProject === ALL_PROJECTS ? undefined : selectedProject);
-      subscribeToReconcileStream();
+      await reconcile.start(selectedProject === ALL_PROJECTS ? undefined : selectedProject, scopeLabel);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Falha ao reconciliar";
-      if (msg.includes("ja em andamento")) {
-        setStatus("Reconciliacao ja em andamento; acompanhando progresso...");
-        subscribeToReconcileStream();
+      const msg = err instanceof Error ? err.message : t("painel:app.reconcileFailed");
+      if (err instanceof ApiError && err.code === "RECONCILE_IN_PROGRESS") {
+        handleStatus(t("painel:app.reconcileAlreadyRunning"));
+        void reconcile.start; // canal já acompanha via snapshot ativo
       } else {
-        setStatus(msg);
-        setReconcilingNow(false);
+        handleStatus(msg, "error");
       }
     }
   }
 
   async function openCorrectModal(item: TriageItem) {
-    setStatus(`Carregando catálogo de classificação de ${projectLabelById.get(item.project_id) || item.project_id}...`);
+    handleStatus(t("painel:app.loadingCatalog", { project: projectLabelById.get(item.project_id) || item.project_id }));
     try {
       const resp = await fetchProjectProfile(item.project_id);
       const classification = resp.profile.classification || {};
@@ -468,7 +333,7 @@ function AppShell() {
         label: area.label || area.key,
       }));
       if (!areas.length) {
-        setStatus("Projeto sem domínios configurados para correção");
+        handleStatus(t("painel:app.noDomainsForCorrection"), "error");
         return;
       }
       const suggestedDomain = item.suggested_business_domain || "";
@@ -479,7 +344,7 @@ function AppShell() {
         folder: entry.folder,
       }));
       if (!documentTypes.length) {
-        setStatus("Projeto sem tipos documentais configurados para correção");
+        handleStatus(t("painel:app.noTypesForCorrection"), "error");
         return;
       }
       const suggestedDocumentType = item.suggested_document_type || "";
@@ -490,9 +355,9 @@ function AppShell() {
       setCorrectBusinessDomainValue(suggestedDomainExists ? suggestedDomain : areas[0].key);
       setCorrectDocumentTypeValue(suggestedDocumentTypeExists ? suggestedDocumentType : documentTypes[0].key);
       setCorrectModalItem(item);
-      setStatus("Selecione domínio e tipo documental para aprovar com correção");
+      handleStatus(t("painel:app.selectDomainAndType"));
     } catch {
-      setStatus("Falha ao carregar catálogo para correção");
+      handleStatus(t("painel:app.loadCatalogFailed"), "error");
     }
   }
 
@@ -508,33 +373,21 @@ function AppShell() {
     processing.start({ docId: item.doc_id, projectId: item.project_id, filename: item.filename, action: "correct" });
     triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
       .then(() => {
-        emitDataRefresh();
-        setStatus(`Documento aprovado por correção e movido para ${businessDomainValue}/${documentTypeValue}`);
+        invalidateAfterTriageDecision();
+        handleStatus(t("painel:app.correctedAndMoved", { businessDomain: businessDomainValue, documentType: documentTypeValue }));
       })
       .catch(() => {
-        setStatus("Falha ao registrar correção");
-        void loadTriage();
+        handleStatus(t("painel:app.correctionFailed"), "error");
+        invalidateAfterTriageDecision();
       })
       .finally(() => processing.finish());
   }
 
-  /** Fonte única de reatividade: TODA mutação emite no bus; o App assina o
-   *  bus para triagem + stats (estado que vive aqui e nunca remonta), e os
-   *  cards derivados (histórico, inbox, rejeitados, projetos) assinam cada um
-   *  o seu — zero reloads de página, zero pontos esquecidos. */
+  /** Pós-scan (portal ou botão): invalidations finas — os caches certos
+   *  refetcham e todos os consumidores (cards, contexts) atualizam sozinhos. */
   const handleDataChanged = useCallback(() => {
-    emitDataRefresh();
+    invalidateAfterScan();
   }, []);
-
-  useEffect(
-    () =>
-      onDataRefresh(() => {
-        void loadTriage();
-        fetchStats().then(setDashboardStats).catch(() => {});
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedProject, projects]
-  );
 
   async function handleDecision(item: TriageItem, action: "approve" | "correct" | "reject") {
     if (action === "correct") {
@@ -544,14 +397,14 @@ function AppShell() {
     processing.start({ docId: item.doc_id, projectId: item.project_id, filename: item.filename, action });
     try {
       await triageDecision(item.project_id, item.doc_id, action);
-      emitDataRefresh();
+      invalidateAfterTriageDecision();
       if (action === "reject") {
-        setStatus("Documento rejeitado e movido para rejected com nome original");
+        handleStatus(t("painel:app.rejectedAndMoved"));
       } else {
-        setStatus(`Decisao registrada: ${action}`);
+        handleStatus(t("painel:app.decisionRecorded", { action }));
       }
     } catch {
-      setStatus("Falha ao registrar decisao");
+      handleStatus(t("painel:app.decisionFailed"), "error");
     } finally {
       processing.finish();
     }
@@ -607,14 +460,14 @@ function AppShell() {
           setNewProjectModalOpen(true);
           setNewProjectName("");
         }}
-        onOpenSearch={() => search.setSearchModalOpen(true)}
+        onOpenSearch={() => quickSearch.setOpen(true)}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar>
           {appEnv === "dev" && (
-            <Button variant="secondary" size="sm" onClick={handleReplayOnboarding} title="Replay Onboarding (dev only)">
-              <RefreshCw /> Onboarding
+            <Button variant="secondary" size="sm" onClick={handleReplayOnboarding} title={t("painel:app.replayOnboardingTitle")}>
+              <RefreshCw /> {t("painel:app.onboarding")}
             </Button>
           )}
         </Topbar>
@@ -632,21 +485,8 @@ function AppShell() {
             reconcilingNow={reconcilingNow}
             onReconcile={handleReconcileNow}
             onDecision={handleDecision}
-            onStatus={setStatus}
+            onStatus={handleStatus}
             onScanComplete={handleDataChanged}
-            fullQuery={search.fullQuery}
-            fullResults={search.fullResults}
-            fullPage={search.fullPage}
-            fullTotalPages={search.fullTotalPages}
-            fullTotal={search.fullTotal}
-            fullLoading={search.fullLoading}
-            fullSearchInput={search.fullSearchInput}
-            searchFilters={search.searchFilters}
-            searchStats={search.searchStats}
-            onFullSearchInputChange={search.setFullSearchInput}
-            onRunFullSearch={search.runFullSearch}
-            onSearchFiltersChange={search.setSearchFilters}
-            onClearSearch={search.clearSearch}
           />
           )}
         </div>
@@ -655,49 +495,37 @@ function AppShell() {
           {visitedViews.has("assistente") && (
           <AssistenteView
             selectedProject={selectedProject}
-            chatMessages={chat.chatMessages}
-            chatSending={chat.chatSending}
-            chatError={chat.chatError}
-            lastToolCalls={chat.lastToolCalls}
-            contextPressureRatio={chat.contextPressureRatio}
             selectedModel={selectedModel}
             models={models}
             onModelChange={setSelectedModel}
             onOpenSettings={() => setSettingsOpen(true)}
-            onSend={chat.handleChatSend}
-            onAbort={chat.handleChatAbort}
-            onNewSession={chat.handleChatNewSession}
             showThinking={showThinking}
             onShowThinkingChange={setShowThinking}
-            sessions={chat.sessions}
-            sessionsLoading={chat.sessionsLoading}
-            activeSessionId={chat.activeSessionId}
-            historyModalOpen={chat.historyModalOpen}
-            onOpenHistory={chat.openHistoryModal}
-            onCloseHistory={() => chat.setHistoryModalOpen(false)}
-            onSelectSession={chat.handleSelectSession}
-            onEditSession={chat.handleEditSession}
-            onDeleteSession={chat.handleDeleteSession}
-            savingSession={chat.savingSession}
             telegramConnected={telegramConnected}
             onToggleTelegram={handleToggleTelegram}
           />
           )}
         </div>
 
-        <div className={view === "config" ? "contents" : "hidden"}>
-          {visitedViews.has("config") && (
-          <ConfigView
+        <div className={view === "classificador" ? "contents" : "hidden"}>
+          {visitedViews.has("classificador") && (
+          <ClassificadorView
             selectedProject={selectedProject}
             selectedProjectLabel={selectedProjectLabel}
             triageItems={triageItems}
-            onStatus={setStatus}
+            onStatus={handleStatus}
             openaiApiKey={openaiApiKey}
             anthropicApiKey={anthropicApiKey}
             onOpenSettings={() => setSettingsOpen(true)}
             selectedModelTriage={selectedModelTriage}
             onChangeModelTriage={setSelectedModelTriage}
           />
+          )}
+        </div>
+
+        <div className={view === "config" ? "contents" : "hidden"}>
+          {visitedViews.has("config") && (
+          <ConfigView selectedProject={selectedProject} onStatus={handleStatus} />
           )}
         </div>
 
@@ -722,7 +550,7 @@ function AppShell() {
         <button
           type="button"
           onClick={() => setView("painel")}
-          title="Voltar ao Painel"
+          title={t("painel:app.backToPainel")}
           className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-full border border-border bg-panel py-2 pl-3 pr-4 font-mono text-[0.75rem] text-foreground shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition-transform hover:scale-[1.03]"
         >
           <MiniOrb />
@@ -736,16 +564,16 @@ function AppShell() {
       <GlobalDropPortal onScanComplete={handleDataChanged} />
 
       <CommandPalette
-        open={search.searchModalOpen}
-        onOpenChange={search.setSearchModalOpen}
-        query={search.query}
-        onQueryChange={search.setQuery}
-        hits={search.modalHits}
-        loading={search.modalLoading}
+        open={quickSearch.open}
+        onOpenChange={quickSearch.setOpen}
+        query={quickSearch.query}
+        onQueryChange={quickSearch.setQuery}
+        hits={quickSearch.hits}
+        loading={quickSearch.loading}
         onSubmitSearch={(q) => {
-          search.setFullSearchInput(q);
-          void search.runFullSearch(1, q);
-          setView("painel");
+          // Handoff benchmark: navegação com intent — o Painel semeia e busca
+          requestSearch(q);
+          quickSearch.setOpen(false);
         }}
         onSelectProject={(projectId) => void handleSelectProject(projectId)}
         onNewProject={() => {
@@ -807,37 +635,37 @@ function AppShell() {
               if (kind === "business_domain") setCorrectBusinessDomainValue(key);
               else setCorrectDocumentTypeValue(key);
             })
-            .catch(() => setStatus("Falha ao recarregar catálogo após criação"));
+            .catch(() => handleStatus(t("painel:app.reloadCatalogFailed"), "error"));
         }}
       />
 
       {newProjectModalOpen && (
-        <ModalShell label="Novo projeto" title="Novo projeto" size="sm">
-          <label className={fieldLabelClass} htmlFor="new-project-name">Nome do projeto (slug)</label>
+        <ModalShell label={t("painel:app.newProjectTitle")} title={t("painel:app.newProjectTitle")} size="sm">
+          <label className={fieldLabelClass} htmlFor="new-project-name">{t("painel:app.projectNameLabel")}</label>
           <Input
             id="new-project-name"
             type="text"
             className="font-mono"
             value={newProjectName}
             onChange={(e) => setNewProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ""))}
-            placeholder="meu_projeto"
+            placeholder={t("painel:app.projectNamePlaceholder")}
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter") handleNewProjectConfirm();
             }}
           />
-          <p className="mt-1.5 text-[0.72rem] text-tertiary">Apenas letras minúsculas, números, _ e - (sem espaços ou acentos)</p>
+          <p className="mt-1.5 text-[0.72rem] text-tertiary">{t("painel:app.projectNameHint")}</p>
           {newProjectName && !SLUG_RE.test(newProjectName) && (
             <p className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-[0.8rem] text-destructive">
-              Nome inválido
+              {t("painel:app.invalidName")}
             </p>
           )}
           <ModalActions>
             <Button variant="secondary" onClick={() => setNewProjectModalOpen(false)}>
-              Cancelar
+              {t("common:action.cancel")}
             </Button>
             <Button disabled={!newProjectName || !SLUG_RE.test(newProjectName)} onClick={handleNewProjectConfirm}>
-              Continuar
+              {t("painel:app.continue")}
             </Button>
           </ModalActions>
         </ModalShell>
@@ -848,16 +676,18 @@ function AppShell() {
 
 function App() {
   return (
-    <SettingsProvider>
+    <QueryClientProvider client={queryClient}>
+      <SettingsProvider>
         <ProjectProvider>
           <NavigationProvider>
             <ProcessingProvider>
-            <AppShell />
-            <Toaster />
+              <AppShell />
+              <Toaster />
             </ProcessingProvider>
-        </NavigationProvider>
-      </ProjectProvider>
-    </SettingsProvider>
+          </NavigationProvider>
+        </ProjectProvider>
+      </SettingsProvider>
+    </QueryClientProvider>
   );
 }
 

@@ -1,0 +1,44 @@
+{
+  "allProjects": "All projects",
+  "action": {
+    "approve": "Approve",
+    "correct": "Correct",
+    "reject": "Reject",
+    "restore": "Restore",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "back": "Back",
+    "skip": "Skip",
+    "confirm": "Confirm",
+    "reload": "Reload",
+    "update": "Update",
+    "show": "show",
+    "hide": "hide",
+    "no": "No"
+  },
+  "state": {
+    "loading": "Loading...",
+    "processing": "processing",
+    "ready": "Ready",
+    "online": "online"
+  },
+  "dateFormat": {
+    "short": "MM/dd/yyyy"
+  },
+  "dateRange": {
+    "days7": "7 days",
+    "days30": "30 days",
+    "days90": "90 days",
+    "months12": "12 months"
+  },
+  "unit": {
+    "file_one": "{{count}} file",
+    "file_other": "{{count}} files",
+    "document_one": "{{count}} document",
+    "document_other": "{{count}} documents",
+    "result_one": "{{count}} result",
+    "result_other": "{{count}} results"
+  }
+}

@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from ..config import settings
+from ..http_errors import http_error
 from ..models import (
     ChannelConfigTelegram,
     ChannelConfigUpdate,
@@ -128,13 +129,13 @@ async def get_channel_status() -> ChannelStatusResponse:
 async def test_channel(channel_id: str = "telegram") -> dict[str, Any]:
     cm = _get_channel_manager()
     if not cm:
-        raise HTTPException(status_code=400, detail="Channel manager not initialized")
+        raise http_error(400, "CHANNEL_MANAGER_NOT_INITIALIZED", "Channel manager not initialized")
 
     channel = cm.get_channel(channel_id)
     if not channel:
-        raise HTTPException(status_code=404, detail=f"Unknown channel: {channel_id}")
+        raise http_error(404, "CHANNEL_UNKNOWN", f"Unknown channel: {channel_id}", channel_id=channel_id)
 
     if not channel.is_running():
-        raise HTTPException(status_code=400, detail=f"Channel {channel_id} is not running")
+        raise http_error(400, "CHANNEL_NOT_RUNNING", f"Channel {channel_id} is not running", channel_id=channel_id)
 
     return {"ok": True, "channel_id": channel_id, "status": "running"}

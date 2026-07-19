@@ -1,0 +1,15 @@
+{
+  "decisionAction": {
+    "approve": "Aprovando",
+    "correct": "Corrigindo",
+    "reject": "Rejeitando"
+  },
+  "decisionPhase": {
+    "preparando": "preparando",
+    "movendo_arquivo": "movendo arquivo",
+    "extraindo_conteudo": "extraindo conteúdo",
+    "indexando": "indexando para busca",
+    "atualizando_datasets": "atualizando datasets",
+    "fallback": "processando"
+  }
+}

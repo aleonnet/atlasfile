@@ -1,16 +1,17 @@
 import { animate, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { formatNumber } from "../../lib/format";
 
 type Props = {
   value: number;
   className?: string;
   /** Duração da contagem em segundos. */
   duration?: number;
-  /** Formatação do valor exibido (default: inteiro pt-BR). */
+  /** Formatação do valor exibido (default: inteiro no idioma ativo). */
   format?: (n: number) => string;
 };
 
-const defaultFormat = (n: number) => Math.round(n).toLocaleString("pt-BR");
+const defaultFormat = (n: number) => formatNumber(Math.round(n));
 
 /** Número que conta até o valor (direção de arte: "números que contam"). */
 export function AnimatedNumber({ value, className, duration = 0.8, format = defaultFormat }: Props) {

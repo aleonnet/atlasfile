@@ -6,6 +6,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { cn } from "../../lib/utils";
 import { ProcessingAura } from "../../components/ui/processing-aura";
+import { useTranslation } from "react-i18next";
 import { formatDecisionAction, formatDecisionPhase, useProcessing } from "../../contexts/ProcessingContext";
 import type { TriageItem } from "../../types";
 
@@ -25,6 +26,7 @@ function formatClassifierModeLabel(mode?: string | null): string {
 }
 
 export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props) {
+  const { t } = useTranslation();
   const reducedMotion = useReducedMotion();
   // Trava de duplo clique: uma decisão em voo por item — o backend também tem
   // claim atômico (409), mas a UI nem deve deixar a segunda requisição sair.
@@ -48,7 +50,7 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Inbox size={15} className="text-accent" aria-hidden />
-          Triagem pendente
+          {t("triage:queue.title")}
           {/* Luz laranja = semântica de vida: pendência "respira" pedindo atenção */}
           <span className="relative inline-flex">
             <Badge>{triageItems.length}</Badge>
@@ -59,7 +61,7 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
           </span>
         </CardTitle>
         <CardDescription>
-          {triageItems.length} documento{triageItems.length !== 1 ? "s" : ""} aguardando decisão
+          {t("triage:queue.waiting", { count: triageItems.length })}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -91,15 +93,15 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                   {" · "}
                   {suggestedBusinessDomain ? (
                     <>
-                      sugestão: <span className="text-foreground">{suggestedBusinessDomain}</span>
+                      {t("triage:queue.suggestion")} <span className="text-foreground">{suggestedBusinessDomain}</span>
                       {item.suggested_document_type ? ` / ${item.suggested_document_type}` : ""}
                     </>
                   ) : item.reason === "sem_texto_extraivel" ? (
-                    <span className="text-accent">sem texto extraível (OCR vazio) — decida manualmente</span>
+                    <span className="text-accent">{t("triage:queue.noExtractableText")}</span>
                   ) : (
-                    "sem sugestão"
+                    t("triage:queue.noSuggestion")
                   )}
-                  {" · "}confiança {item.confidence_score.toFixed(2)}
+                  {" · "}{t("triage:queue.confidence")} {item.confidence_score.toFixed(2)}
                 </p>
 
                 {hasLlmContext && (
@@ -137,19 +139,19 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                   <Button
                     size="sm"
                     disabled={!suggestedBusinessDomain || (busyDocId !== null || processingOp !== null)}
-                    title={!suggestedBusinessDomain ? "Sem sugestão de domínio" : undefined}
+                    title={!suggestedBusinessDomain ? t("triage:queue.noDomainSuggestion") : undefined}
                     onClick={() => void decide(item, "approve")}
                   >
                     <Check />
-                    Aprovar
+                    {t("common:action.approve")}
                   </Button>
                   <Button size="sm" variant="secondary" disabled={(busyDocId !== null || processingOp !== null)} onClick={() => void decide(item, "correct")}>
                     <Pencil />
-                    Corrigir
+                    {t("common:action.correct")}
                   </Button>
                   <Button size="sm" variant="destructive" disabled={(busyDocId !== null || processingOp !== null)} onClick={() => void decide(item, "reject")}>
                     <X />
-                    Rejeitar
+                    {t("common:action.reject")}
                   </Button>
                 </div>
                 {processingOp?.docId === item.doc_id && (

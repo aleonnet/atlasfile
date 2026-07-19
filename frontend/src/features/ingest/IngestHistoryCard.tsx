@@ -1,35 +1,39 @@
 import { ArrowRightLeft, CheckCircle2, ChevronDown, ChevronRight, Clock, XCircle } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchIngestHistory, fetchProjectProfile, moveDocument } from "../../api";
+import { useTranslation } from "react-i18next";
+import { moveDocument } from "../../api";
+import i18n from "../../i18n";
+import { formatDate } from "../../lib/format";
+import { useIngestHistoryQuery, useProjectProfileQuery } from "../../lib/queries";
 import { MoveDocumentModal } from "../../components/MoveDocumentModal";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { CollapsibleSection } from "../../components/ui/collapsible-section";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
-import { emitDataRefresh, onDataRefresh } from "../../lib/refreshBus";
-import type { IngestHistoryEntry, ProjectProfileV2 } from "../../types";
+import { invalidateAfterMove } from "../../lib/mutations";
+import type { IngestHistoryEntry, ProjectProfileV2, StatusSeverity } from "../../types";
 
 function decisionBadge(decision: FlatRow["decision"]) {
   switch (decision) {
     case "auto":
-      return <Badge variant="success">auto</Badge>;
+      return <Badge variant="success">{i18n.t("ingest:decision.auto")}</Badge>;
     case "moved":
-      return <Badge variant="success">movido</Badge>;
+      return <Badge variant="success">{i18n.t("ingest:decision.moved")}</Badge>;
     case "duplicate":
-      return <Badge variant="outline">dup</Badge>;
+      return <Badge variant="outline">{i18n.t("ingest:decision.duplicate")}</Badge>;
     case "error":
-      return <Badge variant="destructive">falha</Badge>;
+      return <Badge variant="destructive">{i18n.t("ingest:decision.error")}</Badge>;
     case "approved":
-      return <Badge variant="success">aprovado</Badge>;
+      return <Badge variant="success">{i18n.t("ingest:decision.approved")}</Badge>;
     case "corrected":
-      return <Badge variant="success">corrigido</Badge>;
+      return <Badge variant="success">{i18n.t("ingest:decision.corrected")}</Badge>;
     case "rejected":
-      return <Badge variant="destructive">rejeitado</Badge>;
+      return <Badge variant="destructive">{i18n.t("ingest:decision.rejected")}</Badge>;
     case "deleted":
-      return <Badge variant="outline">excluído</Badge>;
+      return <Badge variant="outline">{i18n.t("ingest:decision.deleted")}</Badge>;
     default:
-      return <Badge>triagem</Badge>;
+      return <Badge>{i18n.t("ingest:decision.triage_pending")}</Badge>;
   }
 }
 
@@ -124,47 +128,28 @@ function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
 
 type Props = {
   selectedProject: string;
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
 };
 
 export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
-  const [history, setHistory] = useState<IngestHistoryEntry[]>([]);
+  const { t } = useTranslation();
   const [page, setPage] = useState(0);
   const [expandedLlm, setExpandedLlm] = useState<Set<string>>(new Set());
   const [moveRow, setMoveRow] = useState<FlatRow | null>(null);
   const [moveSubmitting, setMoveSubmitting] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
-  const [fullProfile, setFullProfile] = useState<ProjectProfileV2 | null>(null);
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
 
-  const loadHistory = useCallback(async () => {
-    if (!isSingleProject) {
-      setHistory([]);
-      return;
-    }
-    try {
-      const resp = await fetchIngestHistory(selectedProject);
-      setHistory(resp.entries);
-    } catch {
-      setHistory([]);
-    }
-  }, [selectedProject, isSingleProject]);
+  // Reativo via cache: scans/decisões invalidam ingest-history
+  const { data: historyData } = useIngestHistoryQuery(selectedProject, isSingleProject);
+  const history: IngestHistoryEntry[] = historyData?.entries ?? [];
+  const { data: profileData } = useProjectProfileQuery(selectedProject, isSingleProject);
+  const fullProfile = profileData?.profile ?? null;
 
   useEffect(() => {
-    void loadHistory();
     setPage(0);
-  }, [loadHistory]);
-
-  // Reativo: scans/decisões emitem no bus — o histórico aparece sem reload
-  useEffect(() => onDataRefresh(() => void loadHistory()), [loadHistory]);
-
-  useEffect(() => {
-    if (!isSingleProject) return;
-    fetchProjectProfile(selectedProject)
-      .then((resp) => setFullProfile(resp.profile))
-      .catch(() => {});
-  }, [selectedProject, isSingleProject]);
+  }, [selectedProject]);
 
   const allRows = useMemo(() => flattenHistory(history), [history]);
   const totalPages = Math.ceil(allRows.length / PAGE_SIZE);
@@ -192,17 +177,17 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
     <>
       <Card>
         <CardContent className="pt-5">
-          <CollapsibleSection title="Processamentos" persistKey="processamentos" badge={`${allRows.length} arquivo${allRows.length !== 1 ? "s" : ""}`} defaultOpen className="border-0 bg-transparent [&>summary]:px-0 [&>div]:border-0 [&>div]:px-0">
+          <CollapsibleSection title={t("ingest:history.title")} persistKey="processamentos" badge={t("common:unit.file", { count: allRows.length })} defaultOpen className="border-0 bg-transparent [&>summary]:px-0 [&>div]:border-0 [&>div]:px-0">
             <TableWrap>
               <DataTable className="[&_td]:text-left [&_th]:text-left">
                 <thead>
                   <tr>
                     <th style={{ width: 28 }} />
-                    <th>Data / Hora</th>
-                    <th>Arquivo</th>
-                    <th>Domínio / Tipo</th>
-                    <th>Decisão</th>
-                    <th>Conf.</th>
+                    <th>{t("ingest:history.colDateTime")}</th>
+                    <th>{t("ingest:history.colFile")}</th>
+                    <th>{t("ingest:history.colDomainType")}</th>
+                    <th>{t("ingest:history.colDecision")}</th>
+                    <th>{t("ingest:history.colConfidence")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -224,7 +209,7 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                         <tr className={hasLlmDetail ? "cursor-pointer" : undefined} onClick={hasLlmDetail ? () => toggleLlmRow(row.key) : undefined}>
                           <td>{decisionIcon(row.decision)}</td>
                           <td className="whitespace-nowrap">
-                            {new Date(row.timestamp).toLocaleString("pt-BR", {
+                            {formatDate(row.timestamp, {
                               day: "2-digit", month: "2-digit", year: "2-digit",
                               hour: "2-digit", minute: "2-digit"
                             })}
@@ -232,14 +217,14 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                           <td className="max-w-64 truncate font-body" title={row.filename}>
                             {row.filename}
                             {row.llm && (
-                              <span className="ml-1" title="Classificado com LLM">🤖</span>
+                              <span className="ml-1" title={t("ingest:history.llmBadgeTitle")}>🤖</span>
                             )}
                           </td>
                           <td className="max-w-44 truncate" title={row.business_domain}>
                             {row.business_domain}
                             {row.document_type ? ` / ${row.document_type}` : ""}
                             {businessDomainOverridden && (
-                              <span className="ml-1 text-accent-light" title={`Regra: ${row.rule_business_domain}`}>
+                              <span className="ml-1 text-accent-light" title={t("ingest:history.ruleTitle", { rule: row.rule_business_domain })}>
                                 ← {row.rule_business_domain}
                               </span>
                             )}
@@ -253,8 +238,8 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                                 <button
                                   type="button"
                                   className="rounded border-0 bg-transparent p-0.5 text-tertiary shadow-none transition-colors hover:text-accent"
-                                  title="Mover para outro domínio/tipo"
-                                  aria-label="Mover para outro domínio/tipo"
+                                  title={t("ingest:history.moveTitle")}
+                                  aria-label={t("ingest:history.moveTitle")}
                                   onClick={(e) => { e.stopPropagation(); setMoveRow(row); }}
                                 >
                                   <ArrowRightLeft size={12} aria-hidden />
@@ -267,28 +252,32 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                           <tr>
                             <td colSpan={6}>
                               <div className="space-y-0.5 rounded-md bg-panel-strong p-2.5 font-mono text-[0.72rem] text-muted-foreground [&_code]:text-accent-light [&_em]:not-italic [&_em]:text-foreground/80">
-                                <strong className="font-display text-foreground-strong">Detalhes da classificação</strong>
+                                <strong className="font-display text-foreground-strong">{t("ingest:history.detailsTitle")}</strong>
                                 <p>
                                   <code>{formatClassifierModeLabel(row.classifier_mode)}</code>
                                   {row.classifier_requested_mode && row.classifier_requested_mode !== row.classifier_mode
-                                    ? ` (solicitado: ${formatClassifierModeLabel(row.classifier_requested_mode)})`
+                                    ? ` ${t("ingest:history.requestedMode", { mode: formatClassifierModeLabel(row.classifier_requested_mode) })}`
                                     : ""}
-                                  : domínio {formatPct(row.business_domain_confidence)} | tipo {formatPct(row.document_type_confidence)} | final {row.confidence !== null ? row.confidence.toFixed(2) : "—"}
+                                  {": "}{t("ingest:history.detailScores", {
+                                    domain: formatPct(row.business_domain_confidence),
+                                    type: formatPct(row.document_type_confidence),
+                                    final: row.confidence !== null ? row.confidence.toFixed(2) : "—"
+                                  })}
                                 </p>
                                 {(row.llm_business_domain || row.llm_document_type) && (
                                   <p>
-                                    <code>llm</code>:{row.llm_business_domain && <> domínio <code>{row.llm_business_domain}</code></>}
+                                    <code>llm</code>:{row.llm_business_domain && <> {t("ingest:history.domainLabel")} <code>{row.llm_business_domain}</code></>}
                                     {row.llm_business_domain && row.llm_document_type ? " ·" : ""}
-                                    {row.llm_document_type && <> tipo <code>{row.llm_document_type}</code></>}
-                                    {row.llm_confidence !== undefined && <> (conf {row.llm_confidence.toFixed(2)})</>}
+                                    {row.llm_document_type && <> {t("ingest:history.typeLabel")} <code>{row.llm_document_type}</code></>}
+                                    {row.llm_confidence !== undefined && <> {t("ingest:history.confLabel", { value: row.llm_confidence.toFixed(2) })}</>}
                                   </p>
                                 )}
                                 {row.classifier_fallback_reason && (
-                                  <p>Fallback: <code>{row.classifier_fallback_reason}</code></p>
+                                  <p>{t("ingest:history.fallbackLabel")} <code>{row.classifier_fallback_reason}</code></p>
                                 )}
-                                {row.llm_explanation && <p>Motivo: <em>{row.llm_explanation}</em></p>}
+                                {row.llm_explanation && <p>{t("ingest:history.reasonLabel")} <em>{row.llm_explanation}</em></p>}
                                 {row.llm_proposed_business_domain && (
-                                  <p>Domínio proposto: <code className="!text-accent-purple">{row.llm_proposed_business_domain}</code></p>
+                                  <p>{t("ingest:history.proposedDomainLabel")} <code className="!text-accent-purple">{row.llm_proposed_business_domain}</code></p>
                                 )}
                               </div>
                             </td>
@@ -304,13 +293,13 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
             {totalPages > 1 && (
               <div className="mt-2 flex items-center justify-between">
                 <Button variant="ghost" size="sm" disabled={page <= 0} onClick={() => setPage((p) => p - 1)}>
-                  ← Anterior
+                  {t("ingest:history.prev")}
                 </Button>
                 <span className="font-mono text-[0.7rem] text-tertiary">
-                  {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, allRows.length)} de {allRows.length}
+                  {t("ingest:history.pageInfo", { from: page * PAGE_SIZE + 1, to: Math.min((page + 1) * PAGE_SIZE, allRows.length), total: allRows.length })}
                 </span>
                 <Button variant="ghost" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>
-                  Próxima →
+                  {t("ingest:history.next")}
                 </Button>
               </div>
             )}
@@ -341,14 +330,14 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
             setMoveError(null);
             try {
               await moveDocument(moveRow.project_id, moveRow.doc_id, targetBd, targetDt);
-              onStatus(`Documento movido para ${targetBd}/${targetDt}`);
+              onStatus(t("ingest:history.movedTo", { domain: targetBd, type: targetDt }));
               setMoveRow(null);
               setMoveError(null);
-              emitDataRefresh();
+              invalidateAfterMove();
             } catch (e) {
-              const msg = e instanceof Error ? e.message : "Falha ao mover documento";
+              const msg = e instanceof Error ? e.message : t("ingest:history.moveFailed");
               setMoveError(msg);
-              onStatus(msg);
+              onStatus(msg, "error");
             } finally {
               setMoveSubmitting(false);
             }

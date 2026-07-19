@@ -101,7 +101,7 @@ describe("OnboardingWizard", () => {
 
     fireEvent.click(screen.getByText(/Criar e Continuar/));
     await waitFor(() => {
-      expect(screen.getByText(/Nome do projeto e obrigatorio/)).toBeInTheDocument();
+      expect(screen.getByText(/Nome do projeto é obrigatório/)).toBeInTheDocument();
     });
   });
 

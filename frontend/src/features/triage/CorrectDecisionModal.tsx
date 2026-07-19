@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Button } from "../../components/ui/button";
 import { MiniOrb } from "../../components/ui/processing-aura";
 import { fieldLabelClass, ModalActions, ModalShell, nativeSelectClass } from "../../components/ui/modal-shell";
@@ -35,6 +36,7 @@ export function CorrectDecisionModal({
   onSubmit,
   onCreateTaxonomyEntry
 }: Props) {
+  const { t } = useTranslation();
   useEscapeKey(item ? onCancel : null);
 
   if (!item) return null;
@@ -56,9 +58,9 @@ export function CorrectDecisionModal({
   }
 
   return (
-    <ModalShell label="Aprovar com correcao" title="Aprovar com correção">
+    <ModalShell label={t("triage:correctModal.label")} title={t("triage:correctModal.title")}>
       <p className="text-sm">
-        Arquivo: <strong className="text-foreground-strong">{item.filename}</strong>
+        {t("triage:correctModal.fileLabel")} <strong className="text-foreground-strong">{item.filename}</strong>
       </p>
 
       {item.llm_explanation && (
@@ -80,26 +82,26 @@ export function CorrectDecisionModal({
 
       {suggestedBusinessDomainMissing && (
         <p className={warningClass}>
-          A sugestão de domínio <code>{suggestedBusinessDomain}</code> não existe na taxonomia do projeto.
-          Selecione um domínio já configurado.
+          {t("triage:correctModal.domainMissingBefore")} <code>{suggestedBusinessDomain}</code>{" "}
+          {t("triage:correctModal.domainMissingAfter")}
         </p>
       )}
 
       {llmProposedBusinessDomainMissing && (
         <p className={warningClass}>
-          O domínio proposto pelo LLM <code>{llmProposedBusinessDomain}</code> não está configurado no projeto.
-          Escolha um domínio válido do catálogo.
+          {t("triage:correctModal.llmDomainMissingBefore")} <code>{llmProposedBusinessDomain}</code>{" "}
+          {t("triage:correctModal.llmDomainMissingAfter")}
         </p>
       )}
 
       {suggestedDocumentTypeMissing && (
         <p className={warningClass}>
-          O tipo documental sugerido <code>{suggestedDocumentType}</code> não existe no profile atual.
-          Selecione um tipo já configurado.
+          {t("triage:correctModal.typeMissingBefore")} <code>{suggestedDocumentType}</code>{" "}
+          {t("triage:correctModal.typeMissingAfter")}
         </p>
       )}
 
-      <label className={fieldLabelClass} htmlFor="business-domain-select">Domínio destino</label>
+      <label className={fieldLabelClass} htmlFor="business-domain-select">{t("triage:correctModal.targetDomain")}</label>
       <select
         id="business-domain-select"
         className={nativeSelectClass}
@@ -114,7 +116,7 @@ export function CorrectDecisionModal({
         ))}
       </select>
 
-      <label className={fieldLabelClass} htmlFor="document-type-select">Tipo documental</label>
+      <label className={fieldLabelClass} htmlFor="document-type-select">{t("triage:correctModal.documentType")}</label>
       <select
         id="document-type-select"
         className={nativeSelectClass}
@@ -136,16 +138,16 @@ export function CorrectDecisionModal({
           disabled={submitting}
           onClick={onCreateTaxonomyEntry}
         >
-          + O destino certo não existe? Criar novo tipo ou domínio
+          {t("triage:correctModal.createLink")}
         </button>
       )}
 
       <ModalActions>
         <Button variant="secondary" disabled={submitting} onClick={onCancel}>
-          Cancelar
+          {t("common:action.cancel")}
         </Button>
         <Button disabled={submitting || !businessDomainValue || !documentTypeValue} onClick={handleSubmit}>
-          {submitting ? <><MiniOrb className="size-3" /> Aprovando — movendo e indexando…</> : "Aprovar e mover"}
+          {submitting ? <><MiniOrb className="size-3" /> {t("triage:correctModal.approving")}</> : t("triage:correctModal.submit")}
         </Button>
       </ModalActions>
     </ModalShell>

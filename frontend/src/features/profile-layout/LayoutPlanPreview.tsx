@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../lib/utils";
 import type { LayoutPlanResponse } from "./types";
@@ -14,6 +15,7 @@ const opBadgeClass: Record<string, string> = {
 };
 
 export function LayoutPlanPreview({ plan }: Props) {
+  const { t } = useTranslation();
   if (!plan) return null;
   const skipCount = plan.plan.ops.filter((op) => op.op === "skip").length;
   const rmdirCount = plan.plan.ops.filter((op) => op.op === "rmdir_empty").length;
@@ -32,7 +34,7 @@ export function LayoutPlanPreview({ plan }: Props) {
   return (
     <section className="rounded-lg border border-border bg-panel-strong/30 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-display text-sm font-bold text-foreground-strong">Preview: Plano de Migração</h4>
+        <h4 className="font-display text-sm font-bold text-foreground-strong">{t("profileLayout:preview.title")}</h4>
         <Badge variant="outline">plan_id: {plan.plan_id}</Badge>
       </div>
 
@@ -49,7 +51,7 @@ export function LayoutPlanPreview({ plan }: Props) {
 
       {actionItems.length > 0 && (
         <div className="mt-3">
-          <h5 className="mb-1.5 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">Operações (amostra)</h5>
+          <h5 className="mb-1.5 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">{t("profileLayout:preview.opsSample")}</h5>
           <div className="max-h-56 space-y-0.5 overflow-y-auto">
             {actionItems.map((op, idx) => {
               const kind = op.op === "rename_dir" ? "rename" : op.op;
@@ -71,12 +73,12 @@ export function LayoutPlanPreview({ plan }: Props) {
 
       {conflictItems.length > 0 && (
         <div className="mt-3">
-          <h5 className="mb-1.5 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">Conflitos</h5>
+          <h5 className="mb-1.5 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">{t("profileLayout:preview.conflicts")}</h5>
           <div className="space-y-0.5">
             {conflictItems.map((op, idx) => (
               <div key={`conflict-${idx}`} className="flex flex-wrap items-baseline gap-2 font-mono text-[0.72rem]">
                 <code className={cn("rounded px-1.5 py-0.5 text-[0.65rem]", opBadgeClass.conflict)}>! conflict</code>
-                <span className="text-foreground">{op.reason || "destino já existe"}</span>
+                <span className="text-foreground">{op.reason || t("profileLayout:preview.destExists")}</span>
                 <small className="truncate text-tertiary">{op.src || op.dst || "-"}</small>
               </div>
             ))}
@@ -85,7 +87,7 @@ export function LayoutPlanPreview({ plan }: Props) {
       )}
 
       <p className="mt-3 font-mono text-[0.7rem] text-tertiary">
-        Estratégia de conflito: <strong className="text-foreground">{plan.plan.strategy.replace(/_/g, " ")}</strong>
+        {t("profileLayout:preview.strategyLabel")} <strong className="text-foreground">{plan.plan.strategy.replace(/_/g, " ")}</strong>
       </p>
     </section>
   );

@@ -1,3 +1,4 @@
+import i18n from "../../i18n";
 import type { SearchEvidence } from "../../types";
 
 export function formatLocationLabel(loc: string): string {
@@ -7,27 +8,26 @@ export function formatLocationLabel(loc: string): string {
     const estimated = docxMatch[1] === "_est";
     const page = docxMatch[2];
     const paragraph = docxMatch[3];
-    const part = docxMatch[4] ? ` (parte ${docxMatch[4]})` : "";
-    if (estimated) return `Pagina ~${page} / ${paragraph}o paragrafo${part} (estimada)`;
-    return `Pagina ${page} / ${paragraph}o paragrafo${part}`;
+    const part = docxMatch[4] ? i18n.t("painel:location.partSuffix", { part: docxMatch[4] }) : "";
+    return i18n.t(estimated ? "painel:location.pageParagraphEstimated" : "painel:location.pageParagraph", { page, paragraph, part });
   }
   if (normalized.startsWith("sheet ")) {
     const m = normalized.match(/^sheet\s+(.+?)\s+row\s+(\d+)\s+col\s+([a-z]+)(?:\s+part\s+(\d+))?$/i);
     if (m) {
       const sheetName = m[1].charAt(0).toUpperCase() + m[1].slice(1);
-      const part = m[4] ? ` (parte ${m[4]})` : "";
-      return `${sheetName}, linha ${m[2]}, Coluna ${m[3].toUpperCase()}${part}`;
+      const part = m[4] ? i18n.t("painel:location.partSuffix", { part: m[4] }) : "";
+      return i18n.t("painel:location.sheetRowCol", { sheet: sheetName, row: m[2], col: m[3].toUpperCase(), part });
     }
-    return normalized.replace(/^sheet\s+/i, "Planilha ");
+    return i18n.t("painel:location.sheetGeneric", { rest: normalized.replace(/^sheet\s+/i, "") });
   }
-  if (normalized.startsWith("slide ")) return normalized.replace(/^slide\s+/i, "Slide ");
-  if (normalized.startsWith("page ")) return normalized.replace(/^page\s+/i, "Pagina ");
-  if (normalized.startsWith("section ")) return normalized.replace(/^section\s+/i, "Secao ");
-  if (normalized === "content_chunk") return "Trecho de conteudo";
-  if (normalized === "content") return "Conteudo";
-  if (normalized === "title") return "Titulo";
-  if (normalized === "original_filename") return "Nome original";
-  if (normalized === "canonical_filename") return "Nome canonico";
+  if (normalized.startsWith("slide ")) return i18n.t("painel:location.slide", { rest: normalized.replace(/^slide\s+/i, "") });
+  if (normalized.startsWith("page ")) return i18n.t("painel:location.page", { rest: normalized.replace(/^page\s+/i, "") });
+  if (normalized.startsWith("section ")) return i18n.t("painel:location.section", { rest: normalized.replace(/^section\s+/i, "") });
+  if (normalized === "content_chunk") return i18n.t("painel:location.contentChunk");
+  if (normalized === "content") return i18n.t("painel:location.content");
+  if (normalized === "title") return i18n.t("painel:location.title");
+  if (normalized === "original_filename") return i18n.t("painel:location.originalFilename");
+  if (normalized === "canonical_filename") return i18n.t("painel:location.canonicalFilename");
   return loc;
 }
 
@@ -61,7 +61,7 @@ function formatEvidenceLocation(loc: string, pageCounts: Map<string, number>): s
   const key = pageKeyFromLocation(loc);
   if (key) {
     const total = pageCounts.get(key) ?? 0;
-    if (total > 0) return `${key} (${total} ocorrência${total === 1 ? "" : "s"})`;
+    if (total > 0) return i18n.t("painel:location.occurrences", { key, count: total });
     return key;
   }
   return formatLocationLabel(loc);
@@ -102,4 +102,3 @@ export function topLocations(locations: string[], max = 3): string[] {
   if (!locations?.length) return [];
   return locations.slice(0, max).map(formatLocationLabel);
 }
-

@@ -1,8 +1,12 @@
 import { differenceInCalendarDays, format, parseISO, startOfISOWeek, startOfMonth } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { BarChart3, ChevronLeft, ChevronRight, CircleDollarSign, Coins, GraduationCap, MessagesSquare, RefreshCw, Tags, Zap } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
+import i18n from "../../i18n";
 import { fetchClassificationUsage, fetchTrainingUsage, fetchUsageSessions, fetchUsageSummary } from "../../api";
+import { qk } from "../../lib/queryKeys";
+import { dateFnsLocale, formatDate, formatNumber, formatUsd as formatUsdIntl } from "../../lib/format";
 import { Button } from "../../components/ui/button";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { DateRangePicker } from "../../components/ui/date-range-picker";
@@ -16,25 +20,23 @@ const chartCardClass = "flex flex-col rounded-lg border border-border bg-card p-
 const sectionTitleClass = "mt-5 mb-2 font-display text-sm font-bold text-foreground-strong";
 const legendDotClass = "inline-block size-2 rounded-full";
 const ALL_CHANNELS = "__all__";
-const CHANNEL_LABELS: Record<string, string> = { web: "Web", telegram: "TG" };
 const PAGE_SIZE = 10;
 
 export function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  if (n >= 1_000_000) return `${formatNumber(n / 1_000_000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}m`;
+  if (n >= 10_000) return `${formatNumber(n / 1_000, { maximumFractionDigits: 0 })}k`;
+  if (n >= 1_000) return `${formatNumber(n / 1_000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}k`;
   return String(Math.round(n));
 }
 
 export function formatUsd(n: number): string {
   if (n === 0) return "—";
-  const rounded = Math.round(n * 100) / 100;
-  return `$${rounded.toFixed(2)}`;
+  return formatUsdIntl(n);
 }
 
 export function formatUsd4(n: number): string {
   if (n === 0) return "—";
-  const rounded = Math.round(n * 10000) / 10000;
-  return `$${rounded.toFixed(4)}`;
+  return formatUsdIntl(n, 4);
 }
 
 function toYyyyMmDd(d: Date): string {
@@ -43,7 +45,7 @@ function toYyyyMmDd(d: Date): string {
 
 type Granularity = "day" | "week" | "month";
 
-const GRANULARITY_LABELS: Record<Granularity, string> = { day: "Dia", week: "Semana", month: "Mês" };
+const GRANULARITIES: Granularity[] = ["day", "week", "month"];
 
 /** Granularidade default calculada pelo tamanho do range: até 31 dias → dia;
  * até 26 semanas → semana; acima → mês (mantém ≤ ~31 barras legíveis). */
@@ -62,16 +64,16 @@ function bucketKey(date: string, g: Granularity): string {
 
 function bucketLabel(key: string, g: Granularity): string {
   const d = parseISO(key);
-  if (g === "month") return format(d, "MMM/yy", { locale: ptBR }).replace(".", "");
-  if (g === "week") return format(d, "dd/MM");
-  return format(d, "dd MMM", { locale: ptBR }).replace(".", "");
+  if (g === "month") return format(d, i18n.t("usage:dateFormat.monthShort"), { locale: dateFnsLocale() }).replace(".", "");
+  if (g === "week") return format(d, i18n.t("usage:dateFormat.weekShort"), { locale: dateFnsLocale() });
+  return format(d, i18n.t("usage:dateFormat.dayShort"), { locale: dateFnsLocale() }).replace(".", "");
 }
 
 function bucketTooltip(key: string, g: Granularity): string {
   const d = parseISO(key);
-  if (g === "month") return format(d, "MMMM 'de' yyyy", { locale: ptBR });
-  if (g === "week") return `semana de ${format(d, "dd/MM/yyyy")}`;
-  return format(d, "dd/MM/yyyy");
+  if (g === "month") return format(d, i18n.t("usage:dateFormat.monthLong"), { locale: dateFnsLocale() });
+  if (g === "week") return i18n.t("usage:chart.weekOf", { date: format(d, i18n.t("usage:dateFormat.full"), { locale: dateFnsLocale() }) });
+  return format(d, i18n.t("usage:dateFormat.full"), { locale: dateFnsLocale() });
 }
 
 // Paleta de gráficos da marca (--chart-N em styles.css, dark + light)
@@ -84,13 +86,6 @@ const TOKEN_COLORS = {
 
 type TokenType = keyof typeof TOKEN_COLORS;
 
-const TOKEN_LABELS: Record<TokenType, string> = {
-  output: "Output",
-  input: "Input",
-  cache_write: "Cache Write",
-  cache_read: "Cache Read",
-};
-
 const PROCESS_COLORS = {
   assistant: "var(--chart-3)",
   classification: "var(--chart-2)",
@@ -98,12 +93,6 @@ const PROCESS_COLORS = {
 } as const;
 
 type ProcessType = keyof typeof PROCESS_COLORS;
-
-const PROCESS_LABELS: Record<ProcessType, string> = {
-  assistant: "Assistente",
-  classification: "Classificacao",
-  training: "Treinamento",
-};
 
 interface MergedDay {
   date: string;
@@ -200,6 +189,7 @@ function DailyTokenChart({
   granularity: Granularity;
   onGranularityChange: (g: Granularity) => void;
 }) {
+  const { t } = useTranslation();
   const days = useMemo(() => mergeDays(assistantDays, classificationDays, trainingDays), [assistantDays, classificationDays, trainingDays]);
   const buckets = useMemo(() => aggregateByBucket(days, granularity), [days, granularity]);
   const maxTokens = useMemo(() => Math.max(...buckets.map((d) => d.total_tokens), 1), [buckets]);
@@ -208,9 +198,9 @@ function DailyTokenChart({
 
   const granularityTabs = (
     <Tabs value={granularity} onValueChange={(v) => onGranularityChange(v as Granularity)}>
-      <TabsList aria-label="Granularidade">
-        {(Object.keys(GRANULARITY_LABELS) as Granularity[]).map((g) => (
-          <TabsTrigger key={g} value={g} className="px-2.5 py-1 text-xs">{GRANULARITY_LABELS[g]}</TabsTrigger>
+      <TabsList aria-label={t("usage:chart.granularityAria")}>
+        {GRANULARITIES.map((g) => (
+          <TabsTrigger key={g} value={g} className="px-2.5 py-1 text-xs">{t(`usage:granularity.${g}`)}</TabsTrigger>
         ))}
       </TabsList>
     </Tabs>
@@ -219,8 +209,8 @@ function DailyTokenChart({
   if (buckets.length === 0) {
     return (
       <div className={chartCardClass}>
-        <span className="font-display text-sm font-bold text-foreground-strong">Uso de tokens</span>
-        <EmptyState className="mt-3 border-0 py-8" icon={<BarChart3 aria-hidden />} title="Nenhum dado no período" description="Ajuste o intervalo de datas ou use o assistente para gerar atividade." />
+        <span className="font-display text-sm font-bold text-foreground-strong">{t("usage:chart.title")}</span>
+        <EmptyState className="mt-3 border-0 py-8" icon={<BarChart3 aria-hidden />} title={t("usage:chart.emptyTitle")} description={t("usage:chart.emptyDescription")} />
       </div>
     );
   }
@@ -228,12 +218,12 @@ function DailyTokenChart({
   return (
     <div className={chartCardClass}>
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="font-display text-sm font-bold text-foreground-strong">Uso de tokens</span>
+        <span className="font-display text-sm font-bold text-foreground-strong">{t("usage:chart.title")}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Tabs value={chartMode} onValueChange={(v) => onChartModeChange(v as ChartMode)}>
-            <TabsList aria-label="Modo do gráfico">
-              <TabsTrigger value="by-type" className="px-2.5 py-1 text-xs">Por tipo</TabsTrigger>
-              <TabsTrigger value="by-process" className="px-2.5 py-1 text-xs">Por processo</TabsTrigger>
+            <TabsList aria-label={t("usage:chart.modeAria")}>
+              <TabsTrigger value="by-type" className="px-2.5 py-1 text-xs">{t("usage:chart.byType")}</TabsTrigger>
+              <TabsTrigger value="by-process" className="px-2.5 py-1 text-xs">{t("usage:chart.byProcess")}</TabsTrigger>
             </TabsList>
           </Tabs>
           {granularityTabs}
@@ -259,7 +249,7 @@ function DailyTokenChart({
             <div
               key={d.date}
               className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1 self-stretch"
-              title={`${bucketTooltip(d.date, granularity)}\n${formatTokens(d.total_tokens)} tokens`}
+              title={t("usage:chart.barTitle", { date: bucketTooltip(d.date, granularity), tokens: formatTokens(d.total_tokens) })}
             >
               {showValueLabels && <div className="font-mono text-[0.6rem] text-tertiary">{formatTokens(d.total_tokens)}</div>}
               <div className="flex w-full max-w-8 origin-bottom animate-[atlas-grow-up_500ms_var(--ease-out)] flex-col justify-end overflow-hidden rounded-t-sm transition-[filter] group-hover:brightness-125 motion-reduce:animate-none" style={{ height: `${heightPct.toFixed(1)}%` }}>
@@ -289,6 +279,7 @@ function TokensByTypeBar({
   totalInput: number; totalOutput: number; totalCacheRead: number; totalCacheWrite: number;
   totalAssistant: number; totalClassification: number; totalTraining: number;
 }) {
+  const { t } = useTranslation();
   if (chartMode === "by-process") {
     const items: { type: ProcessType; value: number }[] = [
       { type: "assistant", value: totalAssistant },
@@ -298,7 +289,7 @@ function TokensByTypeBar({
     const total = items.reduce((s, i) => s + i.value, 0) || 1;
     return (
       <div className={chartCardClass}>
-        <span className="mb-2.5 font-display text-sm font-bold text-foreground-strong">Tokens por processo</span>
+        <span className="mb-2.5 font-display text-sm font-bold text-foreground-strong">{t("usage:tokensBar.byProcessTitle")}</span>
         <div className="flex h-3 w-full overflow-hidden rounded-full bg-panel-strong">
           {items.map((item) =>
             item.value > 0 ? (
@@ -306,7 +297,7 @@ function TokensByTypeBar({
                 key={item.type}
                 className="h-full"
                 style={{ width: `${(item.value / total) * 100}%`, background: PROCESS_COLORS[item.type] }}
-                title={`${PROCESS_LABELS[item.type]}: ${formatTokens(item.value)}`}
+                title={t("usage:tokensBar.segmentTitle", { label: t(`usage:process.${item.type}`), value: formatTokens(item.value) })}
               />
             ) : null
           )}
@@ -315,11 +306,11 @@ function TokensByTypeBar({
           {items.map((item) => (
             <span key={item.type} className="flex items-center gap-1.5 font-mono text-[0.7rem] text-muted-foreground">
               <span className={legendDotClass} style={{ background: PROCESS_COLORS[item.type] }} />
-              {PROCESS_LABELS[item.type]} {formatTokens(item.value)}
+              {t(`usage:process.${item.type}`)} {formatTokens(item.value)}
             </span>
           ))}
         </div>
-        <div className="mt-2 font-mono text-[0.7rem] text-tertiary">Total: {formatTokens(total)}</div>
+        <div className="mt-2 font-mono text-[0.7rem] text-tertiary">{t("usage:tokensBar.total", { value: formatTokens(total) })}</div>
       </div>
     );
   }
@@ -334,7 +325,7 @@ function TokensByTypeBar({
 
   return (
     <div className={chartCardClass}>
-      <span className="mb-2.5 font-display text-sm font-bold text-foreground-strong">Tokens por tipo</span>
+      <span className="mb-2.5 font-display text-sm font-bold text-foreground-strong">{t("usage:tokensBar.byTypeTitle")}</span>
       <div className="flex h-3 w-full overflow-hidden rounded-full bg-panel-strong">
         {items.map((item) =>
           item.value > 0 ? (
@@ -342,7 +333,7 @@ function TokensByTypeBar({
               key={item.type}
               className="h-full"
               style={{ width: `${(item.value / total) * 100}%`, background: TOKEN_COLORS[item.type] }}
-              title={`${TOKEN_LABELS[item.type]}: ${formatTokens(item.value)}`}
+              title={t("usage:tokensBar.segmentTitle", { label: t(`usage:tokenType.${item.type}`), value: formatTokens(item.value) })}
             />
           ) : null
         )}
@@ -351,16 +342,17 @@ function TokensByTypeBar({
         {items.map((item) => (
           <span key={item.type} className="flex items-center gap-1.5 font-mono text-[0.7rem] text-muted-foreground">
             <span className={legendDotClass} style={{ background: TOKEN_COLORS[item.type] }} />
-            {TOKEN_LABELS[item.type]} {formatTokens(item.value)}
+            {t(`usage:tokenType.${item.type}`)} {formatTokens(item.value)}
           </span>
         ))}
       </div>
-      <div className="mt-2 font-mono text-[0.7rem] text-tertiary">Total: {formatTokens(total)}</div>
+      <div className="mt-2 font-mono text-[0.7rem] text-tertiary">{t("usage:tokensBar.total", { value: formatTokens(total) })}</div>
     </div>
   );
 }
 
 export function UsageView({ projectId }: { projectId?: string | null }) {
+  const { t } = useTranslation();
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
@@ -371,48 +363,43 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
   const [chartMode, setChartMode] = useState<ChartMode>("by-type");
   const [granularityOverride, setGranularityOverride] = useState<Granularity | null>(null);
   const granularity = granularityOverride ?? autoGranularity(startDate, endDate);
-  const [summary, setSummary] = useState<UsageSummaryResponse | null>(null);
-  const [sessions, setSessions] = useState<UsageSessionItem[]>([]);
-  const [classifUsage, setClassifUsage] = useState<ClassificationUsageSummary | null>(null);
-  const [trainingUsage, setTrainingUsage] = useState<TrainingUsageSummary | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sessionsPage, setSessionsPage] = useState(0);
 
-  const load = useCallback(() => {
-    setError(null);
-    setLoading(true);
-    const baseParams = {
-      start_date: startDate,
-      end_date: endDate,
-      project_id: projectId || null,
-    };
-    const channelParam = channel === ALL_CHANNELS ? null : channel;
-    Promise.all([
-      fetchUsageSummary({ ...baseParams, channel: channelParam }),
-      fetchUsageSessions({ ...baseParams, channel: channelParam, limit: 100 }),
-      fetchClassificationUsage(baseParams),
-      fetchTrainingUsage(baseParams).catch(() => null),
-    ])
-      .then(([s, list, classif, training]) => {
-        setSummary(s);
-        setSessions(list);
-        setClassifUsage(classif);
-        setTrainingUsage(training);
-        setSessionsPage(0);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar"))
-      .finally(() => setLoading(false));
-  }, [startDate, endDate, projectId, channel]);
+  // Uma query para o bundle da tela (mesmo Promise.all de antes) — o cache por
+  // chave [período, projeto, canal] torna a troca de filtros instantânea na volta
+  const usageQuery = useQuery({
+    queryKey: qk.usage.summary(projectId || undefined, { startDate, endDate, channel }),
+    queryFn: async () => {
+      const baseParams = {
+        start_date: startDate,
+        end_date: endDate,
+        project_id: projectId || null,
+      };
+      const channelParam = channel === ALL_CHANNELS ? null : channel;
+      const [s, list, classif, training] = await Promise.all([
+        fetchUsageSummary({ ...baseParams, channel: channelParam }),
+        fetchUsageSessions({ ...baseParams, channel: channelParam, limit: 100 }),
+        fetchClassificationUsage(baseParams),
+        fetchTrainingUsage(baseParams).catch(() => null),
+      ]);
+      return { summary: s, sessions: list, classifUsage: classif, trainingUsage: training };
+    },
+  });
+  const loading = usageQuery.isPending;
+  const error = usageQuery.error ? (usageQuery.error instanceof Error ? usageQuery.error.message : t("usage:loadError")) : null;
+  const summary = usageQuery.data?.summary ?? null;
+  const sessions = usageQuery.data?.sessions ?? [];
+  const classifUsage = usageQuery.data?.classifUsage ?? null;
+  const trainingUsage = usageQuery.data?.trainingUsage ?? null;
 
   useEffect(() => {
-    load();
-  }, [load]);
+    setSessionsPage(0);
+  }, [startDate, endDate, projectId, channel]);
 
   return (
     <section className="flex flex-col">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">Período</label>
+        <label className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">{t("usage:filters.period")}</label>
         <DateRangePicker
           start={startDate}
           end={endDate}
@@ -422,24 +409,24 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
             setGranularityOverride(null);
           }}
         />
-        <label className="ml-2 font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">Canal</label>
+        <label className="ml-2 font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">{t("usage:filters.channel")}</label>
         <Select value={channel} onValueChange={setChannel}>
           <SelectTrigger className="w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL_CHANNELS}>Todos</SelectItem>
-            <SelectItem value="web">Web</SelectItem>
-            <SelectItem value="telegram">Telegram</SelectItem>
+            <SelectItem value={ALL_CHANNELS}>{t("usage:filters.allChannels")}</SelectItem>
+            <SelectItem value="web">{t("usage:filters.channelWeb")}</SelectItem>
+            <SelectItem value="telegram">{t("usage:filters.channelTelegram")}</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="secondary" onClick={load} disabled={loading}>
+        <Button variant="secondary" onClick={() => void usageQuery.refetch()} disabled={loading}>
           <RefreshCw className={loading ? "animate-spin" : ""} />
-          Atualizar
+          {t("common:action.update")}
         </Button>
       </div>
 
-      {error && <ErrorState className="mt-4" description={error} onRetry={load} />}
+      {error && <ErrorState className="mt-4" description={error} onRetry={() => void usageQuery.refetch()} />}
 
       {summary && (
         <>
@@ -453,27 +440,27 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                 + (trainingUsage ? trainingUsage.total_input_tokens + trainingUsage.total_output_tokens : 0)
               }
               format={formatTokens}
-              label="total tokens"
+              label={t("usage:stats.totalTokens")}
             />
             <StatTile
               dense
               icon={<CircleDollarSign aria-hidden />}
               value={summary.estimated_cost_usd + (classifUsage?.estimated_cost_usd ?? 0) + (trainingUsage?.estimated_cost_usd ?? 0)}
               format={(n) => (n === 0 ? "—" : `$${n.toFixed(2)}`)}
-              label="custo estimado"
+              label={t("usage:stats.estimatedCost")}
             />
             <StatTile
               dense
               icon={<Zap aria-hidden />}
               value={(summary.total_api_calls ?? 0) + (classifUsage?.total_calls ?? 0) + (trainingUsage?.total_api_calls ?? 0)}
-              label="chamadas API"
+              label={t("usage:stats.apiCalls")}
             />
-            <StatTile dense icon={<MessagesSquare aria-hidden />} value={summary.session_count} label="sessões" />
+            <StatTile dense icon={<MessagesSquare aria-hidden />} value={summary.session_count} label={t("usage:stats.sessions")} />
             {classifUsage && classifUsage.total_calls > 0 && (
-              <StatTile dense icon={<Tags aria-hidden />} value={classifUsage.total_calls} label="classificações" />
+              <StatTile dense icon={<Tags aria-hidden />} value={classifUsage.total_calls} label={t("usage:stats.classifications")} />
             )}
             {trainingUsage && trainingUsage.total_calls > 0 && (
-              <StatTile dense icon={<GraduationCap aria-hidden />} value={trainingUsage.total_calls} label="treinamento" />
+              <StatTile dense icon={<GraduationCap aria-hidden />} value={trainingUsage.total_calls} label={t("usage:stats.training")} />
             )}
           </div>
 
@@ -499,23 +486,23 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
             />
           </div>
 
-          <h3 className={sectionTitleClass}>Por modelo (Assistente)</h3>
+          <h3 className={sectionTitleClass}>{t("usage:modelTable.title")}</h3>
           <TableWrap>
             <DataTable>
               <thead>
                 <tr>
-                  <th className="left">Modelo</th>
-                  <th>Input (tokens)</th>
-                  <th>Output (tokens)</th>
-                  <th>Input (custo)</th>
-                  <th>Output (custo)</th>
-                  <th>Total tokens</th>
-                  <th>Custo total</th>
+                  <th className="left">{t("usage:modelTable.model")}</th>
+                  <th>{t("usage:modelTable.inputTokens")}</th>
+                  <th>{t("usage:modelTable.outputTokens")}</th>
+                  <th>{t("usage:modelTable.inputCost")}</th>
+                  <th>{t("usage:modelTable.outputCost")}</th>
+                  <th>{t("usage:modelTable.totalTokens")}</th>
+                  <th>{t("usage:modelTable.totalCost")}</th>
                 </tr>
               </thead>
               <tbody>
                 {summary.by_model.length === 0 ? (
-                  <tr><td colSpan={7} className="empty">Nenhum dado no período.</td></tr>
+                  <tr><td colSpan={7} className="empty">{t("usage:modelTable.empty")}</td></tr>
                 ) : (
                   summary.by_model.map((row: UsageByModelEntry) => (
                     <tr key={row.model}>
@@ -524,9 +511,9 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                         {row.cost_tracked === false && (
                           <span
                             className="ml-1.5 rounded-full border border-border bg-panel-strong px-1.5 py-0.5 font-mono text-[0.62rem] text-tertiary"
-                            title="Modelo sem preço cadastrado — atualize o catálogo em Configuração do Assistente para rastrear o custo"
+                            title={t("usage:modelTable.costNotTrackedTitle")}
                           >
-                            custo não rastreado
+                            {t("usage:modelTable.costNotTracked")}
                           </span>
                         )}
                       </td>
@@ -543,7 +530,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
               {summary.by_model.length > 0 && (
                 <tfoot>
                   <tr className="">
-                    <td className="left">Total</td>
+                    <td className="left">{t("usage:modelTable.total")}</td>
                     <td>{formatTokens(summary.total_input_tokens)}</td>
                     <td>{formatTokens(summary.total_output_tokens)}</td>
                     <td>{formatUsd4(summary.by_model.reduce((s, r) => s + r.input_cost_usd, 0))}</td>
@@ -558,16 +545,16 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
 
           {classifUsage && classifUsage.total_calls > 0 && (
             <>
-              <h3 className={sectionTitleClass}>Classificação (uso LLM na ingestão)</h3>
+              <h3 className={sectionTitleClass}>{t("usage:classifTable.title")}</h3>
               <TableWrap>
                 <DataTable>
                   <thead>
                     <tr>
-                      <th className="left">Modelo</th>
-                      <th>Chamadas API</th>
-                      <th>Input (tokens)</th>
-                      <th>Output (tokens)</th>
-                      <th>Custo</th>
+                      <th className="left">{t("usage:modelTable.model")}</th>
+                      <th>{t("usage:classifTable.apiCalls")}</th>
+                      <th>{t("usage:modelTable.inputTokens")}</th>
+                      <th>{t("usage:modelTable.outputTokens")}</th>
+                      <th>{t("usage:classifTable.cost")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -584,7 +571,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                   {classifUsage.by_model.length > 0 && (
                     <tfoot>
                       <tr className="">
-                        <td className="left">Total</td>
+                        <td className="left">{t("usage:modelTable.total")}</td>
                         <td>{classifUsage.total_calls}</td>
                         <td>{formatTokens(classifUsage.total_input_tokens)}</td>
                         <td>{formatTokens(classifUsage.total_output_tokens)}</td>
@@ -599,16 +586,16 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
 
           {trainingUsage && trainingUsage.total_calls > 0 && (
             <>
-              <h3 className={sectionTitleClass}>Treinamento / Pipeline</h3>
+              <h3 className={sectionTitleClass}>{t("usage:trainingTable.title")}</h3>
               <TableWrap>
                 <DataTable>
                   <thead>
                     <tr>
-                      <th className="left">Script</th>
-                      <th>Chamadas API</th>
-                      <th>Input (tokens)</th>
-                      <th>Output (tokens)</th>
-                      <th>Custo</th>
+                      <th className="left">{t("usage:trainingTable.script")}</th>
+                      <th>{t("usage:classifTable.apiCalls")}</th>
+                      <th>{t("usage:modelTable.inputTokens")}</th>
+                      <th>{t("usage:modelTable.outputTokens")}</th>
+                      <th>{t("usage:classifTable.cost")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -625,7 +612,7 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
                   {trainingUsage.by_script.length > 0 && (
                     <tfoot>
                       <tr className="">
-                        <td className="left">Total</td>
+                        <td className="left">{t("usage:modelTable.total")}</td>
                         <td>{trainingUsage.total_api_calls}</td>
                         <td>{formatTokens(trainingUsage.total_input_tokens)}</td>
                         <td>{formatTokens(trainingUsage.total_output_tokens)}</td>
@@ -638,40 +625,40 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
             </>
           )}
 
-          <h3 className={sectionTitleClass}>Sessões</h3>
+          <h3 className={sectionTitleClass}>{t("usage:sessionsTable.title")}</h3>
           <TableWrap>
             <DataTable>
               <thead>
                 <tr>
-                  <th className="left">Título</th>
-                  <th className="left">Data</th>
-                  <th className="left">Projeto</th>
-                  <th className="left">Canal</th>
-                  <th className="left">Modelo</th>
-                  <th>Tokens</th>
-                  <th>Custo</th>
+                  <th className="left">{t("usage:sessionsTable.titleCol")}</th>
+                  <th className="left">{t("usage:sessionsTable.date")}</th>
+                  <th className="left">{t("usage:sessionsTable.project")}</th>
+                  <th className="left">{t("usage:sessionsTable.channel")}</th>
+                  <th className="left">{t("usage:sessionsTable.model")}</th>
+                  <th>{t("usage:sessionsTable.tokens")}</th>
+                  <th>{t("usage:sessionsTable.cost")}</th>
                 </tr>
               </thead>
               <tbody>
                 {sessions.length === 0 ? (
-                  <tr><td colSpan={7} className="empty">Nenhuma sessão no período.</td></tr>
+                  <tr><td colSpan={7} className="empty">{t("usage:sessionsTable.empty")}</td></tr>
                 ) : (
                   sessions.slice(sessionsPage * PAGE_SIZE, (sessionsPage + 1) * PAGE_SIZE).map((s: UsageSessionItem) => {
                     const tot = s.usage_totals;
                     const tokens = tot ? tot.total_tokens : 0;
                     const cost = tot ? tot.estimated_cost_usd : 0;
                     const dateStr = s.updatedAt
-                      ? new Date(s.updatedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+                      ? formatDate(s.updatedAt, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
                       : "—";
                     const modelKeys = s.usage_by_model ? Object.keys(s.usage_by_model) : [];
                     const stripProvider = (m: string) => m.replace(/^[^/]+\//, "");
                     const modelLabel = modelKeys.length > 1
                       ? modelKeys.map(stripProvider).join(", ")
                       : stripProvider(s.model);
-                    const channelLabel = s.channel ? (CHANNEL_LABELS[s.channel] ?? s.channel) : "—";
+                    const channelLabel = s.channel ? t(`usage:channel.${s.channel}`, { defaultValue: s.channel }) : "—";
                     return (
                       <tr key={s.id}>
-                        <td className="left max-w-64 truncate" title={s.title || "Sem título"}>{s.title || "Sem título"}</td>
+                        <td className="left max-w-64 truncate" title={s.title || t("usage:sessionsTable.untitled")}>{s.title || t("usage:sessionsTable.untitled")}</td>
                         <td className="left">{dateStr}</td>
                         <td className="left">{s.project_id ?? "—"}</td>
                         <td className="left">{channelLabel}</td>
@@ -687,13 +674,13 @@ export function UsageView({ projectId }: { projectId?: string | null }) {
             {sessions.length > PAGE_SIZE && (
               <div className="flex items-center justify-between border-t border-border px-3 py-2">
                 <Button variant="ghost" size="sm" disabled={sessionsPage === 0} onClick={() => setSessionsPage((p) => p - 1)}>
-                  <ChevronLeft /> Anterior
+                  <ChevronLeft /> {t("usage:sessionsTable.previous")}
                 </Button>
                 <span className="font-mono text-[0.7rem] text-tertiary">
-                  {sessionsPage * PAGE_SIZE + 1}–{Math.min((sessionsPage + 1) * PAGE_SIZE, sessions.length)} de {sessions.length}
+                  {t("usage:sessionsTable.pageInfo", { from: sessionsPage * PAGE_SIZE + 1, to: Math.min((sessionsPage + 1) * PAGE_SIZE, sessions.length), total: sessions.length })}
                 </span>
                 <Button variant="ghost" size="sm" disabled={(sessionsPage + 1) * PAGE_SIZE >= sessions.length} onClick={() => setSessionsPage((p) => p + 1)}>
-                  Próxima <ChevronRight />
+                  {t("usage:sessionsTable.next")} <ChevronRight />
                 </Button>
               </div>
             )}

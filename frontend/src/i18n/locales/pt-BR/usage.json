@@ -1,0 +1,100 @@
+{
+  "channel": {
+    "web": "Web",
+    "telegram": "TG"
+  },
+  "dateFormat": {
+    "monthShort": "MMM/yy",
+    "weekShort": "dd/MM",
+    "dayShort": "dd MMM",
+    "monthLong": "MMMM 'de' yyyy",
+    "full": "dd/MM/yyyy"
+  },
+  "granularity": {
+    "day": "Dia",
+    "week": "Semana",
+    "month": "Mês"
+  },
+  "tokenType": {
+    "output": "Saída",
+    "input": "Entrada",
+    "cache_write": "Escrita de cache",
+    "cache_read": "Leitura de cache"
+  },
+  "process": {
+    "assistant": "Assistente",
+    "classification": "Classificação",
+    "training": "Treinamento"
+  },
+  "chart": {
+    "title": "Uso de tokens",
+    "granularityAria": "Granularidade",
+    "modeAria": "Modo do gráfico",
+    "byType": "Por tipo",
+    "byProcess": "Por processo",
+    "emptyTitle": "Nenhum dado no período",
+    "emptyDescription": "Ajuste o intervalo de datas ou use o assistente para gerar atividade.",
+    "weekOf": "semana de {{date}}",
+    "barTitle": "{{date}}\n{{tokens}} tokens"
+  },
+  "tokensBar": {
+    "byTypeTitle": "Tokens por tipo",
+    "byProcessTitle": "Tokens por processo",
+    "segmentTitle": "{{label}}: {{value}}",
+    "total": "Total: {{value}}"
+  },
+  "filters": {
+    "period": "Período",
+    "channel": "Canal",
+    "allChannels": "Todos",
+    "channelWeb": "Web",
+    "channelTelegram": "Telegram"
+  },
+  "loadError": "Erro ao carregar",
+  "stats": {
+    "totalTokens": "total tokens",
+    "estimatedCost": "custo estimado",
+    "apiCalls": "chamadas API",
+    "sessions": "sessões",
+    "classifications": "classificações",
+    "training": "treinamento"
+  },
+  "modelTable": {
+    "title": "Por modelo (Assistente)",
+    "model": "Modelo",
+    "inputTokens": "Entrada (tokens)",
+    "outputTokens": "Saída (tokens)",
+    "inputCost": "Entrada (custo)",
+    "outputCost": "Saída (custo)",
+    "totalTokens": "Total de tokens",
+    "totalCost": "Custo total",
+    "empty": "Nenhum dado no período.",
+    "total": "Total",
+    "costNotTracked": "custo não rastreado",
+    "costNotTrackedTitle": "Modelo sem preço cadastrado — atualize o catálogo em Configuração do Assistente para rastrear o custo"
+  },
+  "classifTable": {
+    "title": "Classificação (uso LLM na ingestão)",
+    "apiCalls": "Chamadas API",
+    "cost": "Custo"
+  },
+  "trainingTable": {
+    "title": "Treinamento / Pipeline",
+    "script": "Script"
+  },
+  "sessionsTable": {
+    "title": "Sessões",
+    "titleCol": "Título",
+    "date": "Data",
+    "project": "Projeto",
+    "channel": "Canal",
+    "model": "Modelo",
+    "tokens": "Tokens",
+    "cost": "Custo",
+    "empty": "Nenhuma sessão no período.",
+    "untitled": "Sem título",
+    "previous": "Anterior",
+    "next": "Próxima",
+    "pageInfo": "{{from}}–{{to}} de {{total}}"
+  }
+}

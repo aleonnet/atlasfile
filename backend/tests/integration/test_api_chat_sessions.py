@@ -70,7 +70,9 @@ def test_get_chat_session_404(client: TestClient) -> None:
         mock_os.get.side_effect = Exception("not found")
         r = client.get("/api/chat/sessions/inexistente")
     assert r.status_code == 404
-    assert "sessão" in r.json().get("detail", "").lower()
+    detail = r.json()["detail"]
+    assert detail["code"] == "CHAT_SESSION_NOT_FOUND"
+    assert "sessão" in detail["message"].lower()
 
 
 def test_get_chat_session_200(client: TestClient) -> None:
@@ -204,7 +206,9 @@ def test_append_and_messages_conflict(client: TestClient) -> None:
             },
         )
     assert r.status_code == 400
-    assert "ambos" in r.json()["detail"].lower() or "messages" in r.json()["detail"].lower()
+    detail = r.json()["detail"]
+    assert detail["code"] == "CHAT_SESSION_MESSAGES_CONFLICT"
+    assert "ambos" in detail["message"].lower() or "messages" in detail["message"].lower()
 
 
 def test_delete_chat_session_404(client: TestClient) -> None:

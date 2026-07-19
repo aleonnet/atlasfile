@@ -7,9 +7,11 @@
 import React, { useRef, useEffect, useState } from "react";
 import { Brain, Clock, FileSearch, FileText, Layers, Loader2, Pencil, Plus, Send, Settings, Sparkles, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { useTranslation } from "react-i18next";
 import remarkGfm from "remark-gfm";
 import { fetchSuggestions, getFileDownloadUrl } from "../api";
 import { cn } from "../lib/utils";
+import { formatTimeShort } from "../lib/format";
 import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
 import { toast } from "./ui/sonner";
@@ -156,44 +158,46 @@ export interface ChatPanelProps {
 }
 
 /** Starter prompts do empty state — cada um ancorado numa tool real do MCP. */
-const STARTER_PROMPTS: { label: string; prompt: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { label: "O que chegou de novo?", prompt: "Quais documentos foram adicionados recentemente ao projeto?", icon: Sparkles },
-  { label: "Panorama por área", prompt: "Me dê um panorama do acervo: quantos documentos por área de negócio?", icon: Layers },
-  { label: "Buscar propostas", prompt: "Encontre propostas comerciais no acervo e liste as principais.", icon: FileSearch },
+const STARTER_PROMPTS: { labelKey: string; promptKey: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { labelKey: "chat:starters.whatsNewLabel", promptKey: "chat:starters.whatsNewPrompt", icon: Sparkles },
+  { labelKey: "chat:starters.overviewLabel", promptKey: "chat:starters.overviewPrompt", icon: Layers },
+  { labelKey: "chat:starters.proposalsLabel", promptKey: "chat:starters.proposalsPrompt", icon: FileSearch },
 ];
 
 function generateAttachmentId(): string {
   return `att-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-const SESSION_GROUP_BUCKETS: { minDays: number; maxDays: number; label: string }[] = [
-  { minDays: 0, maxDays: 1, label: "Hoje" },
-  { minDays: 1, maxDays: 2, label: "1 dia" },
-  { minDays: 2, maxDays: 3, label: "2 dias" },
-  { minDays: 3, maxDays: 4, label: "3 dias" },
-  { minDays: 4, maxDays: 5, label: "4 dias" },
-  { minDays: 5, maxDays: 6, label: "5 dias" },
-  { minDays: 6, maxDays: 7, label: "6 dias" },
-  { minDays: 7, maxDays: 14, label: "1 semana" },
-  { minDays: 14, maxDays: 21, label: "2 semanas" },
-  { minDays: 21, maxDays: 30, label: "3 semanas" },
-  { minDays: 30, maxDays: 90, label: "1 mês" },
-  { minDays: 90, maxDays: Infinity, label: "3 meses" }
+const SESSION_GROUP_BUCKETS: { minDays: number; maxDays: number; labelKey: string }[] = [
+  { minDays: 0, maxDays: 1, labelKey: "chat:history.groups.today" },
+  { minDays: 1, maxDays: 2, labelKey: "chat:history.groups.oneDay" },
+  { minDays: 2, maxDays: 3, labelKey: "chat:history.groups.twoDays" },
+  { minDays: 3, maxDays: 4, labelKey: "chat:history.groups.threeDays" },
+  { minDays: 4, maxDays: 5, labelKey: "chat:history.groups.fourDays" },
+  { minDays: 5, maxDays: 6, labelKey: "chat:history.groups.fiveDays" },
+  { minDays: 6, maxDays: 7, labelKey: "chat:history.groups.sixDays" },
+  { minDays: 7, maxDays: 14, labelKey: "chat:history.groups.oneWeek" },
+  { minDays: 14, maxDays: 21, labelKey: "chat:history.groups.twoWeeks" },
+  { minDays: 21, maxDays: 30, labelKey: "chat:history.groups.threeWeeks" },
+  { minDays: 30, maxDays: 90, labelKey: "chat:history.groups.oneMonth" },
+  { minDays: 90, maxDays: Infinity, labelKey: "chat:history.groups.threeMonths" }
 ];
 
-function getSessionGroupLabel(updatedAt: number): string {
+const PREVIOUS_GROUP_KEY = "chat:history.groups.previous";
+
+function getSessionGroupKey(updatedAt: number): string {
   const ts = Number(updatedAt);
-  if (!Number.isFinite(ts) || ts <= 0) return "Anterior";
+  if (!Number.isFinite(ts) || ts <= 0) return PREVIOUS_GROUP_KEY;
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const updated = new Date(ts);
-  if (Number.isNaN(updated.getTime())) return "Anterior";
+  if (Number.isNaN(updated.getTime())) return PREVIOUS_GROUP_KEY;
   const updatedDayStart = new Date(updated.getFullYear(), updated.getMonth(), updated.getDate()).getTime();
   const calendarDaysAgo = Math.floor((todayStart - updatedDayStart) / (24 * 60 * 60 * 1000));
   const bucket = SESSION_GROUP_BUCKETS.find(
     (b) => calendarDaysAgo >= b.minDays && calendarDaysAgo < b.maxDays
   );
-  return bucket ? bucket.label : "Anterior";
+  return bucket ? bucket.labelKey : PREVIOUS_GROUP_KEY;
 }
 
 export function ChatPanel({
@@ -228,6 +232,7 @@ export function ChatPanel({
   onToggleTelegram,
   contextPressureRatio = 0,
 }: ChatPanelProps) {
+  const { t } = useTranslation();
   const reasoningSupported =
     selectedModel && (models.find((m) => `${m.provider}/${m.model}` === selectedModel)?.supports_reasoning_effort ?? false);
   const companionState = useCompanionState(sending, error);
@@ -288,8 +293,8 @@ export function ChatPanel({
 
   const hasAttachments = attachments.length > 0;
   const placeholder = hasAttachments
-    ? "Adicione uma mensagem ou cole mais imagens..."
-    : "Mensagem (↵ enviar, Shift+↵ quebra de linha, cole imagens)";
+    ? t("chat:compose.placeholderWithAttachments")
+    : t("chat:compose.placeholder");
 
   return (
     <section
@@ -303,14 +308,14 @@ export function ChatPanel({
           aria-live="polite"
         >
           <Loader2 size={32} className="shrink-0 animate-spin" aria-hidden />
-          <span>Salvando sessão…</span>
+          <span>{t("chat:panel.savingSession")}</span>
         </div>
       )}
 
       {/* Toolbar */}
       <div className="flex min-w-0 items-center gap-2 border-b border-border px-4 py-2.5 max-lg:flex-wrap">
         <label htmlFor="chat-panel-model" className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">
-          Modelo
+          {t("chat:toolbar.modelLabel")}
         </label>
         <select
           id="chat-panel-model"
@@ -333,8 +338,8 @@ export function ChatPanel({
           type="button"
           className={toolbarIconBtnClass}
           onClick={onOpenSettings}
-          title="Configuração (modelo e API Key)"
-          aria-label="Configuração (modelo e API Key)"
+          title={t("chat:toolbar.settingsTitle")}
+          aria-label={t("chat:toolbar.settingsTitle")}
         >
           <Settings size={16} strokeWidth={2} aria-hidden />
         </button>
@@ -346,9 +351,9 @@ export function ChatPanel({
             showThinking && reasoningSupported && "border-accent bg-accent-soft text-accent hover:border-accent hover:text-accent"
           )}
           onClick={() => reasoningSupported && onShowThinkingChange(!showThinking)}
-          title={reasoningSupported ? "Toggle assistant thinking/working output" : "Este modelo não suporta reasoning/thinking"}
+          title={reasoningSupported ? t("chat:toolbar.thinkingToggle") : t("chat:toolbar.thinkingUnsupported")}
           aria-pressed={showThinking}
-          aria-label="Toggle assistant thinking/working output"
+          aria-label={t("chat:toolbar.thinkingToggle")}
           disabled={!reasoningSupported}
         >
           <Brain size={18} strokeWidth={2} aria-hidden />
@@ -357,8 +362,8 @@ export function ChatPanel({
           type="button"
           className={toolbarIconBtnClass}
           onClick={onNewSession}
-          title="Nova sessão"
-          aria-label="Nova sessão"
+          title={t("chat:toolbar.newSession")}
+          aria-label={t("chat:toolbar.newSession")}
         >
           <Plus size={18} strokeWidth={2} aria-hidden />
         </button>
@@ -367,8 +372,8 @@ export function ChatPanel({
             type="button"
             className={toolbarIconBtnClass}
             onClick={onOpenHistory}
-            title="Histórico de sessões"
-            aria-label="Histórico de sessões"
+            title={t("chat:toolbar.historyTitle")}
+            aria-label={t("chat:toolbar.historyTitle")}
             aria-expanded={historyModalOpen}
           >
             <Clock size={18} strokeWidth={2} aria-hidden />
@@ -378,7 +383,7 @@ export function ChatPanel({
               <button
                 type="button"
                 className="fixed inset-0 z-[99] cursor-default border-0 bg-transparent p-0"
-                aria-label="Fechar histórico de sessões"
+                aria-label={t("chat:toolbar.historyClose")}
                 onClick={onCloseHistory}
               />
               <div
@@ -388,22 +393,22 @@ export function ChatPanel({
                   "animate-[atlas-pop-in_150ms_var(--ease-out)]"
                 )}
                 role="dialog"
-                aria-label="Histórico de sessões"
+                aria-label={t("chat:toolbar.historyTitle")}
                 aria-modal="true"
               >
                 <div className="shrink-0 border-b border-border p-2.5">
                   <Input
                     type="text"
-                    placeholder="Buscar…"
+                    placeholder={t("chat:history.searchPlaceholder")}
                     value={historySearch}
                     onChange={(e) => setHistorySearch(e.target.value)}
                     onKeyDown={(e) => e.key === "Escape" && onCloseHistory?.()}
-                    aria-label="Filtrar sessões por título"
+                    aria-label={t("chat:history.searchAria")}
                   />
                 </div>
                 <div className="min-h-60 flex-1 overflow-y-auto py-2">
                   {sessionsLoading ? (
-                    <div className="p-4 text-center text-sm text-muted-foreground">Carregando…</div>
+                    <div className="p-4 text-center text-sm text-muted-foreground">{t("chat:history.loading")}</div>
                   ) : (() => {
                     const q = historySearch.trim().toLowerCase();
                     const filtered = q
@@ -411,18 +416,18 @@ export function ChatPanel({
                       : sessions;
                     const byGroup = new Map<string, ChatSessionSummary[]>();
                     filtered.forEach((s) => {
-                      const label = getSessionGroupLabel(s.updatedAt);
-                      if (!byGroup.has(label)) byGroup.set(label, []);
-                      byGroup.get(label)!.push(s);
+                      const labelKey = getSessionGroupKey(s.updatedAt);
+                      if (!byGroup.has(labelKey)) byGroup.set(labelKey, []);
+                      byGroup.get(labelKey)!.push(s);
                     });
-                    const order = SESSION_GROUP_BUCKETS.map((g) => g.label).concat("Anterior");
-                    const groups = order.filter((l) => byGroup.has(l)).map((l) => ({ label: l, items: byGroup.get(l)! }));
+                    const order = SESSION_GROUP_BUCKETS.map((g) => g.labelKey).concat(PREVIOUS_GROUP_KEY);
+                    const groups = order.filter((l) => byGroup.has(l)).map((l) => ({ labelKey: l, items: byGroup.get(l)! }));
                     if (groups.length === 0) {
-                      return <div className="p-4 text-center text-sm text-muted-foreground">Nenhuma sessão encontrada.</div>;
+                      return <div className="p-4 text-center text-sm text-muted-foreground">{t("chat:history.empty")}</div>;
                     }
                     return groups.map((g) => (
-                      <div key={g.label} className="mb-3">
-                        <div className="px-3 pb-1.5 pt-1 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">{g.label}</div>
+                      <div key={g.labelKey} className="mb-3">
+                        <div className="px-3 pb-1.5 pt-1 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">{t(g.labelKey)}</div>
                         {g.items.map((s) => (
                           <div
                             key={s.id}
@@ -470,12 +475,12 @@ export function ChatPanel({
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                                 autoFocus
-                                aria-label="Editar título"
+                                aria-label={t("chat:history.editTitle")}
                               />
                             ) : (
                               <>
                                 <span className="min-w-0 flex-1 truncate">
-                                  {s.title || "Sem título"}
+                                  {s.title || t("chat:history.untitled")}
                                 </span>
                                 <div
                                   className="flex shrink-0 items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100"
@@ -483,8 +488,8 @@ export function ChatPanel({
                                 >
                                   <button
                                     type="button"
-                                    title="Editar título"
-                                    aria-label="Editar título"
+                                    title={t("chat:history.editTitle")}
+                                    aria-label={t("chat:history.editTitle")}
                                     className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent-soft hover:text-foreground"
                                     onClick={() => {
                                       setEditingId(s.id);
@@ -495,8 +500,8 @@ export function ChatPanel({
                                   </button>
                                   <button
                                     type="button"
-                                    title="Excluir sessão"
-                                    aria-label="Excluir sessão"
+                                    title={t("chat:history.deleteSession")}
+                                    aria-label={t("chat:history.deleteSession")}
                                     className="rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
                                     onClick={() => onDeleteSession?.(s.id)}
                                   >
@@ -520,8 +525,8 @@ export function ChatPanel({
             type="button"
             className={cn(toolbarIconBtnClass, "relative")}
             onClick={onToggleTelegram}
-            title={telegramConnected ? "Telegram conectado — clique para desconectar" : "Telegram desconectado — clique para conectar"}
-            aria-label={telegramConnected ? "Desconectar Telegram" : "Conectar Telegram"}
+            title={telegramConnected ? t("chat:toolbar.telegramConnectedTitle") : t("chat:toolbar.telegramDisconnectedTitle")}
+            aria-label={telegramConnected ? t("chat:toolbar.telegramDisconnectAria") : t("chat:toolbar.telegramConnectAria")}
           >
             <Send size={16} strokeWidth={2} aria-hidden />
             <span
@@ -547,18 +552,18 @@ export function ChatPanel({
           <div className="flex h-full flex-col items-center justify-center gap-5 py-10 text-center">
             <Orb state="idle" size={56} />
             <div>
-              <p className="m-0 font-display text-lg font-bold text-foreground-strong">Como posso ajudar?</p>
+              <p className="m-0 font-display text-lg font-bold text-foreground-strong">{t("chat:empty.title")}</p>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                Pergunto ao acervo do projeto e cito as fontes. Use Config para modelo e API Key.
+                {t("chat:empty.subtitle")}
               </p>
             </div>
             <div className="flex max-w-lg flex-wrap justify-center gap-2">
               {STARTER_PROMPTS.map((s) => (
                 <button
-                  key={s.label}
+                  key={s.labelKey}
                   type="button"
                   disabled={disabled}
-                  onClick={() => onSend(s.prompt)}
+                  onClick={() => onSend(t(s.promptKey))}
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-full border border-border bg-panel px-3 py-1.5 text-xs text-muted-foreground",
                     "transition-[border-color,color,box-shadow] duration-150",
@@ -568,7 +573,7 @@ export function ChatPanel({
                   )}
                 >
                   <s.icon className="size-3.5 text-accent" aria-hidden />
-                  {s.label}
+                  {t(s.labelKey)}
                 </button>
               ))}
             </div>
@@ -599,14 +604,14 @@ export function ChatPanel({
           <div className="mb-2 inline-flex flex-wrap gap-2 rounded-lg border border-border bg-panel p-2">
             {attachments.map((att) => (
               <div key={att.id} className="relative size-20 overflow-hidden rounded-md border border-border bg-background">
-                <img src={att.dataUrl} alt="Anexo" className="size-full object-contain" />
+                <img src={att.dataUrl} alt={t("chat:compose.attachmentAlt")} className="size-full object-contain" />
                 <button
                   type="button"
                   className={cn(
                     "absolute right-1 top-1 flex size-[22px] items-center justify-center rounded-full border-0 p-0",
                     "bg-black/70 text-base leading-none text-white opacity-80 transition-colors hover:bg-destructive"
                   )}
-                  aria-label="Remover anexo"
+                  aria-label={t("chat:compose.removeAttachment")}
                   onClick={() => setAttachments((prev) => prev.filter((a) => a.id !== att.id))}
                 >
                   ×
@@ -628,7 +633,7 @@ export function ChatPanel({
             )}
           >
             <label className="min-w-0">
-              <span className="sr-only">Mensagem</span>
+              <span className="sr-only">{t("chat:compose.messageLabel")}</span>
               <Textarea
                 ref={textareaRef}
                 value={draft}
@@ -645,11 +650,11 @@ export function ChatPanel({
               <ContextGauge ratio={contextPressureRatio} onNewSession={onNewSession} />
               <span className="flex-1" />
               <Button variant="ghost" size="sm" disabled={disabled || sending} onClick={onNewSession}>
-                <Plus /> Nova sessão
+                <Plus /> {t("chat:toolbar.newSession")}
               </Button>
               {canAbort && sending ? (
                 <Button variant="destructive" size="sm" onClick={onAbort}>
-                  <Loader2 className="animate-spin" /> Parar
+                  <Loader2 className="animate-spin" /> {t("chat:compose.stop")}
                 </Button>
               ) : (
                 <Button
@@ -657,7 +662,7 @@ export function ChatPanel({
                   disabled={disabled || sending || (!draft.trim() && !hasAttachments)}
                   onClick={handleSend}
                 >
-                  <Send /> Enviar <kbd className="rounded border border-white/25 px-1 font-mono text-[0.65rem]">↵</kbd>
+                  <Send /> {t("chat:compose.send")} <kbd className="rounded border border-white/25 px-1 font-mono text-[0.65rem]">↵</kbd>
                 </Button>
               )}
             </div>
@@ -689,6 +694,7 @@ function ChatMessageBubble({
   lastToolCalls?: { name: string; result_preview?: string }[];
   model?: string;
 }) {
+  const { t } = useTranslation();
   const [imageModalUrl, setImageModalUrl] = React.useState<string | null>(null);
   useEffect(() => {
     if (!imageModalUrl) return;
@@ -698,18 +704,16 @@ function ChatMessageBubble({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [imageModalUrl]);
-  const timeStr = timestamp
-    ? new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : "";
+  const timeStr = timestamp ? formatTimeShort(timestamp) : "";
   const modelShort = model ? model.replace(/^[^/]+\//, "") : "";
-  const who = role === "user" ? "Você" : (modelShort ? `${agentName} (${modelShort})` : agentName);
+  const who = role === "user" ? t("chat:message.you") : (modelShort ? `${agentName} (${modelShort})` : agentName);
   const isUser = role === "user";
   const hasImageParts = isUser && contentParts?.some((p) => p.type === "image_url");
 
   const avatarEl =
     isUser ? (
       <div className="mb-1 grid size-10 shrink-0 place-items-center self-end rounded-lg bg-accent-soft text-sm font-semibold text-accent">
-        U
+        {t("chat:message.userInitial")}
       </div>
     ) : agentAvatarUrl && /^(https?:|\/|data:image)/i.test(agentAvatarUrl) ? (
       <img
@@ -733,11 +737,11 @@ function ChatMessageBubble({
             type="button"
             className="block cursor-pointer overflow-hidden rounded-md border-0 bg-transparent p-0 hover:opacity-90"
             onClick={() => setImageModalUrl(p.image_url.url)}
-            aria-label="Ver imagem em tamanho maior"
+            aria-label={t("chat:message.viewImageLarger")}
           >
             <img
               src={p.image_url.url}
-              alt="Anexo"
+              alt={t("chat:message.attachmentAlt")}
               className="block h-auto max-h-28 w-auto max-w-52 rounded-md border border-border"
             />
           </button>
@@ -783,14 +787,14 @@ function ChatMessageBubble({
             className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/75 p-5"
             role="dialog"
             aria-modal="true"
-            aria-label="Imagem em tamanho maior"
+            aria-label={t("chat:message.imageModalAria")}
             onClick={() => setImageModalUrl(null)}
           >
             <div
               className="relative max-h-[90vh] max-w-[90vw] rounded-lg bg-elevated p-2 shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
               onClick={(e) => e.stopPropagation()}
             >
-              <img src={imageModalUrl} alt="Imagem anexada" className="block h-auto max-h-[85vh] w-auto max-w-[85vw] rounded-md" />
+              <img src={imageModalUrl} alt={t("chat:message.attachedImageAlt")} className="block h-auto max-h-[85vh] w-auto max-w-[85vw] rounded-md" />
               <button
                 type="button"
                 className={cn(
@@ -798,7 +802,7 @@ function ChatMessageBubble({
                   "bg-background text-2xl leading-none text-foreground transition-colors hover:bg-panel-strong"
                 )}
                 onClick={() => setImageModalUrl(null)}
-                aria-label="Fechar"
+                aria-label={t("chat:message.close")}
               >
                 ×
               </button>
@@ -807,7 +811,7 @@ function ChatMessageBubble({
         )}
         {isLastAssistant && lastToolCalls && lastToolCalls.length > 0 && (
           <div className="mt-2 rounded-md border border-border border-l-[3px] border-l-accent bg-panel px-3 py-2">
-            <div className="mb-1.5 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">Ferramentas usadas</div>
+            <div className="mb-1.5 font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">{t("chat:message.toolsUsed")}</div>
             <ul className="m-0 list-none p-0 font-mono text-[0.7rem] text-tertiary">
               {lastToolCalls.map((tc, i) => (
                 <li key={i}>
@@ -849,6 +853,7 @@ export function extractCitations(text: string): string[] {
 
 /** Citação clicável: resolve o doc via suggest e abre na location (direção de arte: a citação "acende"). */
 function CitationChip({ filename }: { filename: string }) {
+  const { t } = useTranslation();
   const [resolving, setResolving] = useState(false);
 
   async function handleOpen() {
@@ -859,12 +864,12 @@ function CitationChip({ filename }: { filename: string }) {
       const item =
         res.items.find((s) => s.original_filename.toLowerCase() === filename.toLowerCase()) ?? res.items[0];
       if (!item) {
-        toast.error(`Documento citado não encontrado no índice: ${filename}`);
+        toast.error(t("chat:citation.notFound", { filename }));
         return;
       }
       window.open(getFileDownloadUrl(item.path), "_blank", "noreferrer");
     } catch {
-      toast.error("Falha ao localizar o documento citado");
+      toast.error(t("chat:citation.resolveFailed"));
     } finally {
       setResolving(false);
     }
@@ -875,7 +880,7 @@ function CitationChip({ filename }: { filename: string }) {
       type="button"
       onClick={handleOpen}
       disabled={resolving}
-      title={`Abrir ${filename}`}
+      title={t("chat:citation.openTitle", { filename })}
       className={
         "inline-flex max-w-72 items-center gap-1.5 rounded-full border border-accent-soft bg-accent-soft/40 " +
         "px-2.5 py-1 font-mono text-[0.7rem] text-accent shadow-none transition-[box-shadow,border-color] " +
@@ -897,6 +902,7 @@ function CitationChip({ filename }: { filename: string }) {
  * lado no hover.
  */
 function ContextGauge({ ratio, onNewSession }: { ratio: number; onNewSession: () => void }) {
+  const { t } = useTranslation();
   const r = Math.max(0, Math.min(ratio, 1));
   const pct = Math.round(r * 100);
   const radius = 12;
@@ -906,8 +912,8 @@ function ContextGauge({ ratio, onNewSession }: { ratio: number; onNewSession: ()
   const coreColor = critical ? "var(--danger)" : warning ? "var(--chart-3)" : "var(--accent)";
 
   const tooltip = critical
-    ? `Contexto: ${pct}% utilizado — clique para iniciar uma nova sessão.`
-    : `Contexto da sessão: ${pct}% utilizado`;
+    ? t("chat:context.criticalTooltip", { pct })
+    : t("chat:context.tooltip", { pct });
 
   return (
     <button
@@ -979,12 +985,13 @@ function ChatReadingIndicator({
   agentName: string;
   companionState: CompanionState;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mb-4 mr-4 flex items-center gap-3">
       <Orb state={companionState} size={40} />
       <div className="flex flex-col gap-0.5">
-        <div className="inline-flex items-center py-2" role="status" aria-label="Pensando">
-          <span className="atlas-thinking-text font-mono text-xs tracking-wide">Pensando...</span>
+        <div className="inline-flex items-center py-2" role="status" aria-label={t("chat:thinking.aria")}>
+          <span className="atlas-thinking-text font-mono text-xs tracking-wide">{t("chat:thinking.label")}</span>
         </div>
       </div>
     </div>

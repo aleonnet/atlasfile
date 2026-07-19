@@ -1,8 +1,9 @@
 import { format, parseISO, subDays } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { CalendarIcon } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { DateRange } from "react-day-picker";
+import { dateFnsLocale } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
 import { Calendar } from "./calendar";
@@ -16,26 +17,29 @@ type Props = {
   className?: string;
 };
 
-const PRESETS: { label: string; days: number }[] = [
-  { label: "7 dias", days: 7 },
-  { label: "30 dias", days: 30 },
-  { label: "90 dias", days: 90 },
-  { label: "12 meses", days: 365 },
+// Chaves em escopo de módulo, texto no render (troca de idioma ao vivo).
+const PRESETS: { labelKey: string; days: number }[] = [
+  { labelKey: "common:dateRange.days7", days: 7 },
+  { labelKey: "common:dateRange.days30", days: 30 },
+  { labelKey: "common:dateRange.days90", days: 90 },
+  { labelKey: "common:dateRange.months12", days: 365 },
 ];
 
 function toIso(d: Date): string {
   return format(d, "yyyy-MM-dd");
 }
 
-/** Seletor de período pt-BR (dd/MM/yyyy) — substitui o input date nativo,
+/** Seletor de período no idioma do app — substitui o input date nativo,
  * cujo formato de exibição segue o locale do browser, não o do app. */
 export function DateRangePicker({ start, end, onChange, className }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DateRange | undefined>();
 
   const startDate = parseISO(start);
   const endDate = parseISO(end);
-  const label = `${format(startDate, "dd/MM/yyyy", { locale: ptBR })} – ${format(endDate, "dd/MM/yyyy", { locale: ptBR })}`;
+  const dateFormat = t("common:dateFormat.short");
+  const label = `${format(startDate, dateFormat, { locale: dateFnsLocale() })} – ${format(endDate, dateFormat, { locale: dateFnsLocale() })}`;
 
   const applyPreset = (days: number) => {
     const to = new Date();
@@ -71,7 +75,7 @@ export function DateRangePicker({ start, end, onChange, className }: Props) {
           <div className="flex flex-col gap-1 border-r border-border p-2">
             {PRESETS.map((p) => (
               <Button key={p.days} variant="ghost" size="sm" className="justify-start" onClick={() => applyPreset(p.days)}>
-                {p.label}
+                {t(p.labelKey)}
               </Button>
             ))}
           </div>

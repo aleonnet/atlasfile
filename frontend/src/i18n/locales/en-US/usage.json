@@ -1,0 +1,100 @@
+{
+  "channel": {
+    "web": "Web",
+    "telegram": "TG"
+  },
+  "dateFormat": {
+    "monthShort": "MMM/yy",
+    "weekShort": "MM/dd",
+    "dayShort": "MMM dd",
+    "monthLong": "MMMM yyyy",
+    "full": "MM/dd/yyyy"
+  },
+  "granularity": {
+    "day": "Day",
+    "week": "Week",
+    "month": "Month"
+  },
+  "tokenType": {
+    "output": "Output",
+    "input": "Input",
+    "cache_write": "Cache Write",
+    "cache_read": "Cache Read"
+  },
+  "process": {
+    "assistant": "Assistant",
+    "classification": "Classification",
+    "training": "Training"
+  },
+  "chart": {
+    "title": "Token usage",
+    "granularityAria": "Granularity",
+    "modeAria": "Chart mode",
+    "byType": "By type",
+    "byProcess": "By process",
+    "emptyTitle": "No data in this period",
+    "emptyDescription": "Adjust the date range or use the assistant to generate activity.",
+    "weekOf": "week of {{date}}",
+    "barTitle": "{{date}}\n{{tokens}} tokens"
+  },
+  "tokensBar": {
+    "byTypeTitle": "Tokens by type",
+    "byProcessTitle": "Tokens by process",
+    "segmentTitle": "{{label}}: {{value}}",
+    "total": "Total: {{value}}"
+  },
+  "filters": {
+    "period": "Period",
+    "channel": "Channel",
+    "allChannels": "All",
+    "channelWeb": "Web",
+    "channelTelegram": "Telegram"
+  },
+  "loadError": "Failed to load",
+  "stats": {
+    "totalTokens": "total tokens",
+    "estimatedCost": "estimated cost",
+    "apiCalls": "API calls",
+    "sessions": "sessions",
+    "classifications": "classifications",
+    "training": "training"
+  },
+  "modelTable": {
+    "title": "By model (Assistant)",
+    "model": "Model",
+    "inputTokens": "Input (tokens)",
+    "outputTokens": "Output (tokens)",
+    "inputCost": "Input (cost)",
+    "outputCost": "Output (cost)",
+    "totalTokens": "Total tokens",
+    "totalCost": "Total cost",
+    "empty": "No data in this period.",
+    "total": "Total",
+    "costNotTracked": "cost not tracked",
+    "costNotTrackedTitle": "Model has no registered price — refresh the catalog in Assistant Settings to track its cost"
+  },
+  "classifTable": {
+    "title": "Classification (LLM usage at ingest)",
+    "apiCalls": "API calls",
+    "cost": "Cost"
+  },
+  "trainingTable": {
+    "title": "Training / Pipeline",
+    "script": "Script"
+  },
+  "sessionsTable": {
+    "title": "Sessions",
+    "titleCol": "Title",
+    "date": "Date",
+    "project": "Project",
+    "channel": "Channel",
+    "model": "Model",
+    "tokens": "Tokens",
+    "cost": "Cost",
+    "empty": "No sessions in this period.",
+    "untitled": "Untitled",
+    "previous": "Previous",
+    "next": "Next",
+    "pageInfo": "{{from}}–{{to}} of {{total}}"
+  }
+}

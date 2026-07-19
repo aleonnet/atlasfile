@@ -1,3 +1,7 @@
+/** Severidade estrutural do canal de status: cada emissor declara a natureza
+ *  da mensagem — o toast NÃO decide por sniffing de texto. Default "info". */
+export type StatusSeverity = "info" | "error";
+
 export interface Project {
   project_id: string;
   project_label: string;

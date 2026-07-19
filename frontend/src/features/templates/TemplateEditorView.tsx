@@ -1,6 +1,11 @@
 import { FileStack, Pencil, Plus, Replace, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createTemplate, deleteTemplate, getTemplate, listTemplates, saveTemplate } from "../../api";
+import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
+import { createTemplate, deleteTemplate, getTemplate, saveTemplate } from "../../api";
+import { formatDate } from "../../lib/format";
+import { useTemplatesQuery } from "../../lib/queries";
+import { qk } from "../../lib/queryKeys";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -81,8 +86,11 @@ function EditorOverlay({ label, children }: { label: string; children: React.Rea
 }
 
 export function TemplateEditorView() {
-  const [templates, setTemplates] = useState<TemplateMeta[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const templatesQuery = useTemplatesQuery();
+  const templates = templatesQuery.data ?? [];
+  const loading = templatesQuery.isPending;
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -92,19 +100,8 @@ export function TemplateEditorView() {
   useEscapeKey(confirmDelete ? () => setConfirmDelete(null) : editor ? () => setEditor(null) : null);
 
   const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      setTemplates(await listTemplates());
-    } catch {
-      setTemplates([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+    await queryClient.invalidateQueries({ queryKey: qk.templates.scope() });
+  }, [queryClient]);
 
   async function handleEdit(slug: string) {
     try {
@@ -158,7 +155,7 @@ export function TemplateEditorView() {
       const profile = tmpl.profile as unknown as Record<string, unknown>;
       setEditor({
         slug: `${slug}_copy`,
-        name: `${tmpl.name} (cópia)`,
+        name: t("templates:editor.duplicateName", { name: tmpl.name }),
         description: tmpl.description,
         isNew: true,
         profileData: profile,
@@ -396,24 +393,24 @@ export function TemplateEditorView() {
     }
 
     const removeRowButton = (onClick: () => void) => (
-      <button type="button" className={rowDeleteButtonClass} onClick={onClick} aria-label="Remover linha">
+      <button type="button" className={rowDeleteButtonClass} onClick={onClick} aria-label={t("templates:editor.removeRowAria")}>
         ×
       </button>
     );
 
     return (
-      <EditorOverlay label="Editar template">
+      <EditorOverlay label={t("templates:editor.overlayLabel")}>
         <h3 className="font-display text-lg font-bold text-foreground-strong">
-          {editor.isNew ? "Novo template" : `Editar template: ${editor.name}`}
+          {editor.isNew ? t("templates:editor.newTitle") : t("templates:editor.editTitle", { name: editor.name })}
         </h3>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div>
-            <label className={fieldLabelClass} htmlFor="tmpl-name">Nome</label>
+            <label className={fieldLabelClass} htmlFor="tmpl-name">{t("templates:editor.name")}</label>
             <Input id="tmpl-name" value={editor.name} onChange={(e) => setEditor({ ...editor, name: e.target.value })} />
           </div>
           <div>
-            <label className={fieldLabelClass} htmlFor="tmpl-slug">Slug</label>
+            <label className={fieldLabelClass} htmlFor="tmpl-slug">{t("templates:editor.slug")}</label>
             <Input
               id="tmpl-slug"
               className="font-mono"
@@ -423,16 +420,16 @@ export function TemplateEditorView() {
             />
           </div>
           <div className="sm:col-span-2">
-            <label className={fieldLabelClass} htmlFor="tmpl-desc">Descrição</label>
+            <label className={fieldLabelClass} htmlFor="tmpl-desc">{t("templates:editor.description")}</label>
             <Textarea id="tmpl-desc" value={editor.description} onChange={(e) => setEditor({ ...editor, description: e.target.value })} />
           </div>
         </div>
 
         <div className="mt-4 flex flex-col gap-2.5">
-          <CollapsibleSection title="Naming (formato canônico)" defaultOpen>
+          <CollapsibleSection title={t("templates:editor.namingSection")} defaultOpen>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className={fieldLabelClass} htmlFor="tmpl-naming-pattern">Canonical pattern</label>
+                <label className={fieldLabelClass} htmlFor="tmpl-naming-pattern">{t("templates:editor.canonicalPattern")}</label>
                 <Input
                   id="tmpl-naming-pattern"
                   className="font-mono"
@@ -441,11 +438,11 @@ export function TemplateEditorView() {
                   placeholder="{date}__{project}__{original_name}"
                 />
                 <p className="mt-1 text-[0.7rem] text-tertiary">
-                  Campos: {"{date}"}, {"{project}"}, {"{business_domain}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext adicionado automaticamente.
+                  {t("templates:editor.patternHint")}
                 </p>
               </div>
               <div>
-                <label className={fieldLabelClass} htmlFor="tmpl-naming-datefmt">Date format</label>
+                <label className={fieldLabelClass} htmlFor="tmpl-naming-datefmt">{t("templates:editor.dateFormat")}</label>
                 <Input
                   id="tmpl-naming-datefmt"
                   className="font-mono"
@@ -457,14 +454,14 @@ export function TemplateEditorView() {
             </div>
           </CollapsibleSection>
 
-          <CollapsibleSection title="Estrutura de Layout" badge={`${domains.length} domínios`} defaultOpen>
+          <CollapsibleSection title={t("templates:editor.layoutSection")} badge={t("templates:editor.domainsBadge", { value: domains.length })} defaultOpen>
             <table className={editTableClass}>
               <thead>
                 <tr>
                   <th>BUSINESS_DOMAIN</th>
                   <th>LABEL</th>
                   <th>ALIASES</th>
-                  <th>PASTA</th>
+                  <th>{t("templates:editor.folderHeader")}</th>
                   <th style={{ width: 40 }} />
                 </tr>
               </thead>
@@ -487,19 +484,19 @@ export function TemplateEditorView() {
               </tbody>
             </table>
             <Button variant="outline" size="sm" className="mt-2" onClick={addArea}>
-              + Adicionar domínio
+              {t("templates:editor.addDomain")}
             </Button>
           </CollapsibleSection>
 
-          <CollapsibleSection title="Tipos documentais" badge={`${documentTypes.length} tipos`} defaultOpen>
+          <CollapsibleSection title={t("templates:editor.typesSection")} badge={t("templates:editor.typesBadge", { value: documentTypes.length })} defaultOpen>
             <table className={editTableClass}>
               <thead>
                 <tr>
                   <th>KEY</th>
                   <th>LABEL</th>
                   <th>ALIASES</th>
-                  <th>EXTENSÕES</th>
-                  <th>PASTA</th>
+                  <th>{t("templates:editor.extensionsHeader")}</th>
+                  <th>{t("templates:editor.folderHeader")}</th>
                   <th style={{ width: 40 }} />
                 </tr>
               </thead>
@@ -530,16 +527,16 @@ export function TemplateEditorView() {
               </tbody>
             </table>
             <Button variant="outline" size="sm" className="mt-2" onClick={addDocumentType}>
-              + Adicionar tipo
+              {t("templates:editor.addType")}
             </Button>
           </CollapsibleSection>
 
-          <CollapsibleSection title="Catálogo de entidades" badge={`${entityCatalog.length} entidades`}>
+          <CollapsibleSection title={t("templates:editor.entitiesSection")} badge={t("templates:editor.entitiesBadge", { value: entityCatalog.length })}>
             <table className={editTableClass}>
               <thead>
                 <tr>
-                  <th>TIPO</th>
-                  <th>VALOR</th>
+                  <th>{t("templates:editor.typeHeader")}</th>
+                  <th>{t("templates:editor.valueHeader")}</th>
                   <th>ALIASES</th>
                   <th style={{ width: 36 }} />
                 </tr>
@@ -562,25 +559,25 @@ export function TemplateEditorView() {
               </tbody>
             </table>
             <Button variant="outline" size="sm" className="mt-2" onClick={addEntity}>
-              + Adicionar entidade
+              {t("templates:editor.addEntity")}
             </Button>
           </CollapsibleSection>
 
-          <CollapsibleSection title="Indexação">
+          <CollapsibleSection title={t("templates:editor.indexingSection")}>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className={fieldLabelClass} htmlFor="tmpl-idx-topics">Topics path</label>
+                <label className={fieldLabelClass} htmlFor="tmpl-idx-topics">{t("templates:editor.topicsPath")}</label>
                 <Input id="tmpl-idx-topics" className="font-mono" value={String(indexing.topics_path ?? "config/topics_v1.yaml")} onChange={(e) => updateIndexing("topics_path", e.target.value)} />
               </div>
               <div>
-                <label className={fieldLabelClass} htmlFor="tmpl-idx-mode">Modo extração</label>
+                <label className={fieldLabelClass} htmlFor="tmpl-idx-mode">{t("templates:editor.extractionMode")}</label>
                 <select id="tmpl-idx-mode" className={selectClass} value={String(indexing.extraction_mode ?? "all")} onChange={(e) => updateIndexing("extraction_mode", e.target.value)}>
                   <option value="all">all</option>
                   <option value="excerpt">excerpt</option>
                 </select>
               </div>
               <div>
-                <label className={fieldLabelClass} htmlFor="tmpl-idx-maxchars">Max chars extração</label>
+                <label className={fieldLabelClass} htmlFor="tmpl-idx-maxchars">{t("templates:editor.maxChars")}</label>
                 <Input
                   id="tmpl-idx-maxchars"
                   type="number"
@@ -596,10 +593,10 @@ export function TemplateEditorView() {
 
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setEditor(null)} disabled={saving}>
-            Cancelar
+            {t("common:action.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={saving || !editor.slug || !editor.name}>
-            {saving ? "Salvando..." : "Salvar template"}
+            {saving ? t("templates:editor.saving") : t("templates:editor.saveTemplate")}
           </Button>
         </div>
       </EditorOverlay>
@@ -612,20 +609,20 @@ export function TemplateEditorView() {
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle className="flex items-center gap-2">
           <FileStack className="size-4 text-accent" aria-hidden />
-          Templates de projeto
+          {t("templates:list.title")}
         </CardTitle>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => setMigrateModalOpen(true)}>
             <Replace />
-            Migrar / remover
+            {t("templates:list.migrateRemove")}
           </Button>
           <Button variant="secondary" onClick={() => setTaxonomyModalOpen(true)}>
             <Plus />
-            Novo tipo/domínio
+            {t("templates:list.newTypeDomain")}
           </Button>
           <Button onClick={handleNew}>
             <Plus />
-            Novo template
+            {t("templates:list.newTemplate")}
           </Button>
         </div>
       </CardHeader>
@@ -640,15 +637,15 @@ export function TemplateEditorView() {
         {!loading && templates.length === 0 && (
           <EmptyState
             icon={<FileStack aria-hidden />}
-            title="Nenhum template"
-            description="Crie um template para padronizar a estrutura dos seus projetos."
+            title={t("templates:list.emptyTitle")}
+            description={t("templates:list.emptyDescription")}
           />
         )}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {templates.map((t) => (
+          {templates.map((tmpl) => (
             <div
-              key={t.slug}
+              key={tmpl.slug}
               className={cn(
                 "group flex flex-col gap-2 rounded-lg border border-border bg-card p-4",
                 "transition-[border-color,box-shadow] duration-200 hover:border-accent/40 hover:shadow-[0_0_20px_var(--accent-soft)]"
@@ -656,28 +653,28 @@ export function TemplateEditorView() {
             >
               <div className="flex items-center gap-2">
                 <strong className="min-w-0 flex-1 truncate font-display text-sm font-semibold text-foreground-strong">
-                  {t.name}
+                  {tmpl.name}
                 </strong>
-                {t.slug === "default" && <Badge>default</Badge>}
-                <Badge variant={t.source === "user" ? "purple" : "outline"}>{t.source === "user" ? "user" : "builtin"}</Badge>
+                {tmpl.slug === "default" && <Badge>default</Badge>}
+                <Badge variant={tmpl.source === "user" ? "purple" : "outline"}>{tmpl.source === "user" ? "user" : "builtin"}</Badge>
               </div>
               <p className="font-mono text-[0.7rem] text-tertiary">
-                {t.areas_count} domínios · atualizado {t.updated_at ? new Date(t.updated_at).toLocaleDateString("pt-BR") : "—"} ·{" "}
-                <span className="text-muted-foreground">{t.slug}.json</span>
+                {t("templates:list.cardMeta", { value: tmpl.areas_count, date: tmpl.updated_at ? formatDate(tmpl.updated_at) : "—" })}{" "}
+                <span className="text-muted-foreground">{tmpl.slug}.json</span>
               </p>
-              {t.description && <p className="line-clamp-2 text-xs text-muted-foreground">{t.description}</p>}
+              {tmpl.description && <p className="line-clamp-2 text-xs text-muted-foreground">{tmpl.description}</p>}
               <div className="mt-auto flex gap-1.5 pt-1">
-                <Button variant="secondary" size="sm" onClick={() => handleEdit(t.slug)}>
+                <Button variant="secondary" size="sm" onClick={() => handleEdit(tmpl.slug)}>
                   <Pencil />
-                  Editar
+                  {t("templates:list.edit")}
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleDuplicate(t.slug)}>
-                  Duplicar
+                <Button variant="ghost" size="sm" onClick={() => handleDuplicate(tmpl.slug)}>
+                  {t("templates:list.duplicate")}
                 </Button>
-                {t.source === "user" && (
-                  <Button variant="destructive" size="sm" className="ml-auto" onClick={() => setConfirmDelete(t.slug)}>
+                {tmpl.source === "user" && (
+                  <Button variant="destructive" size="sm" className="ml-auto" onClick={() => setConfirmDelete(tmpl.slug)}>
                     <Trash2 />
-                    Excluir
+                    {t("common:action.delete")}
                   </Button>
                 )}
               </div>
@@ -686,18 +683,18 @@ export function TemplateEditorView() {
         </div>
 
         {confirmDelete && (
-          <EditorOverlay label="Confirmar exclusão">
-            <h3 className="font-display text-lg font-bold text-foreground-strong">Excluir template</h3>
+          <EditorOverlay label={t("templates:list.confirmOverlayLabel")}>
+            <h3 className="font-display text-lg font-bold text-foreground-strong">{t("templates:list.deleteTitle")}</h3>
             <p className="mt-3 text-sm text-muted-foreground">
-              Tem certeza que deseja excluir o template <strong className="text-foreground">{confirmDelete}</strong>? Esta
-              ação não pode ser desfeita.
+              {t("templates:list.confirmDeleteBefore")} <strong className="text-foreground">{confirmDelete}</strong>
+              {t("templates:list.confirmDeleteAfter")}
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setConfirmDelete(null)}>
-                Cancelar
+                {t("common:action.cancel")}
               </Button>
               <Button variant="destructive" onClick={handleDeleteConfirmed}>
-                Excluir
+                {t("common:action.delete")}
               </Button>
             </div>
           </EditorOverlay>

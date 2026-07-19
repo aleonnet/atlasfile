@@ -1,5 +1,6 @@
 import React from "react";
 import "./ChartBlock.css";
+import { formatNumber } from "../lib/format";
 import {
   Area,
   AreaChart,
@@ -88,9 +89,9 @@ function getSeriesKeys(spec: ChartSpec): string[] {
 
 function formatValue(v: unknown): string {
   if (typeof v !== "number") return String(v ?? "");
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
-  return v.toLocaleString("pt-BR");
+  if (v >= 1_000_000) return `${formatNumber(v / 1_000_000, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}M`;
+  if (v >= 1_000) return `${formatNumber(v / 1_000, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}K`;
+  return formatNumber(v);
 }
 
 function renderBar(spec: ChartSpec) {

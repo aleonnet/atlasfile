@@ -1,0 +1,69 @@
+{
+  "close": {
+    "title": "Fechar (ESC)",
+    "aria": "Fechar onboarding"
+  },
+  "welcome": {
+    "title": "Bem-vindo ao AtlasFile",
+    "subtitle": "Sistema de gestao documental inteligente para projetos.",
+    "filesLocationLabel": "Seus arquivos ficarao em",
+    "filesLocationInfo": "Pasta escolhida na instalacao. Para alterar, edite PROJECTS_HOST_ROOT no .env e reinicie os containers.",
+    "filesLocationHint": "Escolhida na instalacao. Para alterar, edite <code>.env</code> e reinicie os containers.",
+    "start": "Comecar"
+  },
+  "projects": {
+    "replayTitle": "Seus projetos",
+    "createTitle": "Crie seu primeiro projeto",
+    "newProject": "Criar novo projeto",
+    "nameLabel": "Nome do projeto *",
+    "namePlaceholder": "meu_projeto",
+    "nameHint": "Sera criado como subpasta em Projects/",
+    "displayLabel": "Label (exibicao)",
+    "displayPlaceholder": "Meu Projeto",
+    "templateLabel": "Template",
+    "nameRequired": "Nome do projeto é obrigatório",
+    "nameInvalid": "Use apenas letras minusculas, numeros, _ e - (sem espacos ou acentos)",
+    "createFailed": "Falha ao criar projeto",
+    "back": "Voltar",
+    "continue": "Continuar",
+    "creating": "Criando...",
+    "createAndContinue": "Criar e Continuar"
+  },
+  "llm": {
+    "title": "Configure o assistente (opcional)",
+    "subtitle": "O AtlasFile pode usar um LLM para classificar documentos e responder perguntas sobre seus projetos.",
+    "providerLabel": "Provedor",
+    "keyLabel": "API Key",
+    "keyPlaceholderOpenai": "sk-...",
+    "keyPlaceholderAnthropic": "sk-ant-...",
+    "keyChecking": "Verificando a chave…",
+    "keyValid": "✓ Chave válida — a classificação LLM será ativada (tag_only) no projeto",
+    "keyInvalid": "✗ Chave inválida — você pode continuar e ajustar depois em Configurações",
+    "keyUnreachable": "Não foi possível verificar a chave agora (sem bloqueio — siga normalmente)",
+    "keyHint": "Salva localmente no navegador. Você pode configurar depois em Configuracoes do Assistente.",
+    "back": "Voltar",
+    "skip": "Pular",
+    "saveAndFinish": "Salvar e Concluir"
+  },
+  "done": {
+    "title": "Tudo pronto!",
+    "projectCreated": "Projeto <strong>{{label}}</strong> criado.<br/>Arraste seus arquivos em <strong>qualquer tela</strong> — o portal envia e processa tudo automaticamente (classificação, roteamento, indexação e busca).",
+    "llmActivated": "✓ Classificação LLM ativada (tag_only) — os documentos já serão enriquecidos na ingestão.",
+    "manualAlternative": "Alternativa manual: copiar arquivos para <path/> e clicar em <strong>Processar INBOX</strong> no Painel.",
+    "projectPlaceholder": "<projeto>",
+    "openDashboard": "Abrir Dashboard"
+  },
+  "steps": {
+    "welcome": "Bem-vindo",
+    "projects": "Projetos",
+    "assistant": "Assistente"
+  },
+  "authGate": {
+    "title": "Esta instalação exige uma API key",
+    "subtitle": "A autenticação está habilitada neste servidor. Cole a key exibida ao final da instalação (<code>install.sh --enable-auth</code>). Ela fica somente neste navegador.",
+    "keyPlaceholder": "atlas_sk_...",
+    "invalidKey": "API key inválida ou sem permissão. Confira a key exibida ao final da instalação.",
+    "validating": "Validando...",
+    "enter": "Entrar"
+  }
+}

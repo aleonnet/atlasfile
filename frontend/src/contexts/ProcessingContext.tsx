@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { fetchDecisionStatus } from "../api";
+import i18n from "../i18n";
 
 export type ProcessingOp = {
   docId: string;
@@ -19,20 +20,14 @@ type ProcessingContextValue = {
   finish: () => void;
 };
 
-const PHASE_LABELS: Record<string, string> = {
-  preparando: "preparando",
-  movendo_arquivo: "movendo arquivo",
-  extraindo_conteudo: "extraindo conteúdo",
-  indexando: "indexando para busca",
-  atualizando_datasets: "atualizando datasets",
-};
-
 export function formatDecisionPhase(phase: string): string {
-  return PHASE_LABELS[phase] ?? "processando";
+  return i18n.exists(`labels:decisionPhase.${phase}`)
+    ? i18n.t(`labels:decisionPhase.${phase}`)
+    : i18n.t("labels:decisionPhase.fallback");
 }
 
 export function formatDecisionAction(action: ProcessingOp["action"]): string {
-  return action === "approve" ? "Aprovando" : action === "correct" ? "Corrigindo" : "Rejeitando";
+  return i18n.t(`labels:decisionAction.${action}`);
 }
 
 const inert: ProcessingContextValue = { active: null, phase: "idle", start: () => {}, finish: () => {} };

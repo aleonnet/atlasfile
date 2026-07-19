@@ -36,6 +36,9 @@ import type {
   UsageSummaryResponse,
   UsageTotals
 } from "./types";
+import i18n from "./i18n";
+import { apiErrorFromResponse, apiErrorMessage } from "./lib/apiError";
+import { STORAGE_KEYS, storageGet, storageSet } from "./lib/storage";
 
 const API_BASE =
   import.meta.env.VITE_API_URL ||
@@ -46,23 +49,12 @@ export const API_URL = API_BASE;
 
 /* ── Autenticação (API key + escopo de projeto) ── */
 
-const API_KEY_STORAGE = "atlasfile_api_key";
-
 export function getApiKey(): string {
-  try {
-    return localStorage.getItem(API_KEY_STORAGE) ?? "";
-  } catch {
-    return "";
-  }
+  return storageGet(STORAGE_KEYS.apiKey) ?? "";
 }
 
 export function setApiKey(value: string): void {
-  try {
-    if (value.trim()) localStorage.setItem(API_KEY_STORAGE, value.trim());
-    else localStorage.removeItem(API_KEY_STORAGE);
-  } catch {
-    /* storage indisponível (ex.: modo privado) — segue sem persistir */
-  }
+  storageSet(STORAGE_KEYS.apiKey, value.trim());
 }
 
 type UnauthorizedHandler = (status: number, detail: string) => void;
@@ -82,13 +74,20 @@ async function apiFetch(input: string, init: RequestInit = {}): Promise<Response
   if ((res.status === 401 || res.status === 403) && unauthorizedHandler) {
     let detail = "";
     try {
-      detail = String((await res.clone().json())?.detail ?? "");
+      detail = apiErrorMessage((await res.clone().json())?.detail);
     } catch {
       /* corpo não-JSON */
     }
     unauthorizedHandler(res.status, detail);
   }
   return res;
+}
+
+/** Lança Error com o detail do backend resolvido (code→catálogo `errors:`,
+ *  senão `message` cru); o literal PT-BR antigo (`errors:api.*`) vira fallback
+ *  quando o body não tem detail aproveitável. */
+async function raiseApiError(res: Response, fallbackKey: string): Promise<never> {
+  throw await apiErrorFromResponse(res, i18n.t(fallbackKey));
 }
 
 /** Anexa a API key como query param — para URLs sem header (EventSource/links). */
@@ -116,20 +115,20 @@ export interface SetupStatus {
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {
   const res = await apiFetch(`${API_URL}/api/setup/status`);
-  if (!res.ok) throw new Error("Falha ao verificar status de setup");
+  if (!res.ok) await raiseApiError(res, "errors:api.setupStatus");
   return res.json();
 }
 
 export async function fetchProjects(): Promise<Project[]> {
   const res = await apiFetch(`${API_URL}/api/projects`);
-  if (!res.ok) throw new Error("Falha ao carregar projetos");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadProjects");
   return res.json();
 }
 
 export async function initializeProject(projectRef: string, templateSlug?: string): Promise<{ status: string; already_initialized: boolean }> {
   const params = templateSlug ? `?template=${encodeURIComponent(templateSlug)}` : "";
   const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/initialize${params}`, { method: "POST" });
-  if (!res.ok) throw new Error("Falha ao inicializar projeto");
+  if (!res.ok) await raiseApiError(res, "errors:api.initializeProject");
   return res.json();
 }
 
@@ -137,13 +136,13 @@ export async function initializeProject(projectRef: string, templateSlug?: strin
 
 export async function listTemplates(): Promise<TemplateMeta[]> {
   const res = await apiFetch(`${API_URL}/api/templates`);
-  if (!res.ok) throw new Error("Falha ao listar templates");
+  if (!res.ok) await raiseApiError(res, "errors:api.listTemplates");
   return res.json();
 }
 
 export async function getTemplate(slug: string): Promise<TemplateData> {
   const res = await apiFetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`);
-  if (!res.ok) throw new Error("Template não encontrado");
+  if (!res.ok) await raiseApiError(res, "errors:api.templateNotFound");
   return res.json();
 }
 
@@ -153,7 +152,7 @@ export async function saveTemplate(slug: string, data: Record<string, unknown>):
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Falha ao salvar template");
+  if (!res.ok) await raiseApiError(res, "errors:api.saveTemplate");
   return res.json();
 }
 
@@ -163,18 +162,18 @@ export async function createTemplate(data: Record<string, unknown>): Promise<Tem
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Falha ao criar template");
+  if (!res.ok) await raiseApiError(res, "errors:api.createTemplate");
   return res.json();
 }
 
 export async function deleteTemplate(slug: string): Promise<void> {
   const res = await apiFetch(`${API_URL}/api/templates/${encodeURIComponent(slug)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Falha ao excluir template");
+  if (!res.ok) await raiseApiError(res, "errors:api.deleteTemplate");
 }
 
 export async function fetchProjectProfile(projectRef: string): Promise<ProjectProfileResponse> {
   const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile`);
-  if (!res.ok) throw new Error("Falha ao carregar profile do projeto");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadProjectProfile");
   return res.json();
 }
 
@@ -184,7 +183,7 @@ export async function validateProjectProfile(projectRef: string, profile: Projec
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ profile })
   });
-  if (!res.ok) throw new Error("Falha ao validar profile");
+  if (!res.ok) await raiseApiError(res, "errors:api.validateProfile");
   return res.json();
 }
 
@@ -203,13 +202,13 @@ export async function updateProjectProfile(
       updated_by: updatedBy
     })
   });
-  if (!res.ok) throw new Error("Falha ao salvar profile");
+  if (!res.ok) await raiseApiError(res, "errors:api.saveProfile");
   return res.json();
 }
 
 export async function fetchProfileHistory(projectRef: string): Promise<{ entries: Array<{ entry: string; version: number; updated_at: string | null; updated_by: string | null; etag: string }> }> {
   const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/profile/history`);
-  if (!res.ok) throw new Error("Falha ao carregar histórico de profile");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadProfileHistory");
   return res.json();
 }
 
@@ -227,7 +226,7 @@ export async function planProjectLayout(
       cleanup_empty_dirs: options?.cleanup_empty_dirs ?? false
     })
   });
-  if (!res.ok) throw new Error("Falha ao gerar plano de layout");
+  if (!res.ok) await raiseApiError(res, "errors:api.planLayout");
   return res.json();
 }
 
@@ -247,25 +246,25 @@ export async function applyProjectLayout(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (!res.ok) throw new Error("Falha ao aplicar layout");
+  if (!res.ok) await raiseApiError(res, "errors:api.applyLayout");
   return res.json();
 }
 
 export async function triggerScan(projectId: string): Promise<ScanResult> {
   const res = await apiFetch(`${API_URL}/api/ingest/scan/${projectId}`, { method: "POST" });
-  if (!res.ok) throw new Error("Falha ao escanear inbox");
+  if (!res.ok) await raiseApiError(res, "errors:api.scanInbox");
   return res.json();
 }
 
 export async function fetchIngestHistory(projectId: string): Promise<IngestHistoryResponse> {
   const res = await apiFetch(`${API_URL}/api/ingest/history/${encodeURIComponent(projectId)}`);
-  if (!res.ok) throw new Error("Falha ao carregar histórico de ingestão");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadIngestHistory");
   return res.json();
 }
 
 export async function fetchIngestStatus(): Promise<IngestOperationStatus> {
   const res = await apiFetch(`${API_URL}/api/ingest/status`);
-  if (!res.ok) throw new Error("Falha ao carregar status da ingestão");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadIngestStatus");
   return res.json();
 }
 
@@ -277,13 +276,13 @@ export async function fetchClassifierStatus(projectId?: string): Promise<Classif
   const url = new URL(`${API_URL}/api/classifier/status`);
   if (projectId) url.searchParams.set("project_id", projectId);
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha ao carregar status do classificador");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadClassifierStatus");
   return res.json();
 }
 
 export async function fetchClassifierReportLatest(): Promise<ClassifierReport> {
   const res = await apiFetch(`${API_URL}/api/classifier/report/latest`);
-  if (!res.ok) throw new Error("Falha ao carregar benchmark atual");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadLatestBenchmark");
   return res.json();
 }
 
@@ -291,7 +290,7 @@ export async function fetchClassifierReports(limit = 10): Promise<ClassifierRepo
   const url = new URL(`${API_URL}/api/classifier/reports`);
   url.searchParams.set("limit", String(limit));
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha ao carregar histórico do classificador");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadClassifierHistory");
   return res.json();
 }
 
@@ -299,10 +298,7 @@ export async function deleteClassifierReport(reportId: string): Promise<void> {
   const res = await apiFetch(`${API_URL}/api/classifier/reports/${encodeURIComponent(reportId)}`, {
     method: "DELETE",
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail ?? `HTTP ${res.status}`);
-  }
+  if (!res.ok) throw await apiErrorFromResponse(res);
 }
 
 export async function updateClassifierOverride(
@@ -314,7 +310,7 @@ export async function updateClassifierOverride(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ override_mode: overrideMode })
   });
-  if (!res.ok) throw new Error("Falha ao salvar override do classificador");
+  if (!res.ok) await raiseApiError(res, "errors:api.saveClassifierOverride");
   return res.json();
 }
 
@@ -324,7 +320,7 @@ export async function updateBenchmarkEnabledModes(modes: string[]): Promise<Clas
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ benchmark_enabled_modes: modes }),
   });
-  if (!res.ok) throw new Error("Falha ao salvar modos de benchmark");
+  if (!res.ok) await raiseApiError(res, "errors:api.saveBenchmarkModes");
   return res.json();
 }
 
@@ -340,28 +336,28 @@ export async function startClassifierCycle(params?: {
   const headers: Record<string, string> = {};
   if (params?.openaiApiKey) headers["X-OpenAI-API-Key"] = params.openaiApiKey;
   const res = await apiFetch(url.toString(), { method: "POST", headers });
-  if (res.status === 409) throw new Error("Ciclo do classificador já em andamento");
-  if (!res.ok) throw new Error("Falha ao iniciar ciclo do classificador");
+  if (res.status === 409) await raiseApiError(res, "errors:api.cycleAlreadyRunning");
+  if (!res.ok) await raiseApiError(res, "errors:api.startClassifierCycle");
   return res.json();
 }
 
 /** Prontidão dos datasets do classificador (validação/treino/gate) para orientar o usuário. */
 export async function fetchDatasetReadiness(): Promise<DatasetReadiness> {
   const res = await apiFetch(`${API_URL}/api/classifier/datasets/readiness`);
-  if (!res.ok) throw new Error("Falha ao carregar prontidão dos datasets");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadDatasetReadiness");
   return res.json();
 }
 
 export async function fetchClassifierCycleStatus(): Promise<ClassifierCycleStatus> {
   const res = await apiFetch(`${API_URL}/api/classifier/cycle/status`);
-  if (!res.ok) throw new Error("Falha ao carregar status do ciclo do classificador");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadCycleStatus");
   return res.json();
 }
 
 export async function cancelClassifierCycle(): Promise<void> {
   const res = await apiFetch(`${API_URL}/api/classifier/cycle`, { method: "DELETE" });
-  if (res.status === 409) throw new Error("Nenhum ciclo em andamento");
-  if (!res.ok) throw new Error("Falha ao cancelar ciclo do classificador");
+  if (res.status === 409) await raiseApiError(res, "errors:api.noCycleRunning");
+  if (!res.ok) await raiseApiError(res, "errors:api.cancelClassifierCycle");
 }
 
 export function getClassifierCycleStatusStreamUrl(): string {
@@ -384,7 +380,7 @@ export async function searchDocuments(
   if (filters?.document_type) url.searchParams.set("document_type", filters.document_type);
   if (filters?.business_domain) url.searchParams.set("business_domain", filters.business_domain);
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha na busca");
+  if (!res.ok) await raiseApiError(res, "errors:api.search");
   return res.json();
 }
 
@@ -392,7 +388,7 @@ export async function fetchStats(projectId?: string): Promise<StatsResponse> {
   const url = new URL(`${API_URL}/api/stats`);
   if (projectId) url.searchParams.set("project_id", projectId);
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha ao carregar estatísticas");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadStats");
   return res.json();
 }
 
@@ -401,13 +397,13 @@ export async function fetchSuggestions(query: string, projectId?: string): Promi
   url.searchParams.set("q", query);
   if (projectId) url.searchParams.set("project_id", projectId);
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha no autocomplete");
+  if (!res.ok) await raiseApiError(res, "errors:api.suggest");
   return res.json();
 }
 
 export async function fetchTriage(projectId: string): Promise<TriageItem[]> {
   const res = await apiFetch(`${API_URL}/api/triage/${projectId}`);
-  if (!res.ok) throw new Error("Falha ao carregar triagem");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadTriage");
   return res.json();
 }
 
@@ -427,7 +423,7 @@ export async function triageDecision(
       target_document_type: targetDocumentType
     })
   });
-  if (!res.ok) throw new Error("Falha ao enviar decisao");
+  if (!res.ok) await raiseApiError(res, "errors:api.sendDecision");
 }
 
 export async function runReconcile(projectId?: string): Promise<{
@@ -437,14 +433,14 @@ export async function runReconcile(projectId?: string): Promise<{
 }> {
   const url = projectId ? `${API_URL}/api/reconcile/${encodeURIComponent(projectId)}` : `${API_URL}/api/reconcile`;
   const res = await apiFetch(url, { method: "POST" });
-  if (res.status === 409) throw new Error("Reconciliacao ja em andamento");
-  if (!res.ok) throw new Error("Falha ao reconciliar");
+  if (res.status === 409) await raiseApiError(res, "errors:api.reconcileAlreadyRunning");
+  if (!res.ok) await raiseApiError(res, "errors:api.reconcile");
   return res.json();
 }
 
 export async function fetchReconcileStatus(): Promise<ReconcileStatus> {
   const res = await apiFetch(`${API_URL}/api/reconcile/status`);
-  if (!res.ok) throw new Error("Falha ao carregar status de reconciliacao");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadReconcileStatus");
   return res.json();
 }
 
@@ -467,7 +463,7 @@ export async function fetchHealth(): Promise<{ ok: boolean }> {
 /** List LLM models (provider/model) for chat. */
 export async function fetchModels(): Promise<ModelOption[]> {
   const res = await apiFetch(`${API_URL}/api/models`);
-  if (!res.ok) throw new Error("Falha ao carregar modelos");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadModels");
   return res.json();
 }
 
@@ -489,10 +485,7 @@ export async function refreshModelCatalog(options?: { dryRun?: boolean; url?: st
   if (options?.url) params.set("url", options.url);
   const qs = params.toString();
   const res = await apiFetch(`${API_URL}/api/models/refresh${qs ? `?${qs}` : ""}`, { method: "POST" });
-  if (!res.ok) {
-    const detail = await res.json().then((d) => d.detail).catch(() => null);
-    throw new Error(detail || "Falha ao atualizar o catálogo de modelos");
-  }
+  if (!res.ok) await raiseApiError(res, "errors:api.refreshModelCatalog");
   return res.json();
 }
 
@@ -504,7 +497,7 @@ export interface CatalogConfig {
 
 export async function fetchCatalogConfig(): Promise<CatalogConfig> {
   const res = await apiFetch(`${API_URL}/api/models/catalog-config`);
-  if (!res.ok) throw new Error("Falha ao carregar a configuração do catálogo");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadCatalogConfig");
   return res.json();
 }
 
@@ -515,10 +508,7 @@ export async function updateCatalogConfig(url: string): Promise<CatalogConfig> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
   });
-  if (!res.ok) {
-    const detail = await res.json().then((d) => d.detail).catch(() => null);
-    throw new Error(detail || "Falha ao salvar a URL do catálogo");
-  }
+  if (!res.ok) await raiseApiError(res, "errors:api.saveCatalogUrl");
   return res.json();
 }
 
@@ -539,7 +529,7 @@ export interface ModelCatalogDetail {
 
 export async function fetchModelCatalogDetail(): Promise<ModelCatalogDetail> {
   const res = await apiFetch(`${API_URL}/api/models/detail`);
-  if (!res.ok) throw new Error("Falha ao carregar o catálogo detalhado");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadCatalogDetail");
   return res.json();
 }
 
@@ -557,10 +547,7 @@ export async function validateModel(
     headers,
     body: JSON.stringify({ provider, model }),
   });
-  if (!res.ok) {
-    const detail = await res.json().then((d) => d.detail).catch(() => null);
-    throw new Error(detail || "Falha ao validar o modelo");
-  }
+  if (!res.ok) await raiseApiError(res, "errors:api.validateModel");
   return res.json();
 }
 
@@ -575,7 +562,7 @@ export async function fetchDecisionStatus(): Promise<{
   started_at: string | null;
 }> {
   const res = await apiFetch(`${API_URL}/api/triage-decision-status`);
-  if (!res.ok) throw new Error("Falha ao consultar status da decisão");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadDecisionStatus");
   return res.json();
 }
 
@@ -591,10 +578,7 @@ export async function validateProviderKey(
     headers,
     body: JSON.stringify({ provider }),
   });
-  if (!res.ok) {
-    const detail = await res.json().then((d) => d.detail).catch(() => null);
-    throw new Error(detail || "Falha ao verificar a chave");
-  }
+  if (!res.ok) await raiseApiError(res, "errors:api.validateKey");
   return res.json();
 }
 
@@ -627,13 +611,13 @@ export async function sendChatMessage(
   });
   if (!res.ok) {
     const t = await res.text();
+    let msg = "";
     try {
-      const j = JSON.parse(t) as { detail?: string };
-      if (typeof j?.detail === "string") throw new Error(j.detail);
-    } catch (e) {
-      if (e instanceof Error && e.message !== t) throw e;
+      msg = apiErrorMessage((JSON.parse(t) as { detail?: unknown })?.detail);
+    } catch {
+      /* corpo não-JSON */
     }
-    throw new Error(t || "Falha no chat");
+    throw new Error(msg || t || i18n.t("errors:api.chat"));
   }
   return res.json();
 }
@@ -643,14 +627,14 @@ export async function fetchChatSessions(q?: string): Promise<ChatSession[]> {
   const url = new URL(`${API_URL}/api/chat/sessions`);
   if (q?.trim()) url.searchParams.set("q", q.trim());
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha ao listar sessões");
+  if (!res.ok) await raiseApiError(res, "errors:api.listSessions");
   return res.json();
 }
 
 /** Get one chat session by id. */
 export async function getChatSession(id: string): Promise<ChatSession> {
   const res = await apiFetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`);
-  if (!res.ok) throw new Error("Sessão não encontrada");
+  if (!res.ok) await raiseApiError(res, "errors:api.sessionNotFound");
   return res.json();
 }
 
@@ -670,7 +654,7 @@ export async function createChatSession(payload: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (!res.ok) throw new Error("Falha ao criar sessão");
+  if (!res.ok) await raiseApiError(res, "errors:api.createSession");
   return res.json();
 }
 
@@ -692,7 +676,7 @@ export async function updateChatSession(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (!res.ok) throw new Error("Falha ao atualizar sessão");
+  if (!res.ok) await raiseApiError(res, "errors:api.updateSession");
   return res.json();
 }
 
@@ -709,7 +693,7 @@ export async function fetchUsageSummary(params: {
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
   if (params.channel?.trim()) url.searchParams.set("channel", params.channel.trim());
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha ao carregar resumo de uso");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadUsageSummary");
   return res.json();
 }
 
@@ -728,7 +712,7 @@ export async function fetchUsageSessions(params: {
   if (params.channel?.trim()) url.searchParams.set("channel", params.channel.trim());
   if (params.limit != null) url.searchParams.set("limit", String(params.limit));
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha ao carregar sessões de uso");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadUsageSessions");
   return res.json();
 }
 
@@ -743,7 +727,7 @@ export async function fetchClassificationUsage(params: {
   url.searchParams.set("end_date", params.end_date);
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha ao carregar uso de classificação");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadClassificationUsage");
   return res.json();
 }
 
@@ -757,14 +741,14 @@ export async function fetchTrainingUsage(params: {
   url.searchParams.set("end_date", params.end_date);
   if (params.project_id?.trim()) url.searchParams.set("project_id", params.project_id.trim());
   const res = await apiFetch(url.toString());
-  if (!res.ok) throw new Error("Falha ao carregar uso de treinamento");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadTrainingUsage");
   return res.json();
 }
 
 /** Delete a chat session. */
 export async function deleteChatSession(id: string): Promise<void> {
   const res = await apiFetch(`${API_URL}/api/chat/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Falha ao excluir sessão");
+  if (!res.ok) await raiseApiError(res, "errors:api.deleteSession");
 }
 
 /* ── Upload / Move ── */
@@ -803,7 +787,7 @@ export function uploadFileWithProgress(
 
 export async function fetchInboxFiles(projectId: string): Promise<{ files: Array<{ filename: string; size: number }> }> {
   const res = await apiFetch(`${API_URL}/api/ingest/inbox/${encodeURIComponent(projectId)}`);
-  if (!res.ok) throw new Error("Falha ao listar inbox");
+  if (!res.ok) await raiseApiError(res, "errors:api.listInbox");
   return res.json();
 }
 
@@ -812,7 +796,7 @@ export async function deleteInboxFile(projectId: string, filename: string): Prom
     `${API_URL}/api/ingest/upload/${encodeURIComponent(projectId)}/${encodeURIComponent(filename)}`,
     { method: "DELETE" }
   );
-  if (!res.ok) throw new Error("Falha ao deletar arquivo");
+  if (!res.ok) await raiseApiError(res, "errors:api.deleteInboxFile");
   return res.json();
 }
 
@@ -833,7 +817,7 @@ export async function moveDocument(
       }),
     }
   );
-  if (!res.ok) throw new Error("Falha ao mover documento");
+  if (!res.ok) await raiseApiError(res, "errors:api.moveDocument");
   return res.json();
 }
 
@@ -841,7 +825,7 @@ export async function moveDocument(
 
 export async function fetchChannelConfig(): Promise<ChannelConfig> {
   const res = await apiFetch(`${API_URL}/api/channels/config`);
-  if (!res.ok) throw new Error("Falha ao carregar config de canais");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadChannelConfig");
   return res.json();
 }
 
@@ -851,20 +835,20 @@ export async function updateChannelConfig(config: ChannelConfig): Promise<Channe
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
   });
-  if (!res.ok) throw new Error("Falha ao salvar config de canais");
+  if (!res.ok) await raiseApiError(res, "errors:api.saveChannelConfig");
   return res.json();
 }
 
 export async function fetchChannelStatus(): Promise<ChannelStatusResponse> {
   const res = await apiFetch(`${API_URL}/api/channels/status`);
-  if (!res.ok) throw new Error("Falha ao carregar status dos canais");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadChannelStatus");
   return res.json();
 }
 
 /** Conflitos de rótulo pendentes de arbitragem (reconciliação por SHA). */
 export async function fetchLabelConflicts(): Promise<{ total: number; items: LabelConflict[] }> {
   const res = await apiFetch(`${API_URL}/api/classifier/label-conflicts`);
-  if (!res.ok) throw new Error("Falha ao carregar conflitos de rótulo");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadLabelConflicts");
   return res.json();
 }
 
@@ -878,14 +862,14 @@ export async function resolveLabelConflict(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ business_domain: businessDomain, document_type: documentType }),
   });
-  if (!res.ok) throw new Error("Falha ao resolver conflito de rótulo");
+  if (!res.ok) await raiseApiError(res, "errors:api.resolveLabelConflict");
   return res.json();
 }
 
 /** Taxonomia vigente do template default (keys) — validação de sugestões na UI. */
 export async function fetchTaxonomy(): Promise<{ business_domains: string[]; document_types: string[] }> {
   const res = await apiFetch(`${API_URL}/api/taxonomy`);
-  if (!res.ok) throw new Error("Falha ao carregar taxonomia");
+  if (!res.ok) await raiseApiError(res, "errors:api.loadTaxonomy");
   return res.json();
 }
 
@@ -931,10 +915,7 @@ export async function migrateTaxonomy(payload: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    const detail = await res.json().then((d) => d.detail).catch(() => null);
-    throw new Error(detail || "Falha na migração de taxonomia");
-  }
+  if (!res.ok) await raiseApiError(res, "errors:api.migrateTaxonomy");
   return res.json();
 }
 
@@ -944,10 +925,7 @@ export async function deleteTaxonomyEntry(
   key: string
 ): Promise<{ templates_updated: string[]; projects_updated: string[] }> {
   const res = await apiFetch(`${API_URL}/api/taxonomy/${kind}/${encodeURIComponent(key)}`, { method: "DELETE" });
-  if (!res.ok) {
-    const detail = await res.json().then((d) => d.detail).catch(() => null);
-    throw new Error(detail || "Falha ao remover entrada de taxonomia");
-  }
+  if (!res.ok) await raiseApiError(res, "errors:api.deleteTaxonomyEntry");
   return res.json();
 }
 
@@ -966,7 +944,7 @@ export interface RejectedTriageItem {
 /** Documentos rejeitados na triagem (inclui registros órfãos). */
 export async function fetchRejectedTriage(projectId: string): Promise<RejectedTriageItem[]> {
   const res = await apiFetch(`${API_URL}/api/triage/${encodeURIComponent(projectId)}/rejected`);
-  if (!res.ok) throw new Error("Falha ao listar rejeitados");
+  if (!res.ok) await raiseApiError(res, "errors:api.listRejected");
   return res.json();
 }
 
@@ -976,10 +954,7 @@ export async function restoreRejectedTriage(projectId: string, docId: string): P
     `${API_URL}/api/triage/${encodeURIComponent(projectId)}/${encodeURIComponent(docId)}/restore`,
     { method: "POST" }
   );
-  if (!res.ok) {
-    const detail = await res.json().then((d) => d.detail).catch(() => null);
-    throw new Error(detail || "Falha ao restaurar rejeitado");
-  }
+  if (!res.ok) await raiseApiError(res, "errors:api.restoreRejected");
   return res.json();
 }
 
@@ -989,7 +964,7 @@ export async function deleteRejectedTriage(projectId: string, docId: string): Pr
     `${API_URL}/api/triage/${encodeURIComponent(projectId)}/${encodeURIComponent(docId)}/rejected`,
     { method: "DELETE" }
   );
-  if (!res.ok) throw new Error("Falha ao excluir rejeitado");
+  if (!res.ok) await raiseApiError(res, "errors:api.deleteRejected");
   return res.json();
 }
 
@@ -1006,6 +981,6 @@ export async function createTaxonomyEntry(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error("Falha ao criar entrada de taxonomia");
+  if (!res.ok) await raiseApiError(res, "errors:api.createTaxonomyEntry");
   return res.json();
 }

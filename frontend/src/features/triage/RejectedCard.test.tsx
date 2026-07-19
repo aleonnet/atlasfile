@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { emitDataRefresh } from "../../lib/refreshBus";
 import { RejectedCard } from "./RejectedCard";
+import { renderWithProviders } from "../../test/utils";
 
 vi.mock("../../api", () => ({
   fetchRejectedTriage: vi.fn(),
@@ -40,13 +40,13 @@ describe("RejectedCard", () => {
 
   it("não renderiza nada quando não há rejeitados", async () => {
     vi.mocked(fetchRejectedTriage).mockResolvedValue([]);
-    const { container } = render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={() => {}} />);
+    const { container } = renderWithProviders(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={() => {}} />);
     await waitFor(() => expect(fetchRejectedTriage).toHaveBeenCalled());
     expect(container.textContent).toBe("");
   });
 
   it("usa o CollapsibleSection padrão com contagem; órfão não tem Restaurar", async () => {
-    render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={() => {}} />);
+    renderWithProviders(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={() => {}} />);
     await screen.findByText("Rejeitados");
     expect(screen.getByText("2 arquivos")).toBeInTheDocument();
     expect(screen.getByText("contrato_ruim.pdf")).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe("RejectedCard", () => {
 
   it("Restaurar chama a API e notifica o Painel via onChanged", async () => {
     const onChanged = vi.fn();
-    render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={onChanged} />);
+    renderWithProviders(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={onChanged} />);
     await screen.findByText("Rejeitados");
     fireEvent.click(screen.getByText("Restaurar"));
     await waitFor(() => expect(restoreRejectedTriage).toHaveBeenCalledWith("p1", "abc123"));
@@ -67,7 +67,7 @@ describe("RejectedCard", () => {
 
   it("Excluir exige confirmação, chama a API e notifica o Painel (badge excluído sem reload)", async () => {
     const onChanged = vi.fn();
-    render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={onChanged} />);
+    renderWithProviders(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={onChanged} />);
     await screen.findByText("Rejeitados");
     fireEvent.click(screen.getByLabelText("Excluir contrato_ruim.pdf definitivamente"));
     expect(deleteRejectedTriage).not.toHaveBeenCalled();
@@ -77,10 +77,14 @@ describe("RejectedCard", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
-  it("recarrega quando o bus de refresh emite (reatividade sem reload)", async () => {
-    render(<RejectedCard projectId="p1" onStatus={() => {}} onChanged={() => {}} />);
+  it("recarrega quando a query é invalidada (reatividade via cache)", async () => {
+    const { queryClient } = renderWithProviders(
+      <RejectedCard projectId="p1" onStatus={() => {}} onChanged={() => {}} />
+    );
     await waitFor(() => expect(fetchRejectedTriage).toHaveBeenCalledTimes(1));
-    emitDataRefresh();
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["triage", "p1", "rejected"] });
+    });
     await waitFor(() => expect(fetchRejectedTriage).toHaveBeenCalledTimes(2));
   });
 });

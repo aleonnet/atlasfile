@@ -1,41 +1,31 @@
-import { useCallback, useEffect, useState } from "react";
-import { deleteInboxFile, fetchInboxFiles } from "../../api";
-import { onDataRefresh } from "../../lib/refreshBus";
+import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { deleteInboxFile } from "../../api";
+import { useInboxFilesQuery } from "../../lib/queries";
+import { qk } from "../../lib/queryKeys";
 import { rowDeleteButtonClass } from "../../components/ui/collapsible-section";
+import type { StatusSeverity } from "../../types";
 
 type Props = {
   projectId: string;
-  onStatus: (msg: string) => void;
+  onStatus: (msg: string, severity?: StatusSeverity) => void;
 };
 
 /** Fila da INBOX visível: o usuário vê O QUE o Processar INBOX vai processar,
  *  com remoção por arquivo — nada de scans misteriosos de sobras invisíveis. */
 export function InboxQueueChips({ projectId, onStatus }: Props) {
-  const [files, setFiles] = useState<{ filename: string; size: number }[]>([]);
-
-  const load = useCallback(() => {
-    if (!projectId) {
-      setFiles([]);
-      return;
-    }
-    fetchInboxFiles(projectId)
-      .then((res) => setFiles(res.files))
-      .catch(() => setFiles([]));
-  }, [projectId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Reativo via bus: scans (portal ou botão) recarregam a fila sem reload
-  useEffect(() => onDataRefresh(load), [load]);
+  const { t } = useTranslation();
+  // Reativo via cache: scans invalidam inbox-files — a fila atualiza sozinha
+  const queryClient = useQueryClient();
+  const { data } = useInboxFilesQuery(projectId);
+  const files = data?.files ?? [];
 
   if (files.length === 0) return null;
 
   return (
     <div className="rounded-md border border-border bg-elevated px-3 py-2.5">
       <p className="font-mono text-[0.65rem] uppercase tracking-wide text-tertiary">
-        Na fila da INBOX ({files.length})
+        {t("ingest:queue.title", { count: files.length })}
       </p>
       <ul className="m-0 mt-1.5 flex list-none flex-wrap gap-1.5 p-0">
         {files.map((file) => (
@@ -49,11 +39,11 @@ export function InboxQueueChips({ projectId, onStatus }: Props) {
             <button
               type="button"
               className={rowDeleteButtonClass}
-              aria-label={`Remover ${file.filename} da inbox`}
+              aria-label={t("ingest:queue.removeAria", { filename: file.filename })}
               onClick={() => {
                 void deleteInboxFile(projectId, file.filename)
-                  .then(() => load())
-                  .catch(() => onStatus("Falha ao remover arquivo da inbox"));
+                  .then(() => queryClient.invalidateQueries({ queryKey: qk.inboxFiles(projectId) }))
+                  .catch(() => onStatus(t("ingest:queue.removeFailed"), "error"));
               }}
             >
               ×

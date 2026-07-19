@@ -1,5 +1,6 @@
 /// <reference types="@testing-library/jest-dom/vitest" />
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderWithProviders } from "../../test/utils";
 import { describe, expect, it, vi } from "vitest";
 import { NavigationProvider } from "../../contexts/NavigationContext";
 import { ProjectProvider } from "../../contexts/ProjectContext";
@@ -47,7 +48,7 @@ function renderModal() {
     onChangeAutoTitleLLM: vi.fn(),
     onClose: vi.fn()
   };
-  render(
+  renderWithProviders(
     <SettingsProvider>
       <ProjectProvider>
         <NavigationProvider>

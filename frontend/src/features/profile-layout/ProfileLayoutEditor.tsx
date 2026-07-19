@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "../../components/ui/button";
 import { CollapsibleSection, editTableClass, tableInputClass } from "../../components/ui/collapsible-section";
 import { Input } from "../../components/ui/input";
@@ -20,6 +21,7 @@ const PARA_DEFAULTS = {
 } as const;
 
 export function ProfileLayoutEditor({ profile, onChange }: Props) {
+  const { t } = useTranslation();
   const folders = profile.layout.business_domain_folders ?? [];
 
   function updateField<K extends keyof ProjectProfileV2>(key: K, value: ProjectProfileV2[K]) {
@@ -95,19 +97,19 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
   return (
     <div className="flex flex-col gap-2.5">
       {/* ── Estrutura de Layout (Modo + Raízes + Areas root) ── */}
-      <CollapsibleSection title="Estrutura de Layout" defaultOpen>
+      <CollapsibleSection title={t("profileLayout:editor.layoutSection")} defaultOpen>
         <div className="flex gap-4">
           <label className="flex items-center gap-1.5 text-sm">
             <input type="radio" name="layout-mode" className="size-3.5 accent-[var(--accent)]" value="para_jd" checked={profile.layout.mode === "para_jd"} onChange={() => updateMode("para_jd")} />
-            <span>PARA</span>
+            <span>{t("profileLayout:editor.modePara")}</span>
           </label>
           <label className="flex items-center gap-1.5 text-sm">
             <input type="radio" name="layout-mode" className="size-3.5 accent-[var(--accent)]" value="custom" checked={profile.layout.mode === "custom"} onChange={() => updateMode("custom")} />
-            <span>Custom</span>
+            <span>{t("profileLayout:editor.modeCustom")}</span>
           </label>
         </div>
 
-        <span className="mt-3 block font-mono text-[0.68rem] uppercase tracking-wide text-tertiary">Raízes (PARA)</span>
+        <span className="mt-3 block font-mono text-[0.68rem] uppercase tracking-wide text-tertiary">{t("profileLayout:editor.rootsLabel")}</span>
         <div className="mt-1.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {(["projects", "areas", "resources", "archive"] as const).map((key) => (
             <label key={key} className="block">
@@ -118,13 +120,13 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
         </div>
 
         <label className="mt-3 block">
-          <span className={fieldLabelClass}>Areas root (onde ficam os domínios)</span>
+          <span className={fieldLabelClass}>{t("profileLayout:editor.areasRootLabel")}</span>
           <Input className="font-mono" value={profile.layout.areas_root} onChange={(e) => updateAreasRoot(e.target.value)} />
         </label>
       </CollapsibleSection>
 
       {/* ── Mapeamento domínios → pastas ── */}
-      <CollapsibleSection title="Mapeamento de domínios → pastas" badge={String(folders.length)}>
+      <CollapsibleSection title={t("profileLayout:editor.domainMappingSection")} badge={String(folders.length)}>
         <table className={editTableClass}>
           <thead>
             <tr>
@@ -143,7 +145,7 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
                   <input className={tableInputClass} value={row.folder} onChange={(e) => updateFolder(idx, e.target.value)} />
                 </td>
                 <td>
-                  <Button variant="ghost" size="icon" className="size-7 text-tertiary hover:text-destructive" title="Remover" aria-label="Remover linha" onClick={() => removeAreaFolder(row.business_domain)}>
+                  <Button variant="ghost" size="icon" className="size-7 text-tertiary hover:text-destructive" title={t("profileLayout:editor.removeTitle")} aria-label={t("profileLayout:editor.removeRowAria")} onClick={() => removeAreaFolder(row.business_domain)}>
                     <X className="size-3.5" />
                   </Button>
                 </td>
@@ -151,25 +153,25 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
             ))}
           </tbody>
         </table>
-        <Button variant="outline" size="sm" className="mt-2" onClick={addAreaFolder}>+ Adicionar business_domain_folder</Button>
+        <Button variant="outline" size="sm" className="mt-2" onClick={addAreaFolder}>{t("profileLayout:editor.addDomainFolder")}</Button>
       </CollapsibleSection>
 
       {/* ── Naming (formato canônico) ── */}
-      <CollapsibleSection title="Naming (formato canônico)">
+      <CollapsibleSection title={t("profileLayout:editor.namingSection")}>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
-            <span className={fieldLabelClass}>Canonical pattern</span>
+            <span className={fieldLabelClass}>{t("profileLayout:editor.canonicalPattern")}</span>
             <Input
               className="font-mono"
               value={profile.naming?.canonical_pattern ?? "{date}__{project}__{original_name}"}
               onChange={(e) => onChange({ ...profile, naming: { ...profile.naming, canonical_pattern: e.target.value } })}
             />
             <span className="mt-1 block text-[0.7rem] text-tertiary">
-              Campos: {"{date}"}, {"{project}"}, {"{business_domain}"}, {"{original_name}"}, {"{document_type}"}. Sufixo __vNN.ext automático.
+              {t("profileLayout:editor.patternHint")}
             </span>
           </label>
           <label className="block">
-            <span className={fieldLabelClass}>Date format</span>
+            <span className={fieldLabelClass}>{t("profileLayout:editor.dateFormat")}</span>
             <Input
               className="font-mono"
               value={profile.naming?.date_format ?? "%Y%m%d"}
@@ -180,18 +182,18 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
       </CollapsibleSection>
 
       {/* ── Geral (collapsed by default) ── */}
-      <CollapsibleSection title="Geral">
+      <CollapsibleSection title={t("profileLayout:editor.generalSection")}>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="block">
-            <span className={fieldLabelClass}>Project label</span>
+            <span className={fieldLabelClass}>{t("profileLayout:editor.projectLabel")}</span>
             <Input value={profile.project_label} onChange={(e) => updateField("project_label", e.target.value)} />
           </label>
           <label className="block">
-            <span className={fieldLabelClass}>Inbox path</span>
+            <span className={fieldLabelClass}>{t("profileLayout:editor.inboxPath")}</span>
             <Input className="font-mono" value={profile.paths.inbox} onChange={(e) => updateInbox(e.target.value)} />
           </label>
           <label className="block">
-            <span className={fieldLabelClass}>Extraction mode</span>
+            <span className={fieldLabelClass}>{t("profileLayout:editor.extractionMode")}</span>
             <select
               className={nativeSelectClass}
               value={profile.indexing.extraction_mode}

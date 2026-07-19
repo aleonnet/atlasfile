@@ -1,15 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { STORAGE_KEYS, storageGet, storageSet } from "../lib/storage";
+import { useQuery } from "@tanstack/react-query";
 import { fetchModels } from "../api";
+import { qk } from "../lib/queryKeys";
 import type { ModelOption } from "../types";
 
-const THEME_STORAGE_KEY = "atlasfile-theme";
-const CHAT_MODEL_STORAGE_KEY = "atlasfile-chat-model";
-const TRIAGE_MODEL_STORAGE_KEY = "atlasfile-triage-model";
-const CHAT_SHOW_THINKING_KEY = "atlasfile-chat-show-thinking";
-const OPENAI_API_KEY_STORAGE = "atlasfile-openai-api-key";
-const ANTHROPIC_API_KEY_STORAGE = "atlasfile-anthropic-api-key";
-const AUTO_TITLE_LLM_KEY = "atlasfile-auto-title-llm";
-const CUSTOM_MODELS_KEY = "atlasfile-custom-models";
+const THEME_STORAGE_KEY = STORAGE_KEYS.theme;
+const CHAT_MODEL_STORAGE_KEY = STORAGE_KEYS.chatModel;
+const TRIAGE_MODEL_STORAGE_KEY = STORAGE_KEYS.triageModel;
+const CHAT_SHOW_THINKING_KEY = STORAGE_KEYS.showThinking;
+const OPENAI_API_KEY_STORAGE = STORAGE_KEYS.openaiApiKey;
+const ANTHROPIC_API_KEY_STORAGE = STORAGE_KEYS.anthropicApiKey;
+const AUTO_TITLE_LLM_KEY = STORAGE_KEYS.autoTitleLLM;
+const CUSTOM_MODELS_KEY = STORAGE_KEYS.customModels;
 
 function readCustomModels(): string[] {
   try {
@@ -23,20 +26,11 @@ function readCustomModels(): string[] {
 export type ThemeMode = "system" | "light" | "dark";
 
 function readStorage(key: string, fallback = ""): string {
-  try {
-    return localStorage.getItem(key) ?? fallback;
-  } catch {
-    return fallback;
-  }
+  return storageGet(key) ?? fallback;
 }
 
 function writeStorage(key: string, value: string | null): void {
-  try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    /* storage indisponível */
-  }
+  storageSet(key, value);
 }
 
 function getStoredTheme(): ThemeMode {
@@ -81,7 +75,6 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
-  const [models, setModels] = useState<ModelOption[]>([]);
   const [customModels, setCustomModels] = useState<string[]>(readCustomModels);
   const [selectedModel, setSelectedModel] = useState<string>(() => readStorage(CHAT_MODEL_STORAGE_KEY));
   const [selectedModelTriage, setSelectedModelTriage] = useState<string>(() => readStorage(TRIAGE_MODEL_STORAGE_KEY));
@@ -109,22 +102,20 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => writeStorage(ANTHROPIC_API_KEY_STORAGE, anthropicApiKey || null), [anthropicApiKey]);
   useEffect(() => writeStorage(AUTO_TITLE_LLM_KEY, String(autoTitleLLM)), [autoTitleLLM]);
 
+  const modelsQuery = useQuery({ queryKey: qk.models(), queryFn: fetchModels, staleTime: 5 * 60_000 });
+  const models = modelsQuery.data ?? [];
   useEffect(() => {
-    if (models.length > 0) return;
-    fetchModels()
-      .then((list) => {
-        setModels(list);
-        // Modelos custom validados contam como conhecidos — sem isso a seleção
-        // do usuário seria resetada para o primeiro do catálogo a cada load.
-        const values = [...list.map((m) => `${m.provider}/${m.model}`), ...customModels];
-        const first = values[0];
-        if (first) {
-          setSelectedModel((s) => (!s || !values.includes(s) ? first : s));
-          setSelectedModelTriage((s) => (!s || !values.includes(s) ? first : s));
-        }
-      })
-      .catch(() => setModels([]));
-  }, [models.length, customModels]);
+    if (models.length === 0) return;
+    // Modelos custom validados contam como conhecidos — sem isso a seleção
+    // do usuário seria resetada para o primeiro do catálogo a cada load.
+    const values = [...models.map((m) => `${m.provider}/${m.model}`), ...customModels];
+    const first = values[0];
+    if (first) {
+      setSelectedModel((s) => (!s || !values.includes(s) ? first : s));
+      setSelectedModelTriage((s) => (!s || !values.includes(s) ? first : s));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, customModels]);
 
   const addCustomModel = useMemo(
     () => (value: string) => {
@@ -140,9 +131,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const reloadModels = useMemo(
     () => async () => {
-      const list = await fetchModels();
-      setModels(list);
+      await modelsQuery.refetch();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
