@@ -3,6 +3,7 @@ import { useState } from "react";
 import { deleteRejectedTriage, restoreRejectedTriage, type RejectedTriageItem } from "../../api";
 import { useRejectedTriageQuery } from "../../lib/queries";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { qk } from "../../lib/queryKeys";
 import { ProcessingAura } from "../../components/ui/processing-aura";
 import { Button } from "../../components/ui/button";
@@ -30,6 +31,7 @@ function formatWhen(iso: string): string {
  *  só o fazia sumir da fila — o arquivo ficava invisível em _TRIAGE_REVIEW/rejected. */
 export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
   // Reativo via cache: mutações invalidam qk.triage — o card aparece/some sozinho
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: items = [] } = useRejectedTriageQuery(projectId);
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
@@ -43,11 +45,11 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
     setBusyAction("restore");
     try {
       await restoreRejectedTriage(projectId, item.doc_id);
-      onStatus(`"${item.original_filename}" devolvido à fila de triagem`);
+      onStatus(t("triage:rejected.restored", { filename: item.original_filename }));
       void queryClient.invalidateQueries({ queryKey: qk.triage.rejected(projectId) });
       onChanged();
     } catch (e) {
-      onStatus(e instanceof Error ? e.message : "Falha ao restaurar");
+      onStatus(e instanceof Error ? e.message : t("triage:rejected.restoreFailed"));
     } finally {
       setBusyDocId(null);
       setBusyAction(null);
@@ -60,12 +62,12 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
     setBusyAction("delete");
     try {
       await deleteRejectedTriage(projectId, item.doc_id);
-      onStatus(`"${item.original_filename}" excluído definitivamente`);
+      onStatus(t("triage:rejected.deleted", { filename: item.original_filename }));
       void queryClient.invalidateQueries({ queryKey: qk.triage.rejected(projectId) });
       // Notifica o Painel: o badge no Processamentos vira "excluído" sem reload
       onChanged();
     } catch (e) {
-      onStatus(e instanceof Error ? e.message : "Falha ao excluir");
+      onStatus(e instanceof Error ? e.message : t("triage:rejected.deleteFailed"));
     } finally {
       setBusyDocId(null);
       setBusyAction(null);
@@ -76,8 +78,8 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
     <Card>
       <CardContent className="pt-5">
         <CollapsibleSection
-          title="Rejeitados" persistKey="rejeitados"
-          badge={`${items.length} arquivo${items.length !== 1 ? "s" : ""}`}
+          title={t("triage:rejected.title")} persistKey="rejeitados"
+          badge={t("common:unit.file", { count: items.length })}
           className="border-0 bg-transparent [&>summary]:px-0 [&>div]:border-0 [&>div]:px-0"
         >
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
@@ -92,25 +94,25 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
                     {item.original_filename}
                   </span>
                   <span className={cn("font-mono text-[0.68rem]", isOrphan ? "text-tertiary" : "text-muted-foreground")}>
-                    {isOrphan ? "registro órfão (sem arquivo)" : item.decision_note || "rejeitado"} · {formatWhen(item.processed_at)}
+                    {isOrphan ? t("triage:rejected.orphanRecord") : item.decision_note || t("triage:rejected.rejected")} · {formatWhen(item.processed_at)}
                   </span>
                   {!isOrphan && (
                     <Button
                       size="sm"
                       variant="secondary"
                       disabled={busyDocId === item.doc_id}
-                      title="Devolver à fila de triagem"
+                      title={t("triage:rejected.restoreTitle")}
                       onClick={() => void handleRestore(item)}
                     >
                       <RotateCcw />
-                      Restaurar
+                      {t("common:action.restore")}
                     </Button>
                   )}
                   <div className="relative">
                     <button
                       type="button"
                       className={rowDeleteButtonClass}
-                      aria-label={`Excluir ${item.original_filename} definitivamente`}
+                      aria-label={t("triage:rejected.deleteAria", { filename: item.original_filename })}
                       disabled={busyDocId === item.doc_id}
                       onClick={() => setConfirmDeleteId(item.doc_id)}
                     >
@@ -119,14 +121,14 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
                     {confirmDeleteId === item.doc_id && (
                       <div className="absolute right-0 top-[calc(100%+6px)] z-20 flex min-w-60 flex-col gap-2 rounded-md border border-border bg-panel p-3 shadow-[0_4px_12px_rgba(0,0,0,0.25)]">
                         <p className="m-0 text-[0.82rem] text-foreground">
-                          Excluir definitivamente? O arquivo será apagado do disco.
+                          {t("triage:rejected.confirmDelete")}
                         </p>
                         <div className="flex gap-1.5">
                           <Button variant="destructive" size="sm" onClick={() => void handleDelete(item)}>
-                            Excluir
+                            {t("common:action.delete")}
                           </Button>
                           <Button variant="secondary" size="sm" onClick={() => setConfirmDeleteId(null)}>
-                            Cancelar
+                            {t("common:action.cancel")}
                           </Button>
                         </div>
                       </div>
@@ -136,7 +138,7 @@ export function RejectedCard({ projectId, onStatus, onChanged }: Props) {
                     <ProcessingAura
                       compact
                       className="w-full"
-                      label={busyAction === "restore" ? "Restaurando — devolvendo à fila de triagem" : "Excluindo — apagando arquivo e registro"}
+                      label={busyAction === "restore" ? t("triage:rejected.restoring") : t("triage:rejected.deleting")}
                     />
                   )}
                 </li>

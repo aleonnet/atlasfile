@@ -1,0 +1,34 @@
+{
+  "action": {
+    "approve": "Aprovar",
+    "correct": "Corrigir",
+    "reject": "Rejeitar",
+    "restore": "Restaurar",
+    "delete": "Excluir",
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "close": "Fechar",
+    "back": "Voltar",
+    "skip": "Pular",
+    "confirm": "Confirmar",
+    "reload": "Recarregar",
+    "update": "Atualizar",
+    "show": "mostrar",
+    "hide": "ocultar",
+    "no": "Não"
+  },
+  "state": {
+    "loading": "Carregando...",
+    "processing": "processando",
+    "ready": "Pronto",
+    "online": "online"
+  },
+  "unit": {
+    "file_one": "{{count}} arquivo",
+    "file_other": "{{count}} arquivos",
+    "document_one": "{{count}} documento",
+    "document_other": "{{count}} documentos",
+    "result_one": "{{count}} resultado(s)",
+    "result_other": "{{count}} resultado(s)"
+  }
+}

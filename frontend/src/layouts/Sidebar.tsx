@@ -1,5 +1,6 @@
 import { STORAGE_KEYS } from "../lib/storage";
 import {
+  Sparkles,
   Check,
   ChevronsUpDown,
   FolderCog,
@@ -32,6 +33,7 @@ const COLLAPSED_WIDTH = 64;
 const NAV_ITEMS: Array<{ view: ViewKind; label: string; icon: React.ReactNode }> = [
   { view: "painel", label: "Painel", icon: <LayoutDashboard size={18} strokeWidth={2} aria-hidden /> },
   { view: "assistente", label: "Assistente", icon: <MessageCircle size={18} strokeWidth={2} aria-hidden /> },
+  { view: "classificador", label: "Classificador", icon: <Sparkles size={18} strokeWidth={2} aria-hidden /> },
   { view: "config", label: "Configuração", icon: <FolderCog size={18} strokeWidth={2} aria-hidden /> },
 ];
 

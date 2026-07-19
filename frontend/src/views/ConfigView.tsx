@@ -105,7 +105,6 @@ export function ConfigView({
       >
         <TabsList aria-label="Configurações">
           <TabsTrigger value="perfil"><FolderTree aria-hidden /> Perfil do projeto</TabsTrigger>
-          <TabsTrigger value="classificador"><Sparkles aria-hidden /> Classificador</TabsTrigger>
           <TabsTrigger value="templates"><LayoutTemplate aria-hidden /> Templates</TabsTrigger>
           <TabsTrigger value="acesso"><KeyRound aria-hidden /> Acesso</TabsTrigger>
         </TabsList>
@@ -115,20 +114,6 @@ export function ConfigView({
             projectRef={selectedProject}
             disabled={selectedProject === ALL_PROJECTS}
             onStatus={onStatus}
-          />
-        </TabsContent>
-
-        <TabsContent value="classificador" forceMount>
-          <IngestTriageCard
-            selectedProject={selectedProject}
-            selectedProjectLabel={selectedProjectLabel}
-            triageItems={triageItems}
-            onStatus={onStatus}
-            openaiApiKey={openaiApiKey}
-            anthropicApiKey={anthropicApiKey}
-            onOpenSettings={onOpenSettings}
-            selectedModelTriage={selectedModelTriage}
-            onChangeModelTriage={onChangeModelTriage}
           />
         </TabsContent>
 

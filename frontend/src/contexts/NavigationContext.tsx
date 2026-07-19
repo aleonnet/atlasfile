@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-export type ViewKind = "painel" | "assistente" | "config";
+export type ViewKind = "painel" | "assistente" | "classificador" | "config";
 
 const VIEWS: ViewKind[] = ["painel", "assistente", "config"];
 

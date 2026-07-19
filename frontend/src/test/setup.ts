@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import "../i18n";
 
 // jsdom não implementa ResizeObserver/scrollIntoView (usados por cmdk/Radix)
 if (typeof globalThis.ResizeObserver === "undefined") {

@@ -36,6 +36,7 @@ import { useQuickSearch } from "./hooks/useQuickSearch";
 import { CommandPalette } from "./layouts/CommandPalette";
 import { Sidebar } from "./layouts/Sidebar";
 import { Topbar } from "./layouts/Topbar";
+import { ClassificadorView } from "./views/ClassificadorView";
 import { ConfigView } from "./views/ConfigView";
 import { PainelView } from "./views/PainelView";
 import { AssistantSettingsModal } from "./features/settings/AssistantSettingsModal";
@@ -491,6 +492,22 @@ function AppShell() {
             onShowThinkingChange={setShowThinking}
             telegramConnected={telegramConnected}
             onToggleTelegram={handleToggleTelegram}
+          />
+          )}
+        </div>
+
+        <div className={view === "classificador" ? "contents" : "hidden"}>
+          {visitedViews.has("classificador") && (
+          <ClassificadorView
+            selectedProject={selectedProject}
+            selectedProjectLabel={selectedProjectLabel}
+            triageItems={triageItems}
+            onStatus={setStatus}
+            openaiApiKey={openaiApiKey}
+            anthropicApiKey={anthropicApiKey}
+            onOpenSettings={() => setSettingsOpen(true)}
+            selectedModelTriage={selectedModelTriage}
+            onChangeModelTriage={setSelectedModelTriage}
           />
           )}
         </div>

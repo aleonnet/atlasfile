@@ -1,0 +1,26 @@
+{
+  "queue": {
+    "title": "Triagem pendente",
+    "waiting_one": "{{count}} documento aguardando decisão",
+    "waiting_other": "{{count}} documentos aguardando decisão",
+    "suggestion": "sugestão:",
+    "noSuggestion": "sem sugestão",
+    "noExtractableText": "sem texto extraível (OCR vazio) — decida manualmente",
+    "confidence": "confiança",
+    "noDomainSuggestion": "Sem sugestão de domínio"
+  },
+  "rejected": {
+    "title": "Rejeitados",
+    "orphanRecord": "registro órfão (sem arquivo)",
+    "rejected": "rejeitado",
+    "restoreTitle": "Devolver à fila de triagem",
+    "deleteAria": "Excluir {{filename}} definitivamente",
+    "confirmDelete": "Excluir definitivamente? O arquivo será apagado do disco.",
+    "restored": "\"{{filename}}\" devolvido à fila de triagem",
+    "deleted": "\"{{filename}}\" excluído definitivamente",
+    "restoreFailed": "Falha ao restaurar",
+    "deleteFailed": "Falha ao excluir",
+    "restoring": "Restaurando — devolvendo à fila de triagem",
+    "deleting": "Excluindo — apagando arquivo e registro"
+  }
+}

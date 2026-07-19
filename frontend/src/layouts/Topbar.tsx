@@ -5,6 +5,7 @@ import { useNavigation, type ViewKind } from "../contexts/NavigationContext";
 const VIEW_LABEL: Record<ViewKind, string> = {
   painel: "Painel",
   assistente: "Assistente",
+  classificador: "Classificador",
   config: "Configuração",
 };
 
