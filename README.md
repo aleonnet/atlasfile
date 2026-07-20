@@ -1,10 +1,14 @@
 # AtlasFile
 
-Sistema local de organização documental por projeto, com ciclo operacional de classificador, classificação por `business_domain` + `document_type`, triagem humana, indexação full-text, benchmark supervisionado e assistente conversacional.
+Local, per-project document organization system with a classifier operational cycle, classification by `business_domain` + `document_type`, human triage, full-text indexing, supervised benchmarking, and a conversational assistant.
 
-## Instalação rápida
+**English** · [Português (Brasil)](README.pt-BR.md)
 
-Pré-requisito: [Docker Desktop](https://docs.docker.com/get-docker/) rodando.
+🌐 **Website:** https://aleonnet.github.io/atlasfile.ai/ — presentation and install guide
+
+## Quick install
+
+Prerequisite: [Docker Desktop](https://docs.docker.com/get-docker/) running.
 
 **macOS / Linux:**
 
@@ -18,101 +22,101 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1 | iex
 ```
 
-O instalador clona o projeto, configura o `.env`, sobe a stack Docker e abre `http://localhost:5173` — o assistente de primeiros passos guia a criação do primeiro projeto. Instalação manual e detalhes: [INSTALL.md](INSTALL.md).
+The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:5173` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md).
 
-## Visão geral
+## Overview
 
-- **Ingestão automática** via pasta `_INBOX_DROP` por projeto
-- **Classificação operacional** via modo efetivo do runtime (`bootstrap`, `sparse_logreg` ou `llm`)
-- **Ciclo do classificador** com benchmark + retreino, campeão global, override por projeto e reports persistidos
-- **Triagem humana** no frontend para documentos pendentes (`Aprovar`, `Corrigir`, `Rejeitar`)
-- **Dedup precoce** por SHA256 antes do fluxo completo
-- **Indexação** de conteúdo e metadados em OpenSearch com busca, suggest e highlight
-- **Embeddings por chunk** (OpenAI text-embedding-3-small ou fastembed local) em índice de vetores separado (`atlasfile_chunk_vectors`), base da busca semântica/RAG
-- **Busca híbrida** (BM25 + kNN com fusão RRF, default do `/api/search`) com fallback automático para lexical, rerank opcional por cross-encoder local e benchmark de retrieval contra golden set (`scripts/benchmark_retrieval.py`)
-- **Autenticação opcional por API key** (`API_AUTH_ENABLED`) com escopo por projeto — keys em `config/api_keys.json`, enforcement na API e no MCP via `ATLASFILE_API_TOKEN`
-- **Busca por nome exato** priorizada para `original_filename` e `title`
-- **Assistente LLM** com escopo por projeto, sessões persistentes, gráficos inline (8 tipos) e rastreamento de uso/custo
-- **Canais** com Telegram opcional e comando `/projeto` para fixar escopo do chat
-- **Templates, profiles e layout** editáveis pela UI
-- **Benchmark supervisionado** com 3 modos (bootstrap, sparse_logreg, llm), corpus unificado e splits estratificados
-- **Status em tempo real** para reconcile, INBOX e ciclo do classificador
-- **Interface bilíngue (PT-BR / EN-US)** com detecção automática pelo navegador, seletor persistido em Configuração → Preferências e alternador nas telas de primeiro acesso; erros da API usam códigos estáveis (`{code, params, message}`) traduzidos pela UI; números, datas e moeda seguem o idioma ativo
-- **Rastreabilidade** completa: nome original → nome canônico → triagem → índice → benchmark
+- **Automatic ingestion** via a per-project `_INBOX_DROP` folder
+- **Operational classification** via the runtime's effective mode (`bootstrap`, `sparse_logreg`, or `llm`)
+- **Classifier cycle** with benchmark + retraining, global champion, per-project override, and persisted reports
+- **Human triage** in the frontend for pending documents (`Approve`, `Correct`, `Reject`)
+- **Early dedup** by SHA256 before the full pipeline
+- **Indexing** of content and metadata in OpenSearch with search, suggest, and highlight
+- **Per-chunk embeddings** (OpenAI text-embedding-3-small or local fastembed) in a separate vector index (`atlasfile_chunk_vectors`), the foundation of semantic/RAG search
+- **Hybrid search** (BM25 + kNN with RRF fusion, the default for `/api/search`) with automatic fallback to lexical, optional reranking via a local cross-encoder, and a retrieval benchmark against a golden set (`scripts/benchmark_retrieval.py`)
+- **Optional API key authentication** (`API_AUTH_ENABLED`) with per-project scope — keys in `config/api_keys.json`, enforced in the API and in MCP via `ATLASFILE_API_TOKEN`
+- **Exact-name search** prioritized for `original_filename` and `title`
+- **LLM assistant** with per-project scope, persistent sessions, inline charts (8 types), and usage/cost tracking
+- **Channels** with optional Telegram and a `/projeto` command to pin the chat scope
+- **Templates, profiles, and layout** editable from the UI
+- **Supervised benchmark** with 3 modes (bootstrap, sparse_logreg, llm), a unified corpus, and stratified splits
+- **Real-time status** for reconcile, INBOX, and the classifier cycle
+- **Bilingual interface (PT-BR / EN-US)** with automatic browser detection, a persisted selector in Settings → Preferences, and a switcher on the first-run screens; API errors use stable codes (`{code, params, message}`) translated by the UI; numbers, dates, and currency follow the active language
+- **Full traceability**: original name → canonical name → triage → index → benchmark
 
 ## Stack
 
-| Camada | Tecnologia |
+| Layer | Technology |
 |--------|------------|
 | Backend | FastAPI (Python 3.12) |
-| Busca | OpenSearch 2.17 (BM25 + kNN, fusão RRF manual) |
+| Search | OpenSearch 2.17 (BM25 + kNN, manual RRF fusion) |
 | Frontend | Vite + React + TypeScript |
-| UI | Tailwind v4 (CSS-first) + primitivas próprias estilo shadcn (copy-in sobre Radix UI + cva + cmdk + sonner) — tokens da marca em `src/styles.css`/`src/styles/theme.css`, sem tema default; orb WebGL (`components/OrbGL/`) com fallback SVG |
-| LLM | OpenAI / Anthropic (multi-modelo) |
-| MCP | FastMCP server (tools de busca, tags, stats) |
-| Runtime | Docker Compose (5 serviços) |
+| UI | Tailwind v4 (CSS-first) + in-house shadcn-style primitives (copy-in over Radix UI + cva + cmdk + sonner) — brand tokens in `src/styles.css`/`src/styles/theme.css`, no default theme; WebGL orb (`components/OrbGL/`) with SVG fallback |
+| LLM | OpenAI / Anthropic (multi-model) |
+| MCP | FastMCP server (search, tags, stats tools) |
+| Runtime | Docker Compose (5 services) |
 
-O workflow completo de um documento (drop → dedup → extração → classificação → roteamento → indexação → embeddings → busca → chat), com os pontos de observação de cada etapa, está descrito em [`docs/workflow_documento.md`](docs/workflow_documento.md). O roteiro de validação com score por etapa está em [`docs/plano_teste_e2e_v0.20.0.md`](docs/plano_teste_e2e_v0.20.0.md).
+The full document workflow (drop → dedup → extraction → classification → routing → indexing → embeddings → search → chat), with the observation points for each stage, is described in [`docs/workflow_documento.md`](docs/workflow_documento.md). The validation script with per-stage scores is in [`docs/plano_teste_e2e_v0.20.0.md`](docs/plano_teste_e2e_v0.20.0.md).
 
-## Estrutura do monorepo
+## Monorepo structure
 
 ```
 AtlasFile/
-├── backend/                 # API FastAPI, classificador, indexador, MCP server
-│   ├── app/                 # Código principal (main, ingestion, orchestrator, ...)
+├── backend/                 # FastAPI API, classifier, indexer, MCP server
+│   ├── app/                 # Main code (main, ingestion, orchestrator, ...)
 │   │   ├── api/             # Routers (profile, layout, channels)
-│   │   ├── channels/        # Camada de canais (Telegram, Discord, Slack)
+│   │   ├── channels/        # Channels layer (Telegram, Discord, Slack)
 │   │   ├── mcp/             # MCP server (tools)
-│   │   ├── mcp_client/      # Cliente MCP (chat/orchestrator)
+│   │   ├── mcp_client/      # MCP client (chat/orchestrator)
 │   │   └── prompts/         # System prompts (classify, chat)
-│   ├── scripts/             # Benchmark, ciclo ML, datasets operacionais, status
+│   ├── scripts/             # Benchmark, ML cycle, operational datasets, status
 │   └── tests/               # Unit + integration (pytest)
-├── frontend/                # SPA React + TypeScript
+├── frontend/                # React + TypeScript SPA
 │   └── src/
 │       ├── components/      # ChatPanel, ChartBlock, CompanionOrb
 │       ├── features/        # ingest, profile-layout, search, settings, templates, triage, usage
 │       └── hooks/           # useEscapeKey, useCompanionState
 ├── config/
-│   ├── templates/           # Templates de projeto (default.json, user templates)
-│   ├── topics_v1.yaml       # Catálogo de topics derivado no runtime
-│   └── usage_costs.json     # Preços $/1M tokens por provider/modelo
-├── docs/                    # Documentação de referência (benchmarking, conventions, KPIs)
+│   ├── templates/           # Project templates (default.json, user templates)
+│   ├── topics_v1.yaml       # Topic catalog derived at runtime
+│   └── usage_costs.json     # $/1M token prices per provider/model
+├── docs/                    # Reference documentation (benchmarking, conventions, KPIs)
 ├── scripts/                 # Bootstrap, smoke test, CI, reset index, dashboards
 ├── docker-compose.yml
 ├── Makefile
 └── CHANGELOG.md
 ```
 
-## Estrutura de um projeto
+## Structure of a project
 
 ```
-/<PROJETO>/
-├── _INBOX_DROP/                    # Ponto de entrada de documentos
+/<PROJECT>/
+├── _INBOX_DROP/                    # Document entry point
 ├── _TRIAGE_REVIEW/
-│   ├── pending/                    # Aguardando decisão humana
-│   ├── resolved/                   # Aprovados/corrigidos
-│   └── rejected/                   # Rejeitados
+│   ├── pending/                    # Awaiting a human decision
+│   ├── resolved/                   # Approved/corrected
+│   └── rejected/                   # Rejected
 ├── _PROFILE/
 │   ├── profile.json                # Profile V2
-│   ├── ingest_history.json         # Histórico de ingestões (FIFO, cap 50)
-│   └── history/                    # Versões anteriores do profile
+│   ├── ingest_history.json         # Ingestion history (FIFO, cap 50)
+│   └── history/                    # Previous profile versions
 ├── 01_PROJECTS/
 ├── 02_AREAS/
 │   └── <business_domain>/
 │       └── <document_type>/
 ├── 03_RESOURCES/
 ├── 04_ARCHIVE/
-└── _INDEX.md                       # Registro local de documentos ingeridos
+└── _INDEX.md                       # Local record of ingested documents
 ```
 
-## Datasets do classificador
+## Classifier datasets
 
 ```text
 _ATLASFILE/
   classifier/
     datasets/
-      corpus.jsonl                 ← fonte única de verdade
-      corpus_files/                ← arquivos com nomes normalizados
+      corpus.jsonl                 ← single source of truth
+      corpus_files/                ← files with normalized names
       splits/
         train.jsonl                ← 70%
         validation.jsonl           ← 15%
@@ -125,175 +129,175 @@ _ATLASFILE/
         records.jsonl
 ```
 
-- `corpus.jsonl` + `splits/`: corpus consolidado (~363 docs, dedup SHA256) com splits estratificados 70/15/15
-- `validation_set`: conjunto humano-curado para benchmark e aceite, persistido apenas no volume operacional
-- `training_pool`: snapshots e `records.jsonl` vivos do classificador, persistidos apenas no volume operacional
-- `backend/tests/fixtures/classifier_datasets/validation_set`: fixture mínima versionada usada por um teste de integração; não representa dataset operacional nem cópia completa dos datasets reais
-- `backend/scripts/build_corpus.py`: consolida training_pool + validation_set, dedup SHA256, gera `corpus.jsonl`
-- `backend/scripts/build_splits.py`: particionamento estratificado 70/15/15
+- `corpus.jsonl` + `splits/`: consolidated corpus (~363 docs, SHA256 dedup) with stratified 70/15/15 splits
+- `validation_set`: human-curated set for benchmark and acceptance, persisted only in the operational volume
+- `training_pool`: live classifier snapshots and `records.jsonl`, persisted only in the operational volume
+- `backend/tests/fixtures/classifier_datasets/validation_set`: minimal versioned fixture used by one integration test; it is neither an operational dataset nor a full copy of the real datasets
+- `backend/scripts/build_corpus.py`: consolidates training_pool + validation_set, SHA256 dedup, generates `corpus.jsonl`
+- `backend/scripts/build_splits.py`: stratified 70/15/15 partitioning
 
-## Ciclo operacional do classificador
+## Classifier operational cycle
 
-- O registry global em `_ATLASFILE/classifier` persiste `champion_mode`, `benchmark_enabled_modes`, gates de promocao, ultimo ciclo e ultimo report.
-- O root operacional dos datasets fica em `_ATLASFILE/classifier/datasets`, fora da imagem Docker, com corpus, splits, `validation_set` e `training_pool` persistidos no volume de projetos.
-- O runtime nao faz bootstrap silencioso a partir do repo: se o dataset operacional estiver vazio, benchmark/ciclo refletem esse estado explicitamente.
-- Cada projeto pode fixar `classification.operational.override_mode`; sem override, a ingestao usa o campeao atual.
-- O runtime serve `bootstrap`, `sparse_logreg` ou `llm` e faz fallback explicito para `bootstrap` se o artefato supervisionado estiver ausente ou falhar.
-- Modos de benchmark sao configuraveis pela UI; cada modo pode ser habilitado/desabilitado independentemente. Modos pulados herdam metricas do ciclo anterior.
-- A triagem grava snapshots estaveis do training pool e pula documentos que colidam por SHA com o validation set.
-- A UI expoe benchmark + retreino, scorecards por documento, campeao atual, cancelamento de ciclo e override manual sem reintroduzir `baseline` como modo publico.
+- The global registry in `_ATLASFILE/classifier` persists `champion_mode`, `benchmark_enabled_modes`, promotion gates, the last cycle, and the last report.
+- The operational datasets root lives in `_ATLASFILE/classifier/datasets`, outside the Docker image, with corpus, splits, `validation_set`, and `training_pool` persisted in the projects volume.
+- The runtime does no silent bootstrap from the repo: if the operational dataset is empty, benchmark/cycle explicitly reflect that state.
+- Each project may pin `classification.operational.override_mode`; without an override, ingestion uses the current champion.
+- The runtime serves `bootstrap`, `sparse_logreg`, or `llm` and falls back explicitly to `bootstrap` if the supervised artifact is missing or fails.
+- Benchmark modes are configurable from the UI; each mode can be enabled/disabled independently. Skipped modes inherit metrics from the previous cycle.
+- Triage writes stable training-pool snapshots and skips documents that collide by SHA with the validation set.
+- The UI exposes benchmark + retraining, per-document scorecards, the current champion, cycle cancellation, and manual override without reintroducing `baseline` as a public mode.
 
-## Execução local
+## Running locally
 
-### Pré-requisitos
+### Prerequisites
 
 - Docker Desktop ([Mac](https://www.docker.com/products/docker-desktop/) / [Windows](https://www.docker.com/products/docker-desktop/))
-- (Opcional) Chaves de API: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
+- (Optional) API keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`
 
 ### Setup
 
 ```bash
-# 1. Copie e configure o .env
+# 1. Copy and configure the .env
 cp .env.example .env
-# Edite PROJECTS_HOST_ROOT com o path absoluto dos seus projetos
-# Default recomendado: $HOME/Documents/Projects
+# Set PROJECTS_HOST_ROOT to the absolute path of your projects
+# Recommended default: $HOME/Documents/Projects
 
-# 2. Suba o stack
+# 2. Bring up the stack
 make docker-update
 ```
 
-Para a função de cada script operacional e técnico, veja `docs/11_scripts_and_operations.md`.
+For what each operational and technical script does, see `docs/11_scripts_and_operations.md`.
 
-### Serviços
+### Services
 
-| Serviço | URL | Descrição |
+| Service | URL | Description |
 |---------|-----|-----------|
-| Frontend | http://localhost:5173 | Interface web (tema claro/escuro) |
+| Frontend | http://localhost:5173 | Web interface (light/dark theme) |
 | API | http://localhost:8000 | FastAPI (REST + SSE) |
-| MCP Server | http://localhost:8001 | Tools para chat/classificação |
-| OpenSearch | https://localhost:9200 | Motor de busca (admin / `OPENSEARCH_PASSWORD` do `.env`) |
+| MCP Server | http://localhost:8001 | Tools for chat/classification |
+| OpenSearch | https://localhost:9200 | Search engine (admin / `OPENSEARCH_PASSWORD` from `.env`) |
 | Dashboards | http://localhost:5601 | OpenSearch Dashboards |
 
 ### Makefile
 
-| Target | O que faz |
+| Target | What it does |
 |--------|-----------|
-| `make test` | Roda todos os testes (backend + frontend) |
-| `make docker-update` | Testa + rebuild + sobe stack + smoke test |
-| `make docker-update RESET_INDEX=1` | Idem + reseta índice de documentos |
-| `make docker-update RESET_CHAT=1` | Idem + reseta índice de sessões de chat |
-| `make docker-up` | Sobe stack sem rodar testes |
-| `make reset-index` | Remove índice de documentos |
-| `make reset-chat` | Remove índice de sessões de chat |
+| `make test` | Runs all tests (backend + frontend) |
+| `make docker-update` | Tests + rebuilds + brings up the stack + smoke test |
+| `make docker-update RESET_INDEX=1` | Same + resets the document index |
+| `make docker-update RESET_CHAT=1` | Same + resets the chat sessions index |
+| `make docker-up` | Brings up the stack without running tests |
+| `make reset-index` | Removes the document index |
+| `make reset-chat` | Removes the chat sessions index |
 
-## Fluxo de classificação
+## Classification flow
 
 ```text
-Arquivo entra em _INBOX_DROP
+File lands in _INBOX_DROP
          │
          ▼
-   Dedup por SHA256
+   SHA256 dedup
          │
          ▼
-  Extração de texto + metadados
+  Text + metadata extraction
          │
          ▼
-  Resolver modo operacional
+  Resolve operational mode
          │
-         ├─ champion do registry
-         └─ override do projeto (opcional)
+         ├─ registry champion
+         └─ project override (optional)
                  │
                  ▼
-  Classificar `document_type` + `business_domain`
+  Classify `document_type` + `business_domain`
                  │
                  ▼
-   Confiança alta?
-   ├─ Sim → move para 02_AREAS/{business_domain}/{document_type} e indexa
-   └─ Não → move para _TRIAGE_REVIEW/pending
+   High confidence?
+   ├─ Yes → moves to 02_AREAS/{business_domain}/{document_type} and indexes
+   └─ No → moves to _TRIAGE_REVIEW/pending
                   │
                   ▼
-          Humano: Aprovar / Corrigir / Rejeitar
+          Human: Approve / Correct / Reject
                   │
-                 └─ Aprovar/Corrigir → grava em _ATLASFILE/classifier/datasets/training_pool/records.jsonl
+                 └─ Approve/Correct → writes to _ATLASFILE/classifier/datasets/training_pool/records.jsonl
 ```
 
-- `bootstrap` continua como fallback seguro do runtime (campeao atual: 87.1% domain, 82.3% exact match)
-- `sparse_logreg` e `llm` sao candidatos de benchmark e podem virar modo efetivo apos o ciclo oficial
-- o LLM de ingestão é opcional e não é o classificador principal
+- `bootstrap` remains the runtime's safe fallback (current champion: 87.1% domain, 82.3% exact match)
+- `sparse_logreg` and `llm` are benchmark candidates and may become the effective mode after the official cycle
+- the ingestion LLM is optional and is not the primary classifier
 
-## Convenção de nomes (canonical)
+## Naming convention (canonical)
 
-Formato configurável via `naming.canonical_pattern` no template/profile. Default:
+Format configurable via `naming.canonical_pattern` in the template/profile. Default:
 
 ```
 {date}__{project}__{original_name}__v{version}{ext}
 ```
 
-Exemplo: `20260301__kaido__Contrato_Migracao_Clientes__v01.xlsx`
+Example: `20260301__kaido__Contrato_Migracao_Clientes__v01.xlsx`
 
-Os placeholders suportados no contrato ativo sao `date`, `project`, `business_domain`, `document_type` e `original_name`; `{area}` e rejeitado no schema. Em triagem `correct`, o sistema recompõe o nome canonico preservando a data de ingestao e a versao ja emitida. Veja `docs/04_naming_convention.md` para detalhes.
+The placeholders supported by the active contract are `date`, `project`, `business_domain`, `document_type`, and `original_name`; `{area}` is rejected by the schema. On a `correct` triage, the system recomposes the canonical name preserving the ingestion date and the already-issued version. See `docs/04_naming_convention.md` for details.
 
-## Variáveis de ambiente
+## Environment variables
 
-| Variável | Descrição | Default |
+| Variable | Description | Default |
 |----------|-----------|---------|
-| `PROJECTS_HOST_ROOT` | Path absoluto dos projetos no host | (obrigatório) |
-| `CLASSIFIER_DATASETS_ROOT` | Root operacional dos datasets do classificador | `/projects/_ATLASFILE/classifier/datasets` |
-| `OPENAI_API_KEY` | Chave OpenAI (chat + classificação) | — |
-| `ANTHROPIC_API_KEY` | Chave Anthropic (chat) | — |
-| `CLASSIFICATION_LLM_ENABLED` | Habilitar LLM no fluxo de ingestão | `false` |
-| `DEFAULT_LLM_PROVIDER` | Provider padrão | `openai` |
-| `DEFAULT_LLM_MODEL` | Modelo padrão | `gpt-4o-mini` |
-| `AUTO_RECONCILE_INTERVAL_SECONDS` | Intervalo de reconciliação automática | `600` |
+| `PROJECTS_HOST_ROOT` | Absolute path of the projects on the host | (required) |
+| `CLASSIFIER_DATASETS_ROOT` | Operational root of the classifier datasets | `/projects/_ATLASFILE/classifier/datasets` |
+| `OPENAI_API_KEY` | OpenAI key (chat + classification) | — |
+| `ANTHROPIC_API_KEY` | Anthropic key (chat) | — |
+| `CLASSIFICATION_LLM_ENABLED` | Enable the LLM in the ingestion flow | `false` |
+| `DEFAULT_LLM_PROVIDER` | Default provider | `openai` |
+| `DEFAULT_LLM_MODEL` | Default model | `gpt-4o-mini` |
+| `AUTO_RECONCILE_INTERVAL_SECONDS` | Automatic reconciliation interval | `600` |
 
-Veja `.env.example` para a lista completa.
+See `.env.example` for the full list.
 
-## MCP Tools (para LLM e integrações)
+## MCP Tools (for LLMs and integrations)
 
-| Tool | Descrição |
+| Tool | Description |
 |------|-----------|
-| `list_documents` | Listagem/browse de documentos com filtros por projeto, `business_domain` e `document_type` |
-| `search_documents` | Busca full-text com filtros por projeto, `business_domain`, `document_type`, tags e datas |
-| `get_stats` | Estatísticas agregadas por `doc_kind`, `business_domain`, `document_type` e `project_id` |
-| `get_document` | Metadados + chunks de um documento |
-| `get_document_chunks` | Chunks específicos por localização (page:N, sheet:Name) |
-| `spreadsheet_schema` | Abas, colunas e amostra de uma planilha (xlsx/csv) para consulta estruturada |
-| `spreadsheet_query` | SELECT (DuckDB, read-only) direto no arquivo original — contagens e agregações exatas |
-| `apply_tags` | Adiciona/remove tags |
-| `set_metadata` | Atualiza `document_type`, `business_domain`, `correspondent` e `review_status` |
-| `submit_classification` | Suporte a classificação/revisão via LLM quando o fluxo configurado exigir |
+| `list_documents` | Document listing/browsing with filters by project, `business_domain`, and `document_type` |
+| `search_documents` | Full-text search with filters by project, `business_domain`, `document_type`, tags, and dates |
+| `get_stats` | Aggregated statistics by `doc_kind`, `business_domain`, `document_type`, and `project_id` |
+| `get_document` | Metadata + chunks of a document |
+| `get_document_chunks` | Specific chunks by location (page:N, sheet:Name) |
+| `spreadsheet_schema` | Sheets, columns, and a sample of a spreadsheet (xlsx/csv) for structured querying |
+| `spreadsheet_query` | SELECT (DuckDB, read-only) directly against the original file — exact counts and aggregations |
+| `apply_tags` | Adds/removes tags |
+| `set_metadata` | Updates `document_type`, `business_domain`, `correspondent`, and `review_status` |
+| `submit_classification` | Supports LLM-driven classification/review when the configured flow requires it |
 
-## Testes
+## Tests
 
 ```bash
 make test              # Backend (pytest) + Frontend (vitest)
-make test-backend      # Apenas backend
-make test-frontend     # Apenas frontend
+make test-backend      # Backend only
+make test-frontend     # Frontend only
 ```
 
-As suites cobrem lifecycle do classificador, benchmark, datasets, ingestao, triagem, busca, templates, profile/layout, channels, usage/custo, API e frontend.
+The suites cover classifier lifecycle, benchmark, datasets, ingestion, triage, search, templates, profile/layout, channels, usage/cost, API, and frontend.
 
-## Documentação
+## Documentation
 
-- `CHANGELOG.md` — histórico de versões
-- `INSTALL.md` — guia de instalação detalhado (Mac/Windows)
+- `CHANGELOG.md` — version history
+- `INSTALL.md` — detailed install guide (Mac/Windows)
 
-### Referência técnica (`docs/`)
+### Technical reference (`docs/`)
 
-| Doc | Conteúdo |
+| Doc | Contents |
 |-----|----------|
-| `01_benchmarking.md` | Referências (NARA, ISO 15489, FAIR, Johnny.Decimal, BM25) |
-| `02_gap_analysis.md` | Análise de gaps que motivou o projeto |
-| `03_framework_template.md` | Estrutura de projeto e ciclo de ingestão |
-| `04_naming_convention.md` | Convenção canônica de nomes |
-| `05_index_models.md` | Modelo de índice (_INDEX.md + OpenSearch, 35+ campos) |
-| `06_retention_policy.md` | Política de retenção (roadmap) |
-| `07_rollout_kpis.md` | Fases de rollout e KPIs |
-| `08_project_profile_template.md` | Template de profile V2 (JSON) com exemplo completo |
-| `09_field_mapping.md` | Mapeamento completo de campos: origem, derivação, uso pelo LLM |
-| `10_classifier_design.md` | Design do classificador: runtime operacional, benchmark, promocao e fallback |
-| `plano_teste_e2e_v0.8.0.md` | Roteiro E2E delta da 0.8.0, orientado a teste pelo frontend |
-| `plano_teste_e2e_v0.7.0.md` | Baseline E2E registrada e reutilizada como referencia do lote real |
-| `agent-tools-flow.md` | Fluxo MCP → LLM → tools (como o agente recebe e usa ferramentas) |
+| `01_benchmarking.md` | References (NARA, ISO 15489, FAIR, Johnny.Decimal, BM25) |
+| `02_gap_analysis.md` | Gap analysis that motivated the project |
+| `03_framework_template.md` | Project structure and ingestion cycle |
+| `04_naming_convention.md` | Canonical naming convention |
+| `05_index_models.md` | Index model (_INDEX.md + OpenSearch, 35+ fields) |
+| `06_retention_policy.md` | Retention policy (roadmap) |
+| `07_rollout_kpis.md` | Rollout phases and KPIs |
+| `08_project_profile_template.md` | Profile V2 template (JSON) with a complete example |
+| `09_field_mapping.md` | Complete field mapping: origin, derivation, LLM usage |
+| `10_classifier_design.md` | Classifier design: operational runtime, benchmark, promotion, and fallback |
+| `plano_teste_e2e_v0.8.0.md` | E2E delta script for 0.8.0, oriented to testing through the frontend |
+| `plano_teste_e2e_v0.7.0.md` | Recorded E2E baseline reused as the reference for the real batch |
+| `agent-tools-flow.md` | MCP → LLM → tools flow (how the agent receives and uses tools) |
 
-Planos de implementação concluídos ficam em `docs/planos_concluidos/` como registro de decisões. Evoluções futuras avaliadas (com gatilho explícito de execução) ficam em `docs/ROADMAP.md`.
+Completed implementation plans live in `docs/planos_concluidos/` as a record of decisions. Future evolutions under evaluation (with an explicit execution trigger) live in `docs/ROADMAP.md`.
