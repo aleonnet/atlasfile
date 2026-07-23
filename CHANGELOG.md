@@ -15,6 +15,13 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.40.2] - 2026-07-23
+
+### Corrigido
+- **Decisão de triagem com mensagem honesta**: o 409 benigno (documento já decidido / decisão em andamento — card desatualizado ou duplo clique) não aparece mais como "Falha ao registrar decisão"; mostra o motivo real localizado e atualiza a fila (o card some). Erros reais agora exibem a mensagem específica da API em vez do genérico.
+- **Modal sem vazamento**: `ModalActions` quebra linha (`flex-wrap`) quando os rótulos são longos — os botões do modal de recuperação não estouram mais o painel.
+- **Default de modelo custo-consciente**: instância nova usa `openai/gpt-5.1` como default de agente e triagem (preferência explícita → primeiro openai → primeiro da lista), nunca "o primeiro do catálogo" (que colocava um modelo caro como default silencioso); backend `LLMPolicy.model` acompanha (gpt-4.1 → gpt-5.1). Seleção salva do usuário nunca é sobrescrita.
+
 ## [0.40.1] - 2026-07-23
 
 ### Corrigido

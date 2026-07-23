@@ -182,7 +182,7 @@ class LLMOverrideGuardrails(BaseModel):
 class LLMPolicy(BaseModel):
     enabled: bool = False
     provider: LLMProvider = LLMProvider.openai
-    model: str = "gpt-4.1"
+    model: str = "gpt-5.1"
     mode: LLMMode = LLMMode.tag_only
     allow_override_fields: list[str] = Field(
         default_factory=lambda: ["document_type", "tags", "confidence", "topics"]

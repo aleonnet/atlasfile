@@ -395,8 +395,12 @@ function AppShell() {
         void notifyNewAliasSuggestions(item.project_id);
         handleStatus(t("painel:app.correctedAndMoved", { businessDomain: businessDomainValue, documentType: documentTypeValue }));
       })
-      .catch(() => {
-        handleStatus(t("painel:app.correctionFailed"), "error");
+      .catch((err: unknown) => {
+        if (err instanceof ApiError && (err.code === "TRIAGE_ALREADY_DECIDED" || err.code === "TRIAGE_DECISION_IN_PROGRESS")) {
+          handleStatus(err.message);
+        } else {
+          handleStatus(err instanceof Error && err.message ? err.message : t("painel:app.correctionFailed"), "error");
+        }
         invalidateAfterTriageDecision();
       })
       .finally(() => processing.finish());
@@ -445,8 +449,15 @@ function AppShell() {
         void notifyNewAliasSuggestions(item.project_id);
         handleStatus(t("painel:app.decisionRecorded", { action }));
       }
-    } catch {
-      handleStatus(t("painel:app.decisionFailed"), "error");
+    } catch (err) {
+      // 409 benigno (card desatualizado: já decidido/em andamento) não é falha —
+      // mostra o motivo real e refaz a fila para o card sumir
+      if (err instanceof ApiError && (err.code === "TRIAGE_ALREADY_DECIDED" || err.code === "TRIAGE_DECISION_IN_PROGRESS")) {
+        invalidateAfterTriageDecision();
+        handleStatus(err.message);
+      } else {
+        handleStatus(err instanceof Error && err.message ? err.message : t("painel:app.decisionFailed"), "error");
+      }
     } finally {
       processing.finish();
     }

@@ -44,7 +44,8 @@ export function ModalShell({ label, title, size = "md", className, children }: M
   );
 }
 
-/** Rodapé padrão de ações do modal (alinhado à direita). */
+/** Rodapé padrão de ações do modal (alinhado à direita; quebra linha em vez de
+ *  vazar do painel quando os rótulos são longos). */
 export function ModalActions({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("mt-5 flex justify-end gap-2", className)} {...props} />;
+  return <div className={cn("mt-5 flex flex-wrap justify-end gap-2", className)} {...props} />;
 }

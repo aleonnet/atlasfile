@@ -114,10 +114,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // Modelos custom validados contam como conhecidos — sem isso a seleção
     // do usuário seria resetada para o primeiro do catálogo a cada load.
     const values = [...models.map((m) => `${m.provider}/${m.model}`), ...customModels];
-    const first = values[0];
-    if (first) {
-      setSelectedModel((s) => (!s || !values.includes(s) ? first : s));
-      setSelectedModelTriage((s) => (!s || !values.includes(s) ? first : s));
+    // Default de instância nova: custo/benefício, nunca "o primeiro da lista"
+    // (a ordem do catálogo colocaria um modelo caro como default silencioso)
+    const fallback =
+      values.find((v) => v === "openai/gpt-5.1") ??
+      values.find((v) => v.startsWith("openai/")) ??
+      values[0];
+    if (fallback) {
+      setSelectedModel((s) => (!s || !values.includes(s) ? fallback : s));
+      setSelectedModelTriage((s) => (!s || !values.includes(s) ? fallback : s));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [models, customModels]);
