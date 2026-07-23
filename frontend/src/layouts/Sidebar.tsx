@@ -1,3 +1,4 @@
+import { version as APP_VERSION } from "../../package.json";
 import { STORAGE_KEYS } from "../lib/storage";
 import {
   Sparkles,
@@ -386,6 +387,7 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
                 )}
               />
               {!collapsed && (healthOk === true ? t("painel:shell.online") : healthOk === false ? t("painel:shell.offline") : "...")}
+              {!collapsed && <span className="text-tertiary/70">· v{APP_VERSION}</span>}
             </span>
             <div className={cn("flex items-center gap-0.5", collapsed && "flex-col")}>
               <button
