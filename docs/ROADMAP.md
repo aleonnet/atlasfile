@@ -40,6 +40,7 @@ estado vazio explicativo)._
 | Heatmap hora × dia da ingestão | Exige campo derivado na INDEXAÇÃO (`ingested_hour`/`ingested_weekday`) — scripted fields via ndjson apagam o cache de campos do index-pattern (aprendido em campo, v0.42.0). | 2026-07-23 |
 | Alerting nativo do OpenSearch | Monitores: extração `failed` acima de N, custo LLM diário acima de teto, fila de triagem acumulando — pendente de o usuário definir canal de notificação (e-mail/webhook). | 2026-07-23 |
 | Reporting PDF agendado | Relatório periódico do dashboard "AtlasFile — Operação" via plugin de reporting. | 2026-07-23 |
+| Cookie password por instalação no Dashboards | Cookie `security_authentication` de instância ANTERIOR causa 500 (Authentication Exception) em instalação nova — a chave de encriptação default é igual entre instâncias, então o cookie velho decripta mas a sessão não existe. Gerar `opensearch_security.cookie.password` aleatória por instalação no `opensearch_dashboards.yml` transforma o cookie velho em redirect limpo de login. | 2026-07-23, teste do zero |
 
 ## E2E pendentes
 
