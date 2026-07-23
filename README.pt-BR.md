@@ -225,6 +225,14 @@ Arquivo entra em _INBOX_DROP
 - `sparse_logreg` e `llm` sao candidatos de benchmark e podem virar modo efetivo apos o ciclo oficial
 - o LLM de ingestão é opcional e não é o classificador principal
 
+### Loop de aprendizado (sugeridor de aliases)
+
+As correções humanas da triagem alimentam um minerador contrastivo de n-gramas: um termo só é proposto como alias da taxonomia quando aparece em ≥2 documentos corrigidos da classe-alvo com precisão ≥80%, medida contra pelo menos 2 documentos de outras classes também decididos na triagem (sem contraste não há sinal). As sugestões aparecem no Classificador com a evidência (suporte e precisão), um toast anuncia termos novos logo após a decisão de triagem, e aprovar um termo faz o append do alias no template default e em todos os profiles de projeto — a próxima classificação já reconhece o vocabulário. Tudo com aprovação humana; nada é auto-aplicado. Para re-rotular um documento já roteado sem perder esse aprendizado, use o movimento governado (⇄) no histórico de processamentos — ele move o arquivo, reindexa e reescreve o sinal de treino numa ação só (mover na mão pelo filesystem não faz nada disso).
+
+## Resiliência e self-healing
+
+A raiz de projetos (o bind mount de `PROJECTS_HOST_ROOT`) é monitorada por uma sonda de saúde com três estados expostos em `/api/setup/status`: `ok`, `unavailable` (mount quebrado / permissão perdida) e `emptied` (pasta host excluída sob bind mount vivo — no macOS/VirtioFS o container continua vendo um diretório "fantasma" vazio de aparência saudável, cujas escritas se perderiam em silêncio). Nos dois estados de falha a UI abre um modal de recuperação: um clique reinicia a aplicação graciosamente, a política `restart: unless-stopped` religa o container, o Docker recria a pasta host ausente e re-vincula o mount, o índice órfão é limpo por um reconcile global e o assistente de configuração reabre. Enquanto quebrado, upload, scan da inbox e criação de projeto ficam bloqueados com códigos estáveis (`PROJECTS_ROOT_UNAVAILABLE`, `PROJECTS_ROOT_EMPTIED`), e a limpeza de órfãos é pulada — uma falha transitória de mount nunca apaga o índice.
+
 ## Convenção de nomes (canonical)
 
 Formato configurável via `naming.canonical_pattern` no template/profile. Default:

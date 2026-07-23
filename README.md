@@ -225,6 +225,14 @@ File lands in _INBOX_DROP
 - `sparse_logreg` and `llm` are benchmark candidates and may become the effective mode after the official cycle
 - the ingestion LLM is optional and is not the primary classifier
 
+### Learning loop (alias suggester)
+
+Human corrections in triage feed a contrastive n-gram miner: a term is only proposed as a taxonomy alias when it appears in ≥2 corrected documents of the target class with ≥80% precision, measured against at least 2 documents of other classes also decided in triage (no contrast, no signal). Suggestions appear in the Classifier with their evidence (support and precision), a toast announces newly mined terms right after the triage decision, and approving a term appends the alias to the default template and to every project profile — the next classification recognizes the vocabulary immediately. Everything is human-approved; nothing is auto-applied. To relabel an already-routed document without losing this learning, use the governed move (⇄) in the processing history — it relocates the file, reindexes and rewrites the training signal in one step (manual filesystem moves do none of that).
+
+## Resilience and self-healing
+
+The projects root (the `PROJECTS_HOST_ROOT` bind mount) is monitored by a health probe with three states exposed in `/api/setup/status`: `ok`, `unavailable` (broken mount / permission lost) and `emptied` (host folder deleted under a live bind mount — on macOS/VirtioFS the container keeps seeing a healthy-looking empty "ghost" directory whose writes would be silently lost). In both failure states the UI opens a recovery modal: one click restarts the app gracefully, the `restart: unless-stopped` policy brings the container back, Docker recreates the missing host folder and re-binds the mount, the orphaned index is cleaned by a global reconcile and the setup wizard reopens. While broken, uploads, inbox scans and project creation are blocked with stable error codes (`PROJECTS_ROOT_UNAVAILABLE`, `PROJECTS_ROOT_EMPTIED`), and the orphan cleanup is skipped — a transient mount failure can never wipe the index.
+
 ## Naming convention (canonical)
 
 Format configurable via `naming.canonical_pattern` in the template/profile. Default:

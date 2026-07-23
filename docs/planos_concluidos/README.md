@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.40.0 – 0.40.2
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [projects_root_self_healing_v0400](projects_root_self_healing_v0400.plan.md) | Self-healing da raiz de projetos: a deleção da pasta host manifesta em DOIS modos (mount fantasma `emptied` via marcador `.atlasfile_root` + evidência no índice; mount quebrado `unavailable` com setup/status que nunca mais 503) — modal de recuperação em 1 clique (`POST /api/system/restart` → SIGTERM → `restart: unless-stopped` religa → Docker recria a pasta, validado com probes reais → reconcile global limpa órfãos → onboarding); guard anti-limbo 503 `PROJECTS_ROOT_EMPTIED`; acabamentos v0.40.2: 409 benigno da triagem com mensagem honesta, ModalActions `flex-wrap`, default de modelo custo-consciente `openai/gpt-5.1` |
+
+---
+
 ## 0.39.0
 
 | # | Plano | Escopo |

@@ -230,6 +230,10 @@ curl http://localhost:8000/health
 
 Resposta esperada: `{"status":"ok"}`
 
+### Se a pasta de projetos sumir
+
+Se a pasta apontada por `PROJECTS_HOST_ROOT` for excluída ou ficar inacessível com o stack no ar, a UI abre sozinha o modal **"Pasta de projetos excluída ou inacessível"** — clique em **Recriar pasta e reiniciar**: a aplicação reinicia, o Docker recria a pasta, o índice órfão é limpo e o assistente de configuração reabre. Nenhum comando manual é necessário (os serviços sobem com `restart: unless-stopped`). Os documentos excluídos não são recuperados — a recuperação restaura a estrutura e a consistência índice↔disco.
+
 ### OpenSearch
 
 ```bash
