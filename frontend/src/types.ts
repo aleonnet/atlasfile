@@ -35,6 +35,8 @@ export interface ProjectDocumentTypeDetectionRule {
   extensions?: string[];
   confidence: number;
   reason?: string;
+  /** Regra de cabeçalho: match só nos primeiros N caracteres (v0.39.0) */
+  head_chars?: number | null;
 }
 
 export interface SearchEvidence {

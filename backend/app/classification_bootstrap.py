@@ -18,7 +18,11 @@ _MONEY_RE = re.compile(r"\b(?:r\$\s*)?\d{1,3}(?:\.\d{3})*(?:,\d{2})\b", re.IGNOR
 _DOC_TYPE_EXTENSION_BONUS = 0.08
 _DOC_TYPE_ALIAS_BASE_CONFIDENCE = 0.35
 _DOC_TYPE_ALIAS_CONFIDENCE_SCALE = 0.6
-_DOC_TYPE_CONFIDENCE_CAP = 0.96
+# Teto do caminho de ALIAS: abaixo de auto_route_min (0.85) — frequência de
+# alias no corpo nunca auto-roteia sozinha; auto-route de tipo exige regra
+# estrutural (cabeçalho) ou extensão característica. Régua: 12 arquivos reais
+# do validation set, zero auto-route com tipo errado (plano v0.39.0).
+_DOC_TYPE_CONFIDENCE_CAP = 0.84
 _DOC_TYPE_BEST_EFFORT_CONFIDENCE = 0.25
 
 _DOMAIN_FILENAME_HIT_WEIGHT = 3
@@ -137,6 +141,15 @@ def _rule_matches_text(text_norm: str, ext: str, rule: dict[str, Any]) -> bool:
     allowed_extensions = [str(item).lower() for item in (rule.get("extensions") or []) if str(item).strip()]
     if allowed_extensions and ext not in allowed_extensions:
         return False
+
+    # head_chars: regra de cabeçalho só enxerga a abertura do documento —
+    # menção profunda no corpo não é título. Ausente = texto inteiro (compat).
+    head_chars = rule.get("head_chars")
+    if head_chars:
+        try:
+            text_norm = text_norm[: int(head_chars)]
+        except (TypeError, ValueError):
+            pass
 
     any_of = [str(item).strip() for item in (rule.get("any_of") or []) if str(item).strip()]
     if any_of and not any(_contains_alias(text_norm, token) for token in any_of):

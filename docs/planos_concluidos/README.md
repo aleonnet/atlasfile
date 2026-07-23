@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.39.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [taxonomy_essential_types_v0390](taxonomy_essential_types_v0390.plan.md) | Taxonomia essencial: document_types 14→10 (formatos apresentacao/planilha/email viram faceta doc_kind; fato_relevante sai do default) — gênero volta a competir (plano.pptx → plano); emendas de qualidade guiadas por 12 arquivos reais: `head_chars` nas regras de cabeçalho (menção profunda não é título) e teto de alias 0.84 (frequência nunca auto-roteia); piso com régua "zero auto-route de tipo errado" |
+
+---
+
 ## 0.38.0
 
 | # | Plano | Escopo |

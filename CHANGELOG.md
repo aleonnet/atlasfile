@@ -15,6 +15,16 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.39.0] -- 2026-07-23
+
+### Alterado
+
+- **Taxonomia essencial de document_types (14 → 10)**: saem os tipos-FORMATO `apresentacao`, `planilha` e `email` (formato já é a faceta `doc_kind`, derivada da extensão e filtrável na busca/stats) e o nicho `fato_relevante` (recriável pela criação governada onde o projeto pedir). Um `plano.pptx` agora classifica pelo GÊNERO (`plano` + `doc_kind=pptx`) — antes o atalho de extensão 0.98 curto-circuitava o conteúdo. Templates `default` e `default-en`; instâncias existentes migram opt-in pela ferramenta governada.
+- **Regras de cabeçalho agora olham o cabeçalho** (`head_chars` nas detection_rules): a remoção do atalho expôs falsos positivos 0.96+ de regras "structural_header" que casavam menção profunda no corpo (kickoff citando RFP → edital; processo de pagamentos citando NF → nota_fiscal; fato relevante citando aditamento → aditivo — offsets 1.5k-3k medidos nos 12 arquivos reais). Regras `any_of` de cabeçalho ganham `head_chars: 600` (retrocompatível: ausente = texto inteiro); `all_of` de evidência distribuída (contratante/contratada) mantém escopo total.
+- **Frequência de alias nunca auto-roteia sozinha**: teto do caminho de alias desce para 0.84 (< auto_route 0.85) — auto-route de tipo exige regra estrutural ou extensão característica. Régua nova no teste de piso (12 arquivos reais): **zero auto-route com tipo errado**, acerto exato nos cabeçalhos reais, ambíguos vão à triagem (que treina o classificador e alimenta o sugeridor de aliases).
+
+---
+
 ## [0.38.0] -- 2026-07-23
 
 ### Corrigido

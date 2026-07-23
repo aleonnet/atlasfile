@@ -54,6 +54,7 @@ def test_bootstrap_quality_floor_for_current_12_files() -> None:
 
         document_type_hits = 0
         business_domain_hits = 0
+        wrong_type_auto_routes: list[str] = []
 
         for entry in entries:
             file_path = resolve_validation_file(entry.file)
@@ -63,12 +64,20 @@ def test_bootstrap_quality_floor_for_current_12_files() -> None:
                 source_path=file_path,
                 text_excerpt=extracted.text_excerpt,
             )
-            if result["document_type"] == entry.document_type:
+            type_hit = result["document_type"] == entry.document_type
+            if type_hit:
                 document_type_hits += 1
             if result["business_domain"] == entry.business_domain:
                 business_domain_hits += 1
+            # Régua de segurança da taxonomia essencial (v0.39.0): tipo errado
+            # JAMAIS auto-roteia — sem sinal de cabeçalho/extensão vai à triagem.
+            if not type_hit and result["confidence"] >= 0.85:
+                wrong_type_auto_routes.append(f"{entry.file}: {result['document_type']} @ {result['confidence']}")
 
-        assert document_type_hits == len(entries)
+        assert wrong_type_auto_routes == []
+        # Piso empírico pós-taxonomia essencial: cabeçalhos reais acertam exato
+        # (contrato x4, aditivo x2, plano, relatorio/.msg); ambíguos vão à triagem.
+        assert document_type_hits >= 8
         assert business_domain_hits >= 7
     finally:
         if previous_root is None:

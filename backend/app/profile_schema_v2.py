@@ -93,6 +93,10 @@ class DocumentTypeDetectionRule(BaseModel):
     extensions: list[str] = Field(default_factory=list)
     confidence: float
     reason: str = "structural_header"
+    # Escopo do match: só os primeiros N caracteres (nome do arquivo + abertura).
+    # Regras de semântica de cabeçalho DEVEM usar isto — menção profunda no corpo
+    # não é título (falsos positivos 0.96+ documentados no plano v0.39.0).
+    head_chars: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _validate_rule(self) -> "DocumentTypeDetectionRule":

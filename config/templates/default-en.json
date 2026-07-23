@@ -28,48 +28,802 @@
     },
     "areas_root": "02_AREAS",
     "business_domain_folders": [
-      { "business_domain": "corporate", "folder": "corporate" },
-      { "business_domain": "legal", "folder": "legal" },
-      { "business_domain": "assets", "folder": "assets" },
-      { "business_domain": "finance", "folder": "finance" },
-      { "business_domain": "tax", "folder": "tax" },
-      { "business_domain": "people", "folder": "people" },
-      { "business_domain": "it", "folder": "it" },
-      { "business_domain": "operations", "folder": "operations" },
-      { "business_domain": "regulatory", "folder": "regulatory" },
-      { "business_domain": "compliance", "folder": "compliance" },
-      { "business_domain": "procurement", "folder": "procurement" }
+      {
+        "business_domain": "corporate",
+        "folder": "corporate"
+      },
+      {
+        "business_domain": "legal",
+        "folder": "legal"
+      },
+      {
+        "business_domain": "assets",
+        "folder": "assets"
+      },
+      {
+        "business_domain": "finance",
+        "folder": "finance"
+      },
+      {
+        "business_domain": "tax",
+        "folder": "tax"
+      },
+      {
+        "business_domain": "people",
+        "folder": "people"
+      },
+      {
+        "business_domain": "it",
+        "folder": "it"
+      },
+      {
+        "business_domain": "operations",
+        "folder": "operations"
+      },
+      {
+        "business_domain": "regulatory",
+        "folder": "regulatory"
+      },
+      {
+        "business_domain": "compliance",
+        "folder": "compliance"
+      },
+      {
+        "business_domain": "procurement",
+        "folder": "procurement"
+      }
     ]
   },
   "classification": {
     "business_domains": [
-      { "key": "corporate", "label": "Corporate", "aliases": ["corporate", "bylaws", "shareholders agreement", "articles of incorporation", "board of directors", "corporate structure", "shareholders meeting", "annual general meeting", "corporate governance", "share capital", "cap table", "merger", "spin-off", "special purpose entity", "m&a", "societario"], "primary_scope": "Corporate structure, SPE/UPI, corporate acts, corporate governance and shareholder relations.", "subfunction_topics": ["ma", "carve_out", "board", "cap_table", "governanca", "fato_relevante", "ata_reuniao", "spe"] },
-      { "key": "legal", "label": "Legal", "aliases": ["legal", "legal opinion", "litigation", "lawsuit", "power of attorney", "attorney", "counsel", "court", "plaintiff", "defendant", "bankruptcy", "judicial reorganization", "claim", "legal proceedings", "settlement", "juridico"], "primary_scope": "Litigation, legal opinions, disputes, powers of attorney, bankruptcy/judicial reorganization and privacy legal matters. Does NOT include operational contracts (these belong to the business function domain).", "subfunction_topics": ["parecer", "procuracao", "contencioso", "falencia_rj", "privacidade_lgpd", "docusign", "spa", "nda"] },
-      { "key": "assets", "label": "Assets", "aliases": ["assets", "asset", "fixed assets", "inventory", "depreciation", "asset base", "asset transfer", "property, plant and equipment", "capex", "equipment", "ativos"], "primary_scope": "Inventory, fixed assets, property, asset base and asset segregation or transfer.", "subfunction_topics": ["ativos_imobilizado", "cmdb", "inventario", "depreciacao", "segregacao", "rede_infra"] },
-      { "key": "finance", "label": "Finance", "aliases": ["finance", "financial", "accounting", "controllership", "treasury", "billing", "accounts payable", "accounts receivable", "cash flow", "reconciliation", "budget", "cost center", "profit center", "balance sheet", "income statement", "financial statements", "financeiro"], "primary_scope": "FP&A, controllership, management accounting, treasury, billing, AP/AR, collections, cash and budget.", "subfunction_topics": ["contabilidade", "controladoria", "tesouraria", "contas_a_pagar", "contas_a_receber", "faturamento", "fluxo_caixa", "precificacao", "orcamento"] },
-      { "key": "tax", "label": "Tax", "aliases": ["tax", "taxes", "taxation", "tax return", "withholding tax", "tax compliance", "tax authority", "tax assessment", "vat", "sales tax", "fiscal", "icms", "iss"], "primary_scope": "Taxes, withholdings, ancillary obligations, tax invoices and tax assessments.", "subfunction_topics": ["fiscal_tributos", "icms", "iss", "pis_cofins", "retencoes", "nfe", "nfse", "sped"] },
-      { "key": "people", "label": "People", "aliases": ["people", "human resources", "hr", "headcount", "payroll", "union", "org chart", "recruitment", "benefits", "labor", "employees", "compensation", "training", "rh"], "primary_scope": "Recruitment, payroll, benefits, org chart, labor relations, performance and training.", "subfunction_topics": ["estrutura_organizacional", "folha_pagamento", "rh_beneficios", "recrutamento", "trabalhista", "treinamento"] },
-      { "key": "it", "label": "IT", "aliases": ["it", "information technology", "technology", "sap", "sap business one", "integration", "infrastructure", "migration", "system", "software", "erp", "it services", "cmdb", "cloud", "saas", "data migration", "ti"], "primary_scope": "Corporate systems, ERP, integrations, infrastructure, cloud, technical architecture and technology rollout.", "subfunction_topics": ["sap", "sistemas_integracoes", "migracao", "arquitetura", "infra_ti", "api", "cloud"] },
-      { "key": "operations", "label": "Operations", "aliases": ["operations", "operational", "milestone", "schedule", "workstream", "tsa", "planning", "status report", "rollout", "cutover", "cutover plan", "transition services agreement", "transitional services agreement", "service transition", "go-live", "kickoff", "stakeholders", "operacoes"], "primary_scope": "Rollout, PMO, transition, TSA, runbooks, operations support and operational workflows.", "subfunction_topics": ["tsa", "cronograma", "status_report", "riscos", "escopo", "runbook", "cutover", "implantacao"] },
-      { "key": "regulatory", "label": "Regulatory", "aliases": ["regulatory", "regulator", "regulation", "antitrust", "prior consent", "license", "licenses", "regulatory approval", "regulatory filing", "regulatory obligations", "anatel", "cvm", "cade", "regulatorio"], "primary_scope": "Obligations before external regulators (telecom agency, securities commission, antitrust authority): consents, licenses, regulatory conditions and communications with regulators. Does not include internal controls — these belong to compliance.", "subfunction_topics": ["anatel", "cvm", "cade", "anuencia_previa", "licencas", "obrigacoes_regulatorias"] },
-      { "key": "compliance", "label": "Compliance", "aliases": ["compliance", "internal controls", "audit", "auditing", "anti-corruption", "code of conduct", "sox", "risk management", "risk policy", "risk register", "data privacy", "gdpr", "lgpd", "whistleblower", "due diligence", "ethics"], "primary_scope": "Internal controls, audit, ethics, anti-corruption, third-party due diligence, corporate policies and internal frameworks (SOX, code of conduct, data privacy as internal policy). Does not include obligations before external regulators — these belong to regulatory.", "subfunction_topics": ["sox_controles", "compliance", "auditoria", "anticorrupcao", "codigo_conduta", "risk_register"] },
-      { "key": "procurement", "label": "Procurement", "aliases": ["procurement", "purchasing", "sourcing", "vendor", "supplier", "suppliers", "vendors", "rfp", "rfq", "request for proposal", "request for quotation", "quotation", "vendor management", "suprimentos", "compras"], "primary_scope": "Procurement, strategic sourcing, supplier management, tenders, quotations and purchasing governance.", "subfunction_topics": ["fornecedores", "compras_procurement", "rfp_rfq"] }
+      {
+        "key": "corporate",
+        "label": "Corporate",
+        "aliases": [
+          "corporate",
+          "bylaws",
+          "shareholders agreement",
+          "articles of incorporation",
+          "board of directors",
+          "corporate structure",
+          "shareholders meeting",
+          "annual general meeting",
+          "corporate governance",
+          "share capital",
+          "cap table",
+          "merger",
+          "spin-off",
+          "special purpose entity",
+          "m&a",
+          "societario"
+        ],
+        "primary_scope": "Corporate structure, SPE/UPI, corporate acts, corporate governance and shareholder relations.",
+        "subfunction_topics": [
+          "ma",
+          "carve_out",
+          "board",
+          "cap_table",
+          "governanca",
+          "fato_relevante",
+          "ata_reuniao",
+          "spe"
+        ]
+      },
+      {
+        "key": "legal",
+        "label": "Legal",
+        "aliases": [
+          "legal",
+          "legal opinion",
+          "litigation",
+          "lawsuit",
+          "power of attorney",
+          "attorney",
+          "counsel",
+          "court",
+          "plaintiff",
+          "defendant",
+          "bankruptcy",
+          "judicial reorganization",
+          "claim",
+          "legal proceedings",
+          "settlement",
+          "juridico"
+        ],
+        "primary_scope": "Litigation, legal opinions, disputes, powers of attorney, bankruptcy/judicial reorganization and privacy legal matters. Does NOT include operational contracts (these belong to the business function domain).",
+        "subfunction_topics": [
+          "parecer",
+          "procuracao",
+          "contencioso",
+          "falencia_rj",
+          "privacidade_lgpd",
+          "docusign",
+          "spa",
+          "nda"
+        ]
+      },
+      {
+        "key": "assets",
+        "label": "Assets",
+        "aliases": [
+          "assets",
+          "asset",
+          "fixed assets",
+          "inventory",
+          "depreciation",
+          "asset base",
+          "asset transfer",
+          "property, plant and equipment",
+          "capex",
+          "equipment",
+          "ativos"
+        ],
+        "primary_scope": "Inventory, fixed assets, property, asset base and asset segregation or transfer.",
+        "subfunction_topics": [
+          "ativos_imobilizado",
+          "cmdb",
+          "inventario",
+          "depreciacao",
+          "segregacao",
+          "rede_infra"
+        ]
+      },
+      {
+        "key": "finance",
+        "label": "Finance",
+        "aliases": [
+          "finance",
+          "financial",
+          "accounting",
+          "controllership",
+          "treasury",
+          "billing",
+          "accounts payable",
+          "accounts receivable",
+          "cash flow",
+          "reconciliation",
+          "budget",
+          "cost center",
+          "profit center",
+          "balance sheet",
+          "income statement",
+          "financial statements",
+          "financeiro"
+        ],
+        "primary_scope": "FP&A, controllership, management accounting, treasury, billing, AP/AR, collections, cash and budget.",
+        "subfunction_topics": [
+          "contabilidade",
+          "controladoria",
+          "tesouraria",
+          "contas_a_pagar",
+          "contas_a_receber",
+          "faturamento",
+          "fluxo_caixa",
+          "precificacao",
+          "orcamento"
+        ]
+      },
+      {
+        "key": "tax",
+        "label": "Tax",
+        "aliases": [
+          "tax",
+          "taxes",
+          "taxation",
+          "tax return",
+          "withholding tax",
+          "tax compliance",
+          "tax authority",
+          "tax assessment",
+          "vat",
+          "sales tax",
+          "fiscal",
+          "icms",
+          "iss"
+        ],
+        "primary_scope": "Taxes, withholdings, ancillary obligations, tax invoices and tax assessments.",
+        "subfunction_topics": [
+          "fiscal_tributos",
+          "icms",
+          "iss",
+          "pis_cofins",
+          "retencoes",
+          "nfe",
+          "nfse",
+          "sped"
+        ]
+      },
+      {
+        "key": "people",
+        "label": "People",
+        "aliases": [
+          "people",
+          "human resources",
+          "hr",
+          "headcount",
+          "payroll",
+          "union",
+          "org chart",
+          "recruitment",
+          "benefits",
+          "labor",
+          "employees",
+          "compensation",
+          "training",
+          "rh"
+        ],
+        "primary_scope": "Recruitment, payroll, benefits, org chart, labor relations, performance and training.",
+        "subfunction_topics": [
+          "estrutura_organizacional",
+          "folha_pagamento",
+          "rh_beneficios",
+          "recrutamento",
+          "trabalhista",
+          "treinamento"
+        ]
+      },
+      {
+        "key": "it",
+        "label": "IT",
+        "aliases": [
+          "it",
+          "information technology",
+          "technology",
+          "sap",
+          "sap business one",
+          "integration",
+          "infrastructure",
+          "migration",
+          "system",
+          "software",
+          "erp",
+          "it services",
+          "cmdb",
+          "cloud",
+          "saas",
+          "data migration",
+          "ti"
+        ],
+        "primary_scope": "Corporate systems, ERP, integrations, infrastructure, cloud, technical architecture and technology rollout.",
+        "subfunction_topics": [
+          "sap",
+          "sistemas_integracoes",
+          "migracao",
+          "arquitetura",
+          "infra_ti",
+          "api",
+          "cloud"
+        ]
+      },
+      {
+        "key": "operations",
+        "label": "Operations",
+        "aliases": [
+          "operations",
+          "operational",
+          "milestone",
+          "schedule",
+          "workstream",
+          "tsa",
+          "planning",
+          "status report",
+          "rollout",
+          "cutover",
+          "cutover plan",
+          "transition services agreement",
+          "transitional services agreement",
+          "service transition",
+          "go-live",
+          "kickoff",
+          "stakeholders",
+          "operacoes"
+        ],
+        "primary_scope": "Rollout, PMO, transition, TSA, runbooks, operations support and operational workflows.",
+        "subfunction_topics": [
+          "tsa",
+          "cronograma",
+          "status_report",
+          "riscos",
+          "escopo",
+          "runbook",
+          "cutover",
+          "implantacao"
+        ]
+      },
+      {
+        "key": "regulatory",
+        "label": "Regulatory",
+        "aliases": [
+          "regulatory",
+          "regulator",
+          "regulation",
+          "antitrust",
+          "prior consent",
+          "license",
+          "licenses",
+          "regulatory approval",
+          "regulatory filing",
+          "regulatory obligations",
+          "anatel",
+          "cvm",
+          "cade",
+          "regulatorio"
+        ],
+        "primary_scope": "Obligations before external regulators (telecom agency, securities commission, antitrust authority): consents, licenses, regulatory conditions and communications with regulators. Does not include internal controls — these belong to compliance.",
+        "subfunction_topics": [
+          "anatel",
+          "cvm",
+          "cade",
+          "anuencia_previa",
+          "licencas",
+          "obrigacoes_regulatorias"
+        ]
+      },
+      {
+        "key": "compliance",
+        "label": "Compliance",
+        "aliases": [
+          "compliance",
+          "internal controls",
+          "audit",
+          "auditing",
+          "anti-corruption",
+          "code of conduct",
+          "sox",
+          "risk management",
+          "risk policy",
+          "risk register",
+          "data privacy",
+          "gdpr",
+          "lgpd",
+          "whistleblower",
+          "due diligence",
+          "ethics"
+        ],
+        "primary_scope": "Internal controls, audit, ethics, anti-corruption, third-party due diligence, corporate policies and internal frameworks (SOX, code of conduct, data privacy as internal policy). Does not include obligations before external regulators — these belong to regulatory.",
+        "subfunction_topics": [
+          "sox_controles",
+          "compliance",
+          "auditoria",
+          "anticorrupcao",
+          "codigo_conduta",
+          "risk_register"
+        ]
+      },
+      {
+        "key": "procurement",
+        "label": "Procurement",
+        "aliases": [
+          "procurement",
+          "purchasing",
+          "sourcing",
+          "vendor",
+          "supplier",
+          "suppliers",
+          "vendors",
+          "rfp",
+          "rfq",
+          "request for proposal",
+          "request for quotation",
+          "quotation",
+          "vendor management",
+          "suprimentos",
+          "compras"
+        ],
+        "primary_scope": "Procurement, strategic sourcing, supplier management, tenders, quotations and purchasing governance.",
+        "subfunction_topics": [
+          "fornecedores",
+          "compras_procurement",
+          "rfp_rfq"
+        ]
+      }
     ],
     "document_types": [
-      { "key": "contract", "label": "Contract", "aliases": ["contract", "agreement", "share purchase agreement", "asset purchase agreement", "master services agreement", "purchase agreement", "services agreement", "non-disclosure agreement", "by and between", "tsa", "mla", "contrato"], "extensions": [".pdf", ".docx"], "folder": "contract", "fallback_priority": 80, "detection_rules": [{ "any_of": ["share purchase agreement", "asset purchase agreement", "master services agreement", "this agreement", "by and between", "services agreement", "contrato de"], "confidence": 0.96, "reason": "structural_header" }, { "all_of": ["agreement", "between"], "confidence": 0.96, "reason": "structural_header" }, { "all_of": ["contract", "contractor"], "confidence": 0.96, "reason": "structural_header" }] },
-      { "key": "amendment", "label": "Amendment", "aliases": ["amendment", "addendum", "first amendment", "second amendment", "amendment to the agreement", "term extension", "extension of term", "aditivo", "termo aditivo"], "extensions": [".pdf", ".docx"], "folder": "amendment", "fallback_priority": 70, "detection_rules": [{ "any_of": ["amendment to", "addendum", "first amendment", "second amendment", "extension of term", "termo aditivo"], "confidence": 0.97, "reason": "structural_header" }] },
-      { "key": "material_fact", "label": "Material fact", "aliases": ["material fact", "notice to the market", "market announcement", "publicly held company", "fato relevante"], "extensions": [".pdf"], "folder": "material_fact", "fallback_priority": 30, "detection_rules": [{ "any_of": ["material fact", "notice to the market", "fato relevante"], "confidence": 0.98, "reason": "structural_header" }] },
-      { "key": "legal_opinion", "label": "Legal opinion", "aliases": ["legal opinion", "opinion", "legal memorandum", "memorandum", "legal memo", "parecer"], "extensions": [".pdf", ".docx"], "folder": "legal_opinion", "fallback_priority": 40, "detection_rules": [{ "any_of": ["legal opinion", "legal memorandum", "legal memo", "parecer"], "confidence": 0.96, "reason": "structural_header" }] },
-      { "key": "power_of_attorney", "label": "Power of attorney", "aliases": ["power of attorney", "proxy", "procuracao", "procuração"], "extensions": [".pdf", ".docx"], "folder": "power_of_attorney", "fallback_priority": 50, "detection_rules": [{ "any_of": ["power of attorney", "procuracao", "procuração"], "confidence": 0.97, "reason": "structural_header" }] },
-      { "key": "minutes", "label": "Minutes", "aliases": ["minutes", "meeting minutes", "minutes of the meeting", "board minutes", "ata"], "extensions": [".pdf", ".docx"], "folder": "minutes", "fallback_priority": 60, "detection_rules": [{ "any_of": ["minutes of the", "meeting minutes", "board minutes", "ata de reuniao", "ata de reunião"], "confidence": 0.97, "reason": "structural_header" }, { "any_of": ["minutes", "ata"], "confidence": 0.94, "reason": "structural_header" }] },
-      { "key": "report", "label": "Report", "aliases": ["report", "annual report", "management report", "status report", "relatorio", "relatório"], "extensions": [".pdf", ".docx"], "folder": "report", "fallback_priority": 10, "detection_rules": [{ "any_of": ["report", "relatorio", "relatório"], "confidence": 0.9, "reason": "structural_header" }] },
-      { "key": "specification", "label": "Specification", "aliases": ["specification", "technical specification", "requirements", "statement of work", "work instruction", "especificacao"], "extensions": [".pdf", ".docx"], "folder": "specification", "fallback_priority": 20, "detection_rules": [{ "any_of": ["technical specification for", "statement of work", "etc –", "etc -"], "confidence": 0.96, "reason": "etc_header" }, { "any_of": ["work instruction", "standard operating procedure"], "confidence": 0.95, "reason": "ito_header" }, { "any_of": ["specification", "requirements", "requirement"], "confidence": 0.93, "reason": "structural_header" }] },
-      { "key": "bid", "label": "Bid", "aliases": ["bid", "tender", "rfp", "rfq", "request for proposal", "request for quotation", "commercial proposal", "invitation to bid", "edital"], "extensions": [".pdf", ".docx"], "folder": "bid", "fallback_priority": 35, "detection_rules": [{ "any_of": ["invitation to bid", "tender", "competitive procedure", "edital"], "confidence": 0.96, "reason": "structural_header" }, { "any_of": ["rfp", "request for proposal", "commercial proposal", "binding offer"], "confidence": 0.96, "reason": "rfp_header" }] },
-      { "key": "plan", "label": "Plan", "aliases": ["plan", "project plan", "master plan", "gantt", "wbs", "work breakdown structure", "guidelines", "roadmap", "plano"], "extensions": [".pdf", ".docx"], "folder": "plan", "fallback_priority": 25, "detection_rules": [{ "any_of": ["plan", "project plan", "gantt", "wbs", "work breakdown structure"], "confidence": 0.94, "reason": "structural_header" }, { "all_of": ["project", "schedule"], "confidence": 0.88, "reason": "structural_header" }, { "any_of": ["corporate policy", "guidelines and methodology"], "confidence": 0.90, "reason": "policy_document" }] },
-      { "key": "presentation", "label": "Presentation", "aliases": ["presentation", "deck", "slide deck", "slides", "slide", "slideshow", "kickoff", "milestones", "apresentacao"], "extensions": [".pptx"], "folder": "presentation", "extension_confidence_by_extension": { ".pptx": 0.98 }, "fallback_priority": 15, "detection_rules": [{ "extensions": [".pdf"], "any_of": ["slide", "slides"], "with_any_of": ["kickoff", "milestones", "planning", "agenda", "summary"], "confidence": 0.95, "reason": "structural_slide_pdf" }] },
-      { "key": "spreadsheet", "label": "Spreadsheet", "aliases": ["spreadsheet", "worksheet", "workbook", "xlsx", "csv", "planilha"], "extensions": [".xls", ".xlsx", ".xlsm", ".xltx", ".xltm", ".csv"], "folder": "spreadsheet", "extension_confidence_by_extension": { ".xlsx": 0.98, ".xlsm": 0.98, ".xltx": 0.98, ".xltm": 0.98, ".csv": 0.9 }, "fallback_priority": 15 },
-      { "key": "email", "label": "E-mail", "aliases": ["email", "e-mail", "subject:", "sent:", "message"], "extensions": [".msg", ".eml"], "folder": "email", "extension_confidence_by_extension": { ".msg": 0.98, ".eml": 0.98 }, "fallback_priority": 15 },
-      { "key": "invoice", "label": "Invoice", "aliases": ["invoice", "tax invoice", "tax receipt", "payment slip", "nota fiscal", "nfse", "nfs-e"], "extensions": [".pdf", ".xml"], "folder": "invoice", "extension_confidence_by_extension": { ".xml": 0.98 }, "fallback_priority": 18, "detection_rules": [{ "any_of": ["tax invoice", "invoice no", "invoice number", "nota fiscal", "nfse", "nfs-e"], "confidence": 0.97, "reason": "structural_header" }] }
+      {
+        "key": "contract",
+        "label": "Contract",
+        "aliases": [
+          "contract",
+          "agreement",
+          "share purchase agreement",
+          "asset purchase agreement",
+          "master services agreement",
+          "purchase agreement",
+          "services agreement",
+          "non-disclosure agreement",
+          "by and between",
+          "tsa",
+          "mla",
+          "contrato"
+        ],
+        "extensions": [
+          ".pdf",
+          ".docx"
+        ],
+        "folder": "contract",
+        "fallback_priority": 80,
+        "detection_rules": [
+          {
+            "any_of": [
+              "share purchase agreement",
+              "asset purchase agreement",
+              "master services agreement",
+              "this agreement",
+              "by and between",
+              "services agreement",
+              "contrato de"
+            ],
+            "confidence": 0.96,
+            "reason": "structural_header",
+            "head_chars": 600
+          },
+          {
+            "all_of": [
+              "agreement",
+              "between"
+            ],
+            "confidence": 0.96,
+            "reason": "structural_header"
+          },
+          {
+            "all_of": [
+              "contract",
+              "contractor"
+            ],
+            "confidence": 0.96,
+            "reason": "structural_header"
+          }
+        ]
+      },
+      {
+        "key": "amendment",
+        "label": "Amendment",
+        "aliases": [
+          "amendment",
+          "addendum",
+          "first amendment",
+          "second amendment",
+          "amendment to the agreement",
+          "term extension",
+          "extension of term",
+          "aditivo",
+          "termo aditivo"
+        ],
+        "extensions": [
+          ".pdf",
+          ".docx"
+        ],
+        "folder": "amendment",
+        "fallback_priority": 70,
+        "detection_rules": [
+          {
+            "any_of": [
+              "amendment to",
+              "addendum",
+              "first amendment",
+              "second amendment",
+              "extension of term",
+              "termo aditivo"
+            ],
+            "confidence": 0.97,
+            "reason": "structural_header",
+            "head_chars": 600
+          }
+        ]
+      },
+      {
+        "key": "legal_opinion",
+        "label": "Legal opinion",
+        "aliases": [
+          "legal opinion",
+          "opinion",
+          "legal memorandum",
+          "memorandum",
+          "legal memo",
+          "parecer"
+        ],
+        "extensions": [
+          ".pdf",
+          ".docx"
+        ],
+        "folder": "legal_opinion",
+        "fallback_priority": 40,
+        "detection_rules": [
+          {
+            "any_of": [
+              "legal opinion",
+              "legal memorandum",
+              "legal memo",
+              "parecer"
+            ],
+            "confidence": 0.96,
+            "reason": "structural_header",
+            "head_chars": 600
+          }
+        ]
+      },
+      {
+        "key": "power_of_attorney",
+        "label": "Power of attorney",
+        "aliases": [
+          "power of attorney",
+          "proxy",
+          "procuracao",
+          "procuração"
+        ],
+        "extensions": [
+          ".pdf",
+          ".docx"
+        ],
+        "folder": "power_of_attorney",
+        "fallback_priority": 50,
+        "detection_rules": [
+          {
+            "any_of": [
+              "power of attorney",
+              "procuracao",
+              "procuração"
+            ],
+            "confidence": 0.97,
+            "reason": "structural_header",
+            "head_chars": 600
+          }
+        ]
+      },
+      {
+        "key": "minutes",
+        "label": "Minutes",
+        "aliases": [
+          "minutes",
+          "meeting minutes",
+          "minutes of the meeting",
+          "board minutes",
+          "ata"
+        ],
+        "extensions": [
+          ".pdf",
+          ".docx"
+        ],
+        "folder": "minutes",
+        "fallback_priority": 60,
+        "detection_rules": [
+          {
+            "any_of": [
+              "minutes of the",
+              "meeting minutes",
+              "board minutes",
+              "ata de reuniao",
+              "ata de reunião"
+            ],
+            "confidence": 0.97,
+            "reason": "structural_header",
+            "head_chars": 600
+          },
+          {
+            "any_of": [
+              "minutes",
+              "ata"
+            ],
+            "confidence": 0.94,
+            "reason": "structural_header",
+            "head_chars": 600
+          }
+        ]
+      },
+      {
+        "key": "report",
+        "label": "Report",
+        "aliases": [
+          "report",
+          "annual report",
+          "management report",
+          "status report",
+          "relatorio",
+          "relatório"
+        ],
+        "extensions": [
+          ".pdf",
+          ".docx"
+        ],
+        "folder": "report",
+        "fallback_priority": 10,
+        "detection_rules": [
+          {
+            "any_of": [
+              "report",
+              "relatorio",
+              "relatório"
+            ],
+            "confidence": 0.9,
+            "reason": "structural_header",
+            "head_chars": 600
+          }
+        ]
+      },
+      {
+        "key": "specification",
+        "label": "Specification",
+        "aliases": [
+          "specification",
+          "technical specification",
+          "requirements",
+          "statement of work",
+          "work instruction",
+          "especificacao"
+        ],
+        "extensions": [
+          ".pdf",
+          ".docx"
+        ],
+        "folder": "specification",
+        "fallback_priority": 20,
+        "detection_rules": [
+          {
+            "any_of": [
+              "technical specification for",
+              "statement of work",
+              "etc –",
+              "etc -"
+            ],
+            "confidence": 0.96,
+            "reason": "etc_header",
+            "head_chars": 600
+          },
+          {
+            "any_of": [
+              "work instruction",
+              "standard operating procedure"
+            ],
+            "confidence": 0.95,
+            "reason": "ito_header",
+            "head_chars": 600
+          },
+          {
+            "any_of": [
+              "specification",
+              "requirements",
+              "requirement"
+            ],
+            "confidence": 0.93,
+            "reason": "structural_header",
+            "head_chars": 600
+          }
+        ]
+      },
+      {
+        "key": "bid",
+        "label": "Bid",
+        "aliases": [
+          "bid",
+          "tender",
+          "rfp",
+          "rfq",
+          "request for proposal",
+          "request for quotation",
+          "commercial proposal",
+          "invitation to bid",
+          "edital"
+        ],
+        "extensions": [
+          ".pdf",
+          ".docx"
+        ],
+        "folder": "bid",
+        "fallback_priority": 35,
+        "detection_rules": [
+          {
+            "any_of": [
+              "invitation to bid",
+              "tender",
+              "competitive procedure",
+              "edital"
+            ],
+            "confidence": 0.96,
+            "reason": "structural_header",
+            "head_chars": 600
+          },
+          {
+            "any_of": [
+              "rfp",
+              "request for proposal",
+              "commercial proposal",
+              "binding offer"
+            ],
+            "confidence": 0.96,
+            "reason": "rfp_header",
+            "head_chars": 600
+          }
+        ]
+      },
+      {
+        "key": "plan",
+        "label": "Plan",
+        "aliases": [
+          "plan",
+          "project plan",
+          "master plan",
+          "gantt",
+          "wbs",
+          "work breakdown structure",
+          "guidelines",
+          "roadmap",
+          "plano"
+        ],
+        "extensions": [
+          ".pdf",
+          ".docx"
+        ],
+        "folder": "plan",
+        "fallback_priority": 25,
+        "detection_rules": [
+          {
+            "any_of": [
+              "plan",
+              "project plan",
+              "gantt",
+              "wbs",
+              "work breakdown structure"
+            ],
+            "confidence": 0.94,
+            "reason": "structural_header",
+            "head_chars": 600
+          },
+          {
+            "all_of": [
+              "project",
+              "schedule"
+            ],
+            "confidence": 0.88,
+            "reason": "structural_header"
+          },
+          {
+            "any_of": [
+              "corporate policy",
+              "guidelines and methodology"
+            ],
+            "confidence": 0.9,
+            "reason": "policy_document",
+            "head_chars": 600
+          }
+        ]
+      },
+      {
+        "key": "invoice",
+        "label": "Invoice",
+        "aliases": [
+          "invoice",
+          "tax invoice",
+          "tax receipt",
+          "payment slip",
+          "nota fiscal",
+          "nfse",
+          "nfs-e"
+        ],
+        "extensions": [
+          ".pdf",
+          ".xml"
+        ],
+        "folder": "invoice",
+        "extension_confidence_by_extension": {
+          ".xml": 0.98
+        },
+        "fallback_priority": 18,
+        "detection_rules": [
+          {
+            "any_of": [
+              "tax invoice",
+              "invoice no",
+              "invoice number",
+              "nota fiscal",
+              "nfse",
+              "nfs-e"
+            ],
+            "confidence": 0.97,
+            "reason": "structural_header",
+            "head_chars": 600
+          }
+        ]
+      }
     ],
     "entity_catalog": [],
     "confidence_thresholds": {

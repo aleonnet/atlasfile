@@ -1,7 +1,7 @@
 [
   {
     "file": "20220824_Kickoff_Neptune_V2.3.pptx",
-    "document_type": "apresentacao",
+    "document_type": "plano",
     "business_domain": "operacoes",
     "topics": [
       "cronograma",
@@ -97,7 +97,7 @@
   },
   {
     "file": "FATO RELEVANTE_Oferta Vinculante Torres_Venus.pdf",
-    "document_type": "fato_relevante",
+    "document_type": "relatorio",
     "business_domain": "societario",
     "topics": [
       "falencia_rj",
@@ -122,7 +122,7 @@
   },
   {
     "file": "Fato Relevante-Proposta Vinculante Sites de Infraestrutura de Telecomunicações Fixa.pdf",
-    "document_type": "fato_relevante",
+    "document_type": "relatorio",
     "business_domain": "societario",
     "topics": [
       "societario",
@@ -147,7 +147,7 @@
   },
   {
     "file": "Neptune_Milestones e Estimativa de Esforço_22.08.09 1359[76]  -  Read-Only.pdf",
-    "document_type": "apresentacao",
+    "document_type": "plano",
     "business_domain": "operacoes",
     "topics": [
       "cronograma",
@@ -168,7 +168,7 @@
   },
   {
     "file": "Processo de Pgtos Lemvig_v05_24.03.2023.pptx",
-    "document_type": "apresentacao",
+    "document_type": "especificacao",
     "business_domain": "financeiro",
     "topics": [
       "fluxo_caixa",
@@ -268,7 +268,7 @@
   },
   {
     "file": "RES Projeto Saturno  Carga de Ativos.msg",
-    "document_type": "email",
+    "document_type": "relatorio",
     "business_domain": "ativos",
     "topics": [
       "ativos_imobilizado",

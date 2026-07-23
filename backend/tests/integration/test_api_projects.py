@@ -132,11 +132,7 @@ def test_initialize_project_default_template_persists_current_contract(
     assert {item.key for item in profile.classification.document_types} >= {
         "contrato",
         "aditivo",
-        "fato_relevante",
         "relatorio",
-        "apresentacao",
-        "planilha",
-        "email",
         "edital",
         "plano",
     }
