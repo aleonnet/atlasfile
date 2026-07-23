@@ -25,3 +25,14 @@ Concluído em 2026-07-23. Atende ao pedido registrado no roadmap desde a discuss
 
 - Painéis de custo LLM dependem do índice `atlasfile_classification_usage` (classificação LLM) — custo do CHAT vive em `usage_totals` das sessões (objeto aninhado, não agregável em visualização clássica); candidato a evolução: achatar custo de chat num índice de uso próprio.
 - Performance de cluster (JVM/heap/latência) fora do escopo dos saved objects — usar o monitoramento nativo do OpenSearch.
+
+---
+
+## Adendo v0.42.0 — dashboard interativo (2026-07-23)
+
+Pacote aprovado ("let's rock"): controles de filtro projeto/domínio (`input_control_vis`), curva da **taxa de auto-route** (TSVB `filter_ratio` sobre `decision:auto` — a métrica do aprendizado), heatmap ingestão domínio × tempo, e custo LLM TOTAL via index pattern combinado (`atlasfile_classification_usage,atlasfile_chat_usage,atlasfile_training_usage`) alimentado pelo novo índice achatado de uso do chat (`atlasfile_chat_usage`, evento por chamada gravado em /api/chat e canais, nunca falha o chat). 21 painéis, 25 objetos, validado ao vivo com screenshots.
+
+Aprendizados de plataforma (pagos em campo, cobertos por iteração ao vivo):
+1. `attributes["fields"]` num index-pattern SUBSTITUI o cache de campos inteiro — setar só scripted fields apaga todos os campos reais (todas as visualizações quebram com "Could not locate that index-pattern-field"). Nunca setar.
+2. TSVB do fork 7.10 (OSD) usa `numerator`/`denominator` como STRINGS lucene — o formato objeto kuery (Kibana ≥7.12) rende "No data to display".
+3. Heatmap hora × dia-da-semana exige campo derivado na INDEXAÇÃO (`ingested_hour`/`ingested_weekday`) — scripted fields via ndjson são inviáveis pelo item 1; candidato registrado.

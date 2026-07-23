@@ -16,12 +16,14 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = [BACKEND_ROOT / "app" / "data" / "dashboards.ndjson"]
 
 DOCS_IP = "atlasfile-ip-documents"
-USAGE_IP = "atlasfile-ip-classification-usage"
+USAGE_IP = "atlasfile-ip-llm-usage"  # classificação + chat + treino
 CHAT_IP = "atlasfile-ip-chat-sessions"
 DASHBOARD_ID = "atlasfile-dashboard-operacao"
 
 
 def _index_pattern(obj_id: str, title: str, time_field: str) -> dict:
+    # NUNCA setar attributes["fields"]: substitui o cache de campos inteiro do
+    # index pattern (aprendido na prática — todos os campos reais somem)
     return {
         "id": obj_id,
         "type": "index-pattern",
@@ -183,6 +185,97 @@ def _tagcloud(obj_id: str, title: str, ip: str, field: str, size: int = 40) -> d
     }, ip)
 
 
+def _controls(obj_id: str, title: str) -> dict:
+    """Filtros interativos (projeto/domínio) — o dashboard vira ferramenta de investigação."""
+    controls = []
+    refs = []
+    for i, (field, label) in enumerate([("project_id", "Projeto"), ("business_domain", "Domínio")]):
+        ref_name = f"control_{i}_index_pattern"
+        controls.append({"id": str(i + 1), "indexPatternRefName": ref_name, "fieldName": field,
+                         "parent": "", "label": label, "type": "list",
+                         "options": {"type": "terms", "multiselect": True, "dynamicOptions": True,
+                                     "size": 10, "order": "desc"}})
+        refs.append({"name": ref_name, "type": "index-pattern", "id": DOCS_IP})
+    return {
+        "id": obj_id,
+        "type": "visualization",
+        "attributes": {
+            "title": title,
+            "visState": json.dumps({"title": title, "type": "input_control_vis",
+                                    "params": {"controls": controls, "updateFiltersOnChange": True,
+                                               "useTimeFilter": True, "pinFilters": False},
+                                    "aggs": []}),
+            "uiStateJSON": "{}",
+            "description": "",
+            "version": 1,
+            "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps({"query": {"query": "", "language": "kuery"}, "filter": []})},
+        },
+        "references": refs,
+        "migrationVersion": {"visualization": "7.10.0"},
+    }
+
+
+def _tsvb_auto_route(obj_id: str, title: str) -> dict:
+    """TSVB filter_ratio: % de decisões `auto` no tempo — a curva do classificador
+    aprendendo com as correções do usuário."""
+    params = {
+        "id": "tsvb-auto-route", "type": "timeseries",
+        "series": [{
+            "id": "s1", "color": "#54B399", "split_mode": "everything",
+            # fork 7.10 do OSD: numerator/denominator são strings lucene
+            "metrics": [{"id": "m1", "type": "filter_ratio",
+                         "numerator": "decision:auto",
+                         "denominator": "*"}],
+            "separate_axis": 0, "axis_position": "right", "formatter": "percent",
+            "chart_type": "line", "line_width": 2, "point_size": 4, "fill": 0.2,
+            "stacked": "none", "label": "% auto-route",
+        }],
+        "time_field": "ingested_at", "index_pattern": "atlasfile_documents",
+        "interval": ">=1d", "axis_position": "left", "axis_formatter": "number",
+        "axis_scale": "normal", "show_legend": 1, "show_grid": 1, "drop_last_bucket": 0,
+        "tooltip_mode": "show_all",
+    }
+    return {
+        "id": obj_id,
+        "type": "visualization",
+        "attributes": {
+            "title": title,
+            "visState": json.dumps({"title": title, "type": "metrics", "params": params, "aggs": []}),
+            "uiStateJSON": "{}",
+            "description": "",
+            "version": 1,
+            "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps({"query": {"query": "", "language": "kuery"}, "filter": []})},
+        },
+        "references": [],
+        "migrationVersion": {"visualization": "7.10.0"},
+    }
+
+
+def _heatmap_dominio_tempo(obj_id: str, title: str, ip: str) -> dict:
+    """Heatmap domínio × tempo da ingestão (hora×dia exigiria campo derivado na
+    indexação — registrado como candidato; ver plano v0420)."""
+    return _vis(obj_id, title, {
+        "type": "heatmap",
+        "aggs": [_count_agg(),
+                 {"id": "2", "enabled": True, "type": "date_histogram", "schema": "segment",
+                  "params": {"field": "ingested_at", "timeRange": {"from": "now-30d", "to": "now"},
+                             "useNormalizedOpenSearchInterval": True, "scaleMetricValues": False,
+                             "interval": "auto", "drop_partials": False, "min_doc_count": 1,
+                             "extended_bounds": {}}},
+                 {"id": "3", "enabled": True, "type": "terms", "schema": "group",
+                  "params": {"field": "business_domain", "orderBy": "1", "order": "desc", "size": 10,
+                             "otherBucket": False, "otherBucketLabel": "Outros",
+                             "missingBucket": False, "missingBucketLabel": "(sem valor)"}}],
+        "params": {"type": "heatmap", "addTooltip": True, "addLegend": True,
+                   "enableHover": True, "legendPosition": "right", "times": [],
+                   "colorsNumber": 5, "colorSchema": "Greens", "setColorRange": False,
+                   "colorsRange": [], "invertColors": False, "percentageMode": False,
+                   "valueAxes": [{"show": False, "id": "ValueAxis-1", "type": "value",
+                                  "scale": {"type": "linear", "defaultYExtents": False},
+                                  "labels": {"show": False, "rotate": 0, "overwriteColor": False, "color": "black"}}]},
+    }, ip)
+
+
 def _histogram_confidence(obj_id: str, title: str, ip: str) -> dict:
     return _vis(obj_id, title, {
         "type": "histogram",
@@ -214,9 +307,14 @@ def _histogram_confidence(obj_id: str, title: str, ip: str) -> dict:
 def build_objects() -> list[dict]:
     objs: list[dict] = [
         _index_pattern(DOCS_IP, "atlasfile_documents", "ingested_at"),
-        _index_pattern(USAGE_IP, "atlasfile_classification_usage", "timestamp"),
+        # custo LLM TOTAL: classificação + chat (achatado, v0.42) + treino
+        _index_pattern(USAGE_IP,
+                       "atlasfile_classification_usage,atlasfile_chat_usage,atlasfile_training_usage",
+                       "timestamp"),
         _index_pattern(CHAT_IP, "atlasfile_chat_sessions", "updatedAt"),
     ]
+
+    objs.append(_controls("atlasfile-viz-controles", "Filtros — projeto e domínio"))
 
     # ── Linha 1: pulso ──
     objs.append(_metric("atlasfile-viz-total-docs", "Documentos indexados", DOCS_IP,
@@ -225,7 +323,7 @@ def build_objects() -> list[dict]:
                         {"type": "cardinality", "params": {"field": "project_id"}}, "Projetos"))
     objs.append(_metric("atlasfile-viz-confianca-media", "Confiança média", DOCS_IP,
                         {"type": "avg", "params": {"field": "confidence_score"}}, "Confiança média"))
-    objs.append(_metric("atlasfile-viz-custo-llm", "Custo LLM (classificação)", USAGE_IP,
+    objs.append(_metric("atlasfile-viz-custo-llm", "Custo LLM total", USAGE_IP,
                         {"type": "sum", "params": {"field": "estimated_cost_usd"}}, "USD no período"))
     objs.append(_metric("atlasfile-viz-chats", "Sessões de chat", CHAT_IP,
                         {"type": "count"}, "Sessões"))
@@ -238,6 +336,9 @@ def build_objects() -> list[dict]:
                        "project_id",
                        [{"type": "count"},
                         {"type": "avg", "params": {"field": "confidence_score"}}]))
+
+    objs.append(_tsvb_auto_route("atlasfile-viz-auto-route", "Taxa de auto-route — o classificador aprendendo"))
+    objs.append(_heatmap_dominio_tempo("atlasfile-viz-heatmap-ingestao", "Ingestão — domínio × tempo", DOCS_IP))
 
     # ── Linha 3: fluxo e saúde do pipeline ──
     objs.append(_timeline("atlasfile-viz-ingestao-tempo", "Ingestão por dia × decisão", DOCS_IP,
@@ -265,24 +366,27 @@ def build_objects() -> list[dict]:
     vis_ids = [o["id"] for o in objs if o["type"] == "visualization"]
     # grade 48 colunas; (id, x, y, w, h)
     layout = [
-        ("atlasfile-viz-total-docs", 0, 0, 9, 7),
-        ("atlasfile-viz-projetos", 9, 0, 9, 7),
-        ("atlasfile-viz-confianca-media", 18, 0, 10, 7),
-        ("atlasfile-viz-custo-llm", 28, 0, 10, 7),
-        ("atlasfile-viz-chats", 38, 0, 10, 7),
-        ("atlasfile-viz-dominios", 0, 7, 16, 13),
-        ("atlasfile-viz-doc-kind", 16, 7, 16, 13),
-        ("atlasfile-viz-tipos", 32, 7, 16, 13),
-        ("atlasfile-viz-ingestao-tempo", 0, 20, 32, 13),
-        ("atlasfile-viz-decisoes", 32, 20, 16, 13),
-        ("atlasfile-viz-confianca-dist", 0, 33, 16, 12),
-        ("atlasfile-viz-classifier-mode", 16, 33, 16, 12),
-        ("atlasfile-viz-tabela-projetos", 32, 33, 16, 12),
-        ("atlasfile-viz-extraction-status", 0, 45, 16, 10),
-        ("atlasfile-viz-embedding-status", 16, 45, 16, 10),
-        ("atlasfile-viz-topicos", 32, 45, 16, 10),
-        ("atlasfile-viz-custo-tempo", 0, 55, 32, 12),
-        ("atlasfile-viz-tabela-llm", 32, 55, 16, 12),
+        ("atlasfile-viz-controles", 0, 0, 48, 6),
+        ("atlasfile-viz-total-docs", 0, 6, 9, 7),
+        ("atlasfile-viz-projetos", 9, 6, 9, 7),
+        ("atlasfile-viz-confianca-media", 18, 6, 10, 7),
+        ("atlasfile-viz-custo-llm", 28, 6, 10, 7),
+        ("atlasfile-viz-chats", 38, 6, 10, 7),
+        ("atlasfile-viz-dominios", 0, 13, 16, 13),
+        ("atlasfile-viz-doc-kind", 16, 13, 16, 13),
+        ("atlasfile-viz-tipos", 32, 13, 16, 13),
+        ("atlasfile-viz-ingestao-tempo", 0, 26, 24, 13),
+        ("atlasfile-viz-auto-route", 24, 26, 24, 13),
+        ("atlasfile-viz-decisoes", 0, 39, 12, 12),
+        ("atlasfile-viz-confianca-dist", 12, 39, 12, 12),
+        ("atlasfile-viz-classifier-mode", 24, 39, 12, 12),
+        ("atlasfile-viz-tabela-projetos", 36, 39, 12, 12),
+        ("atlasfile-viz-heatmap-ingestao", 0, 51, 24, 12),
+        ("atlasfile-viz-extraction-status", 24, 51, 12, 12),
+        ("atlasfile-viz-embedding-status", 36, 51, 12, 12),
+        ("atlasfile-viz-topicos", 0, 63, 16, 11),
+        ("atlasfile-viz-custo-tempo", 16, 63, 16, 11),
+        ("atlasfile-viz-tabela-llm", 32, 63, 16, 11),
     ]
     assert {vid for vid, *_ in layout} == set(vis_ids), "layout e visualizações divergem"
 

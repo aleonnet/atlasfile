@@ -146,6 +146,8 @@ class Settings(BaseSettings):
 
     # --- Classification usage ---
     opensearch_classification_usage_index: str = "atlasfile_classification_usage"
+    # Uso LLM do chat achatado (1 evento por chamada) — alimenta o dashboard de custo
+    opensearch_chat_usage_index: str = "atlasfile_chat_usage"
 
     # --- Training / pipeline usage ---
     opensearch_training_usage_index: str = "atlasfile_training_usage"

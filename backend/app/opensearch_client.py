@@ -230,6 +230,34 @@ def ensure_classification_usage_index(client: OpenSearch) -> None:
     client.indices.create(index=index_name, body=mapping)
 
 
+def ensure_chat_usage_index(client: OpenSearch) -> None:
+    """Uso LLM do chat ACHATADO (1 doc por chamada): o custo por sessão vive
+    aninhado em usage_by_model e não é agregável em visualização — este índice
+    é o que permite custo de chat por dia × modelo no dashboard."""
+    index_name = settings.opensearch_chat_usage_index
+    properties: dict[str, Any] = {
+        "session_id": {"type": "keyword"},
+        "channel": {"type": "keyword"},
+        "project_id": {"type": "keyword"},
+        "provider": {"type": "keyword"},
+        "model": {"type": "keyword"},
+        "timestamp": {"type": "date"},
+        "input_tokens": {"type": "integer"},
+        "output_tokens": {"type": "integer"},
+        "cache_read_input_tokens": {"type": "integer"},
+        "cache_creation_input_tokens": {"type": "integer"},
+        "estimated_cost_usd": {"type": "float"},
+    }
+    if client.indices.exists(index=index_name):
+        client.indices.put_mapping(index=index_name, body={"properties": properties})
+        return
+    mapping: dict[str, Any] = {
+        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0}},
+        "mappings": {"properties": properties},
+    }
+    client.indices.create(index=index_name, body=mapping)
+
+
 def ensure_training_usage_index(client: OpenSearch) -> None:
     """Create or update the training/pipeline usage index for LLM cost tracking."""
     index_name = settings.opensearch_training_usage_index

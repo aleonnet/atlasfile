@@ -87,7 +87,7 @@ from .models import (
 )
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from .auth import AuthContext, enforce_project_scope, require_auth
-from .opensearch_client import ensure_chat_sessions_index, ensure_classification_usage_index, ensure_index, ensure_training_usage_index, get_client
+from .opensearch_client import ensure_chat_sessions_index, ensure_chat_usage_index, ensure_classification_usage_index, ensure_index, ensure_training_usage_index, get_client
 from .search_hybrid import (
     build_chunk_filters,
     rerank_pairs,
@@ -252,6 +252,29 @@ def _merge_usage(existing: dict[str, Any] | None, new_usage: dict[str, Any], pro
     return totals
 
 
+def _record_chat_usage(usage: dict[str, Any] | None, *, provider: str, model: str,
+                       project_id: str | None, channel: str, session_id: str | None = None) -> None:
+    """Evento achatado de uso LLM do chat (dashboard de custo). Nunca falha o chat."""
+    if not usage or not isinstance(usage, dict):
+        return
+    try:
+        os_client.index(index=settings.opensearch_chat_usage_index, body={
+            "session_id": session_id or "",
+            "channel": channel,
+            "project_id": project_id or "",
+            "provider": provider,
+            "model": model,
+            "timestamp": utc_now_iso(),
+            "input_tokens": int(usage.get("input_tokens") or 0),
+            "output_tokens": int(usage.get("output_tokens") or 0),
+            "cache_read_input_tokens": int(usage.get("cache_read_input_tokens") or 0),
+            "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens") or 0),
+            "estimated_cost_usd": float(usage.get("estimated_cost_usd") or 0.0),
+        })
+    except Exception:
+        _logger.debug("Falha ao registrar evento de uso do chat", exc_info=True)
+
+
 async def _handle_channel_message(msg: ChannelMessage) -> str:
     """Dispatch inbound channel message: manages session lifecycle (multi-turn, usage, history)."""
     lock_key = f"{msg.channel_id}:{msg.chat_id}"
@@ -283,6 +306,8 @@ async def _handle_channel_message(msg: ChannelMessage) -> str:
         result = await run_chat_loop(history, provider, model, project_id=active_project_id)
         content = result.get("content", "") if isinstance(result, dict) else str(result)
         usage = result.get("usage", {}) if isinstance(result, dict) else {}
+        _record_chat_usage(usage, provider=provider, model=model,
+                           project_id=active_project_id, channel=msg.channel_id)
 
         user_stored = {"role": "user", "content": msg.text, "timestamp": now_ms, "channel": msg.channel_id}
         assistant_stored = {"role": "assistant", "content": content, "timestamp": now_ms, "model": provider_model_key, "channel": msg.channel_id}
@@ -469,6 +494,7 @@ async def lifespan(app: FastAPI):
             ensure_index(os_client)
             ensure_chat_sessions_index(os_client)
             ensure_classification_usage_index(os_client)
+            ensure_chat_usage_index(os_client)
             ensure_training_usage_index(os_client)
             _backfill_channel_web(os_client)
             backfill_search_fields(os_client)
@@ -2571,6 +2597,8 @@ async def api_chat(
             project_id=body.project_id,
         )
         usage_raw = result.get("usage")
+        _record_chat_usage(usage_raw if isinstance(usage_raw, dict) else None,
+                           provider=provider, model=model, project_id=body.project_id, channel="web")
         usage = TurnUsage(**usage_raw) if isinstance(usage_raw, dict) else None
         cp_raw = result.get("context_pressure")
         cp = ContextPressure(**cp_raw) if isinstance(cp_raw, dict) else None

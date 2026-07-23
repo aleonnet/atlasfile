@@ -113,3 +113,39 @@ def test_post_classify_200_with_mock(client: TestClient) -> None:
     assert data["document_type"] == "contrato"
     assert data["tags"] == ["TAG1"]
     assert data["confidence"] == 0.9
+
+
+def test_post_chat_grava_evento_achatado_de_uso(client: TestClient) -> None:
+    """v0.42: cada turno de chat gera 1 doc no índice de uso achatado (dashboard
+    de custo). Falha na gravação nunca afeta a resposta do chat."""
+    usage = {"input_tokens": 100, "output_tokens": 40, "total_tokens": 140,
+             "estimated_cost_usd": 0.0123, "cache_read_input_tokens": 10, "api_call_count": 1}
+
+    async def fake_run_chat_loop(*args, **kwargs):
+        return {"content": "ok", "tool_calls_used": [], "usage": usage}
+
+    with patch("app.main.run_chat_loop", new_callable=AsyncMock, side_effect=fake_run_chat_loop), \
+         patch("app.main.os_client") as os_mock:
+        r = client.post("/api/chat", json={
+            "messages": [{"role": "user", "content": "Oi"}],
+            "project_id": "proj_x",
+        })
+    assert r.status_code == 200
+    call = os_mock.index.call_args
+    assert call.kwargs["index"] == "atlasfile_chat_usage"
+    doc = call.kwargs["body"]
+    assert doc["channel"] == "web"
+    assert doc["project_id"] == "proj_x"
+    assert doc["input_tokens"] == 100
+    assert doc["output_tokens"] == 40
+    assert doc["cache_read_input_tokens"] == 10
+    assert doc["estimated_cost_usd"] == 0.0123
+    assert doc["provider"] and doc["model"] and doc["timestamp"]
+
+    # gravação explodindo não derruba o chat
+    with patch("app.main.run_chat_loop", new_callable=AsyncMock, side_effect=fake_run_chat_loop), \
+         patch("app.main.os_client") as os_mock:
+        os_mock.index.side_effect = ConnectionError("opensearch fora")
+        r2 = client.post("/api/chat", json={"messages": [{"role": "user", "content": "Oi"}]})
+    assert r2.status_code == 200
+    assert r2.json()["content"] == "ok"
