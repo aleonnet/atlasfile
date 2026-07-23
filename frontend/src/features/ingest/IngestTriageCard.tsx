@@ -51,6 +51,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../lib/queryKeys";
 import { useSseChannel } from "../../hooks/useSseChannel";
 import { invalidateAfterProfileChange, invalidateAfterTaxonomyChange } from "../../lib/mutations";
+import { providerNeedsKey } from "../../lib/providers";
+import { useSettings } from "../../contexts/SettingsContext";
 import { MiniOrb } from "../../components/ui/processing-aura";
 
 /* Bloco de progresso de operação (ingest / ciclo do classificador) */
@@ -457,9 +459,22 @@ export function IngestTriageCard({
 
   const currentProviderModel = `${llmPolicy.provider}/${llmPolicy.model}`;
   const modelLabel = models.find((m) => `${m.provider}/${m.model}` === currentProviderModel)?.label;
+  // Modelos custom validados (ex.: ollama/gemma3:12b) entram como opções — sem
+  // isso o select nativo exibiria a PRIMEIRA opção do catálogo em vez do valor salvo
+  const { customModels, moonshotApiKey } = useSettings();
+  const catalogValues = new Set(models.map((m) => `${m.provider}/${m.model}`));
+  const extraModelOptions = [
+    ...customModels.filter((v) => !catalogValues.has(v)),
+    ...(!catalogValues.has(currentProviderModel) && !customModels.includes(currentProviderModel)
+      ? [currentProviderModel]
+      : []),
+  ];
+  // chave só é exigida por provider que exige chave (registro central) — ollama nunca
   const hasKey =
+    !providerNeedsKey(llmPolicy.provider) ||
     (llmPolicy.provider === "openai" && !!openaiApiKey) ||
-    (llmPolicy.provider === "anthropic" && !!anthropicApiKey);
+    (llmPolicy.provider === "anthropic" && !!anthropicApiKey) ||
+    (llmPolicy.provider === "moonshot" && !!moonshotApiKey);
 
   return (
     <Card>
@@ -867,7 +882,12 @@ export function IngestTriageCard({
                             {m.label}
                           </option>
                         ))}
-                        {models.length === 0 && (
+                        {extraModelOptions.map((value) => (
+                          <option key={value} value={value}>
+                            {t("settings:combobox.validatedByYou", { model: value })}
+                          </option>
+                        ))}
+                        {models.length === 0 && extraModelOptions.length === 0 && (
                           <option value={currentProviderModel}>
                             {modelLabel || currentProviderModel}
                           </option>

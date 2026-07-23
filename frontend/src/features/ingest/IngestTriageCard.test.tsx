@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IngestTriageCard } from "./IngestTriageCard";
 import { renderWithProviders } from "../../test/utils";
+import { SettingsProvider } from "../../contexts/SettingsContext";
 
 const mockProfile = {
   profile: {
@@ -172,6 +173,14 @@ vi.mock("../../api", () => ({
   dismissAliasSuggestion: vi.fn(() => Promise.resolve({ status: "ok", dismissed: ["business_domain:juridico:escritura"] }))
 }));
 
+function renderCard(props: React.ComponentProps<typeof IngestTriageCard>) {
+  return renderWithProviders(
+    <SettingsProvider>
+      <IngestTriageCard {...props} />
+    </SettingsProvider>
+  );
+}
+
 function defaultProps(overrides: Partial<React.ComponentProps<typeof IngestTriageCard>> = {}) {
   return {
     selectedProject: "p1",
@@ -195,7 +204,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("renders header without operational scan button (config-only card)", async () => {
-    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+    renderCard(defaultProps());
     await waitFor(() => {
       expect(screen.getByText(/^Classificador$/)).toBeInTheDocument();
     });
@@ -203,7 +212,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("shows Classificação LLM collapsible for single project", async () => {
-    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+    renderCard(defaultProps());
     await waitFor(() => {
       expect(screen.getByText(/Classificação LLM/i)).toBeInTheDocument();
     });
@@ -211,7 +220,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("renders classifier section with benchmark summary", async () => {
-    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+    renderCard(defaultProps());
     await waitFor(() => {
       expect(screen.getByText(/Classificador operacional/i)).toBeInTheDocument();
     });
@@ -222,7 +231,7 @@ describe("IngestTriageCard", () => {
   it("mostra sugestões de aliases mineradas e aprova com um clique", async () => {
     const api = await import("../../api");
     const onStatus = vi.fn();
-    renderWithProviders(<IngestTriageCard {...defaultProps({ onStatus })} />);
+    renderCard(defaultProps({ onStatus }));
     await waitFor(() => {
       expect(screen.getByText(/Sugestões de aliases/i)).toBeInTheDocument();
     });
@@ -243,7 +252,7 @@ describe("IngestTriageCard", () => {
 
   it("dispensa uma sugestão sem aplicá-la", async () => {
     const api = await import("../../api");
-    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+    renderCard(defaultProps());
     await waitFor(() => {
       expect(screen.getByText("escritura")).toBeInTheDocument();
     });
@@ -267,7 +276,7 @@ describe("IngestTriageCard", () => {
       suggestions: [],
       corpus: { resolved_total: 2, analyzed_total: 2, corrected_total: 2, distinct_labels: 1 },
     });
-    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+    renderCard(defaultProps());
     await waitFor(() => {
       expect(screen.getByText(/Sugestões de aliases/i)).toBeInTheDocument();
     });
@@ -275,7 +284,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("shows empty state when all projects selected", async () => {
-    renderWithProviders(<IngestTriageCard {...defaultProps({ selectedProject: "__all__" })} />);
+    renderCard(defaultProps({ selectedProject: "__all__" }));
     await waitFor(() => {
       expect(screen.getByText(/Nenhum projeto selecionado/i)).toBeInTheDocument();
     });
@@ -284,9 +293,7 @@ describe("IngestTriageCard", () => {
 
   it("toggles LLM and opens settings modal when no key", async () => {
     const onOpenSettings = vi.fn();
-    renderWithProviders(
-      <IngestTriageCard {...defaultProps({ openaiApiKey: "", onOpenSettings })} />
-    );
+    renderCard(defaultProps({ openaiApiKey: "", onOpenSettings }));
     await waitFor(() => {
       expect(screen.getByText(/Classificação LLM/i)).toBeInTheDocument();
     });
@@ -299,7 +306,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("toggles LLM on when key is available and shows mode selector", async () => {
-    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+    renderCard(defaultProps());
     await waitFor(() => {
       expect(screen.getByText(/Classificação LLM/i)).toBeInTheDocument();
     });
@@ -319,7 +326,7 @@ describe("IngestTriageCard", () => {
   });
 
   it("saves manual classifier override", async () => {
-    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+    renderCard(defaultProps());
     await waitFor(() => {
       expect(screen.getByLabelText(/Override do classificador/i)).toBeInTheDocument();
     });
@@ -373,7 +380,7 @@ describe("IngestTriageCard", () => {
         .mockResolvedValueOnce(idleCycle)
         .mockResolvedValueOnce(runningCycle);
 
-      renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+      renderCard(defaultProps());
       await waitFor(() => {
         expect(screen.getByText(/Rodar ciclo/i)).toBeInTheDocument();
       });
@@ -401,5 +408,60 @@ describe("IngestTriageCard", () => {
   });
 
   // History table tests moved to IngestHistoryCard
+
+
+  // Ficam por último: mockResolvedValue de fetchProjectProfile substitui o default
+  // da factory para o resto do arquivo (clearAllMocks não restaura implementações)
+  it("select da triagem exibe modelo custom ollama salvo e não pede chave (v0.40.4)", async () => {
+    const api = await import("../../api");
+    localStorage.setItem("atlasfile-custom-models", JSON.stringify(["ollama/gemma3:12b"]));
+    vi.mocked(api.fetchProjectProfile).mockResolvedValue({
+      ...mockProfile,
+      profile: {
+        ...mockProfile.profile,
+        classification: {
+          ...mockProfile.profile.classification,
+          llm_policy: {
+            ...mockProfile.profile.classification.llm_policy,
+            enabled: true,
+            provider: "ollama",
+            model: "gemma3:12b",
+          },
+        },
+      },
+    });
+    renderCard(defaultProps());
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Modelo triagem/i)).toHaveValue("ollama/gemma3:12b");
+    });
+    // exibe o rótulo "validado por você" (asserção DOM: a seção colapsável fica fechada)
+    const select = screen.getByLabelText(/Modelo triagem/i) as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toContain("ollama/gemma3:12b (validado por você)");
+    expect(screen.queryByText(/API Key não configurada/i)).not.toBeInTheDocument();
+    localStorage.removeItem("atlasfile-custom-models");
+  });
+
+  it("moonshot sem chave mantém o aviso de API Key (v0.40.4)", async () => {
+    const api = await import("../../api");
+    vi.mocked(api.fetchProjectProfile).mockResolvedValue({
+      ...mockProfile,
+      profile: {
+        ...mockProfile.profile,
+        classification: {
+          ...mockProfile.profile.classification,
+          llm_policy: {
+            ...mockProfile.profile.classification.llm_policy,
+            enabled: true,
+            provider: "moonshot",
+            model: "kimi-k3",
+          },
+        },
+      },
+    });
+    renderCard(defaultProps());
+    await waitFor(() => {
+      expect(screen.getByText(/API Key não configurada para moonshot/i)).toBeInTheDocument();
+    });
+  });
 
 });
