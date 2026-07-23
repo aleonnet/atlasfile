@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.43.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [installer_bootstrap_prereqs_v0430](installer_bootstrap_prereqs_v0430.plan.md) | Instalador bootstrapa os próprios pré-requisitos: detecta Docker/git ausentes e OFERECE instalar (Homebrew/cask no macOS com espera do daemon; get.docker.com + apt/dnf no Linux; winget/WSL no Windows); política `--yes` conservadora + `--install-deps`; Ollama opt-in (`--with-ollama` + modelo, falha nunca derruba); idempotente com ✔/versão e hints de upgrade; en-US como idioma dos instaladores; 17 testes com stubs + smoke real em ubuntu:24.04; step 0 do site removido |
+
+---
+
 ## 0.41.0
 
 | # | Plano | Escopo |

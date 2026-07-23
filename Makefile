@@ -3,10 +3,15 @@
 # O smoke funcional completo do ciclo (ingestão, triagem, busca/highlight e assistente)
 # fica documentado em docs/plano_teste_e2e_v0.4.0.md.
 
-.PHONY: test test-backend test-frontend docker-build docker-up docker-update docker-smoke-init reset-index reset-chat
+.PHONY: test test-backend test-frontend test-installer docker-build docker-up docker-update docker-smoke-init reset-index reset-chat
 
-test: test-backend test-frontend
+test: test-backend test-frontend test-installer
 	@echo "All tests passed."
+
+test-installer:
+	@bash -n install.sh
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -S warning install.sh; else echo "shellcheck not installed - skipped"; fi
+	@bash tests/installer/run.sh
 
 test-backend:
 	@cd backend && if test -x .venv/bin/python; then .venv/bin/python -m pytest tests/ -v; else python3 -m pytest tests/ -v; fi

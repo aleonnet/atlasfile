@@ -8,7 +8,7 @@ Local, per-project document organization system with a classifier operational cy
 
 ## Quick install
 
-Prerequisite: [Docker Desktop](https://docs.docker.com/get-docker/) running.
+No prerequisites to prepare: the installer detects what is missing (Docker, git) and offers to install it for you — pass `--install-deps` to authorize it without prompts, and `--with-ollama` to also set up a 100% local model.
 
 **macOS / Linux:**
 

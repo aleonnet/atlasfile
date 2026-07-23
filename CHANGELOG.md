@@ -22,6 +22,17 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 - **Uso LLM do chat achatado**: novo índice `atlasfile_chat_usage` (1 evento por chamada: provider, modelo, tokens, cache, custo, projeto, canal), gravado em `/api/chat` (web) e no fluxo de canais; falha na gravação nunca afeta a resposta do chat (testado). Resolve a limitação do custo aninhado em `usage_by_model` das sessões.
 - Aprendizados de plataforma registrados no gerador: nunca setar `fields` no index-pattern (substitui o cache de campos inteiro); TSVB do fork 7.10 usa strings lucene em `filter_ratio`; heatmap hora×dia exigiria campo derivado na indexação (candidato futuro).
 
+## [0.43.0] - 2026-07-23
+
+### Adicionado
+- **Instalador bootstrapa os próprios pré-requisitos**: Docker/git ausentes viram OFERTA de instalação com confirmação (macOS: Homebrew + cask do Docker Desktop, abre o app e espera o daemon até 5 min; Linux: get.docker.com oficial + apt/dnf com sudo consentido e shim para o grupo docker; Windows: `wsl --install` e Docker Desktop via winget). Política conservadora: `--yes` sozinho não instala software de sistema — `--install-deps` autoriza headless. Idempotente com sinalização: itens presentes mostram ✔ e versão; upgrades disponíveis viram aviso (casks auto-atualizáveis excluídos dos hints — receipt do brew atrasa).
+- **Ollama opt-in no instalador**: `--with-ollama` (+ `--ollama-model`, default `gemma4:12b`) instala o Ollama (cask/script/winget oficial) e puxa o modelo com progresso nativo; roda após a stack subir e falha nunca derruba a instalação. `docker-compose.yml` ganhou `extra_hosts: host.docker.internal:host-gateway` (necessário no Docker Engine Linux).
+- **`make test-installer`**: lint (`bash -n` + shellcheck) e runner puro-bash com 17 casos sobre stubs (contrato 0/100/1, política de confirmação, parser); smoke real validado em `ubuntu:24.04` limpo (`--bootstrap-only`).
+
+### Alterado
+- **Idioma padrão dos instaladores agora é en-US** (`install.sh` e `install.ps1` traduzidos por inteiro).
+- Site: step 0 "Before you start" removido — o instalador prepara os pré-requisitos sozinho; flags novas documentadas; `docs/ROADMAP.md` consolidado como documento único de pendências.
+
 ## [0.41.1] - 2026-07-23
 
 ### Alterado

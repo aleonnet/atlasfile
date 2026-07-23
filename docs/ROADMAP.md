@@ -31,7 +31,34 @@ estado vazio explicativo)._
 
 | Item | O que é | Gatilho para executar |
 |---|---|---|
-| Instalador bootstrapa os próprios pré-requisitos | Hoje o `install.sh` **falha com link** quando falta Docker/git (`fail "Docker não encontrado — instale..."`, L113-122). Proposta: detectar o que falta e **oferecer instalar** (macOS: brew/download do Docker Desktop + abrir o app e aguardar o daemon; Linux: Docker Engine + Compose plugin via repositório oficial da distro; git idem), sempre com confirmação do usuário antes de tocar o sistema. Elimina a seção "Before you start" do site de instalação (chaves `install.req.*`), deixando o one-liner realmente autossuficiente. Referências citadas pelo usuário a validar no plano: instaladores do OpenClaw (`curl -fsSL https://openclaw.ai/install.sh \| bash`, instala Node se faltar) e do Claude Code fazem bootstrap de dependências. | Antes da próxima rodada de divulgação pública do site, ou ao primeiro relato real de fricção no passo "Before you start" |
+| ~~Instalador bootstrapa os próprios pré-requisitos~~ | **Entregue na v0.43.0** — ver `planos_concluidos/installer_bootstrap_prereqs_v0430.plan.md` (bootstrap com confirmação, `--install-deps`, Ollama opt-in `--with-ollama`, en-US, step 0 do site removido) | — |
+
+## Dashboard / observabilidade
+
+| Item | O que é | Registrado em |
+|---|---|---|
+| Heatmap hora × dia da ingestão | Exige campo derivado na INDEXAÇÃO (`ingested_hour`/`ingested_weekday`) — scripted fields via ndjson apagam o cache de campos do index-pattern (aprendido em campo, v0.42.0). | 2026-07-23 |
+| Alerting nativo do OpenSearch | Monitores: extração `failed` acima de N, custo LLM diário acima de teto, fila de triagem acumulando — pendente de o usuário definir canal de notificação (e-mail/webhook). | 2026-07-23 |
+| Reporting PDF agendado | Relatório periódico do dashboard "AtlasFile — Operação" via plugin de reporting. | 2026-07-23 |
+
+## E2E pendentes
+
+| Item | O que é | Registrado em |
+|---|---|---|
+| Chat Kimi (Moonshot) completo | Integração validada até o erro de saldo; falta E2E de chat com tool-call quando a conta Moonshot tiver créditos. | v0.36.0 |
+
+## Website
+
+| Item | O que é | Registrado em |
+|---|---|---|
+| Eixo `doc_kind` no lead do catálogo | "classified by business domain and document type" está incompleto — existe o 3º eixo de formato (item 5 da auditoria). | 2026-07-23 |
+| og:image no domínio próprio | Comentários `ABSOLUTE-URL: update on custom domain` a revisar quando o site migrar de GitHub Pages para domínio próprio (item 6 da auditoria). | 2026-07-23 |
+
+## Decisões aguardando o usuário
+
+| Item | O que é |
+|---|---|
+| `frontend/vite.e2e.config.ts` | Entrou no repo por acidente na v0.40.4 (era bancada temporária untracked de E2E) — remover do rastreamento (política de bancadas fora do repo público) ou adotar oficialmente. |
 
 ## Direção de arte / visual
 

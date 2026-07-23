@@ -15,6 +15,8 @@ irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1 | iex
 ```
 
 O instalador verifica pré-requisitos, clona em `~/AtlasFile`, cria o `.env` (perguntando só a pasta de projetos), sobe a stack e abre a interface — o onboarding guia o resto. Flags úteis: `--dir`, `--projects-root`, `--yes` (não-interativo), `--no-open`. Re-executar atualiza a instalação.
+- `--install-deps` — instala pré-requisitos que faltarem (Docker, git) sem perguntar
+- `--with-ollama` — instala também o Ollama + modelo local (`--ollama-model NOME`, default `gemma4:12b`)
 
 O restante deste guia cobre a **instalação manual** e a operação completa.
 
@@ -28,9 +30,11 @@ Para uma visão consolidada dos scripts do repositório e de quando cada um entr
 
 ## 1) Pré-requisitos
 
-### Obrigatório
+**O instalador cuida deles**: quando falta Docker ou git, o `install.sh` detecta e **oferece instalar** (macOS: Homebrew + cask do Docker Desktop, abrindo o app e aguardando o daemon; Linux: script oficial get.docker.com + apt/dnf, com sudo só após confirmação). Itens já instalados aparecem com ✔ e versão; upgrades disponíveis viram aviso informativo. Política do modo não-interativo: `--yes` sozinho **não** instala dependências de sistema (falha com instrução) — a flag `--install-deps` autoriza o bootstrap sem perguntas. `--with-ollama` (sempre opt-in) instala também o Ollama e puxa um modelo local (`--ollama-model`, default `gemma4:12b`, ~8 GB). No Windows, o `install.ps1` oferece `wsl --install` e o Docker Desktop via winget.
 
-- Docker Desktop instalado
+### Instalação manual dos pré-requisitos (se preferir)
+
+- Docker Desktop
   - Mac: <https://www.docker.com/products/docker-desktop/>
   - Windows: <https://www.docker.com/products/docker-desktop/>
   - Linux: <https://docs.docker.com/engine/install/>

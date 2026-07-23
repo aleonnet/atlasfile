@@ -74,6 +74,10 @@ services:
       # Autenticação (API key + escopo de projeto). Keys em config/api_keys.json
       # (fora do git; entra na imagem no build — mudou key, rebuild do api).
       - API_AUTH_ENABLED=${API_AUTH_ENABLED:-false}
+    extra_hosts:
+      # Linux Docker Engine: host.docker.internal só resolve com host-gateway
+      # (inócuo no Docker Desktop mac/win) — necessário para o OLLAMA_BASE_URL default
+      - "host.docker.internal:host-gateway"
     volumes:
       - ${PROJECTS_HOST_ROOT}:/projects
     ports:

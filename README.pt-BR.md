@@ -8,7 +8,7 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 
 ## Instalação rápida
 
-Pré-requisito: [Docker Desktop](https://docs.docker.com/get-docker/) rodando.
+Sem pré-requisitos para preparar: o instalador detecta o que falta (Docker, git) e oferece instalar para você — use `--install-deps` para autorizar sem perguntas, e `--with-ollama` para configurar também um modelo 100% local.
 
 **macOS / Linux:**
 
