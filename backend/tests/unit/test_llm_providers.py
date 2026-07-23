@@ -54,3 +54,24 @@ def test_resolve_api_key_prioriza_transiente_depois_env(monkeypatch) -> None:
     assert resolve_api_key(PROVIDERS["moonshot"], None) == "sk-env"
     monkeypatch.delenv("MOONSHOT_API_KEY")
     assert resolve_api_key(PROVIDERS["moonshot"], None) is None
+
+
+def test_todo_provider_do_registro_e_valido_no_llm_policy_do_profile() -> None:
+    """v0.40.3 (achado em campo): salvar o modelo de TRIAGEM ollama/moonshot no
+    profile reprovava — o enum LLMProvider do profile parou na v0.35. Invariante:
+    todo provider do registro central é aceito pelo LLMPolicy."""
+    from app.profile_schema_v2 import LLMPolicy
+
+    for name in PROVIDERS:
+        policy = LLMPolicy(provider=name, model="qualquer")
+        assert policy.provider.value == name
+
+
+def test_entrada_user_do_snapshot_entra_ordenada_no_catalogo() -> None:
+    """v0.40.3: kimi-k3 (user_models) aparecia pendurado no FIM da lista em vez
+    de ordenado junto dos irmãos moonshot."""
+    from app.llm_catalog import _snapshot_models
+
+    models = [(m.provider, m.model) for m in _snapshot_models()]
+    assert models == sorted(models)
+    assert ("moonshot", "kimi-k3") in models

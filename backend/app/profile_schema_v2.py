@@ -16,6 +16,8 @@ class LayoutMode(str, Enum):
 class LLMProvider(str, Enum):
     openai = "openai"
     anthropic = "anthropic"
+    moonshot = "moonshot"
+    ollama = "ollama"
 
 
 class LLMMode(str, Enum):

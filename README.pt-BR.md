@@ -263,6 +263,10 @@ Os placeholders suportados no contrato ativo sao `date`, `project`, `business_do
 
 Veja `.env.example` para a lista completa.
 
+### Modelos custom (Ollama / Moonshot)
+
+Modelos do Ollama não aparecem no catálogo de propósito — os modelos são os que *você* baixou localmente. Para usar: abra as configurações do assistente (engrenagem no chat), digite `provider/modelo` na combobox — ex.: `ollama/gemma3:12b`, exatamente como aparece no `ollama list` — e a validação ao vivo confere contra o seu endpoint (Ollama não precisa de chave). Validado, o modelo entra no seletor do chat como "validado por você" e também pode ser definido como modelo de triagem do projeto. O mesmo fluxo vale para qualquer id da Moonshot (`moonshot/…`, requer `MOONSHOT_API_KEY`). Nota: modelos locais pequenos podem não suportar tool calls — o chat então responde direto, sem busca com citações.
+
 ## MCP Tools (para LLM e integrações)
 
 | Tool | Descrição |

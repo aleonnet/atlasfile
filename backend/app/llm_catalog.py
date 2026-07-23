@@ -43,6 +43,8 @@ def _snapshot_models() -> list[ModelOption]:
         opt = ModelOption(**raw)
         if (opt.provider, opt.model) not in litellm_keys:
             models.append(opt)
+    # entradas user entram na ordem (provider, model) — não penduradas no fim
+    models.sort(key=lambda m: (m.provider, m.model))
     return models
 
 

@@ -94,6 +94,9 @@ ANTHROPIC_API_KEY=sk-ant-...
 # Providers OpenAI-compatíveis (opcionais): Moonshot (Kimi) e Ollama local
 MOONSHOT_API_KEY=sk-...
 # OLLAMA_BASE_URL=http://host.docker.internal:11434/v1  # default no Docker; Ollama não precisa de chave
+# Modelos Ollama/Moonshot entram pela UI: configurações do assistente → digite
+# "provider/modelo" na combobox (ex.: ollama/gemma3:12b, como no `ollama list`)
+# → validação ao vivo → o modelo aparece no seletor do chat e da triagem
 
 # Habilitar LLM no fluxo de ingestão (default: false)
 CLASSIFICATION_LLM_ENABLED=true

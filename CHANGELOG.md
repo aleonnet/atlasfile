@@ -15,6 +15,13 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.40.3] - 2026-07-23
+
+### Corrigido
+- **Triagem com Ollama/Moonshot destravada (achado em campo)**: o enum `LLMProvider` do profile parou na v0.35 (openai/anthropic) e o PATCH do modelo de triagem com `ollama/...` reprovava com "falha ao salvar no projeto" — agora aceita os 4 providers do registro central (invariante coberto por teste: todo provider do registro é válido no `LLMPolicy`).
+- **Kimi K3 ordenado**: entradas `user_models` do snapshot embarcado entram na ordem (provider, modelo) em vez de penduradas no fim da lista.
+- **Docs**: fluxo de modelos custom (Ollama/Moonshot) documentado nos 2 READMEs e no INSTALL — digitar `provider/modelo` na combobox das configurações do assistente, com validação ao vivo sem chave para Ollama.
+
 ## [0.40.2] - 2026-07-23
 
 ### Corrigido

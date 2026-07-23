@@ -263,6 +263,10 @@ The placeholders supported by the active contract are `date`, `project`, `busine
 
 See `.env.example` for the full list.
 
+### Custom models (Ollama / Moonshot)
+
+Ollama models are not listed in the catalog on purpose — the models are whatever *you* pulled locally. To use one: open the assistant settings (gear in the chat), type `provider/model` in the model combobox — e.g. `ollama/gemma3:12b`, exactly as shown by `ollama list` — and the live validation checks it against your endpoint (no key needed for Ollama). Once validated, the model appears in the chat selector as "validated by you" and can also be set as the project's triage model. The same flow works for any Moonshot model id (`moonshot/…`, requires `MOONSHOT_API_KEY`). Note: small local models may not support tool calls — the chat then answers directly, without cited search.
+
 ## MCP Tools (for LLMs and integrations)
 
 | Tool | Description |
