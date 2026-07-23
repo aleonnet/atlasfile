@@ -24,7 +24,6 @@ estado vazio explicativo)._
 |---|---|---|
 | Scoring de domínio sem diluição √N | O score de alias é `hits/√(nº de aliases do domínio)`: um domínio rico (~20 aliases) quase não se move com 2 termos novos de 1 ocorrência — no teste real do kit marítimo, 4 aliases aprovados deixaram `juridico` abaixo de `operacoes` 46%. Proposta a estudar: saturação por hit (cada acerto contribui com ganho decrescente) em vez de normalização por tamanho do léxico. | 2026-07-23, teste E2E do aprendizado |
 | Aliases por projeto vs globais | Aprovar alias hoje propaga ao template default e a TODOS os projetos; o usuário esperava aprendizado por projeto. Discutir opção de escopo na aprovação. | 2026-07-23 |
-| Enum `LLMProvider` do profile | Backend só aceita openai/anthropic no `llm_policy` do profile — moonshot/ollama na triagem LLM falhariam a validação (gap da v0.36). | 2026-07-23 |
 | Escopo do reconcile visível na UI | "Reconciliar INDEX" com projeto selecionado roda o reconcile POR PROJETO (sem limpeza global de órfãos, por design); com "Todos os projetos", o global. O usuário não tem como saber a diferença — deixar explícito no botão/tooltip. | 2026-07-23, teste destrutivo |
 | Órfão em `_TRIAGE_REVIEW/pending` | Arquivo físico órfão (sem JSON de metadados) pode sobrar em pending após decisão — invisível na UI, sem efeito, mas é lixo em disco; varrer no reconcile. | 2026-07-23 |
 
