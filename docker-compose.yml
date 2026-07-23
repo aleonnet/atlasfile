@@ -47,6 +47,8 @@ services:
       - OPENSEARCH_USER=admin
       - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?defina OPENSEARCH_INITIAL_ADMIN_PASSWORD no .env (o install.sh gera automaticamente)}
       - PROJECTS_ROOT=/projects
+      - DASHBOARDS_URL=${DASHBOARDS_URL:-http://opensearch-dashboards:5601}
+      - DASHBOARDS_AUTO_IMPORT=${DASHBOARDS_AUTO_IMPORT:-true}
       # Caminho do host montado em /projects — informativo, para a UI mostrar
       # ao usuário onde os arquivos ficam fisicamente
       - PROJECTS_HOST_ROOT=${PROJECTS_HOST_ROOT:-}

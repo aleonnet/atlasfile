@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.41.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [dashboards_observabilidade_v0410](dashboards_observabilidade_v0410.plan.md) | Dashboard "AtlasFile — Operação" (18 painéis / 3 index patterns: acervo, fluxo × decisão, confiança, saúde de extração/embeddings, custo LLM, tag cloud de tópicos) gerado deterministicamente e **auto-importado no boot** da API (thread com retry, overwrite idempotente, nunca bloqueia startup); validado ao vivo com 22/22 objetos e screenshot autenticado |
+
+---
+
 ## 0.40.0 – 0.40.2
 
 | # | Plano | Escopo |

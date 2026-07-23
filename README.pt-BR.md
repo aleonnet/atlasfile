@@ -233,6 +233,10 @@ As correções humanas da triagem alimentam um minerador contrastivo de n-gramas
 
 A raiz de projetos (o bind mount de `PROJECTS_HOST_ROOT`) é monitorada por uma sonda de saúde com três estados expostos em `/api/setup/status`: `ok`, `unavailable` (mount quebrado / permissão perdida) e `emptied` (pasta host excluída sob bind mount vivo — no macOS/VirtioFS o container continua vendo um diretório "fantasma" vazio de aparência saudável, cujas escritas se perderiam em silêncio). Nos dois estados de falha a UI abre um modal de recuperação: um clique reinicia a aplicação graciosamente, a política `restart: unless-stopped` religa o container, o Docker recria a pasta host ausente e re-vincula o mount, o índice órfão é limpo por um reconcile global e o assistente de configuração reabre. Enquanto quebrado, upload, scan da inbox e criação de projeto ficam bloqueados com códigos estáveis (`PROJECTS_ROOT_UNAVAILABLE`, `PROJECTS_ROOT_EMPTIED`), e a limpeza de órfãos é pulada — uma falha transitória de mount nunca apaga o índice.
 
+## Dashboard de observabilidade (OpenSearch Dashboards)
+
+A stack embarca o dashboard completo "AtlasFile — Operação" (18 painéis sobre 3 index patterns): pulso do acervo (documentos, projetos, confiança média, custo LLM, sessões de chat), recortes do catálogo (domínio, `doc_kind`, tipo documental, tabela por projeto), fluxo de ingestão no tempo por decisão, distribuição de confiança, modo do classificador, saúde de extração/embeddings, custo LLM por dia e modelo, e uma tag cloud de tópicos. Ele é **importado automaticamente** no boot da API (thread em background com retry; controlável por `DASHBOARDS_URL` / `DASHBOARDS_AUTO_IMPORT`) — abra <http://localhost:5601> e entre com `admin` + a sua `OPENSEARCH_PASSWORD` do `.env`. O conjunto é gerado por `backend/scripts/build_dashboards_ndjson.py` (edite lá, re-rode, pronto); arquivo para import manual: `dashboards/atlasfile.ndjson`.
+
 ## Convenção de nomes (canonical)
 
 Formato configurável via `naming.canonical_pattern` no template/profile. Default:

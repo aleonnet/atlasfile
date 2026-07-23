@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     opensearch_chat_sessions_index: str = "atlasfile_chat_sessions"
     opensearch_user: str = "admin"
     opensearch_password: str = "admin123"
+    # OpenSearch Dashboards: auto-import do conjunto "AtlasFile — Operação" no boot
+    dashboards_url: str = "http://opensearch-dashboards:5601"
+    dashboards_auto_import: bool = True
     opensearch_nested_objects_limit: int = 50000
 
     projects_root: str = "/projects"

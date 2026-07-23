@@ -237,6 +237,10 @@ Resposta esperada: `{"status":"ok"}`
 
 Se a pasta apontada por `PROJECTS_HOST_ROOT` for excluída ou ficar inacessível com o stack no ar, a UI abre sozinha o modal **"Pasta de projetos excluída ou inacessível"** — clique em **Recriar pasta e reiniciar**: a aplicação reinicia, o Docker recria a pasta, o índice órfão é limpo e o assistente de configuração reabre. Nenhum comando manual é necessário (os serviços sobem com `restart: unless-stopped`). Os documentos excluídos não são recuperados — a recuperação restaura a estrutura e a consistência índice↔disco.
 
+### OpenSearch Dashboards (observabilidade)
+
+Abra <http://localhost:5601> (login `admin` + `OPENSEARCH_PASSWORD` do `.env`). O dashboard **"AtlasFile — Operação"** é importado automaticamente no primeiro boot da API — procure em Dashboards. Se ainda não apareceu, aguarde ~1 min (o serviço sobe depois da API) ou importe manualmente `dashboards/atlasfile.ndjson` em Management → Saved Objects → Import.
+
 ### OpenSearch
 
 ```bash

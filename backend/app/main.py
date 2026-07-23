@@ -99,6 +99,7 @@ from .project_profile import list_project_roots, load_project_profile
 from .profile_runtime import inbox_rel
 from .profile_schema_v2 import OperationalClassifierMode
 from .profile_store import ensure_profile, load_profile, save_profile
+from .dashboards_setup import start_dashboards_import_background
 from .projects_root import ensure_root_marker, projects_root_health, projects_root_state
 from .template_store import (
     create_profile_from_template,
@@ -459,6 +460,8 @@ async def lifespan(app: FastAPI):
     # Marcador da raiz de projetos: no startup o bind mount está garantidamente
     # vinculado ao host — é o único momento seguro para gravá-lo (self-healing)
     ensure_root_marker()
+    # Dashboards de observabilidade: import em background (nunca bloqueia o boot)
+    start_dashboards_import_background()
     max_attempts = 30
     last_error: Exception | None = None
     for _ in range(max_attempts):

@@ -15,6 +15,17 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.41.0] - 2026-07-23
+
+### Adicionado
+- **Dashboard de observabilidade "AtlasFile — Operação" auto-importado**: 18 painéis sobre 3 index patterns (documentos, uso LLM de classificação, sessões de chat) — pulso do acervo, recortes por domínio/doc_kind/tipo/projeto, ingestão no tempo × decisão, distribuição de confiança, modo do classificador, saúde de extração/embeddings, custo LLM por dia × modelo e tag cloud de tópicos. Conjunto gerado deterministicamente (`backend/scripts/build_dashboards_ndjson.py` → `app/data/dashboards.ndjson` embarcado + `dashboards/atlasfile.ndjson` manual, teste garante sincronia). Import automático no boot da API (thread com retry ~150s, `overwrite=true` idempotente, nunca bloqueia o startup; `DASHBOARDS_URL`/`DASHBOARDS_AUTO_IMPORT`). Validado ao vivo: 22/22 objetos importados e dashboard renderizando com dados reais.
+
+## [0.40.4] - 2026-07-23
+
+### Corrigido
+- **Card do Classificador honesto com modelos custom**: o select "Modelo triagem" só listava o catálogo — com um modelo custom salvo (ex.: `ollama/gemma3:12b`) o select nativo exibia a primeira opção do catálogo em vez do valor real do profile; agora os modelos validados pelo usuário entram como opções ("(validado por você)"), com fallback para o valor atual.
+- **Aviso de API Key respeita o registro de providers**: o `hasKey` era hard-coded openai/anthropic — Ollama (sem chave por design) disparava "API Key não configurada para ollama"; agora usa `providerNeedsKey` (Ollama nunca avisa; Moonshot valida a chave própria).
+
 ## [0.40.3] - 2026-07-23
 
 ### Corrigido
