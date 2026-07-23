@@ -1,9 +1,8 @@
 """Gerador determinístico dos saved objects do OpenSearch Dashboards.
 
-Emite o conjunto "AtlasFile — Operação" em DOIS destinos com o MESMO conteúdo:
-- backend/app/data/dashboards.ndjson  → embarcado; auto-importado no boot da API
-  (app/dashboards_setup.py)
-- dashboards/atlasfile.ndjson         → caminho documentado para import manual
+Emite o conjunto "AtlasFile — Operação" em backend/app/data/dashboards.ndjson —
+embarcado na imagem, auto-importado no boot da API (app/dashboards_setup.py) e
+também o caminho para import manual.
 
 Rodar após qualquer mudança de painel:
     cd backend && .venv/bin/python scripts/build_dashboards_ndjson.py
@@ -14,11 +13,7 @@ import json
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = BACKEND_ROOT.parent
-OUTPUTS = [
-    BACKEND_ROOT / "app" / "data" / "dashboards.ndjson",
-    REPO_ROOT / "dashboards" / "atlasfile.ndjson",
-]
+OUTPUTS = [BACKEND_ROOT / "app" / "data" / "dashboards.ndjson"]
 
 DOCS_IP = "atlasfile-ip-documents"
 USAGE_IP = "atlasfile-ip-classification-usage"

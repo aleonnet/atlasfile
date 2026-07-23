@@ -239,7 +239,7 @@ Se a pasta apontada por `PROJECTS_HOST_ROOT` for excluída ou ficar inacessível
 
 ### OpenSearch Dashboards (observabilidade)
 
-Abra <http://localhost:5601> (login `admin` + `OPENSEARCH_PASSWORD` do `.env`). O dashboard **"AtlasFile — Operação"** é importado automaticamente no primeiro boot da API — procure em Dashboards. Se ainda não apareceu, aguarde ~1 min (o serviço sobe depois da API) ou importe manualmente `dashboards/atlasfile.ndjson` em Management → Saved Objects → Import.
+Abra <http://localhost:5601> (login `admin` + `OPENSEARCH_PASSWORD` do `.env`). O dashboard **"AtlasFile — Operação"** é importado automaticamente no primeiro boot da API — procure em Dashboards. Se ainda não apareceu, aguarde ~1 min (o serviço sobe depois da API) ou importe manualmente `backend/app/data/dashboards.ndjson` em Management → Saved Objects → Import.
 
 ### OpenSearch
 

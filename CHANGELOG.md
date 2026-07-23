@@ -15,6 +15,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.41.1] - 2026-07-23
+
+### Alterado
+- **Fonte única do dashboard**: removido o duplicado `dashboards/atlasfile.ndjson` — o artefato canônico é `backend/app/data/dashboards.ndjson` (embarcado, auto-importado e também o caminho de import manual); gerador e docs atualizados.
+
 ## [0.41.0] - 2026-07-23
 
 ### Adicionado
