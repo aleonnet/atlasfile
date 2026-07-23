@@ -15,6 +15,15 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.39.2] - 2026-07-23
+
+### Corrigido
+- **Aprendizado nunca mais em silêncio (achados de campo do teste kit 2)**:
+  - Decisão de triagem agora invalida a query de sugestões de aliases — a seção do Classificador atualiza sem reload.
+  - Toast após Aprovar/Corrigir quando surgem termos NOVOS no minerador ("N novos termos aprendidos aguardam sua revisão no Classificador"), com dedupe por projeto na sessão.
+  - Seção "Sugestões de aliases" sempre visível em projeto único, com estado vazio explicativo: sem correções ainda / aguardando contraste (≥2 docs de outras classes) / nenhum termo passou nos cortes (suporte ≥2, precisão ≥80%).
+- **Painel**: cards com o mesmo respiro do Classificador (`gap-4`) — estavam emendados desde a introdução do scrim de processamento.
+
 ## [0.39.1] -- 2026-07-23
 
 ### Corrigido (achados de campo do sugeridor de aliases)

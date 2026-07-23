@@ -898,14 +898,26 @@ export function IngestTriageCard({
         </CollapsibleSection>
       )}
 
-      {isSingleProject && aliasSuggestions.length > 0 && (
+      {isSingleProject && aliasCorpus && (
         <CollapsibleSection
           className="mt-2"
           title={t("ingest:aliasSuggest.title")} persistKey="sugestoes-aliases"
           badge={<Badge>{aliasSuggestions.reduce((n, g) => n + g.terms.length, 0)}</Badge>}
         >
+          {aliasSuggestions.length === 0 ? (
+            // Estado vazio explícito: o aprendizado nunca fica mudo — a seção
+            // diz exatamente qual pré-requisito falta (correções ou contraste)
+            <p className="text-[0.78rem] text-muted-foreground">
+              {aliasCorpus.corrected_total === 0
+                ? t("ingest:aliasSuggest.emptyNoCorrections")
+                : aliasCorpus.distinct_labels < 2
+                  ? t("ingest:aliasSuggest.emptyNoContrast", { count: aliasCorpus.corrected_total })
+                  : t("ingest:aliasSuggest.emptyNoTerms", { count: aliasCorpus.corrected_total })}
+            </p>
+          ) : (
+          <>
           <p className="mb-2 text-[0.78rem] text-muted-foreground">
-            {t("ingest:aliasSuggest.intro", { count: aliasCorpus?.corrected_total ?? 0 })}
+            {t("ingest:aliasSuggest.intro", { count: aliasCorpus.corrected_total })}
           </p>
           <div className="flex flex-col gap-3">
             {aliasSuggestions.map((group) => (
@@ -941,6 +953,8 @@ export function IngestTriageCard({
               </div>
             ))}
           </div>
+          </>
+          )}
         </CollapsibleSection>
       )}
 

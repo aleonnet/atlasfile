@@ -2,6 +2,7 @@ import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  fetchAliasSuggestions,
   fetchChannelConfig,
   fetchChannelStatus,
   fetchHealth,
@@ -386,6 +387,7 @@ function AppShell() {
     triageDecision(item.project_id, item.doc_id, "correct", businessDomainValue, documentTypeValue)
       .then(() => {
         invalidateAfterTriageDecision();
+        void notifyNewAliasSuggestions(item.project_id);
         handleStatus(t("painel:app.correctedAndMoved", { businessDomain: businessDomainValue, documentType: documentTypeValue }));
       })
       .catch(() => {
@@ -401,6 +403,27 @@ function AppShell() {
     invalidateAfterScan();
   }, []);
 
+  /** Toast quando a decisão de triagem faz surgirem termos NOVOS no minerador
+   *  de aliases — o aprendizado nunca acontece em silêncio. O conjunto já
+   *  notificado fica em memória por projeto (sem repetir a cada decisão). */
+  const notifiedAliasTermsRef = useRef<Map<string, Set<string>>>(new Map());
+  const notifyNewAliasSuggestions = useCallback(async (projectId: string) => {
+    try {
+      const data = await fetchAliasSuggestions(projectId);
+      const seen = notifiedAliasTermsRef.current.get(projectId) ?? new Set<string>();
+      const fresh = data.suggestions
+        .flatMap((g) => g.terms.map((term) => `${g.kind}:${g.key}:${term.term}`))
+        .filter((token) => !seen.has(token));
+      if (fresh.length > 0) {
+        fresh.forEach((token) => seen.add(token));
+        notifiedAliasTermsRef.current.set(projectId, seen);
+        toast.success(t("ingest:aliasSuggest.toastNew", { count: fresh.length }));
+      }
+    } catch {
+      // análise informativa — falha aqui nunca interfere na decisão de triagem
+    }
+  }, [t]);
+
   async function handleDecision(item: TriageItem, action: "approve" | "correct" | "reject") {
     if (action === "correct") {
       await openCorrectModal(item);
@@ -413,6 +436,8 @@ function AppShell() {
       if (action === "reject") {
         handleStatus(t("painel:app.rejectedAndMoved"));
       } else {
+        // aprovação também alimenta o corpus do minerador (contraste)
+        void notifyNewAliasSuggestions(item.project_id);
         handleStatus(t("painel:app.decisionRecorded", { action }));
       }
     } catch {

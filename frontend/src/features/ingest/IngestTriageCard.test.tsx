@@ -258,6 +258,22 @@ describe("IngestTriageCard", () => {
     expect(api.addTaxonomyAliases).not.toHaveBeenCalled();
   });
 
+  // Fica por último entre os testes de alias: o mockResolvedValue substitui o
+  // default da factory para o restante do arquivo (clearAllMocks não restaura)
+  it("sem sugestões a seção explica o pré-requisito em vez de sumir (v0.39.2)", async () => {
+    const api = await import("../../api");
+    // 2 correções, mas todos os docs com o MESMO rótulo final → sem contraste
+    vi.mocked(api.fetchAliasSuggestions).mockResolvedValue({
+      suggestions: [],
+      corpus: { resolved_total: 2, analyzed_total: 2, corrected_total: 2, distinct_labels: 1 },
+    });
+    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+    await waitFor(() => {
+      expect(screen.getByText(/Sugestões de aliases/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/2 correções registradas — aguardando documentos de outras classes/)).toBeInTheDocument();
+  });
+
   it("shows empty state when all projects selected", async () => {
     renderWithProviders(<IngestTriageCard {...defaultProps({ selectedProject: "__all__" })} />);
     await waitFor(() => {

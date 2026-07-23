@@ -196,6 +196,13 @@
     "intro_one": "Terms mined from {{count}} triage correction — the bootstrap learns the vocabulary you corrected. Approving adds the alias to the template and projects.",
     "intro_other": "Terms mined from {{count}} triage corrections — the bootstrap learns the vocabulary you corrected. Approving adds the alias to the template and projects.",
     "evidence_one": "{{count}} doc · precision {{precision}}",
-    "evidence_other": "{{count}} docs · precision {{precision}}"
+    "evidence_other": "{{count}} docs · precision {{precision}}",
+    "emptyNoCorrections": "Learning starts with corrections: when you correct a document in triage, its terms will be mined here.",
+    "emptyNoContrast_one": "{{count}} correction recorded — waiting for documents of other classes decided in triage (at least 2) to validate term precision by contrast.",
+    "emptyNoContrast_other": "{{count}} corrections recorded — waiting for documents of other classes decided in triage (at least 2) to validate term precision by contrast.",
+    "emptyNoTerms_one": "{{count}} correction analyzed, but no term passed the cuts yet (≥2 contrast docs, support ≥2, precision ≥80%).",
+    "emptyNoTerms_other": "{{count}} corrections analyzed, but no term passed the cuts yet (≥2 contrast docs, support ≥2, precision ≥80%).",
+    "toastNew_one": "{{count}} new learned term awaits your review in the Classifier",
+    "toastNew_other": "{{count}} new learned terms await your review in the Classifier"
   }
 }

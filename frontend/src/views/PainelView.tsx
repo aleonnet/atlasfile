@@ -340,7 +340,8 @@ export function PainelView({
   }
 
   return (
-    <div className="relative">
+    // gap-4 entre os cards — mesmo respiro do Classificador (ClassificadorView)
+    <div className="relative flex flex-col gap-4">
       {/* Scrim de processamento: decisão em série é a regra — o resto do Painel
           esmaece e bloqueia cliques; o card focal (z-40) fica acima, vivo */}
       {processingOp && (

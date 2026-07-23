@@ -196,6 +196,13 @@
     "intro_one": "Termos minerados de {{count}} correção da triagem — o bootstrap passa a reconhecer o vocabulário que você corrigiu. Aprovar adiciona o alias ao template e aos projetos.",
     "intro_other": "Termos minerados de {{count}} correções da triagem — o bootstrap passa a reconhecer o vocabulário que você corrigiu. Aprovar adiciona o alias ao template e aos projetos.",
     "evidence_one": "{{count}} doc · precisão {{precision}}",
-    "evidence_other": "{{count}} docs · precisão {{precision}}"
+    "evidence_other": "{{count}} docs · precisão {{precision}}",
+    "emptyNoCorrections": "O aprendizado nasce das correções: quando você corrigir um documento na triagem, os termos dele serão minerados aqui.",
+    "emptyNoContrast_one": "{{count}} correção registrada — aguardando documentos de outras classes decididos na triagem (mínimo 2) para validar a precisão dos termos por contraste.",
+    "emptyNoContrast_other": "{{count}} correções registradas — aguardando documentos de outras classes decididos na triagem (mínimo 2) para validar a precisão dos termos por contraste.",
+    "emptyNoTerms_one": "{{count}} correção analisada, mas nenhum termo passou nos cortes ainda (≥2 docs de contraste, suporte ≥2, precisão ≥80%).",
+    "emptyNoTerms_other": "{{count}} correções analisadas, mas nenhum termo passou nos cortes ainda (≥2 docs de contraste, suporte ≥2, precisão ≥80%).",
+    "toastNew_one": "{{count}} novo termo aprendido aguarda sua revisão no Classificador",
+    "toastNew_other": "{{count}} novos termos aprendidos aguardam sua revisão no Classificador"
   }
 }

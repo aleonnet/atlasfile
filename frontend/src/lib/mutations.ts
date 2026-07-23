@@ -12,7 +12,8 @@ function invalidate(keys: readonly (readonly unknown[])[]): void {
 }
 
 /** Decisão de triagem (aprovar/corrigir/rejeitar) ou restauração/exclusão de
- *  rejeitado: mexe em fila, índice, histórico, datasets e conflitos. */
+ *  rejeitado: mexe em fila, índice, histórico, datasets, conflitos e no corpus
+ *  do minerador de aliases (triage_resolved). */
 export function invalidateAfterTriageDecision(): void {
   invalidate([
     qk.triage.scope(),
@@ -20,6 +21,7 @@ export function invalidateAfterTriageDecision(): void {
     ["ingest-history"],
     qk.labelConflicts(),
     qk.classifier.scope(),
+    ["alias-suggestions"],
   ]);
 }
 

@@ -34,6 +34,12 @@ vi.mock("./api", () => ({
     })
   ),
   fetchTriage: vi.fn(() => Promise.resolve([])),
+  fetchAliasSuggestions: vi.fn(() =>
+    Promise.resolve({
+      suggestions: [],
+      corpus: { resolved_total: 0, analyzed_total: 0, corrected_total: 0, distinct_labels: 0 },
+    })
+  ),
   fetchLabelConflicts: vi.fn(() => Promise.resolve({ total: 0, items: [] })),
   resolveLabelConflict: vi.fn(() => Promise.resolve({ status: "ok", labeled_by: "human" })),
   fetchTaxonomy: vi.fn(() => Promise.resolve({ business_domains: [], document_types: [] })),

@@ -37,6 +37,7 @@ describe("invalidations por domínio (F2)", () => {
       expect(keys).toContain(JSON.stringify(["ingest-history"]));
       expect(keys).toContain(JSON.stringify(qk.labelConflicts()));
       expect(keys).toContain(JSON.stringify(qk.classifier.scope()));
+      expect(keys).toContain(JSON.stringify(["alias-suggestions"]));
     } finally {
       spy.mockRestore();
     }
