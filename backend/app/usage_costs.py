@@ -46,7 +46,8 @@ def _load_override() -> dict:
 
 
 def _load_config() -> dict:
-    """Load usage costs: base do config (JSON) mesclado com o override do refresh (override vence por modelo)."""
+    """Load usage costs em 3 camadas: config (JSON) → snapshot embarcado → override do refresh.
+    Cada camada vence por modelo sobre a anterior."""
     path_str = (settings.usage_costs_config_path or "").strip()
     base: dict = {}
     if path_str:
@@ -69,14 +70,14 @@ def _load_config() -> dict:
             except (json.JSONDecodeError, OSError):
                 _LOADED[str(path)] = {}
         base = _LOADED.get(str(path), {})
-    override = _load_override()
-    if not override:
-        return base
     merged = {k: dict(v) for k, v in base.items() if isinstance(v, dict)}
-    for provider, models in override.items():
-        if not isinstance(models, dict):
-            continue
-        merged.setdefault(provider, {}).update(models)
+    from app.llm_catalog import snapshot_costs
+
+    for layer in (snapshot_costs(), _load_override()):
+        for provider, models in (layer or {}).items():
+            if not isinstance(models, dict):
+                continue
+            merged.setdefault(provider, {}).update(models)
     return merged
 
 

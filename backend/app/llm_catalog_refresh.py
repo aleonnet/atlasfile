@@ -81,8 +81,9 @@ def _is_chat_candidate(name: str, entry: dict[str, Any]) -> bool:
     return not any(token in lowered for token in _NAME_EXCLUDES)
 
 
-# Modelos OpenAI pós-gpt-5.2 exigem /v1/responses para tools+reasoning
-# (400 no chat/completions: "use /v1/responses or set reasoning_effort to 'none'").
+# Modelos OpenAI PÓS-gpt-5.2 (exclusive: 5.3+) exigem /v1/responses para
+# tools+reasoning (400 no chat/completions: "use /v1/responses or set
+# reasoning_effort to 'none'"). O gpt-5.2 em si ainda funciona no chat/completions.
 _GPT_VERSION = re.compile(r"^gpt-(\d+)\.(\d+)")
 
 
@@ -92,7 +93,7 @@ def _infer_openai_api(name: str, entry: dict[str, Any]) -> str:
         return "responses"
     if entry.get("supports_reasoning"):
         m = _GPT_VERSION.match(name)
-        if m and (int(m.group(1)), int(m.group(2))) >= (5, 2):
+        if m and (int(m.group(1)), int(m.group(2))) > (5, 2):
             return "responses"
     return "chat_completions"
 

@@ -2,9 +2,15 @@
 Catálogo de modelos LLM com limites documentados (contexto e max output).
 Usado por GET /api/models e pelo orchestrator para truncar resultado de tools por modelo.
 
-Duas camadas: LLM_MODEL_CATALOG (builtin, fallback offline) + cache remoto em
-{PROJECTS_ROOT}/_ATLASFILE/llm/catalog_cache.json (gravado por llm_catalog_refresh,
-fonte LiteLLM). load_catalog() devolve o merge — cache vence por (provider, model).
+Duas camadas:
+1. Snapshot LiteLLM EMBARCADO no app (`app/data/llm_catalog_snapshot.json`, gerado
+   por `scripts/update_catalog_snapshot.py`) — garante a lista completa mesmo sem
+   rede/refresh. Contém também seções `user_models`/`user_costs` mantidas à mão
+   (modelos que o LiteLLM ainda não lista); uma atualização do snapshot NUNCA
+   apaga essas linhas — só as promove quando o LiteLLM passa a cobri-las.
+2. Cache remoto em {PROJECTS_ROOT}/_ATLASFILE/llm/catalog_cache.json (gravado por
+   llm_catalog_refresh em runtime). load_catalog() devolve o merge — cache vence
+   por (provider, model).
 """
 from __future__ import annotations
 
@@ -15,79 +21,47 @@ from pathlib import Path
 from app.config import settings
 from app.models import ModelOption
 
-# Limites e suporte a reasoning/thinking conforme documentação oficial.
-# OpenAI: https://developers.openai.com/api/docs/models — reasoning_effort em modelos "reasoning" (ex.: gpt-5.1); gpt-4.1 é "non-reasoning".
-# Anthropic: Extended Thinking — 4.6 usa adaptive (recomendado); 4.5 e anteriores usam enabled + budget_tokens (deprecated em 4.6).
-# https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
-LLM_MODEL_CATALOG: list[ModelOption] = [
-    ModelOption(
-        provider="openai",
-        model="gpt-4o-mini",
-        label="OpenAI gpt-4o-mini (base)",
-        context_tokens=128_000,
-        max_output_tokens=16_384,
-        supports_reasoning_effort=False,
-    ),
-    ModelOption(
-        provider="openai",
-        model="gpt-4.1",
-        label="OpenAI gpt-4.1 (médio)",
-        context_tokens=1_047_576,
-        max_output_tokens=32_768,
-        supports_reasoning_effort=False,
-    ),
-    ModelOption(
-        provider="openai",
-        model="gpt-5.1",
-        label="OpenAI gpt-5.1 (high-end)",
-        context_tokens=400_000,
-        max_output_tokens=128_000,
-        supports_reasoning_effort=True,
-    ),
-    ModelOption(
-        provider="openai",
-        model="gpt-5.2",
-        label="OpenAI gpt-5.2 (high-end)",
-        context_tokens=400_000,
-        max_output_tokens=128_000,
-        supports_reasoning_effort=True,
-        openai_api="responses",
-    ),
-    ModelOption(
-        provider="moonshot",
-        model="kimi-k3",
-        label="Moonshot Kimi K3",
-        context_tokens=256_000,
-        max_output_tokens=32_768,
-        supports_reasoning_effort=False,
-    ),
-    ModelOption(
-        provider="anthropic",
-        model="claude-haiku-4-5",
-        label="Anthropic Claude Haiku 4.5 (base)",
-        context_tokens=200_000,
-        max_output_tokens=64_000,
-        supports_reasoning_effort=False,
-    ),
-    ModelOption(
-        provider="anthropic",
-        model="claude-sonnet-4-6",
-        label="Anthropic Claude Sonnet 4.6 (médio)",
-        context_tokens=200_000,
-        max_output_tokens=64_000,
-        supports_reasoning_effort=True,
-        anthropic_thinking_type="adaptive",
-    ),
-    ModelOption(
-        provider="anthropic",
-        model="claude-opus-4-6",
-        label="Anthropic Claude Opus 4.6 (high-end)",
-        context_tokens=200_000,
-        max_output_tokens=128_000,
-        supports_reasoning_effort=True,
-        anthropic_thinking_type="adaptive",
-    ),
-]
+SNAPSHOT_PATH = Path(__file__).parent / "data" / "llm_catalog_snapshot.json"
+
+# O snapshot é parte do pacote (imutável em runtime) — uma leitura por processo.
+_snapshot_memo: dict | None = None
+
+
+def _read_snapshot() -> dict:
+    global _snapshot_memo
+    if _snapshot_memo is None:
+        _snapshot_memo = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    return _snapshot_memo
+
+
+def _snapshot_models() -> list[ModelOption]:
+    """Modelos do snapshot embarcado: LiteLLM + entradas do usuário (user_models)."""
+    data = _read_snapshot()
+    models = [ModelOption(**raw) for raw in data.get("models", [])]
+    litellm_keys = {(m.provider, m.model) for m in models}
+    for raw in data.get("user_models", []):
+        opt = ModelOption(**raw)
+        if (opt.provider, opt.model) not in litellm_keys:
+            models.append(opt)
+    return models
+
+
+def snapshot_costs() -> dict[str, dict[str, dict[str, float]]]:
+    """Custos do snapshot (LiteLLM + user_costs; user só onde o LiteLLM não cobre)."""
+    data = _read_snapshot()
+    costs: dict[str, dict[str, dict[str, float]]] = {
+        p: dict(models) for p, models in (data.get("costs") or {}).items()
+    }
+    for provider, models in (data.get("user_costs") or {}).items():
+        bucket = costs.setdefault(provider, {})
+        for model, cost in models.items():
+            bucket.setdefault(model, cost)
+    return costs
+
+
+# Camada base do catálogo (falha de leitura aqui é bug de build — o snapshot é
+# parte do pacote; sem fallback silencioso).
+LLM_MODEL_CATALOG: list[ModelOption] = _snapshot_models()
 
 
 def llm_state_dir() -> Path:

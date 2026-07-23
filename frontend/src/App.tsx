@@ -79,6 +79,7 @@ function AppShell() {
     setAnthropicApiKey,
     moonshotApiKey,
     setMoonshotApiKey,
+    reloadModels,
     showThinking,
     setShowThinking,
     autoTitleLLM,
@@ -418,6 +419,9 @@ function AppShell() {
     refreshProjects().then(() => {
       if (createdProjectId) setSelectedProject(createdProjectId);
     });
+    // O backend dispara um refresh do catálogo LLM no primeiro boot; ao cair no
+    // app, recarrega a lista para o seletor já refletir o catálogo completo.
+    void reloadModels();
   }
 
   function handleReplayOnboarding() {

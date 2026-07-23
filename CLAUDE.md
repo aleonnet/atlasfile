@@ -131,6 +131,7 @@ Executar dentro do venv do backend (`cd backend && .venv/bin/python scripts/<scr
 | `inject_training_records.py` | Injeção manual de registros com anti-leakage SHA256 |
 | `run_classifier_cycle.py` | Entrypoint CLI para benchmark completo |
 | `run_augmentation.py` | Geração de exemplos sintéticos de treino |
+| `update_catalog_snapshot.py` | Atualiza o snapshot LiteLLM embarcado (`app/data/llm_catalog_snapshot.json`); preserva `user_models`/`user_costs` |
 
 Estrutura de dados do classifier:
 ```

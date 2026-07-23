@@ -18,11 +18,13 @@
 >   --repo-url ~/Development/AtlasFile --branch feature/llm-providers-responses-v0360
 > ```
 >
-> Novidades da 0.36.0 refletidas aqui (**Fase I**, nova): modelos OpenAI pós-gpt-5.2 via
-> **Responses API** (fix do 400 tools+reasoning), providers **Moonshot (Kimi)** e **Ollama
-> local**, **validação automática de chaves** no modal do assistente, modelos custom no
-> seletor do chat e erro dedicado `LLM_MODEL_NEEDS_RESPONSES_API`. Fase E atualizada
-> (catálogo com Moonshot).
+> Novidades da 0.36.0 refletidas aqui (**Fase I**, nova): modelos OpenAI pós-gpt-5.2
+> (exclusive — 5.3+) via **Responses API** (fix do 400 tools+reasoning), providers
+> **Moonshot (Kimi)** e **Ollama local**, **validação automática de chaves** no modal,
+> modelos custom no seletor do chat, erro dedicado `LLM_MODEL_NEEDS_RESPONSES_API`
+> (coberto por teste de integração) e **snapshot LiteLLM embarcado**: instância nova já
+> nasce com o catálogo completo (~68 modelos, incl. `Kimi K3` mantido em seção do
+> usuário com preços reais) + refresh automático em background no primeiro boot.
 
 ## Fase A — Instalação e acesso (4 pts)
 
@@ -68,7 +70,7 @@
 |---|---------|-------------|----------|
 | 19 | Combobox próprio | Focar o campo de modelo (Firefox incluso) | Lista estilizada nossa (filtro, ↑↓/Enter) — nunca "Manage Passwords" |
 | 20 | Validação de modelo custom | Digitar modelo inventado → Validar; digitar um real | Inventado: erro do provedor; real: ✓ e utilizável. Hint de **prefixo explícito** (`moonshot/…`, `ollama/…`) aparece para modelo fora do catálogo |
-| 21 | Aba Catálogo | "Catálogo de modelos": Testar fonte, Atualizar agora | **~67 modelos** com preços/contexto/origem (agora inclui **Moonshot**; nomes SEM prefixo duplicado tipo `moonshot/moonshot/...`); refresh atualiza a data |
+| 21 | Aba Catálogo | "Catálogo de modelos": Testar fonte, Atualizar agora | **~68 modelos** com preços/contexto/origem (inclui **Moonshot**, nomes SEM prefixo duplicado tipo `moonshot/moonshot/...`); "Atualizar agora" atualiza a data (a lista já veio completa do snapshot embarcado + refresh do 1º boot) |
 
 ## Fase F — Governança de taxonomia (3 pts)
 
@@ -88,16 +90,13 @@
 
 ## Fase I — Providers LLM e Responses API (6 pts) — NOVA na 0.36.0
 
-> Ordem importa: o estágio 30 (erro dedicado) deve rodar **antes** do refresh do catálogo
-> (estágio 21/28) para pegar o cache desatualizado de propósito.
-
 | # | Estágio | Como testar | Passa se |
 |---|---------|-------------|----------|
-| 28 | Erro dedicado orienta o refresh | **Antes de atualizar o catálogo**: digitar como modelo custom um OpenAI pós-5.2 que não está no builtin (ex.: `gpt-5.6`) → Validar → usar no chat com uma pergunta que exija busca + Brain ligado | Erro **traduzido** orientando atualizar o catálogo (code `LLM_MODEL_NEEDS_RESPONSES_API` → "exige a Responses API… atualize o catálogo"), **nunca** o 400 cru da OpenAI |
-| 29 | Responses API (pós-gpt-5.2) | Aba Catálogo → **Atualizar agora** → selecionar `gpt-5.6` (ou 5.2+) no seletor do chat → Brain (thinking) ligado → pergunta que dispara busca | Responde normalmente **com tool calls** (Tools used lista `search_documents` etc.) — era o cenário do 400 "use /v1/responses". `gpt-5.2+` aparece com reasoning suportado (Brain ativo) |
+| 28 | Catálogo de fábrica (snapshot embarcado) | Instância recém-instalada, **sem clicar em nada** na aba Catálogo | Seletor do chat já lista **~68 modelos** (não 6!), incluindo `Moonshot Kimi K3`; aba Catálogo mostra o K3 com **$3.00 / $15.00** (cache $0.30) e a data de atualização preenchida sozinha (refresh automático do primeiro boot). O code `LLM_MODEL_NEEDS_RESPONSES_API` (catálogo desatualizado) é coberto por teste de integração |
+| 29 | Responses API (pós-5.2 exclusive) | Selecionar `gpt-5.6` no seletor do chat → Brain (thinking) ligado → pergunta que dispara busca | Responde normalmente **com tool calls** (Tools used lista `search_documents` etc.) — era o cenário do 400 "use /v1/responses". `gpt-5.2` (inclusive) permanece no caminho clássico |
 | 30 | Regressão OpenAI clássico | Mesma pergunta com `gpt-4o-mini` e `gpt-5.1` | Respondem como antes (caminho chat/completions intocado) |
 | 31 | Validação de chave no modal | Configurações do assistente: apagar e redigitar a key OpenAI errada; depois a certa | Badge automático ~700ms após parar de digitar: **✗ inválida** (errada) → **✓ válida** (certa); nada bloqueia o modal; com o backend fora do ar, o badge diz "não foi possível verificar" (≠ inválida) |
-| 32 | Moonshot (Kimi) | Selecionar um modelo `moonshot/…` no seletor do chat → campo **Moonshot API Key** aparece no modal → colar a chave | Badge ✓ ao vivo; chat com o Kimi responde (com saldo) — sem saldo, o erro do provedor aparece **legível** no chat (integração validada: auth + base_url ok) |
+| 32 | Moonshot Kimi K3 | Selecionar `moonshot/kimi-k3` (já na lista, sem digitar) → campo **Moonshot API Key** aparece no modal → colar a chave | Badge ✓ ao vivo; chat com o K3 responde (com saldo) — sem saldo, o erro do provedor aparece **legível** no chat (integração validada: auth + base_url ok). Uso registra custo com os preços do K3 |
 | 33 | Ollama local | Com `ollama serve` rodando no host e `gemma4:12b` baixado: combobox custom `ollama/gemma4:12b` → Validar | ✓ "disponível na Ollama" + hint "**roda localmente — não precisa de chave**" (sem campo de chave); o modelo **aparece no seletor do chat** (custom) e a conversa responde com o modelo local. No Docker o default `host.docker.internal:11434` já funciona sem configurar nada |
 
 ## Fase H — Internacionalização (smoke, não pontuado)

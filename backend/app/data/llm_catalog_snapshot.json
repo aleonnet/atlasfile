@@ -1,0 +1,1108 @@
+{
+  "source_url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+  "fetched_at": "2026-07-23T03:47:51.280116+00:00",
+  "models": [
+    {
+      "provider": "anthropic",
+      "model": "claude-fable-5",
+      "label": "Anthropic claude-fable-5",
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "adaptive",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "label": "Anthropic claude-haiku-4-5",
+      "context_tokens": 200000,
+      "max_output_tokens": 64000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "enabled",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-1",
+      "label": "Anthropic claude-opus-4-1",
+      "context_tokens": 200000,
+      "max_output_tokens": 32000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "enabled",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-5",
+      "label": "Anthropic claude-opus-4-5",
+      "context_tokens": 200000,
+      "max_output_tokens": 64000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "enabled",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-6",
+      "label": "Anthropic claude-opus-4-6",
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "adaptive",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-7",
+      "label": "Anthropic claude-opus-4-7",
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "adaptive",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-4-8",
+      "label": "Anthropic claude-opus-4-8",
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "adaptive",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5",
+      "label": "Anthropic claude-sonnet-4-5",
+      "context_tokens": 200000,
+      "max_output_tokens": 64000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "enabled",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "label": "Anthropic claude-sonnet-4-6",
+      "context_tokens": 1000000,
+      "max_output_tokens": 64000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "adaptive",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "label": "Anthropic claude-sonnet-5",
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": "adaptive",
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k2-0711-preview",
+      "label": "Moonshot kimi-k2-0711-preview",
+      "context_tokens": 131072,
+      "max_output_tokens": 131072,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k2-0905-preview",
+      "label": "Moonshot kimi-k2-0905-preview",
+      "context_tokens": 262144,
+      "max_output_tokens": 262144,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k2-thinking",
+      "label": "Moonshot kimi-k2-thinking",
+      "context_tokens": 262144,
+      "max_output_tokens": 262144,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k2-thinking-turbo",
+      "label": "Moonshot kimi-k2-thinking-turbo",
+      "context_tokens": 262144,
+      "max_output_tokens": 262144,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k2-turbo-preview",
+      "label": "Moonshot kimi-k2-turbo-preview",
+      "context_tokens": 262144,
+      "max_output_tokens": 262144,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k2.5",
+      "label": "Moonshot kimi-k2.5",
+      "context_tokens": 262144,
+      "max_output_tokens": 262144,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-k2.6",
+      "label": "Moonshot kimi-k2.6",
+      "context_tokens": 262144,
+      "max_output_tokens": 262144,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-latest",
+      "label": "Moonshot kimi-latest",
+      "context_tokens": 131072,
+      "max_output_tokens": 131072,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-latest-128k",
+      "label": "Moonshot kimi-latest-128k",
+      "context_tokens": 131072,
+      "max_output_tokens": 131072,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-latest-32k",
+      "label": "Moonshot kimi-latest-32k",
+      "context_tokens": 32768,
+      "max_output_tokens": 32768,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "kimi-latest-8k",
+      "label": "Moonshot kimi-latest-8k",
+      "context_tokens": 8192,
+      "max_output_tokens": 8192,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-128k",
+      "label": "Moonshot moonshot-v1-128k",
+      "context_tokens": 131072,
+      "max_output_tokens": 131072,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-128k-0430",
+      "label": "Moonshot moonshot-v1-128k-0430",
+      "context_tokens": 131072,
+      "max_output_tokens": 131072,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-128k-vision-preview",
+      "label": "Moonshot moonshot-v1-128k-vision-preview",
+      "context_tokens": 131072,
+      "max_output_tokens": 131072,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-32k",
+      "label": "Moonshot moonshot-v1-32k",
+      "context_tokens": 32768,
+      "max_output_tokens": 32768,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-32k-0430",
+      "label": "Moonshot moonshot-v1-32k-0430",
+      "context_tokens": 32768,
+      "max_output_tokens": 32768,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-32k-vision-preview",
+      "label": "Moonshot moonshot-v1-32k-vision-preview",
+      "context_tokens": 32768,
+      "max_output_tokens": 32768,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-8k",
+      "label": "Moonshot moonshot-v1-8k",
+      "context_tokens": 8192,
+      "max_output_tokens": 8192,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-8k-0430",
+      "label": "Moonshot moonshot-v1-8k-0430",
+      "context_tokens": 8192,
+      "max_output_tokens": 8192,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-8k-vision-preview",
+      "label": "Moonshot moonshot-v1-8k-vision-preview",
+      "context_tokens": 8192,
+      "max_output_tokens": 8192,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "moonshot",
+      "model": "moonshot-v1-auto",
+      "label": "Moonshot moonshot-v1-auto",
+      "context_tokens": 131072,
+      "max_output_tokens": 131072,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "chatgpt-4o-latest",
+      "label": "OpenAI chatgpt-4o-latest",
+      "context_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "ft:gpt-4-0613",
+      "label": "OpenAI ft:gpt-4-0613",
+      "context_tokens": 8192,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-3.5-turbo",
+      "label": "OpenAI gpt-3.5-turbo",
+      "context_tokens": 16385,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-3.5-turbo-0125",
+      "label": "OpenAI gpt-3.5-turbo-0125",
+      "context_tokens": 16385,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-3.5-turbo-1106",
+      "label": "OpenAI gpt-3.5-turbo-1106",
+      "context_tokens": 16385,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4",
+      "label": "OpenAI gpt-4",
+      "context_tokens": 8192,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4-0125-preview",
+      "label": "OpenAI gpt-4-0125-preview",
+      "context_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4-0613",
+      "label": "OpenAI gpt-4-0613",
+      "context_tokens": 8192,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4-1106-preview",
+      "label": "OpenAI gpt-4-1106-preview",
+      "context_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4-turbo",
+      "label": "OpenAI gpt-4-turbo",
+      "context_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4-turbo-preview",
+      "label": "OpenAI gpt-4-turbo-preview",
+      "context_tokens": 128000,
+      "max_output_tokens": 4096,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "label": "OpenAI gpt-4.1",
+      "context_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "label": "OpenAI gpt-4.1-mini",
+      "context_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4.1-nano",
+      "label": "OpenAI gpt-4.1-nano",
+      "context_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "label": "OpenAI gpt-4o",
+      "context_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "label": "OpenAI gpt-4o-mini",
+      "context_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5",
+      "label": "OpenAI gpt-5",
+      "context_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5-mini",
+      "label": "OpenAI gpt-5-mini",
+      "context_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5-nano",
+      "label": "OpenAI gpt-5-nano",
+      "context_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5-search-api",
+      "label": "OpenAI gpt-5-search-api",
+      "context_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.1",
+      "label": "OpenAI gpt-5.1",
+      "context_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.2",
+      "label": "OpenAI gpt-5.2",
+      "context_tokens": 272000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.2-chat-latest",
+      "label": "OpenAI gpt-5.2-chat-latest",
+      "context_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.3-chat-latest",
+      "label": "OpenAI gpt-5.3-chat-latest",
+      "context_tokens": 128000,
+      "max_output_tokens": 16384,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "responses"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4",
+      "label": "OpenAI gpt-5.4",
+      "context_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "responses"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "label": "OpenAI gpt-5.4-mini",
+      "context_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "responses"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.4-nano",
+      "label": "OpenAI gpt-5.4-nano",
+      "context_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "responses"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.5",
+      "label": "OpenAI gpt-5.5",
+      "context_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "responses"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.6",
+      "label": "OpenAI gpt-5.6",
+      "context_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "responses"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.6-luna",
+      "label": "OpenAI gpt-5.6-luna",
+      "context_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "responses"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.6-sol",
+      "label": "OpenAI gpt-5.6-sol",
+      "context_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "responses"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-5.6-terra",
+      "label": "OpenAI gpt-5.6-terra",
+      "context_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "responses"
+    },
+    {
+      "provider": "openai",
+      "model": "o1",
+      "label": "OpenAI o1",
+      "context_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "o3",
+      "label": "OpenAI o3",
+      "context_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "o3-mini",
+      "label": "OpenAI o3-mini",
+      "context_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    },
+    {
+      "provider": "openai",
+      "model": "o4-mini",
+      "label": "OpenAI o4-mini",
+      "context_tokens": 200000,
+      "max_output_tokens": 100000,
+      "supports_reasoning_effort": true,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    }
+  ],
+  "costs": {
+    "openai": {
+      "chatgpt-4o-latest": {
+        "input": 5.0,
+        "output": 15.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "ft:gpt-4-0613": {
+        "input": 30.0,
+        "output": 60.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-3.5-turbo": {
+        "input": 0.5,
+        "output": 1.5,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-3.5-turbo-0125": {
+        "input": 0.5,
+        "output": 1.5,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-3.5-turbo-1106": {
+        "input": 1.0,
+        "output": 2.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-4": {
+        "input": 30.0,
+        "output": 60.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-4-0125-preview": {
+        "input": 10.0,
+        "output": 30.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-4-0613": {
+        "input": 30.0,
+        "output": 60.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-4-1106-preview": {
+        "input": 10.0,
+        "output": 30.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-4-turbo": {
+        "input": 10.0,
+        "output": 30.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-4-turbo-preview": {
+        "input": 10.0,
+        "output": 30.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "gpt-4.1": {
+        "input": 2.0,
+        "output": 8.0,
+        "cache_read": 0.5,
+        "cache_write": 0.0
+      },
+      "gpt-4.1-mini": {
+        "input": 0.4,
+        "output": 1.6,
+        "cache_read": 0.1,
+        "cache_write": 0.0
+      },
+      "gpt-4.1-nano": {
+        "input": 0.1,
+        "output": 0.4,
+        "cache_read": 0.025,
+        "cache_write": 0.0
+      },
+      "gpt-4o": {
+        "input": 2.5,
+        "output": 10.0,
+        "cache_read": 1.25,
+        "cache_write": 0.0
+      },
+      "gpt-4o-mini": {
+        "input": 0.15,
+        "output": 0.6,
+        "cache_read": 0.075,
+        "cache_write": 0.0
+      },
+      "gpt-5": {
+        "input": 1.25,
+        "output": 10.0,
+        "cache_read": 0.125,
+        "cache_write": 0.0
+      },
+      "gpt-5.1": {
+        "input": 1.25,
+        "output": 10.0,
+        "cache_read": 0.125,
+        "cache_write": 0.0
+      },
+      "gpt-5.2": {
+        "input": 1.75,
+        "output": 14.0,
+        "cache_read": 0.175,
+        "cache_write": 0.0
+      },
+      "gpt-5.2-chat-latest": {
+        "input": 1.75,
+        "output": 14.0,
+        "cache_read": 0.175,
+        "cache_write": 0.0
+      },
+      "gpt-5.3-chat-latest": {
+        "input": 1.75,
+        "output": 14.0,
+        "cache_read": 0.175,
+        "cache_write": 0.0
+      },
+      "gpt-5.6": {
+        "input": 5.0,
+        "output": 30.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25
+      },
+      "gpt-5.6-sol": {
+        "input": 5.0,
+        "output": 30.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25
+      },
+      "gpt-5.6-terra": {
+        "input": 2.5,
+        "output": 15.0,
+        "cache_read": 0.25,
+        "cache_write": 3.125
+      },
+      "gpt-5.6-luna": {
+        "input": 1.0,
+        "output": 6.0,
+        "cache_read": 0.1,
+        "cache_write": 1.25
+      },
+      "gpt-5.5": {
+        "input": 5.0,
+        "output": 30.0,
+        "cache_read": 0.5,
+        "cache_write": 0.0
+      },
+      "gpt-5.4": {
+        "input": 2.5,
+        "output": 15.0,
+        "cache_read": 0.25,
+        "cache_write": 0.0
+      },
+      "gpt-5.4-mini": {
+        "input": 0.75,
+        "output": 4.5,
+        "cache_read": 0.075,
+        "cache_write": 0.0
+      },
+      "gpt-5.4-nano": {
+        "input": 0.2,
+        "output": 1.25,
+        "cache_read": 0.02,
+        "cache_write": 0.0
+      },
+      "gpt-5-mini": {
+        "input": 0.25,
+        "output": 2.0,
+        "cache_read": 0.025,
+        "cache_write": 0.0
+      },
+      "gpt-5-nano": {
+        "input": 0.05,
+        "output": 0.4,
+        "cache_read": 0.005,
+        "cache_write": 0.0
+      },
+      "o1": {
+        "input": 15.0,
+        "output": 60.0,
+        "cache_read": 7.5,
+        "cache_write": 0.0
+      },
+      "o3": {
+        "input": 2.0,
+        "output": 8.0,
+        "cache_read": 0.5,
+        "cache_write": 0.0
+      },
+      "o3-mini": {
+        "input": 1.1,
+        "output": 4.4,
+        "cache_read": 0.55,
+        "cache_write": 0.0
+      },
+      "o4-mini": {
+        "input": 1.1,
+        "output": 4.4,
+        "cache_read": 0.275,
+        "cache_write": 0.0
+      },
+      "gpt-5-search-api": {
+        "input": 1.25,
+        "output": 10.0,
+        "cache_read": 0.125,
+        "cache_write": 0.0
+      }
+    },
+    "moonshot": {
+      "kimi-k2-0711-preview": {
+        "input": 0.6,
+        "output": 2.5,
+        "cache_read": 0.15,
+        "cache_write": 0.0
+      },
+      "kimi-k2-0905-preview": {
+        "input": 0.6,
+        "output": 2.5,
+        "cache_read": 0.15,
+        "cache_write": 0.0
+      },
+      "kimi-k2-turbo-preview": {
+        "input": 1.15,
+        "output": 8.0,
+        "cache_read": 0.15,
+        "cache_write": 0.0
+      },
+      "kimi-k2.5": {
+        "input": 0.6,
+        "output": 3.0,
+        "cache_read": 0.1,
+        "cache_write": 0.0
+      },
+      "kimi-k2.6": {
+        "input": 0.95,
+        "output": 4.0,
+        "cache_read": 0.16,
+        "cache_write": 0.0
+      },
+      "kimi-latest": {
+        "input": 2.0,
+        "output": 5.0,
+        "cache_read": 0.15,
+        "cache_write": 0.0
+      },
+      "kimi-latest-128k": {
+        "input": 2.0,
+        "output": 5.0,
+        "cache_read": 0.15,
+        "cache_write": 0.0
+      },
+      "kimi-latest-32k": {
+        "input": 1.0,
+        "output": 3.0,
+        "cache_read": 0.15,
+        "cache_write": 0.0
+      },
+      "kimi-latest-8k": {
+        "input": 0.2,
+        "output": 2.0,
+        "cache_read": 0.15,
+        "cache_write": 0.0
+      },
+      "kimi-k2-thinking": {
+        "input": 0.6,
+        "output": 2.5,
+        "cache_read": 0.15,
+        "cache_write": 0.0
+      },
+      "kimi-k2-thinking-turbo": {
+        "input": 1.15,
+        "output": 8.0,
+        "cache_read": 0.15,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-128k": {
+        "input": 2.0,
+        "output": 5.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-128k-0430": {
+        "input": 2.0,
+        "output": 5.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-128k-vision-preview": {
+        "input": 2.0,
+        "output": 5.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-32k": {
+        "input": 1.0,
+        "output": 3.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-32k-0430": {
+        "input": 1.0,
+        "output": 3.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-32k-vision-preview": {
+        "input": 1.0,
+        "output": 3.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-8k": {
+        "input": 0.2,
+        "output": 2.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-8k-0430": {
+        "input": 0.2,
+        "output": 2.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-8k-vision-preview": {
+        "input": 0.2,
+        "output": 2.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      },
+      "moonshot-v1-auto": {
+        "input": 2.0,
+        "output": 5.0,
+        "cache_read": 0.0,
+        "cache_write": 0.0
+      }
+    },
+    "anthropic": {
+      "claude-haiku-4-5": {
+        "input": 1.0,
+        "output": 5.0,
+        "cache_read": 0.1,
+        "cache_write": 1.25
+      },
+      "claude-sonnet-4-5": {
+        "input": 3.0,
+        "output": 15.0,
+        "cache_read": 0.3,
+        "cache_write": 3.75
+      },
+      "claude-sonnet-5": {
+        "input": 2.0,
+        "output": 10.0,
+        "cache_read": 0.2,
+        "cache_write": 2.5
+      },
+      "claude-sonnet-4-6": {
+        "input": 3.0,
+        "output": 15.0,
+        "cache_read": 0.3,
+        "cache_write": 3.75
+      },
+      "claude-opus-4-1": {
+        "input": 15.0,
+        "output": 75.0,
+        "cache_read": 1.5,
+        "cache_write": 18.75
+      },
+      "claude-opus-4-5": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25
+      },
+      "claude-opus-4-6": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25
+      },
+      "claude-opus-4-7": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25
+      },
+      "claude-fable-5": {
+        "input": 10.0,
+        "output": 50.0,
+        "cache_read": 1.0,
+        "cache_write": 12.5
+      },
+      "claude-opus-4-8": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.5,
+        "cache_write": 6.25
+      }
+    }
+  },
+  "user_models": [
+    {
+      "provider": "moonshot",
+      "model": "kimi-k3",
+      "label": "Moonshot Kimi K3",
+      "context_tokens": 1048576,
+      "max_output_tokens": 131072,
+      "supports_reasoning_effort": false,
+      "anthropic_thinking_type": null,
+      "openai_api": "chat_completions"
+    }
+  ],
+  "user_costs": {
+    "moonshot": {
+      "kimi-k3": {
+        "input": 3.0,
+        "output": 15.0,
+        "cache_read": 0.3,
+        "cache_write": 0
+      }
+    }
+  }
+}

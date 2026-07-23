@@ -130,8 +130,10 @@ def test_cache_antigo_sem_campo_openai_api_usa_default(catalog_cache):
     merged = {(m.provider, m.model): m for m in load_catalog()}
     assert merged[("openai", "gpt-legacy")].openai_api == "chat_completions"
     assert llm_catalog.get_openai_api("openai", "gpt-legacy") == "chat_completions"
-    # builtin gpt-5.2 marca responses; desconhecido cai no default
-    assert llm_catalog.get_openai_api("openai", "gpt-5.2") == "responses"
+    # Snapshot embarcado: 5.2 em si fica no chat/completions (quebra é PÓS-5.2
+    # exclusive); 5.6 roteia por responses; desconhecido cai no default
+    assert llm_catalog.get_openai_api("openai", "gpt-5.2") == "chat_completions"
+    assert llm_catalog.get_openai_api("openai", "gpt-5.6") == "responses"
     assert llm_catalog.get_openai_api("openai", "modelo-desconhecido") == "chat_completions"
 
 

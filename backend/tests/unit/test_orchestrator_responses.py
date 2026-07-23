@@ -102,7 +102,7 @@ def test_loop_responses_com_tool_call_reasoning_e_usage():
             result = await run_chat_loop(
                 [{"role": "user", "content": "ache o contrato"}],
                 provider="openai",
-                model="gpt-5.2",
+                model="gpt-5.6",
                 enable_thinking=True,
                 project_id="proj1",
             )

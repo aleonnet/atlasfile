@@ -428,6 +428,27 @@ def _backfill_channel_web(client) -> None:
         _logger.debug("backfill_channel_web: skipped (index may not exist yet)")
 
 
+def _maybe_refresh_catalog_on_startup() -> bool:
+    """Primeiro boot (sem cache de catálogo): dispara refresh LiteLLM em background.
+    Não bloqueia o startup; offline não é erro (o snapshot embarcado cobre a lista).
+    Retorna True se o refresh foi agendado (testável)."""
+    from .llm_catalog import catalog_cache_path
+    from .llm_catalog_refresh import refresh_catalog
+
+    if catalog_cache_path().exists():
+        return False
+
+    def _run() -> None:
+        try:
+            result = refresh_catalog()
+            _logger.info("Catálogo LLM atualizado no primeiro boot: %s modelos", result.get("models_total"))
+        except Exception as exc:  # noqa: BLE001 — offline/fonte fora não pode derrubar o boot
+            _logger.warning("Refresh inicial do catálogo falhou (seguindo com o snapshot embarcado): %s", exc)
+
+    threading.Thread(target=_run, name="catalog-first-refresh", daemon=True).start()
+    return True
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: ensure OpenSearch index, optional auto-reconcile, and channels. Shutdown: stop channels and reconcile."""
@@ -450,6 +471,8 @@ async def lifespan(app: FastAPI):
     else:
         if last_error:
             raise last_error
+
+    _maybe_refresh_catalog_on_startup()
 
     if settings.channels_enabled:
         channel_manager = ChannelManager(on_message=_handle_channel_message)
