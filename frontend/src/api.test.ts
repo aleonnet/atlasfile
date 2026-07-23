@@ -14,7 +14,9 @@ import {
   sendChatMessage,
   searchDocuments,
   updateProjectProfile,
-  validateProjectProfile
+  validateModel,
+  validateProjectProfile,
+  validateProviderKey
 } from "./api";
 
 describe("getFileDownloadUrl", () => {
@@ -195,6 +197,53 @@ describe("fetchSuggestions", () => {
   it("throws on !res.ok", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: false } as Response);
     await expect(fetchSuggestions("q")).rejects.toThrow("Falha no autocomplete");
+  });
+});
+
+describe("provider key headers (moonshot/ollama)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function captureFetch() {
+    // apiFetch converte para Headers — normalizar para consulta por nome
+    const captured: { headers?: Headers; body?: string } = {};
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      void input;
+      captured.headers = new Headers(init?.headers);
+      captured.body = String(init?.body ?? "");
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ valid: true, detail: "ok", content: "ok", tool_calls_used: [] })
+      } as Response);
+    });
+    return captured;
+  }
+
+  it("sendChatMessage envia X-Moonshot-API-Key quando fornecida (e omite quando não)", async () => {
+    const captured = captureFetch();
+    await sendChatMessage([{ role: "user", content: "oi" }], { provider: "moonshot", model: "kimi-k3", moonshotApiKey: "sk-m" });
+    expect(captured.headers?.get("X-Moonshot-API-Key")).toBe("sk-m");
+
+    await sendChatMessage([{ role: "user", content: "oi" }], { provider: "ollama", model: "gemma4:12b" });
+    expect(captured.headers?.get("X-Moonshot-API-Key")).toBeNull();
+    expect(captured.headers?.get("X-OpenAI-API-Key")).toBeNull();
+  });
+
+  it("validateProviderKey usa o header do registro; ollama vai sem header de chave", async () => {
+    const captured = captureFetch();
+    await validateProviderKey("moonshot", "sk-m");
+    expect(captured.headers?.get("X-Moonshot-API-Key")).toBe("sk-m");
+
+    await validateProviderKey("ollama", "");
+    expect([...(captured.headers?.keys() ?? [])].some((h) => h.toLowerCase().endsWith("-api-key"))).toBe(false);
+    expect(captured.body).toContain('"provider":"ollama"');
+  });
+
+  it("validateModel repassa keys.moonshot no header", async () => {
+    const captured = captureFetch();
+    await validateModel("moonshot", "kimi-k3", { moonshot: "sk-m" });
+    expect(captured.headers?.get("X-Moonshot-API-Key")).toBe("sk-m");
   });
 });
 

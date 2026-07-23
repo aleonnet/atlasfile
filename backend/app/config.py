@@ -104,6 +104,11 @@ class Settings(BaseSettings):
     classification_llm_enabled: bool = False
     # Habilitar augmentation de training pool via LLM (gera dados sintéticos para classes sub-representadas).
     classification_augmentation_enabled: bool = False
+    # --- Providers OpenAI-compatíveis (base_url custom; chaves via env/header, nunca em settings) ---
+    # Moonshot (Kimi): endpoint internacional; chave em MOONSHOT_API_KEY ou header X-Moonshot-API-Key.
+    moonshot_base_url: str = "https://api.moonshot.ai/v1"
+    # Ollama local: sem chave. Com a API em Docker, o host é alcançado via host.docker.internal.
+    ollama_base_url: str = "http://localhost:11434/v1"
     # CORS: origens permitidas separadas por vírgula. Ex.: http://localhost:5173,http://192.168.1.5:5173
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 

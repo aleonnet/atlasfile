@@ -52,13 +52,42 @@ LITELLM_FIXTURE = {
         "supports_function_calling": False,
     },
     "gemini-x": {"litellm_provider": "vertex_ai", "mode": "chat", "supports_function_calling": True},
+    "gpt-5.6": {  # reasoning pós-5.2 → exige Responses API
+        "litellm_provider": "openai",
+        "mode": "chat",
+        "supports_function_calling": True,
+        "supports_reasoning": True,
+        "max_input_tokens": 400_000,
+        "max_output_tokens": 128_000,
+    },
+    "gpt-7-nova": {  # sinal explícito: só /v1/responses nos endpoints
+        "litellm_provider": "openai",
+        "mode": "chat",
+        "supports_function_calling": True,
+        "supported_endpoints": ["/v1/responses"],
+    },
+    "moonshot/kimi-k3": {  # provider moonshot aceito com custo; prefixo LiteLLM removido do id
+        "litellm_provider": "moonshot",
+        "mode": "chat",
+        "supports_function_calling": True,
+        "max_input_tokens": 256_000,
+        "max_output_tokens": 32_768,
+        "input_cost_per_token": 6e-07,
+        "output_cost_per_token": 2.5e-06,
+    },
 }
 
 
 def test_parse_filters_to_chat_tool_use_models_only():
     models, costs = parse_litellm_catalog(LITELLM_FIXTURE)
     names = {(m.provider, m.model) for m in models}
-    assert names == {("openai", "gpt-9-turbo"), ("anthropic", "claude-nova-5")}
+    assert names == {
+        ("openai", "gpt-9-turbo"),
+        ("anthropic", "claude-nova-5"),
+        ("openai", "gpt-5.6"),
+        ("openai", "gpt-7-nova"),
+        ("moonshot", "kimi-k3"),
+    }
     assert costs["openai"]["gpt-9-turbo"] == {
         "input": 2.0,
         "output": 8.0,
@@ -66,6 +95,44 @@ def test_parse_filters_to_chat_tool_use_models_only():
         "cache_write": 0.0,
     }
     assert costs["anthropic"]["claude-nova-5"]["cache_write"] == 6.25
+    assert costs["moonshot"]["kimi-k3"]["input"] == 0.6
+
+
+def test_parse_infers_openai_api_por_versao_e_endpoints():
+    models, _ = parse_litellm_catalog(LITELLM_FIXTURE)
+    by_name = {m.model: m for m in models}
+    # reasoning + versão ≥ 5.2 → responses
+    assert by_name["gpt-5.6"].openai_api == "responses"
+    # sinal explícito supported_endpoints sem /v1/chat/completions → responses
+    assert by_name["gpt-7-nova"].openai_api == "responses"
+    # reasoning mas sem versão gpt-X.Y parseável → caminho atual
+    assert by_name["gpt-9-turbo"].openai_api == "chat_completions"
+    # não-openai nunca vira responses
+    assert by_name["kimi-k3"].openai_api == "chat_completions"
+    assert by_name["kimi-k3"].label == "Moonshot kimi-k3"
+
+
+def test_cache_antigo_sem_campo_openai_api_usa_default(catalog_cache):
+    """Cache gravado antes do campo novo (JSON sem openai_api) → default chat_completions."""
+    path = llm_catalog.catalog_cache_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    legacy = {
+        "refreshed_at": "2026-01-01T00:00:00+00:00",
+        "models": [{
+            "provider": "openai",
+            "model": "gpt-legacy",
+            "label": "OpenAI gpt-legacy",
+            "context_tokens": 128000,
+            "supports_reasoning_effort": True,
+        }],
+    }
+    path.write_text(json.dumps(legacy), encoding="utf-8")
+    merged = {(m.provider, m.model): m for m in load_catalog()}
+    assert merged[("openai", "gpt-legacy")].openai_api == "chat_completions"
+    assert llm_catalog.get_openai_api("openai", "gpt-legacy") == "chat_completions"
+    # builtin gpt-5.2 marca responses; desconhecido cai no default
+    assert llm_catalog.get_openai_api("openai", "gpt-5.2") == "responses"
+    assert llm_catalog.get_openai_api("openai", "modelo-desconhecido") == "chat_completions"
 
 
 def test_parse_maps_limits_and_thinking():
@@ -163,7 +230,7 @@ def test_refresh_dry_run_does_not_persist(catalog_cache, monkeypatch):
 
     monkeypatch.setattr(_httpx, "get", lambda *a, **k: FakeResponse())
     result = llm_catalog_refresh.refresh_catalog(dry_run=True)
-    assert result["dry_run"] is True and result["models_total"] == 2
+    assert result["dry_run"] is True and result["models_total"] == 5
     assert not llm_catalog.catalog_cache_path().exists()
     result2 = llm_catalog_refresh.refresh_catalog()
     assert result2["dry_run"] is False and "refreshed_at" in result2

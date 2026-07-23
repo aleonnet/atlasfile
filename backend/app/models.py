@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -205,6 +205,9 @@ class ModelOption(BaseModel):
     supports_reasoning_effort: bool = False  # OpenAI: reasoning_effort; Anthropic: Extended Thinking (doc de cada provedor)
     # Anthropic: "adaptive" (4.6, recomendado) | "enabled" (4.5 e anteriores, budget_tokens). None = não Anthropic ou sem thinking.
     anthropic_thinking_type: str | None = None
+    # OpenAI: modelos pós-gpt-5.2 exigem /v1/responses para tools+reasoning (400 no chat/completions).
+    # Default cobre cache antigo e modelos desconhecidos — fail-safe no caminho atual.
+    openai_api: Literal["chat_completions", "responses"] = "chat_completions"
 
 
 # --- Chat sessions (persisted in OpenSearch, separate index) ---

@@ -24,7 +24,9 @@ LITELLM_CATALOG_URL = (
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
 )
 
-_SUPPORTED_PROVIDERS = {"openai", "anthropic"}
+_SUPPORTED_PROVIDERS = {"openai", "anthropic", "moonshot"}
+
+_PROVIDER_LABELS = {"openai": "OpenAI", "anthropic": "Anthropic", "moonshot": "Moonshot"}
 
 # Snapshots datados (gpt-4o-2024-08-06, claude-...-20250929) poluem o combobox;
 # os aliases estáveis dos mesmos modelos permanecem no catálogo.
@@ -79,8 +81,28 @@ def _is_chat_candidate(name: str, entry: dict[str, Any]) -> bool:
     return not any(token in lowered for token in _NAME_EXCLUDES)
 
 
+# Modelos OpenAI pós-gpt-5.2 exigem /v1/responses para tools+reasoning
+# (400 no chat/completions: "use /v1/responses or set reasoning_effort to 'none'").
+_GPT_VERSION = re.compile(r"^gpt-(\d+)\.(\d+)")
+
+
+def _infer_openai_api(name: str, entry: dict[str, Any]) -> str:
+    endpoints = entry.get("supported_endpoints")
+    if isinstance(endpoints, list) and endpoints and "/v1/chat/completions" not in endpoints:
+        return "responses"
+    if entry.get("supports_reasoning"):
+        m = _GPT_VERSION.match(name)
+        if m and (int(m.group(1)), int(m.group(2))) >= (5, 2):
+            return "responses"
+    return "chat_completions"
+
+
 def _to_model_option(name: str, entry: dict[str, Any]) -> ModelOption:
     provider = str(entry["litellm_provider"])
+    # LiteLLM prefixa provedores não-OpenAI no nome ("moonshot/kimi-k2-...");
+    # o id de modelo enviado à API do provedor é o nome SEM o prefixo.
+    if name.startswith(f"{provider}/"):
+        name = name[len(provider) + 1:]
     reasoning = bool(entry.get("supports_reasoning"))
     thinking = None
     if provider == "anthropic" and reasoning:
@@ -89,11 +111,12 @@ def _to_model_option(name: str, entry: dict[str, Any]) -> ModelOption:
     return ModelOption(
         provider=provider,
         model=name,
-        label=f"{'OpenAI' if provider == 'openai' else 'Anthropic'} {name}",
+        label=f"{_PROVIDER_LABELS.get(provider, provider)} {name}",
         context_tokens=int(context) if context else None,
         max_output_tokens=int(entry["max_output_tokens"]) if entry.get("max_output_tokens") else None,
         supports_reasoning_effort=reasoning,
         anthropic_thinking_type=thinking,
+        openai_api=_infer_openai_api(name, entry) if provider == "openai" else "chat_completions",
     )
 
 

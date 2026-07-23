@@ -45,6 +45,23 @@ LLM_MODEL_CATALOG: list[ModelOption] = [
         supports_reasoning_effort=True,
     ),
     ModelOption(
+        provider="openai",
+        model="gpt-5.2",
+        label="OpenAI gpt-5.2 (high-end)",
+        context_tokens=400_000,
+        max_output_tokens=128_000,
+        supports_reasoning_effort=True,
+        openai_api="responses",
+    ),
+    ModelOption(
+        provider="moonshot",
+        model="kimi-k3",
+        label="Moonshot Kimi K3",
+        context_tokens=256_000,
+        max_output_tokens=32_768,
+        supports_reasoning_effort=False,
+    ),
+    ModelOption(
         provider="anthropic",
         model="claude-haiku-4-5",
         label="Anthropic Claude Haiku 4.5 (base)",
@@ -167,6 +184,12 @@ def supports_reasoning_effort(provider: str, model: str) -> bool:
     """True se o modelo aceita reasoning/thinking (OpenAI reasoning_effort ou Anthropic Extended Thinking)."""
     opt = _find(provider, model)
     return opt.supports_reasoning_effort if opt is not None else False
+
+
+def get_openai_api(provider: str, model: str) -> str:
+    """"chat_completions" ou "responses" — qual endpoint OpenAI o modelo exige para tools+reasoning."""
+    opt = _find(provider, model)
+    return opt.openai_api if opt is not None else "chat_completions"
 
 _FALLBACK_CONTEXT_TOKENS = 128_000
 

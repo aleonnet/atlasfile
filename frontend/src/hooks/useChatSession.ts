@@ -35,7 +35,7 @@ function messagesToStored(messages: ChatMessageType[]): StoredChatMessage[] {
 export function useChatSession() {
   const { t } = useTranslation();
   const { selectedProjectScope } = useProject();
-  const { selectedModel, setSelectedModel, openaiApiKey, anthropicApiKey, showThinking, autoTitleLLM } = useSettings();
+  const { selectedModel, setSelectedModel, openaiApiKey, anthropicApiKey, moonshotApiKey, showThinking, autoTitleLLM } = useSettings();
 
   const [chatMessages, setChatMessages] = useState<ChatMessageType[]>([]);
   const [chatSending, setChatSending] = useState(false);
@@ -103,6 +103,7 @@ export function useChatSession() {
       model,
       openaiApiKey: provider === "openai" ? openaiApiKey || undefined : undefined,
       anthropicApiKey: provider === "anthropic" ? anthropicApiKey || undefined : undefined,
+      moonshotApiKey: provider === "moonshot" ? moonshotApiKey || undefined : undefined,
       enableThinking: false,
     })
       .then((res) => {
@@ -198,6 +199,7 @@ export function useChatSession() {
         model,
         openaiApiKey: provider === "openai" ? openaiApiKey || undefined : undefined,
         anthropicApiKey: provider === "anthropic" ? anthropicApiKey || undefined : undefined,
+        moonshotApiKey: provider === "moonshot" ? moonshotApiKey || undefined : undefined,
         enableThinking: showThinking,
         signal: controller.signal,
       });

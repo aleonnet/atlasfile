@@ -64,6 +64,12 @@
   "validation_empty": "O conjunto de validação não tem documentos rotulados. Aprove ou corrija documentos na triagem — a partir da 2ª decisão, uma passa a compor a validação automaticamente.",
   "auto_backfill_on_run": "Ao rodar o ciclo, {{would_move}} documento(s) do treino serão reservados automaticamente para validação.",
   "sparse_gate_not_met": "Benchmark sparse será pulado: são necessários 100 documentos de treino (há {{records}}).",
+  "LLM_MODEL_NEEDS_RESPONSES_API": "Este modelo exige a Responses API para tools+reasoning. Atualize o catálogo de modelos (Configurações do assistente → Catálogo → Atualizar) e tente novamente.",
+  "MOONSHOT_KEY_INVALID": "Chave Moonshot inválida",
+  "MOONSHOT_KEY_HEADER_REQUIRED": "Informe a chave Moonshot no header X-Moonshot-API-Key",
+  "MOONSHOT_KEY_NOT_CONFIGURED": "Configure a chave Moonshot antes de validar",
+  "MOONSHOT_REQUEST_FAILED": "Falha ao consultar a Moonshot",
+  "OLLAMA_REQUEST_FAILED": "Falha ao consultar o Ollama — ele está rodando? (ollama serve)",
   "api": {
     "setupStatus": "Falha ao verificar status de setup",
     "loadProjects": "Falha ao carregar projetos",

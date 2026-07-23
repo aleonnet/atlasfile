@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.36.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [llm_providers_responses_v0360](llm_providers_responses_v0360.plan.md) | Correção do bug 400 de modelos OpenAI pós-gpt-5.2 (tools+reasoning agora via Responses API, roteado por capacidade de catálogo `openai_api` com inferência no refresh LiteLLM); registro central de providers com Moonshot (Kimi) e Ollama local via base_url OpenAI-compatible (backend `llm_providers.py` + frontend `lib/providers.ts`); validação automática de chaves no modal Assistant Settings (debounce 700ms, 5 estados incl. unreachable); modelos custom validados no seletor do chat; erro dedicado `LLM_MODEL_NEEDS_RESPONSES_API`; +30 testes novos incl. `/api/models/validate` que não tinha nenhum |
+
+---
+
 ## 0.33.0
 
 | # | Plano | Escopo |

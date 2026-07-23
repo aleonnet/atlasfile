@@ -36,7 +36,8 @@
     "validateFailed": "Falha ao validar",
     "validate": "Validar",
     "validateTitle": "Confirmar na API do provedor que o modelo existe",
-    "outsideCatalog": "Modelo fora do catálogo — valide antes de usar."
+    "outsideCatalog": "Modelo fora do catálogo — valide antes de usar.",
+    "prefixHint": "Para Moonshot ou Ollama use o prefixo explícito: moonshot/kimi-k3, ollama/gemma4:12b"
   },
   "assistant": {
     "title": "Configuração do Assistente",
@@ -52,7 +53,13 @@
     "openaiKey": "OpenAI API Key",
     "anthropicKey": "Anthropic API Key",
     "autoTitle": "Gerar título da sessão via LLM (em background)",
-    "autoTitleHint": "Se desativado, o título será a primeira mensagem da conversa."
+    "autoTitleHint": "Se desativado, o título será a primeira mensagem da conversa.",
+    "moonshotKey": "Moonshot API Key (Kimi)",
+    "keyChecking": "Verificando a chave…",
+    "keyValid": "✓ Chave válida",
+    "keyInvalid": "✗ Chave inválida — verifique o valor",
+    "keyUnreachable": "Não foi possível verificar a chave agora (nada foi bloqueado)",
+    "ollamaNoKey": "Ollama roda localmente — não precisa de chave"
   },
   "config": {
     "tabsAria": "Configurações",

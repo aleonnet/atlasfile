@@ -245,6 +245,9 @@ The placeholders supported by the active contract are `date`, `project`, `busine
 | `CLASSIFIER_DATASETS_ROOT` | Operational root of the classifier datasets | `/projects/_ATLASFILE/classifier/datasets` |
 | `OPENAI_API_KEY` | OpenAI key (chat + classification) | — |
 | `ANTHROPIC_API_KEY` | Anthropic key (chat) | — |
+| `MOONSHOT_API_KEY` | Moonshot (Kimi) key — OpenAI-compatible provider | — |
+| `MOONSHOT_BASE_URL` | Moonshot endpoint | `https://api.moonshot.ai/v1` |
+| `OLLAMA_BASE_URL` | Local Ollama endpoint (no key needed) | `http://host.docker.internal:11434/v1` in Docker |
 | `CLASSIFICATION_LLM_ENABLED` | Enable the LLM in the ingestion flow | `false` |
 | `DEFAULT_LLM_PROVIDER` | Default provider | `openai` |
 | `DEFAULT_LLM_MODEL` | Default model | `gpt-4o-mini` |

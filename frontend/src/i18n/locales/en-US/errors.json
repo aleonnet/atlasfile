@@ -64,6 +64,12 @@
   "validation_empty": "The validation set has no labeled documents. Approve or correct documents in triage — starting with the 2nd decision, one automatically joins the validation set.",
   "auto_backfill_on_run": "When the cycle runs, {{would_move}} training document(s) will be automatically reserved for validation.",
   "sparse_gate_not_met": "The sparse benchmark will be skipped: 100 training documents are required (there are {{records}}).",
+  "LLM_MODEL_NEEDS_RESPONSES_API": "This model requires the Responses API for tools+reasoning. Refresh the model catalog (Assistant settings → Catalog → Refresh) and try again.",
+  "MOONSHOT_KEY_INVALID": "Moonshot key invalid",
+  "MOONSHOT_KEY_HEADER_REQUIRED": "Provide the Moonshot key in the X-Moonshot-API-Key header",
+  "MOONSHOT_KEY_NOT_CONFIGURED": "Configure the Moonshot key before validating",
+  "MOONSHOT_REQUEST_FAILED": "Failed to reach Moonshot",
+  "OLLAMA_REQUEST_FAILED": "Failed to reach Ollama — is it running? (ollama serve)",
   "api": {
     "setupStatus": "Failed to check setup status",
     "loadProjects": "Failed to load projects",

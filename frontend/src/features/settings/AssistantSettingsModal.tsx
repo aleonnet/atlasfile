@@ -14,9 +14,11 @@ import {
   updateChannelConfig,
   updateProjectProfile,
   validateModel,
+  validateProviderKey,
   type CatalogConfig,
   type ModelCatalogDetail,
 } from "../../api";
+import { isProviderId, type ProviderId } from "../../lib/providers";
 import { Button } from "../../components/ui/button";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { Input } from "../../components/ui/input";
@@ -37,11 +39,13 @@ type Props = {
   models: ModelOption[];
   openaiApiKey: string;
   anthropicApiKey: string;
+  moonshotApiKey: string;
   autoTitleLLM: boolean;
   onChangeModelTriage: (value: string) => void;
   onChangeModel: (value: string) => void;
   onChangeOpenAiKey: (value: string) => void;
   onChangeAnthropicKey: (value: string) => void;
+  onChangeMoonshotKey: (value: string) => void;
   onChangeAutoTitleLLM: (value: boolean) => void;
   onClose: () => void;
 };
@@ -74,6 +78,72 @@ function normalizeModelValue(raw: string): string {
 }
 
 type ValidationState = { status: "idle" | "validating" | "valid" | "invalid"; detail?: string };
+
+type KeyCheckState = "idle" | "checking" | "valid" | "invalid" | "unreachable";
+
+/** Campo de chave de provider com validação automática (padrão do OnboardingWizard):
+ *  debounce 700ms + guarda stale contra respostas fora de ordem; `unreachable`
+ *  (rede/backend fora) é distinto de `invalid` e nada é bloqueado. */
+function ApiKeyField({
+  provider,
+  id,
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  provider: ProviderId;
+  id: string;
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [keyCheck, setKeyCheck] = useState<KeyCheckState>("idle");
+
+  useEffect(() => {
+    const key = value.trim();
+    if (!key) {
+      setKeyCheck("idle");
+      return;
+    }
+    let stale = false;
+    setKeyCheck("checking");
+    const timer = setTimeout(() => {
+      validateProviderKey(provider, key)
+        .then((r) => {
+          if (!stale) setKeyCheck(r.valid ? "valid" : "invalid");
+        })
+        .catch(() => {
+          if (!stale) setKeyCheck("unreachable");
+        });
+    }, 700);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [provider, value]);
+
+  return (
+    <>
+      <label className={fieldLabelClass} htmlFor={id}>{label}</label>
+      <Input
+        id={id}
+        type="password"
+        className="font-mono"
+        value={value}
+        onChange={(e: InputLikeEvent) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+      />
+      {keyCheck === "checking" && <span className={hintClass}>{t("settings:assistant.keyChecking")}</span>}
+      {keyCheck === "valid" && <span className={cn(hintClass, "text-success")}>{t("settings:assistant.keyValid")}</span>}
+      {keyCheck === "invalid" && <span className={cn(hintClass, "text-destructive")}>{t("settings:assistant.keyInvalid")}</span>}
+      {keyCheck === "unreachable" && <span className={hintClass}>{t("settings:assistant.keyUnreachable")}</span>}
+    </>
+  );
+}
 
 function formatRefreshedAt(iso: string | null | undefined): string {
   if (!iso) return i18n.t("settings:catalog.never");
@@ -240,7 +310,7 @@ function ModelCombobox({
   models: ModelOption[];
   customModels: string[];
   onValidated: (value: string) => void;
-  apiKeys: { openai?: string; anthropic?: string };
+  apiKeys: { openai?: string; anthropic?: string; moonshot?: string };
 }) {
   const { t } = useTranslation();
   const [validation, setValidation] = useState<ValidationState>({ status: "idle" });
@@ -384,7 +454,9 @@ function ModelCombobox({
         )}
       </div>
       {isCustom && validation.status === "idle" && (
-        <span className={hintClass}>{t("settings:combobox.outsideCatalog")}</span>
+        <span className={hintClass}>
+          {t("settings:combobox.outsideCatalog")} {t("settings:combobox.prefixHint")}
+        </span>
       )}
       {validation.status === "valid" && (
         <span className={cn(hintClass, "text-success")}>{validation.detail}</span>
@@ -403,10 +475,12 @@ export function AssistantSettingsModal({
   models,
   openaiApiKey,
   anthropicApiKey,
+  moonshotApiKey,
   onChangeModelTriage,
   onChangeModel,
   onChangeOpenAiKey,
   onChangeAnthropicKey,
+  onChangeMoonshotKey,
   autoTitleLLM,
   onChangeAutoTitleLLM,
   onClose
@@ -519,7 +593,7 @@ export function AssistantSettingsModal({
           ...current.profile.classification,
           llm_policy: {
             ...basePolicy,
-            provider: (provider === "anthropic" ? "anthropic" : "openai"),
+            provider: isProviderId(provider) ? provider : "openai",
             model,
           },
         },
@@ -536,8 +610,20 @@ export function AssistantSettingsModal({
 
   const chatProvider = selectedModel ? normalizeModelValue(selectedModel).split("/")[0]?.toLowerCase() : null;
   const triageProvider = selectedModelTriage ? normalizeModelValue(selectedModelTriage).split("/")[0]?.toLowerCase() : null;
-  const needOpenAI = chatProvider === "openai" || triageProvider === "openai";
-  const needAnthropic = chatProvider === "anthropic" || triageProvider === "anthropic";
+  // Campos de chave dirigidos pelo registro de providers: só os providers em uso
+  // que exigem chave; Ollama (local) ganha apenas o hint.
+  const usedProviders = new Set([chatProvider, triageProvider].filter((p): p is string => !!p));
+  const keyFields: Array<{ provider: ProviderId; id: string; label: string; placeholder: string; value: string; onChange: (v: string) => void }> = [];
+  if (usedProviders.has("openai")) {
+    keyFields.push({ provider: "openai", id: "settings-openai-key", label: t("settings:assistant.openaiKey"), placeholder: "sk-...", value: openaiApiKey, onChange: onChangeOpenAiKey });
+  }
+  if (usedProviders.has("anthropic")) {
+    keyFields.push({ provider: "anthropic", id: "settings-anthropic-key", label: t("settings:assistant.anthropicKey"), placeholder: "sk-ant-...", value: anthropicApiKey, onChange: onChangeAnthropicKey });
+  }
+  if (usedProviders.has("moonshot")) {
+    keyFields.push({ provider: "moonshot", id: "settings-moonshot-key", label: t("settings:assistant.moonshotKey"), placeholder: "sk-...", value: moonshotApiKey, onChange: onChangeMoonshotKey });
+  }
+  const usesOllama = usedProviders.has("ollama");
 
   const tgStatus = channelStatus?.channels.find((c) => c.channel_id === "telegram");
 
@@ -577,7 +663,7 @@ export function AssistantSettingsModal({
         models={models}
         customModels={customModels}
         onValidated={addCustomModel}
-        apiKeys={{ openai: openaiApiKey || undefined, anthropic: anthropicApiKey || undefined }}
+        apiKeys={{ openai: openaiApiKey || undefined, anthropic: anthropicApiKey || undefined, moonshot: moonshotApiKey || undefined }}
       />
 
       {isSingleProject ? (
@@ -592,7 +678,7 @@ export function AssistantSettingsModal({
             models={models}
             customModels={customModels}
             onValidated={addCustomModel}
-            apiKeys={{ openai: openaiApiKey || undefined, anthropic: anthropicApiKey || undefined }}
+            apiKeys={{ openai: openaiApiKey || undefined, anthropic: anthropicApiKey || undefined, moonshot: moonshotApiKey || undefined }}
           />
           <span className={cn(hintClass, triageSaveError && "text-destructive")}>
             {triageSaveStatus || t("settings:assistant.triagePolicyHint")}
@@ -607,34 +693,10 @@ export function AssistantSettingsModal({
         </>
       )}
 
-      {needOpenAI && (
-        <>
-          <label className={fieldLabelClass} htmlFor="settings-openai-key">{t("settings:assistant.openaiKey")}</label>
-          <Input
-            id="settings-openai-key"
-            type="password"
-            className="font-mono"
-            value={openaiApiKey}
-            onChange={(e: InputLikeEvent) => onChangeOpenAiKey(e.target.value)}
-            placeholder="sk-..."
-            autoComplete="off"
-          />
-        </>
-      )}
-      {needAnthropic && (
-        <>
-          <label className={fieldLabelClass} htmlFor="settings-anthropic-key">{t("settings:assistant.anthropicKey")}</label>
-          <Input
-            id="settings-anthropic-key"
-            type="password"
-            className="font-mono"
-            value={anthropicApiKey}
-            onChange={(e: InputLikeEvent) => onChangeAnthropicKey(e.target.value)}
-            placeholder="sk-ant-..."
-            autoComplete="off"
-          />
-        </>
-      )}
+      {keyFields.map((field) => (
+        <ApiKeyField key={field.provider} {...field} />
+      ))}
+      {usesOllama && <span className={hintClass}>{t("settings:assistant.ollamaNoKey")}</span>}
 
       <label className="mt-4 flex items-center gap-2 text-sm">
         <input

@@ -130,6 +130,8 @@ export interface ChatPanelProps {
   canAbort: boolean;
   selectedModel: string;
   models: { provider: string; model: string; label: string; supports_reasoning_effort?: boolean }[];
+  /** Modelos validados pelo usuário ("provider/model") — ex.: locais via Ollama */
+  customModels?: string[];
   onModelChange: (value: string) => void;
   onOpenSettings: () => void;
   onSend: (text: string, attachments?: ChatAttachment[]) => void;
@@ -210,6 +212,7 @@ export function ChatPanel({
   canAbort,
   selectedModel,
   models,
+  customModels = [],
   onModelChange,
   onOpenSettings,
   onSend,
@@ -233,6 +236,9 @@ export function ChatPanel({
   contextPressureRatio = 0,
 }: ChatPanelProps) {
   const { t } = useTranslation();
+  // Modelos custom validados (ex.: ollama/...) entram no select sem duplicar o catálogo
+  const catalogValues = new Set(models.map((m) => `${m.provider}/${m.model}`));
+  const customOptions = customModels.filter((c) => !catalogValues.has(c));
   const reasoningSupported =
     selectedModel && (models.find((m) => `${m.provider}/${m.model}` === selectedModel)?.supports_reasoning_effort ?? false);
   const companionState = useCompanionState(sending, error);
@@ -321,7 +327,7 @@ export function ChatPanel({
           id="chat-panel-model"
           value={selectedModel}
           onChange={(e) => onModelChange(e.target.value)}
-          disabled={models.length === 0}
+          disabled={models.length === 0 && customOptions.length === 0}
           className={cn(
             "h-8 min-w-0 max-w-full rounded-md border border-border bg-panel px-2.5 text-sm text-foreground shadow-none",
             "transition-[border-color,box-shadow] hover:border-border-strong",
@@ -329,8 +335,13 @@ export function ChatPanel({
           )}
         >
           {models.map((m) => (
-            <option key={m.label} value={`${m.provider}/${m.model}`}>
+            <option key={`${m.provider}/${m.model}`} value={`${m.provider}/${m.model}`}>
               {m.label}
+            </option>
+          ))}
+          {customOptions.map((c) => (
+            <option key={c} value={c}>
+              {t("settings:combobox.validatedByYou", { model: c })}
             </option>
           ))}
         </select>

@@ -38,6 +38,7 @@ import type {
 } from "./types";
 import i18n from "./i18n";
 import { apiErrorFromResponse, apiErrorMessage } from "./lib/apiError";
+import { PROVIDER_KEY_HEADER, type ProviderId } from "./lib/providers";
 import { STORAGE_KEYS, storageGet, storageSet } from "./lib/storage";
 
 const API_BASE =
@@ -537,11 +538,12 @@ export async function fetchModelCatalogDetail(): Promise<ModelCatalogDetail> {
 export async function validateModel(
   provider: string,
   model: string,
-  keys: { openai?: string; anthropic?: string }
+  keys: { openai?: string; anthropic?: string; moonshot?: string }
 ): Promise<{ valid: boolean; detail: string }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (keys.openai) headers["X-OpenAI-API-Key"] = keys.openai;
   if (keys.anthropic) headers["X-Anthropic-API-Key"] = keys.anthropic;
+  if (keys.moonshot) headers["X-Moonshot-API-Key"] = keys.moonshot;
   const res = await apiFetch(`${API_URL}/api/models/validate`, {
     method: "POST",
     headers,
@@ -566,13 +568,15 @@ export async function fetchDecisionStatus(): Promise<{
   return res.json();
 }
 
-/** Checa se a key do provedor é válida (key transiente no header, nunca persistida). */
+/** Checa se a key do provedor é válida (key transiente no header, nunca persistida).
+ *  Ollama valida sem chave — só o body {provider} (o backend testa o endpoint local). */
 export async function validateProviderKey(
-  provider: "openai" | "anthropic",
+  provider: ProviderId,
   key: string
 ): Promise<{ valid: boolean; detail: string }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  headers[provider === "openai" ? "X-OpenAI-API-Key" : "X-Anthropic-API-Key"] = key;
+  const headerName = PROVIDER_KEY_HEADER[provider];
+  if (headerName && key) headers[headerName] = key;
   const res = await apiFetch(`${API_URL}/api/keys/validate`, {
     method: "POST",
     headers,
@@ -591,6 +595,7 @@ export async function sendChatMessage(
     model?: string;
     openaiApiKey?: string;
     anthropicApiKey?: string;
+    moonshotApiKey?: string;
     enableThinking?: boolean;
     signal?: AbortSignal;
   }
@@ -598,6 +603,7 @@ export async function sendChatMessage(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (options?.openaiApiKey) headers["X-OpenAI-API-Key"] = options.openaiApiKey;
   if (options?.anthropicApiKey) headers["X-Anthropic-API-Key"] = options.anthropicApiKey;
+  if (options?.moonshotApiKey) headers["X-Moonshot-API-Key"] = options.moonshotApiKey;
   const body: { messages: ChatMessage[]; project_id?: string; provider?: string; model?: string; enable_thinking?: boolean } = { messages };
   if (options?.projectId) body.project_id = options.projectId;
   if (options?.provider) body.provider = options.provider;

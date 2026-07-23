@@ -130,6 +130,7 @@ from .spreadsheet_query import (
     get_schema as get_spreadsheet_schema,
     run_query as run_spreadsheet_query,
 )
+from .llm_providers import get_provider, resolve_api_key as resolve_provider_api_key, resolve_base_url
 from .orchestrator import classify_with_llm, get_llm_config, run_chat_loop
 from .usage_costs import get_cost_per_1m
 from .utils import DEFAULT_CANONICAL_PATTERN, build_canonical_filename, fold_ocr_spacing, normalize_text, utc_now_iso
@@ -2288,44 +2289,62 @@ class KeyValidateRequest(BaseModel):
     provider: str
 
 
+def _transient_provider_keys(
+    x_openai_api_key: str | None,
+    x_anthropic_api_key: str | None,
+    x_moonshot_api_key: str | None,
+) -> dict[str, str | None]:
+    return {"openai": x_openai_api_key, "anthropic": x_anthropic_api_key, "moonshot": x_moonshot_api_key}
+
+
+def _validation_client(spec, transient_key: str | None):
+    """Client síncrono para validação, com import inline do SDK (testes injetam fakes em sys.modules)."""
+    api_key = resolve_provider_api_key(spec, transient_key)
+    if spec.sdk_flavor == "anthropic":
+        import anthropic as anthropic_sdk
+
+        return anthropic_sdk.Anthropic(api_key=api_key), anthropic_sdk
+    import openai as openai_sdk
+
+    kwargs: dict[str, Any] = {"api_key": api_key}
+    base_url = resolve_base_url(spec)
+    if base_url:
+        kwargs["base_url"] = base_url
+    return openai_sdk.OpenAI(**kwargs), openai_sdk
+
+
 @app.post("/api/keys/validate")
 def validate_provider_key(
     body: KeyValidateRequest,
     x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
     x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+    x_moonshot_api_key: str | None = Header(None, alias="X-Moonshot-API-Key"),
     auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
     """Checa se a key do provedor é válida (models.list); key transiente, nunca persistida.
 
     Key inválida é resultado esperado (valid=False), não erro — o wizard usa
-    isto de forma não-impeditiva.
+    isto de forma não-impeditiva. Ollama não exige chave (valida o endpoint local).
     """
     provider = body.provider.strip().lower()
-    if provider == "openai":
-        if not x_openai_api_key:
-            raise http_error(400, "OPENAI_KEY_HEADER_REQUIRED", "Informe a chave OpenAI no header X-OpenAI-API-Key")
-        import openai as openai_sdk
-
-        try:
-            openai_sdk.OpenAI(api_key=x_openai_api_key).models.list()
-            return {"valid": True, "detail": "Chave OpenAI válida"}
-        except openai_sdk.AuthenticationError:
-            return {"valid": False, "detail": "Chave OpenAI inválida"}
-        except Exception as exc:  # rede/timeout — não confundir com key inválida
-            raise http_error(502, "OPENAI_REQUEST_FAILED", f"Falha ao consultar a OpenAI: {exc}", error=str(exc))
-    if provider == "anthropic":
-        if not x_anthropic_api_key:
-            raise http_error(400, "ANTHROPIC_KEY_HEADER_REQUIRED", "Informe a chave Anthropic no header X-Anthropic-API-Key")
-        import anthropic as anthropic_sdk
-
-        try:
-            anthropic_sdk.Anthropic(api_key=x_anthropic_api_key).models.list()
-            return {"valid": True, "detail": "Chave Anthropic válida"}
-        except anthropic_sdk.AuthenticationError:
-            return {"valid": False, "detail": "Chave Anthropic inválida"}
-        except Exception as exc:
-            raise http_error(502, "ANTHROPIC_REQUEST_FAILED", f"Falha ao consultar a Anthropic: {exc}", error=str(exc))
-    raise http_error(400, "PROVIDER_UNSUPPORTED", f"Provedor não suportado: {provider}", provider=provider)
+    spec = get_provider(provider)
+    if spec is None:
+        raise http_error(400, "PROVIDER_UNSUPPORTED", f"Provedor não suportado: {provider}", provider=provider)
+    key = _transient_provider_keys(x_openai_api_key, x_anthropic_api_key, x_moonshot_api_key).get(provider)
+    if spec.requires_key and not key:
+        raise http_error(
+            400,
+            f"{provider.upper()}_KEY_HEADER_REQUIRED",
+            f"Informe a chave {spec.label} no header {spec.key_header}",
+        )
+    client, sdk = _validation_client(spec, key)
+    try:
+        client.models.list()
+        return {"valid": True, "detail": f"Chave {spec.label} válida"}
+    except sdk.AuthenticationError:
+        return {"valid": False, "detail": f"Chave {spec.label} inválida"}
+    except Exception as exc:  # rede/timeout — não confundir com key inválida
+        raise http_error(502, f"{provider.upper()}_REQUEST_FAILED", f"Falha ao consultar a {spec.label}: {exc}", error=str(exc))
 
 
 @app.post("/api/models/validate")
@@ -2333,6 +2352,7 @@ def validate_model(
     body: ModelValidateRequest,
     x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
     x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+    x_moonshot_api_key: str | None = Header(None, alias="X-Moonshot-API-Key"),
     auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
     """Confirma na API do provedor que o modelo existe (GET /v1/models/{id}); não persiste a key."""
@@ -2340,35 +2360,22 @@ def validate_model(
     model = body.model.strip()
     if not model:
         raise http_error(400, "MODEL_NAME_REQUIRED", "Informe o nome do modelo")
-    if provider == "openai":
-        if not x_openai_api_key:
-            raise http_error(400, "OPENAI_KEY_NOT_CONFIGURED", "Configure a chave OpenAI antes de validar")
-        import openai as openai_sdk
-
-        try:
-            openai_sdk.OpenAI(api_key=x_openai_api_key).models.retrieve(model)
-            return {"valid": True, "detail": f"Modelo '{model}' disponível na OpenAI"}
-        except openai_sdk.NotFoundError:
-            return {"valid": False, "detail": f"Modelo '{model}' não existe na OpenAI"}
-        except openai_sdk.AuthenticationError:
-            raise http_error(401, "OPENAI_KEY_INVALID", "Chave OpenAI inválida")
-        except Exception as exc:  # rede/timeout — não confundir com inexistente
-            raise http_error(502, "OPENAI_REQUEST_FAILED", f"Falha ao consultar a OpenAI: {exc}", error=str(exc))
-    if provider == "anthropic":
-        if not x_anthropic_api_key:
-            raise http_error(400, "ANTHROPIC_KEY_NOT_CONFIGURED", "Configure a chave Anthropic antes de validar")
-        import anthropic as anthropic_sdk
-
-        try:
-            anthropic_sdk.Anthropic(api_key=x_anthropic_api_key).models.retrieve(model)
-            return {"valid": True, "detail": f"Modelo '{model}' disponível na Anthropic"}
-        except anthropic_sdk.NotFoundError:
-            return {"valid": False, "detail": f"Modelo '{model}' não existe na Anthropic"}
-        except anthropic_sdk.AuthenticationError:
-            raise http_error(401, "ANTHROPIC_KEY_INVALID", "Chave Anthropic inválida")
-        except Exception as exc:
-            raise http_error(502, "ANTHROPIC_REQUEST_FAILED", f"Falha ao consultar a Anthropic: {exc}", error=str(exc))
-    raise http_error(400, "PROVIDER_UNSUPPORTED", f"Provedor não suportado: {provider}", provider=provider)
+    spec = get_provider(provider)
+    if spec is None:
+        raise http_error(400, "PROVIDER_UNSUPPORTED", f"Provedor não suportado: {provider}", provider=provider)
+    key = _transient_provider_keys(x_openai_api_key, x_anthropic_api_key, x_moonshot_api_key).get(provider)
+    if spec.requires_key and not key:
+        raise http_error(400, f"{provider.upper()}_KEY_NOT_CONFIGURED", f"Configure a chave {spec.label} antes de validar")
+    client, sdk = _validation_client(spec, key)
+    try:
+        client.models.retrieve(model)
+        return {"valid": True, "detail": f"Modelo '{model}' disponível na {spec.label}"}
+    except sdk.NotFoundError:
+        return {"valid": False, "detail": f"Modelo '{model}' não existe na {spec.label}"}
+    except sdk.AuthenticationError:
+        raise http_error(401, f"{provider.upper()}_KEY_INVALID", f"Chave {spec.label} inválida")
+    except Exception as exc:  # rede/timeout — não confundir com inexistente
+        raise http_error(502, f"{provider.upper()}_REQUEST_FAILED", f"Falha ao consultar a {spec.label}: {exc}", error=str(exc))
 
 
 @app.post("/api/chat", response_model=ChatResponse)
@@ -2376,6 +2383,7 @@ async def api_chat(
     body: ChatRequest,
     x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
     x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+    x_moonshot_api_key: str | None = Header(None, alias="X-Moonshot-API-Key"),
     auth: AuthContext = Depends(require_auth),
 ) -> ChatResponse:
     """Send messages to the chat orchestrator (LLM + MCP tools)."""
@@ -2385,7 +2393,7 @@ async def api_chat(
         provider = body.provider
     if body.model:
         model = body.model
-    api_key = x_openai_api_key if provider == "openai" else (x_anthropic_api_key if provider == "anthropic" else None)
+    api_key = _transient_provider_keys(x_openai_api_key, x_anthropic_api_key, x_moonshot_api_key).get(provider)
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
     try:
         result = await run_chat_loop(
@@ -2405,8 +2413,18 @@ async def api_chat(
         raise
     except Exception as e:  # noqa: BLE001
         err_msg = (str(e).strip() or type(e).__name__).replace("\n", " ")
+        low = err_msg.lower()
+        # 400 da OpenAI em modelos pós-gpt-5.2: tools+reasoning_effort exigem /v1/responses.
+        # Catálogo desatualizado roteia pelo chat/completions — orientar o refresh.
+        if "reasoning_effort" in low and ("/v1/responses" in low or "function tools" in low):
+            raise http_error(
+                503,
+                "LLM_MODEL_NEEDS_RESPONSES_API",
+                f"O modelo '{model}' exige a Responses API para tools+reasoning. "
+                "Atualize o catálogo de modelos (Configurações do assistente → Catálogo → Atualizar) e tente novamente.",
+            ) from e
         if any(
-            x in err_msg.lower()
+            x in low
             for x in ("authentication", "api_key", "invalid api key", "incorrect api key", "no api key")
         ):
             raise http_error(
@@ -2884,6 +2902,7 @@ async def api_classify(
     body: ClassifyRequest,
     x_openai_api_key: str | None = Header(None, alias="X-OpenAI-API-Key"),
     x_anthropic_api_key: str | None = Header(None, alias="X-Anthropic-API-Key"),
+    x_moonshot_api_key: str | None = Header(None, alias="X-Moonshot-API-Key"),
     auth: AuthContext = Depends(require_auth)
 ) -> ClassifyResponse:
     """Classify a document excerpt via LLM (submit_classification tool). Request may override provider/model."""
@@ -2893,7 +2912,7 @@ async def api_classify(
     else:
         provider, model = get_llm_config("classification")
         provider_override, model_override = None, None
-    api_key = x_openai_api_key if provider == "openai" else (x_anthropic_api_key if provider == "anthropic" else None)
+    api_key = _transient_provider_keys(x_openai_api_key, x_anthropic_api_key, x_moonshot_api_key).get(provider)
     result = await classify_with_llm(
         body.doc_id, body.text_excerpt, body.filename or "",
         api_key=api_key,

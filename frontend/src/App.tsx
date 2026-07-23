@@ -77,6 +77,8 @@ function AppShell() {
     setOpenaiApiKey,
     anthropicApiKey,
     setAnthropicApiKey,
+    moonshotApiKey,
+    setMoonshotApiKey,
     showThinking,
     setShowThinking,
     autoTitleLLM,
@@ -589,10 +591,12 @@ function AppShell() {
         models={models}
         openaiApiKey={openaiApiKey}
         anthropicApiKey={anthropicApiKey}
+        moonshotApiKey={moonshotApiKey}
         onChangeModel={setSelectedModel}
         onChangeModelTriage={setSelectedModelTriage}
         onChangeOpenAiKey={setOpenaiApiKey}
         onChangeAnthropicKey={setAnthropicApiKey}
+        onChangeMoonshotKey={setMoonshotApiKey}
         autoTitleLLM={autoTitleLLM}
         onChangeAutoTitleLLM={setAutoTitleLLM}
         onClose={() => setSettingsOpen(false)}

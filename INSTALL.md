@@ -91,6 +91,9 @@ Se a pasta não existir, o AtlasFile a cria automaticamente no primeiro uso.
 # Chaves LLM (para chat e classificação assistida)
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
+# Providers OpenAI-compatíveis (opcionais): Moonshot (Kimi) e Ollama local
+MOONSHOT_API_KEY=sk-...
+# OLLAMA_BASE_URL=http://host.docker.internal:11434/v1  # default no Docker; Ollama não precisa de chave
 
 # Habilitar LLM no fluxo de ingestão (default: false)
 CLASSIFICATION_LLM_ENABLED=true

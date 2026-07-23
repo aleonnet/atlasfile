@@ -1,3 +1,5 @@
+import type { ProviderId } from "./lib/providers";
+
 /** Severidade estrutural do canal de status: cada emissor declara a natureza
  *  da mensagem — o toast NÃO decide por sniffing de texto. Default "info". */
 export type StatusSeverity = "info" | "error";
@@ -167,6 +169,8 @@ export interface ModelOption {
   max_output_tokens?: number;
   /** OpenAI: reasoning_effort; Anthropic: Extended Thinking — Brain só ativo quando true */
   supports_reasoning_effort?: boolean;
+  /** OpenAI: "responses" quando o modelo exige a Responses API (pós gpt-5.2) — passthrough do backend */
+  openai_api?: string;
 }
 
 /** Token usage and estimated cost for one chat turn. */
@@ -611,7 +615,7 @@ export interface LLMOverrideGuardrails {
 
 export interface LLMPolicy {
   enabled: boolean;
-  provider: "openai" | "anthropic";
+  provider: ProviderId;
   model: string;
   mode: "tag_only" | "review" | "full_override";
   allow_override_fields: string[];

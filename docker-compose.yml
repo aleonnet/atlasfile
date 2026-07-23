@@ -57,6 +57,11 @@ services:
       - CLASSIFICATION_LLM_ENABLED=${CLASSIFICATION_LLM_ENABLED:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Providers OpenAI-compatíveis (Moonshot/Kimi e Ollama local via base_url)
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
+      - MOONSHOT_BASE_URL=${MOONSHOT_BASE_URL:-https://api.moonshot.ai/v1}
+      # Dentro do container, o Ollama do host é alcançado via host.docker.internal
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
       # Channels (messaging)
       - CHANNELS_ENABLED=${CHANNELS_ENABLED:-false}
       - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}

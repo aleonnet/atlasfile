@@ -11,6 +11,7 @@ const TRIAGE_MODEL_STORAGE_KEY = STORAGE_KEYS.triageModel;
 const CHAT_SHOW_THINKING_KEY = STORAGE_KEYS.showThinking;
 const OPENAI_API_KEY_STORAGE = STORAGE_KEYS.openaiApiKey;
 const ANTHROPIC_API_KEY_STORAGE = STORAGE_KEYS.anthropicApiKey;
+const MOONSHOT_API_KEY_STORAGE = STORAGE_KEYS.moonshotApiKey;
 const AUTO_TITLE_LLM_KEY = STORAGE_KEYS.autoTitleLLM;
 const CUSTOM_MODELS_KEY = STORAGE_KEYS.customModels;
 
@@ -63,6 +64,8 @@ type SettingsContextValue = {
   setOpenaiApiKey: React.Dispatch<React.SetStateAction<string>>;
   anthropicApiKey: string;
   setAnthropicApiKey: React.Dispatch<React.SetStateAction<string>>;
+  moonshotApiKey: string;
+  setMoonshotApiKey: React.Dispatch<React.SetStateAction<string>>;
   showThinking: boolean;
   setShowThinking: React.Dispatch<React.SetStateAction<boolean>>;
   autoTitleLLM: boolean;
@@ -80,6 +83,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [selectedModelTriage, setSelectedModelTriage] = useState<string>(() => readStorage(TRIAGE_MODEL_STORAGE_KEY));
   const [openaiApiKey, setOpenaiApiKey] = useState<string>(() => readStorage(OPENAI_API_KEY_STORAGE));
   const [anthropicApiKey, setAnthropicApiKey] = useState<string>(() => readStorage(ANTHROPIC_API_KEY_STORAGE));
+  const [moonshotApiKey, setMoonshotApiKey] = useState<string>(() => readStorage(MOONSHOT_API_KEY_STORAGE));
   const [showThinking, setShowThinking] = useState<boolean>(() => readStorage(CHAT_SHOW_THINKING_KEY) === "true");
   const [autoTitleLLM, setAutoTitleLLM] = useState<boolean>(() => readStorage(AUTO_TITLE_LLM_KEY) === "true");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -100,6 +104,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => writeStorage(CHAT_SHOW_THINKING_KEY, String(showThinking)), [showThinking]);
   useEffect(() => writeStorage(OPENAI_API_KEY_STORAGE, openaiApiKey || null), [openaiApiKey]);
   useEffect(() => writeStorage(ANTHROPIC_API_KEY_STORAGE, anthropicApiKey || null), [anthropicApiKey]);
+  useEffect(() => writeStorage(MOONSHOT_API_KEY_STORAGE, moonshotApiKey || null), [moonshotApiKey]);
   useEffect(() => writeStorage(AUTO_TITLE_LLM_KEY, String(autoTitleLLM)), [autoTitleLLM]);
 
   const modelsQuery = useQuery({ queryKey: qk.models(), queryFn: fetchModels, staleTime: 5 * 60_000 });
@@ -154,6 +159,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setOpenaiApiKey,
       anthropicApiKey,
       setAnthropicApiKey,
+      moonshotApiKey,
+      setMoonshotApiKey,
       showThinking,
       setShowThinking,
       autoTitleLLM,
@@ -172,6 +179,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       selectedModelTriage,
       openaiApiKey,
       anthropicApiKey,
+      moonshotApiKey,
       showThinking,
       autoTitleLLM,
       settingsOpen,

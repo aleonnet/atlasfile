@@ -36,7 +36,8 @@
     "validateFailed": "Failed to validate",
     "validate": "Validate",
     "validateTitle": "Confirm with the provider API that the model exists",
-    "outsideCatalog": "Model not in the catalog — validate it before using."
+    "outsideCatalog": "Model not in the catalog — validate it before using.",
+    "prefixHint": "For Moonshot or Ollama use the explicit prefix: moonshot/kimi-k3, ollama/gemma4:12b"
   },
   "assistant": {
     "title": "Assistant Settings",
@@ -52,7 +53,13 @@
     "openaiKey": "OpenAI API Key",
     "anthropicKey": "Anthropic API Key",
     "autoTitle": "Generate session title via LLM (in the background)",
-    "autoTitleHint": "If disabled, the title will be the first message of the chat."
+    "autoTitleHint": "If disabled, the title will be the first message of the chat.",
+    "moonshotKey": "Moonshot API Key (Kimi)",
+    "keyChecking": "Checking key…",
+    "keyValid": "✓ Key valid",
+    "keyInvalid": "✗ Key invalid — check the value",
+    "keyUnreachable": "Could not verify the key right now (nothing was blocked)",
+    "ollamaNoKey": "Ollama runs locally — no key needed"
   },
   "config": {
     "tabsAria": "Settings",

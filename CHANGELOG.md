@@ -15,6 +15,21 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.36.0] -- 2026-07-22
+
+### Corrigido
+
+- **Modelos OpenAI pós-gpt-5.2 no assistente** (bug 400 "Function tools with reasoning_effort are not supported ... use /v1/responses"): o chat (e a classificação LLM) agora roteiam esses modelos pela **Responses API** (`client.responses.create`) preservando tools + reasoning — itens de reasoning retornam íntegros no loop de tools, tools no formato flat, usage acumulado (input/output/cache). Roteamento por capacidade de catálogo: campo novo `openai_api` ("chat_completions" | "responses") no `ModelOption`, com builtin (gpt-5.2) e inferência no refresh LiteLLM (`supported_endpoints` ou reasoning + versão ≥ 5.2). Modelos atuais (gpt-4o-mini/4.1/5.1) permanecem byte-a-byte no caminho existente. Erro dedicado `LLM_MODEL_NEEDS_RESPONSES_API` orienta o refresh do catálogo quando o cache está desatualizado.
+- **Refresh do catálogo**: nomes de modelos de provedores não-OpenAI vinham com o prefixo LiteLLM duplicado (`moonshot/moonshot/...`); o prefixo do provider agora é removido do id.
+
+### Adicionado
+
+- **Providers OpenAI-compatíveis**: Moonshot (Kimi; `MOONSHOT_API_KEY`/`X-Moonshot-API-Key`, `MOONSHOT_BASE_URL`) e **Ollama local** (sem chave; `OLLAMA_BASE_URL`, default `host.docker.internal:11434` no Docker). Registro central de providers (`backend/app/llm_providers.py` + `frontend/src/lib/providers.ts`) substitui os ternários openai/anthropic em orchestrator, endpoints de chat/classify e validações — adicionar um provider novo é 1 entrada no registro. Catálogo aceita modelos moonshot no refresh (builtin `kimi-k3`); modelos Ollama entram pela combobox custom com validação real (`/api/models/validate` generalizado, que também ganhou testes — antes não tinha nenhum).
+- **Validação de chaves no modal Assistant Settings**: campos de chave (OpenAI/Anthropic/Moonshot) validam automaticamente com debounce de 700ms e badge inline — ✓ válida, ✗ inválida, e "não foi possível verificar" (rede/backend fora) distinto de inválida; nada bloqueia. Mesmo padrão do wizard (stale-guard incluso). Modelos Ollama exibem hint "roda localmente, sem chave".
+- **Modelos custom no seletor do chat**: modelos validados pelo usuário (ex.: `ollama/gemma4:12b`) agora aparecem no select do chat — antes só existiam no modal e eram inutilizáveis no chat.
+
+---
+
 ## [0.35.0] -- 2026-07-19
 
 ### Adicionado

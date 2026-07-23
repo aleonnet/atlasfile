@@ -5,6 +5,7 @@ import { ChatPanel } from "../components/ChatPanel";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { UsageView } from "../features/usage/UsageView";
 import { useChatSession } from "../hooks/useChatSession";
+import { useSettings } from "../contexts/SettingsContext";
 import type { ChatMessage as ChatMessageType, ModelOption } from "../types";
 
 const ALL_PROJECTS = "__all__";
@@ -37,6 +38,7 @@ export function AssistenteView({
   // O chat vive AQUI (keep-alive da view preserva a sessão entre navegações) —
   // era elevado ao App só por causa do unmount, que não existe mais
   const chat = useChatSession();
+  const { customModels } = useSettings();
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4">
@@ -65,6 +67,7 @@ export function AssistenteView({
               canAbort={chat.chatSending}
               selectedModel={selectedModel}
               models={models}
+              customModels={customModels}
               onModelChange={onModelChange}
               onOpenSettings={onOpenSettings}
               onSend={chat.handleChatSend}
@@ -72,7 +75,7 @@ export function AssistenteView({
               onNewSession={chat.handleChatNewSession}
               showThinking={showThinking}
               onShowThinkingChange={onShowThinkingChange}
-              disabled={models.length === 0 || !selectedModel}
+              disabled={(models.length === 0 && customModels.length === 0) || !selectedModel}
               sessions={chat.sessions}
               sessionsLoading={chat.sessionsLoading}
               activeSessionId={chat.activeSessionId}

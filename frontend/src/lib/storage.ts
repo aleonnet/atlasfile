@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   showThinking: "atlasfile-chat-show-thinking",
   openaiApiKey: "atlasfile-openai-api-key",
   anthropicApiKey: "atlasfile-anthropic-api-key",
+  moonshotApiKey: "atlasfile-moonshot-api-key",
   autoTitleLLM: "atlasfile-auto-title-llm",
   customModels: "atlasfile-custom-models",
   onboardingDone: "atlasfile-onboarding-done",

@@ -9,7 +9,14 @@ import json
 from typing import Any
 
 from app.config import settings
-from app.llm_catalog import get_anthropic_thinking_type, get_context_tokens, get_max_tool_result_chars, supports_reasoning_effort
+from app.llm_catalog import (
+    get_anthropic_thinking_type,
+    get_context_tokens,
+    get_max_tool_result_chars,
+    get_openai_api,
+    supports_reasoning_effort,
+)
+from app.llm_providers import get_provider, make_async_client
 from app.mcp_client import call_tool as mcp_call_tool
 from app.mcp_client import list_tools as mcp_list_tools
 from app.prompts import get_system_prompt_chat, get_system_prompt_classify
@@ -141,6 +148,47 @@ def mcp_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def mcp_tools_to_openai_responses(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert MCP tool list to the Responses API tool format — FLAT, sem o wrapper "function"."""
+    out = []
+    for t in tools:
+        out.append({
+            "type": "function",
+            "name": t["name"],
+            "description": t.get("description") or "",
+            "parameters": t.get("inputSchema") or {"type": "object", "properties": {}},
+            "strict": False,
+        })
+    return out
+
+
+def _messages_to_responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Converte histórico chat (role/content) para input da Responses API.
+    System fica de fora (vai em instructions=); content-lista (visão) vira input_text/input_image."""
+    items: list[dict[str, Any]] = []
+    for m in messages:
+        role = m.get("role")
+        if role == "system":
+            continue
+        content = m.get("content")
+        if isinstance(content, list):
+            parts: list[dict[str, Any]] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                kind = part.get("type")
+                if kind == "text":
+                    parts.append({"type": "input_text", "text": part.get("text", "") or ""})
+                elif kind == "image_url":
+                    url = (part.get("image_url") or {}).get("url") or ""
+                    if url:
+                        parts.append({"type": "input_image", "image_url": url})
+            items.append({"role": role, "content": parts})
+        else:
+            items.append({"role": role, "content": str(content or "")})
+    return items
+
+
 def mcp_tools_to_anthropic(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert MCP tool list to Anthropic tools format (name, description, input_schema)."""
     out = []
@@ -200,32 +248,45 @@ async def run_chat_loop(
     tool_calls_used: list[dict[str, Any]] = []
 
     max_tool_result_chars = get_max_tool_result_chars(provider, model)
-    if provider == "openai":
-        tools_api = mcp_tools_to_openai(tools_mcp)
-        result = await _run_chat_openai(
-            trimmed,
-            model,
-            tools_api,
-            api_key,
-            tool_calls_used,
-            enable_thinking,
-            max_tool_result_chars,
-            project_id,
-        )
-    elif provider == "anthropic":
-        tools_api = mcp_tools_to_anthropic(tools_mcp)
+    spec = get_provider(provider)
+    if spec is None:
+        raise ValueError(f"Unknown provider: {provider}")
+    if spec.sdk_flavor == "openai":
+        if provider == "openai" and get_openai_api(provider, model) == "responses":
+            result = await _run_chat_openai_responses(
+                trimmed,
+                model,
+                mcp_tools_to_openai_responses(tools_mcp),
+                api_key,
+                tool_calls_used,
+                enable_thinking,
+                max_tool_result_chars,
+                project_id,
+            )
+        else:
+            # openai clássico + providers OpenAI-compatíveis (moonshot, ollama)
+            result = await _run_chat_openai(
+                trimmed,
+                model,
+                mcp_tools_to_openai(tools_mcp),
+                api_key,
+                tool_calls_used,
+                enable_thinking,
+                max_tool_result_chars,
+                project_id,
+                provider=provider,
+            )
+    else:
         result = await _run_chat_anthropic(
             trimmed,
             model,
-            tools_api,
+            mcp_tools_to_anthropic(tools_mcp),
             api_key,
             tool_calls_used,
             enable_thinking,
             max_tool_result_chars,
             project_id,
         )
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
 
     result["context_pressure"] = _estimate_context_pressure(trimmed, provider, model)
     return result
@@ -240,10 +301,9 @@ async def _run_chat_openai(
     enable_thinking: bool = False,
     max_tool_result_chars: int = MAX_TOOL_RESULT_CHARS_FALLBACK,
     project_id: str | None = None,
+    provider: str = "openai",
 ) -> dict[str, Any]:
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(api_key=api_key or None)  # None => env OPENAI_API_KEY
+    client = make_async_client(provider, api_key)
     system_content = _chat_system_prompt(project_id)
     # Mensagens sem role system do cliente; system único no backend
     loop_messages = [{"role": "system", "content": system_content}] + [m for m in messages if m.get("role") != "system"]
@@ -252,7 +312,7 @@ async def _run_chat_openai(
         "messages": loop_messages,
         "tools": tools_api,
     }
-    if enable_thinking and supports_reasoning_effort("openai", model):
+    if enable_thinking and supports_reasoning_effort(provider, model):
         create_kw["reasoning_effort"] = "medium"
     usage_accum: dict[str, int | float] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_usd": 0.0}
     for _ in range(MAX_TOOL_LOOPS):
@@ -264,7 +324,7 @@ async def _run_chat_openai(
             ptd = getattr(u, "prompt_tokens_details", None)
             if ptd and getattr(ptd, "cached_tokens", None):
                 raw["cache_read_input_tokens"] = ptd.cached_tokens
-            _accumulate_usage(usage_accum, raw, "openai", model)
+            _accumulate_usage(usage_accum, raw, provider, model)
         choice = resp.choices[0] if resp.choices else None
         if not choice:
             return {"content": "", "tool_calls_used": tool_calls_used, "usage": _usage_return(usage_accum)}
@@ -296,6 +356,73 @@ async def _run_chat_openai(
                 "tool_call_id": tc.id,
                 "content": result,
             })
+    return {"content": "(max tool loops reached)", "tool_calls_used": tool_calls_used, "usage": _usage_return(usage_accum)}
+
+
+def _responses_usage_raw(resp: Any) -> dict[str, int] | None:
+    u = getattr(resp, "usage", None)
+    if u is None:
+        return None
+    raw = {"input_tokens": getattr(u, "input_tokens", 0) or 0, "output_tokens": getattr(u, "output_tokens", 0) or 0}
+    itd = getattr(u, "input_tokens_details", None)
+    if itd and getattr(itd, "cached_tokens", None):
+        raw["cache_read_input_tokens"] = itd.cached_tokens
+    return raw
+
+
+def _output_item_to_input(item: Any) -> dict[str, Any]:
+    if hasattr(item, "model_dump"):
+        return item.model_dump(exclude_none=True)
+    return dict(item)
+
+
+async def _run_chat_openai_responses(
+    messages: list[dict[str, Any]],
+    model: str,
+    tools_api: list[dict],
+    api_key: str | None,
+    tool_calls_used: list[dict[str, Any]],
+    enable_thinking: bool = False,
+    max_tool_result_chars: int = MAX_TOOL_RESULT_CHARS_FALLBACK,
+    project_id: str | None = None,
+) -> dict[str, Any]:
+    """Chat loop via Responses API — exigida por modelos OpenAI pós-gpt-5.2 para tools+reasoning.
+    Os itens de output (incluindo reasoning) voltam INTEIROS no input da rodada seguinte;
+    sem eles a segunda chamada retorna 400 em modelos reasoning."""
+    client = make_async_client("openai", api_key)
+    input_items = _messages_to_responses_input(messages)
+    create_kw: dict[str, Any] = {
+        "model": model,
+        "tools": tools_api,
+        "instructions": _chat_system_prompt(project_id),
+    }
+    if enable_thinking and supports_reasoning_effort("openai", model):
+        create_kw["reasoning"] = {"effort": "medium"}
+    usage_accum: dict[str, int | float] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "estimated_cost_usd": 0.0}
+    for _ in range(MAX_TOOL_LOOPS):
+        resp = await client.responses.create(input=input_items, **create_kw)
+        _accumulate_usage(usage_accum, _responses_usage_raw(resp), "openai", model)
+        output = getattr(resp, "output", None) or []
+        function_calls = [it for it in output if getattr(it, "type", None) == "function_call"]
+        if not function_calls:
+            return {
+                "content": getattr(resp, "output_text", "") or "",
+                "tool_calls_used": tool_calls_used,
+                "usage": _usage_return(usage_accum),
+            }
+        input_items.extend(_output_item_to_input(it) for it in output)
+        for fc in function_calls:
+            name = fc.name
+            try:
+                args = json.loads(fc.arguments) if isinstance(fc.arguments, str) else (fc.arguments or {})
+            except json.JSONDecodeError:
+                args = {}
+            args = _apply_project_scope_to_tool_args(name, args, project_id)
+            result = await mcp_call_tool(name, args)
+            result = _truncate_tool_result(result, max_tool_result_chars)
+            preview = result[:200] + "..." if len(result) > 200 else result
+            tool_calls_used.append({"name": name, "result_preview": preview})
+            input_items.append({"type": "function_call_output", "call_id": fc.call_id, "output": result})
     return {"content": "(max tool loops reached)", "tool_calls_used": tool_calls_used, "usage": _usage_return(usage_accum)}
 
 
@@ -507,14 +634,19 @@ async def classify_with_llm(
 
     project_context = _build_project_context(profile)
 
-    if provider == "openai":
-        tools_api = mcp_tools_to_openai(submit_only)
-        content, usage_raw = await _classify_openai(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
-    elif provider == "anthropic":
+    spec = get_provider(provider)
+    if spec is None:
+        return {"document_type": None, "tags": [], "confidence": 0.0, "business_domain": None, "topics": [], "explanation": None}
+    if spec.sdk_flavor == "openai":
+        if provider == "openai" and get_openai_api(provider, model) == "responses":
+            tools_api = mcp_tools_to_openai_responses(submit_only)
+            content, usage_raw = await _classify_openai_responses(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
+        else:
+            tools_api = mcp_tools_to_openai(submit_only)
+            content, usage_raw = await _classify_openai(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context, provider=provider)
+    else:
         tools_api = mcp_tools_to_anthropic(submit_only)
         content, usage_raw = await _classify_anthropic(doc_id, text_excerpt, filename, model, tools_api, api_key, project_context)
-    else:
-        return {"document_type": None, "tags": [], "confidence": 0.0, "business_domain": None, "topics": [], "explanation": None}
 
     if usage_raw:
         usage_raw["estimated_cost_usd"] = estimate_usage_cost(usage_raw, provider, model)
@@ -545,10 +677,9 @@ async def _classify_openai(
     tools_api: list[dict],
     api_key: str | None,
     project_context: str = "",
+    provider: str = "openai",
 ) -> tuple[dict[str, Any], dict[str, int]]:
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(api_key=api_key or None)
+    client = make_async_client(provider, api_key)
     context_block = f"\n\n{project_context}\n\n" if project_context else "\n\n"
     # LLM receives full text_excerpt (up to 20000 chars from read_text_excerpt).
     # Source: https://aclanthology.org/2024.tacl-1.9/ (Lost in the Middle — no artificial truncation)
@@ -579,6 +710,37 @@ async def _classify_openai(
         if tc.function.name == "submit_classification":
             try:
                 args = json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else {}
+            except json.JSONDecodeError:
+                args = {}
+            return args, usage_raw
+    return {}, usage_raw
+
+
+async def _classify_openai_responses(
+    doc_id: str,
+    text_excerpt: str,
+    filename: str,
+    model: str,
+    tools_api: list[dict],
+    api_key: str | None,
+    project_context: str = "",
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Classificação via Responses API — modelos reasoning novos rejeitam tool_choice no chat/completions."""
+    client = make_async_client("openai", api_key)
+    context_block = f"\n\n{project_context}\n\n" if project_context else "\n\n"
+    user_content = f"Documento: {filename}\nDoc ID: {doc_id}{context_block}Trecho:\n{text_excerpt}"
+    resp = await client.responses.create(
+        model=model,
+        instructions=get_system_prompt_classify(),
+        input=[{"role": "user", "content": user_content}],
+        tools=tools_api,
+        tool_choice={"type": "function", "name": "submit_classification"},
+    )
+    usage_raw = _responses_usage_raw(resp) or {}
+    for item in getattr(resp, "output", None) or []:
+        if getattr(item, "type", None) == "function_call" and getattr(item, "name", None) == "submit_classification":
+            try:
+                args = json.loads(item.arguments) if isinstance(item.arguments, str) else {}
             except json.JSONDecodeError:
                 args = {}
             return args, usage_raw
