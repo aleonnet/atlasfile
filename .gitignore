@@ -20,3 +20,7 @@ backend/runs/config/api_keys.json
 .playwright-mcp/
 /v[0-9]*.png
 .vite/
+# Bancadas de desenvolvimento — não fazem parte do app do usuário final
+extractor-benchmark/
+extractor-benchmark_mdxaf/
+.claude/skills/safe-exec/
