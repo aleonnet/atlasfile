@@ -42,7 +42,27 @@ def import_dashboards_once() -> dict[str, Any] | None:
             files={"file": ("dashboards.ndjson", NDJSON_PATH.read_bytes(), "application/ndjson")},
         )
         resp.raise_for_status()
+        _ensure_dark_theme_default(client, base)
         return resp.json()
+
+
+def _ensure_dark_theme_default(client: Any, base: str) -> None:
+    """Tema escuro como default de fábrica (identidade dark-first do AtlasFile) —
+    mas SÓ quando o usuário nunca mexeu no tema: escolha explícita é respeitada
+    em todos os boots seguintes. Falha aqui nunca afeta o import."""
+    try:
+        current = client.get(f"{base}/api/opensearch-dashboards/settings")
+        dark = (current.json().get("settings") or {}).get("theme:darkMode")
+        if dark is not None:  # userValue presente = alguém já decidiu — respeitar
+            return
+        client.post(
+            f"{base}/api/opensearch-dashboards/settings",
+            headers={"osd-xsrf": "true"},
+            json={"changes": {"theme:darkMode": True}},
+        )
+        logger.info("Tema escuro definido como default do Dashboards")
+    except Exception:
+        logger.debug("Não foi possível definir o tema default do Dashboards", exc_info=True)
 
 
 def start_dashboards_import_background() -> threading.Thread | None:

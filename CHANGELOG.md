@@ -22,6 +22,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 - **Uso LLM do chat achatado**: novo índice `atlasfile_chat_usage` (1 evento por chamada: provider, modelo, tokens, cache, custo, projeto, canal), gravado em `/api/chat` (web) e no fluxo de canais; falha na gravação nunca afeta a resposta do chat (testado). Resolve a limitação do custo aninhado em `usage_by_model` das sessões.
 - Aprendizados de plataforma registrados no gerador: nunca setar `fields` no index-pattern (substitui o cache de campos inteiro); TSVB do fork 7.10 usa strings lucene em `filter_ratio`; heatmap hora×dia exigiria campo derivado na indexação (candidato futuro).
 
+## [0.43.3] - 2026-07-23
+
+### Adicionado
+- **Tema escuro como default de fábrica do OpenSearch Dashboards** (identidade dark-first do AtlasFile): o auto-import define `theme:darkMode=true` — mas SÓ quando o usuário nunca mexeu no tema; escolha explícita (incluindo voltar ao claro) é respeitada em todos os boots seguintes (testado). Validado ao vivo na instância nova com screenshot do dashboard escuro.
+
 ## [0.43.2] - 2026-07-23
 
 ### Alterado

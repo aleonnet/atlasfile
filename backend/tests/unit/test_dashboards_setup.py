@@ -65,15 +65,26 @@ class _FakeResponse:
             raise RuntimeError(f"HTTP {self.status_code}")
 
 
-def _fake_httpx(status_code: int, import_payload: dict | None = None) -> tuple[ModuleType, MagicMock]:
+def _fake_httpx(status_code: int, import_payload: dict | None = None,
+                theme_settings: dict | None = None) -> tuple[ModuleType, MagicMock]:
     client = MagicMock()
     client.__enter__ = MagicMock(return_value=client)
     client.__exit__ = MagicMock(return_value=False)
-    client.get.return_value = _FakeResponse(status_code)
+
+    def _get(url, **kwargs):
+        if url.endswith("/api/opensearch-dashboards/settings"):
+            return _FakeResponse(200, {"settings": theme_settings or {}})
+        return _FakeResponse(status_code)
+
+    client.get.side_effect = _get
     client.post.return_value = _FakeResponse(200, import_payload or {"success": True, "successCount": 22})
     module = ModuleType("httpx")
     module.Client = MagicMock(return_value=client)  # type: ignore[attr-defined]
     return module, client
+
+
+def _post_urls(client) -> list[str]:
+    return [c.args[0] for c in client.post.call_args_list]
 
 
 def test_import_posta_ndjson_com_headers_e_auth(monkeypatch):
@@ -85,8 +96,8 @@ def test_import_posta_ndjson_com_headers_e_auth(monkeypatch):
     assert result == {"success": True, "successCount": 22}
     module.Client.assert_called_once()
     assert module.Client.call_args.kwargs["auth"] == (settings.opensearch_user, settings.opensearch_password)
-    client.get.assert_called_once_with("http://dash:5601/api/status")
-    post = client.post.call_args
+    assert client.get.call_args_list[0].args[0] == "http://dash:5601/api/status"
+    post = client.post.call_args_list[0]
     assert post.args[0] == "http://dash:5601/api/saved_objects/_import"
     assert post.kwargs["params"] == {"overwrite": "true"}
     assert post.kwargs["headers"] == {"osd-xsrf": "true"}
@@ -94,6 +105,24 @@ def test_import_posta_ndjson_com_headers_e_auth(monkeypatch):
     assert name == "dashboards.ndjson"
     assert payload == NDJSON_PATH.read_bytes()
     assert mime == "application/ndjson"
+
+
+def test_tema_escuro_vira_default_so_quando_usuario_nunca_mexeu(monkeypatch):
+    """v0.43.3: dark-first de fábrica; escolha explícita do usuário é respeitada."""
+    module, client = _fake_httpx(200, theme_settings={})
+    monkeypatch.setitem(sys.modules, "httpx", module)
+    monkeypatch.setattr(settings, "dashboards_url", "http://dash:5601", raising=False)
+    import_dashboards_once()
+    urls = _post_urls(client)
+    assert "http://dash:5601/api/opensearch-dashboards/settings" in urls
+    theme_post = client.post.call_args_list[urls.index("http://dash:5601/api/opensearch-dashboards/settings")]
+    assert theme_post.kwargs["json"] == {"changes": {"theme:darkMode": True}}
+
+    # usuário já decidiu (mesmo que tenha escolhido claro) → nada é sobrescrito
+    module2, client2 = _fake_httpx(200, theme_settings={"theme:darkMode": {"userValue": False}})
+    monkeypatch.setitem(sys.modules, "httpx", module2)
+    import_dashboards_once()
+    assert "http://dash:5601/api/opensearch-dashboards/settings" not in _post_urls(client2)
 
 
 def test_dashboards_fora_do_ar_retorna_none_sem_postar(monkeypatch):
