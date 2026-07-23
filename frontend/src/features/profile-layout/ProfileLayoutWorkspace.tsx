@@ -1,4 +1,5 @@
 import { AlertTriangle, Download, FolderCog } from "lucide-react";
+import { ProjectHeaderMeta } from "../../components/ProjectHeaderMeta";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -230,16 +231,13 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       {/* ── Cabeçalho com metadados do projeto ── */}
       {draft && (
         <CardHeader className="flex-row flex-wrap items-center justify-between space-y-0 pb-0">
-          <CardTitle className="flex min-h-9 items-center gap-2">
-            <FolderCog className="size-4 text-accent" aria-hidden />
-            {t("profileLayout:workspace.projectTitle", { label: draft.project_label })}
-            <Badge variant="outline">{t("profileLayout:workspace.profileBadge")}</Badge>
-          </CardTitle>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[0.7rem] text-tertiary">
-            <span>{t("profileLayout:workspace.idLabel")} <span className="text-muted-foreground">{draft.project_id}</span></span>
-            <span>{t("profileLayout:workspace.versionLabel")} <span className="text-foreground">{draft.version}</span></span>
-            {draft.updated_by && <span>{t("profileLayout:workspace.lastLabel")} <span className="text-foreground">{draft.updated_by}</span></span>}
-          </div>
+          <ProjectHeaderMeta
+            icon={<FolderCog className="size-4 text-accent" aria-hidden />}
+            projectLabel={draft.project_label}
+            projectId={draft.project_id}
+            version={draft.version}
+            updatedBy={draft.updated_by}
+          />
         </CardHeader>
       )}
       <CardContent className="space-y-4 pt-4">

@@ -1,4 +1,4 @@
-import { Database, File, FileSpreadsheet, FileText, FolderOpen, Inbox, Presentation, RefreshCw, Search, X } from "lucide-react";
+import { Database, File, FileSpreadsheet, FileText, FolderOpen, Inbox, LayoutDashboard, Presentation, RefreshCw, Search, X } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -352,7 +352,10 @@ export function PainelView({
       )}
       <Card>
         <CardHeader>
-          <CardTitle>{t("painel:card.title")}</CardTitle>
+          <CardTitle className="flex min-h-9 items-center gap-2">
+            <LayoutDashboard className="size-4 text-accent" aria-hidden />
+            {t("painel:card.title")}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {reconcileStatus?.running ? (

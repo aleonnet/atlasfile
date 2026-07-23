@@ -1,5 +1,5 @@
 import { BarChart3, MessageCircle } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatPanel } from "../components/ChatPanel";
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
@@ -39,6 +39,21 @@ export function AssistenteView({
   // era elevado ao App só por causa do unmount, que não existe mais
   const chat = useChatSession();
   const { customModels } = useSettings();
+  // Identidade estável: sem memo, cada re-render (polls do App) criava um array
+  // novo e o efeito de auto-scroll do ChatPanel rolava a thread sozinho.
+  const panelMessages = useMemo(
+    () =>
+      chat.chatMessages
+        .filter((m): m is ChatMessageType & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+          role: m.role,
+          content: typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" "),
+          timestamp: m.timestamp,
+          ...(m.role === "user" && Array.isArray(m.content) && { contentParts: m.content }),
+          ...(m.model ? { model: m.model } : {}),
+        })),
+    [chat.chatMessages]
+  );
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-4">
@@ -52,15 +67,7 @@ export function AssistenteView({
             <ChatPanel
               agentName={t("chat:view.agentName")}
               agentAvatarUrl={null}
-              messages={chat.chatMessages
-                .filter((m): m is ChatMessageType & { role: "user" | "assistant" } => m.role === "user" || m.role === "assistant")
-                .map((m) => ({
-                  role: m.role,
-                  content: typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "[imagem]")).join(" "),
-                  timestamp: m.timestamp,
-                  ...(m.role === "user" && Array.isArray(m.content) && { contentParts: m.content }),
-                  ...(m.model ? { model: m.model } : {}),
-                }))}
+              messages={panelMessages}
               lastToolCalls={chat.lastToolCalls}
               sending={chat.chatSending}
               error={chat.chatError}

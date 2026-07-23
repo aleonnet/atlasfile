@@ -252,7 +252,12 @@ export function ChatPanel({
   const timerAnchorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
+    const thread = threadRef.current;
+    if (!thread) return;
+    // Guarda de leitura: quem rolou para cima está lendo — mensagem nova não
+    // sequestra a tela. Auto-scroll só quando já se está perto do fim.
+    const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 160;
+    if (nearBottom) thread.scrollTo({ top: thread.scrollHeight, behavior: "smooth" });
   }, [messages, sending]);
 
   const handleSend = () => {

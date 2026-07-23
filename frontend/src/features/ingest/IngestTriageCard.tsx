@@ -34,6 +34,7 @@ import type {
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { ProjectHeaderMeta } from "../../components/ProjectHeaderMeta";
 import { CollapsibleSection, rowDeleteButtonClass } from "../../components/ui/collapsible-section";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { EmptyState } from "../../components/ui/empty-state";
@@ -430,13 +431,21 @@ export function IngestTriageCard({
       )}
 
       {isSingleProject && selectedProjectLabel && (
-        <div className="mb-1 flex items-center gap-1.5 pb-1 text-[0.82rem] text-muted-foreground">
-          <span className="font-medium text-foreground">{selectedProjectLabel}</span>
-          {triageItems.length > 0 && (
-            <span className="text-accent">
-              · {t("ingest:classifier.pending", { count: triageItems.length })}
-            </span>
-          )}
+        <div className="mb-2 border-b border-border pb-2">
+          <ProjectHeaderMeta
+            icon={<Sparkles className="size-4 text-accent" aria-hidden />}
+            projectLabel={selectedProjectLabel}
+            projectId={selectedProject}
+            version={profileVersion || null}
+            updatedBy={fullProfile?.updated_by ?? null}
+            extra={
+              triageItems.length > 0 ? (
+                <span className="text-[0.8rem] font-normal text-accent">
+                  · {t("ingest:classifier.pending", { count: triageItems.length })}
+                </span>
+              ) : undefined
+            }
+          />
         </div>
       )}
 
