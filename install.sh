@@ -573,12 +573,26 @@ fi
 TOTAL=$(fmt_secs $(( $(step_now) - START_TS )))
 title "5/5" "Install finished in ${TOTAL} 🎉"
 printf '\n'
+# box_row LABEL VALUE — padded to the fixed inner width; long values get a
+# leading ellipsis keeping the tail (the folder name is what matters)
+box_row() {
+  local label="$1" value="$2"
+  if [ ${#value} -gt 43 ]; then value="…${value:$((${#value} - 42))}"; fi
+  printf '  %s│%s  %s%-11s%s %-43s%s│%s\n' "$ORANGE" "$RESET" "$BOLD" "$label" "$RESET" "$value" "$ORANGE" "$RESET"
+}
 printf '  %s╭─────────────────────────────────────────────────────────╮%s\n' "$ORANGE" "$RESET"
-printf '  %s│%s  %sInterface%s   http://localhost:5173                      %s│%s\n' "$ORANGE" "$RESET" "$BOLD" "$RESET" "$ORANGE" "$RESET"
-printf '  %s│%s  %sAPI%s         http://localhost:8000/health               %s│%s\n' "$ORANGE" "$RESET" "$BOLD" "$RESET" "$ORANGE" "$RESET"
-printf '  %s│%s  %sProjects%s    %-40s %s│%s\n' "$ORANGE" "$RESET" "$BOLD" "$RESET" "$(printf '%.40s' "${PROJECTS_ROOT}")" "$ORANGE" "$RESET"
+box_row "Interface" "http://localhost:5173"
+box_row "API" "http://localhost:8000/health"
+box_row "Dashboards" "http://localhost:5601"
+box_row "Projects" "${PROJECTS_ROOT}"
 printf '  %s╰─────────────────────────────────────────────────────────╯%s\n' "$ORANGE" "$RESET"
 printf '\n'
+os_pass_now="$(grep '^OPENSEARCH_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+if [ -n "${os_pass_now}" ]; then
+  printf '  %s📊 OpenSearch Dashboards%s (operations dashboard "AtlasFile — Operação"):\n' "$BOLD" "$RESET"
+  printf '     login %sadmin%s · password %s%s%s\n' "$BOLD" "$RESET" "$ORANGE" "${os_pass_now}" "$RESET"
+  printf '\n'
+fi
 if [ "${ENABLE_AUTH}" = "1" ] && [ -n "${API_KEY_VALUE}" ]; then
   printf '  %s🔑 API key%s (paste it in Settings → Access, in each browser):\n' "$BOLD" "$RESET"
   printf '     %s%s%s\n' "$ORANGE" "${API_KEY_VALUE}" "$RESET"

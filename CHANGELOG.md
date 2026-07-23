@@ -22,6 +22,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 - **Uso LLM do chat achatado**: novo índice `atlasfile_chat_usage` (1 evento por chamada: provider, modelo, tokens, cache, custo, projeto, canal), gravado em `/api/chat` (web) e no fluxo de canais; falha na gravação nunca afeta a resposta do chat (testado). Resolve a limitação do custo aninhado em `usage_by_model` das sessões.
 - Aprendizados de plataforma registrados no gerador: nunca setar `fields` no index-pattern (substitui o cache de campos inteiro); TSVB do fork 7.10 usa strings lucene em `filter_ratio`; heatmap hora×dia exigiria campo derivado na indexação (candidato futuro).
 
+## [0.43.1] - 2026-07-23
+
+### Corrigido
+- **Box final do instalador**: larguras calculadas (a linha "Projects" estourava a borda com paths longos — agora reticências à esquerda preservando o nome da pasta); linha nova **Dashboards** (http://localhost:5601) e bloco de credencial do OpenSearch Dashboards com a senha lida automaticamente do `.env` da instância (login admin), harmonizado com o bloco da API key.
+
 ## [0.43.0] - 2026-07-23
 
 ### Adicionado
