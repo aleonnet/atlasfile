@@ -13,10 +13,12 @@
 #   -InstallDeps   authorize installing missing prerequisites without prompting
 #   -WithOllama    also install Ollama on Windows and pull a local model
 #   -OllamaModel   model to pull (default: gemma4:12b)
+#   -EnableAuth    enable API authentication (forwarded to install.sh)
 param(
     [switch]$Yes,
     [switch]$InstallDeps,
     [switch]$WithOllama,
+    [switch]$EnableAuth,
     [string]$OllamaModel = "gemma4:12b"
 )
 
@@ -153,6 +155,7 @@ Write-Host ""
 $shFlags = "--no-open"
 if ($Yes) { $shFlags += " --yes" }
 if ($InstallDeps) { $shFlags += " --install-deps" }
+if ($EnableAuth) { $shFlags += " --enable-auth" }
 wsl -e bash -c "curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- $shFlags"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  ✘ Install failed inside WSL (see the messages above)." -ForegroundColor Red

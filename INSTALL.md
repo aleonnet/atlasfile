@@ -6,12 +6,12 @@ Com o [Docker Desktop](https://docs.docker.com/get-docker/) rodando:
 
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth --with-ollama
 ```
 
 ```powershell
 # Windows (PowerShell; usa WSL2 + Docker Desktop)
-irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1 | iex
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth -WithOllama
 ```
 
 O instalador verifica pré-requisitos, clona em `~/AtlasFile`, cria o `.env` (perguntando só a pasta de projetos), sobe a stack e abre a interface — o onboarding guia o resto. Flags úteis: `--dir`, `--projects-root`, `--yes` (não-interativo), `--no-open`. Re-executar atualiza a instalação.

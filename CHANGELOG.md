@@ -22,6 +22,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 - **Uso LLM do chat achatado**: novo índice `atlasfile_chat_usage` (1 evento por chamada: provider, modelo, tokens, cache, custo, projeto, canal), gravado em `/api/chat` (web) e no fluxo de canais; falha na gravação nunca afeta a resposta do chat (testado). Resolve a limitação do custo aninhado em `usage_by_model` das sessões.
 - Aprendizados de plataforma registrados no gerador: nunca setar `fields` no index-pattern (substitui o cache de campos inteiro); TSVB do fork 7.10 usa strings lucene em `filter_ratio`; heatmap hora×dia exigiria campo derivado na indexação (candidato futuro).
 
+## [0.43.2] - 2026-07-23
+
+### Alterado
+- **One-liner recomendado agora inclui `--enable-auth --with-ollama`** (site, READMEs e INSTALL): instalação padrão sai com API key impressa e assistente 100% local configurado. Windows ganhou paridade: `install.ps1` aceita `-EnableAuth` (repassado ao install.sh) e o snippet do site usa a forma scriptblock (`iex` puro não aceita switches).
+
 ## [0.43.1] - 2026-07-23
 
 ### Corrigido

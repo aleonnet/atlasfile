@@ -13,13 +13,13 @@ No prerequisites to prepare: the installer detects what is missing (Docker, git)
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth --with-ollama
 ```
 
 **Windows (via WSL2):**
 
 ```powershell
-irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1 | iex
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth -WithOllama
 ```
 
 The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:5173` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md).
