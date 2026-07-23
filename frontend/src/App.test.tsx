@@ -218,6 +218,29 @@ describe("App", () => {
     expect(screen.getAllByText(/10/).length).toBeGreaterThan(0);
   });
 
+  it("mostra banner global quando a raiz de projetos está indisponível", async () => {
+    const { fetchSetupStatus, fetchProjects } = await import("./api");
+    vi.mocked(fetchSetupStatus).mockResolvedValue({
+      app_env: "dev",
+      projects_root: "/projects",
+      total_project_dirs: 0,
+      initialized_projects: 0,
+      onboarding_suggested: false,
+      projects_root_ok: false,
+      projects_root_error: "projects_root_missing",
+    });
+    vi.mocked(fetchProjects).mockResolvedValue([]);
+    localStorage.setItem("atlasfile-onboarding-done", "true");
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Pasta de projetos inacessível/)).toBeInTheDocument();
+    // com a raiz quebrada NÃO abre o wizard (não é instância nova)
+    expect(screen.queryByText(/Bem-vindo ao AtlasFile/)).not.toBeInTheDocument();
+  });
+
   it("shows onboarding when no projects exist", async () => {
     const { fetchSetupStatus, fetchProjects } = await import("./api");
     vi.mocked(fetchSetupStatus).mockResolvedValue({

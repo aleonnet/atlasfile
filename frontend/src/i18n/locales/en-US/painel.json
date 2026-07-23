@@ -162,6 +162,8 @@
     "projectNamePlaceholder": "my_project",
     "projectNameHint": "Only lowercase letters, numbers, _ and - (no spaces or accents)",
     "invalidName": "Invalid name",
-    "continue": "Continue"
+    "continue": "Continue",
+    "rootUnavailableTitle": "Projects folder unavailable.",
+    "rootUnavailableBody": "The projects folder was removed or the mount is broken. Recreate the folder on the host and restart the stack: docker compose down && docker compose up -d. No indexed data is deleted meanwhile."
   }
 }

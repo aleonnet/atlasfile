@@ -511,12 +511,16 @@ def test_per_project_reconcile_does_not_cleanup_orphans() -> None:
     mock_cleanup.assert_not_called()
 
 
-def test_full_reconcile_runs_cleanup_orphans() -> None:
-    """When cleanup_orphans=True (default), cleanup_orphan_projects IS called."""
+def test_full_reconcile_runs_cleanup_orphans(tmp_path, monkeypatch) -> None:
+    """When cleanup_orphans=True (default), cleanup_orphan_projects IS called.
+    v0.38.0: a limpeza exige a raiz de projetos SAUDÁVEL — o teste aponta para um tmp."""
     from threading import Lock
     from unittest.mock import MagicMock
 
+    from app.config import settings
     from app.services.reconcile_service import run_reconcile
+
+    monkeypatch.setattr(settings, "projects_root", str(tmp_path), raising=False)
 
     mock_client = MagicMock()
     mock_client.indices.exists.return_value = True

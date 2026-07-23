@@ -9,6 +9,7 @@ from opensearchpy import OpenSearch
 
 from ..bootstrap import ensure_project_structure
 from ..project_profile import load_project_profile
+from ..projects_root import projects_root_health
 from ..reconcile import cleanup_orphan_projects, rebuild_search_index, reconcile_project_index, sync_search_index_for_project
 from ..utils import utc_now_iso
 
@@ -101,10 +102,17 @@ def run_reconcile(
                 )
 
         orphan_report = {"orphan_projects_found": 0, "orphan_docs_deleted": 0}
-        if reindex_search and valid_projects and cleanup_orphans:
-            valid_ids = {pid for _, pid in valid_projects}
-            valid_roots = [r for r, _ in valid_projects]
-            orphan_report = cleanup_orphan_projects(os_client, valid_ids, valid_roots)
+        # Limpeza de órfãos: liberada com a raiz SAUDÁVEL (mesmo vazia — instância
+        # recomeçada limpa o índice antigo); pulada com a raiz indisponível (mount
+        # quebrado não pode custar o índice inteiro).
+        if reindex_search and cleanup_orphans:
+            root_health = projects_root_health()
+            if root_health["ok"]:
+                valid_ids = {pid for _, pid in valid_projects}
+                valid_roots = [r for r, _ in valid_projects]
+                orphan_report = cleanup_orphan_projects(os_client, valid_ids, valid_roots)
+            else:
+                orphan_report["skipped_reason"] = root_health.get("error") or "projects_root_unavailable" 
 
         finished_at = utc_now_iso()
         duration_seconds = round(time.time() - started_ts, 3)

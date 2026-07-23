@@ -15,6 +15,16 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.38.0] -- 2026-07-23
+
+### Corrigido
+
+- **Resiliência à perda da pasta de projetos** (cenário real: usuário deleta a raiz com o stack no ar → bind mount quebrado → "NetworkError" sem pista): sonda de saúde da raiz (`projects_root_health`) exposta no `/api/setup/status`; `PermissionError/OSError` com raiz indisponível vira **503 `PROJECTS_ROOT_UNAVAILABLE`** com instrução de recuperação (em vez de 500 cru); **banner global** na UI (poll de 20s) orientando recriar a pasta e reiniciar o stack; wizard não é sugerido com a raiz quebrada (não é instância nova).
+- **Limpeza de órfãos do índice destravada**: o guard `valid_projects` pulava o `cleanup_orphan_projects` justamente no caso "raiz recomeçada do zero" (0 projetos) — docs fantasmas ficavam para sempre. Agora a limpeza é liberada com a **raiz saudável mesmo vazia** e pulada (com `skipped_reason` no relatório) apenas com a raiz indisponível — proteção contra apagar o índice por um mount transitório.
+- **Templates nunca somem**: leituras do diretório user (`_ATLASFILE/templates`) tolerantes a OSError — com a raiz quebrada, a listagem e o `get_template` caem nos **builtin** (default/default-en seguem disponíveis no wizard).
+
+---
+
 ## [0.37.0] -- 2026-07-23
 
 ### Adicionado

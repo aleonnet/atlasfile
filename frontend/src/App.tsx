@@ -169,6 +169,15 @@ function AppShell() {
     refetchIntervalInBackground: false,
     retry: false,
   });
+  const setupStatusQuery = useQuery({
+    queryKey: qk.setupStatus(),
+    queryFn: fetchSetupStatus,
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+  const projectsRootDown = setupStatusQuery.data?.projects_root_ok === false;
+
   const healthFailuresRef = useRef(0);
   useEffect(() => {
     if (healthQuery.data === undefined) return;
@@ -477,6 +486,13 @@ function AppShell() {
             </Button>
           )}
         </Topbar>
+
+        {projectsRootDown && (
+          <div role="alert" className="mx-auto mt-3 w-full max-w-[1200px] rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-foreground">
+            <strong className="text-destructive">{t("painel:app.rootUnavailableTitle")}</strong>{" "}
+            {t("painel:app.rootUnavailableBody")}
+          </div>
+        )}
 
         <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden px-7 pb-8 pt-6 [-webkit-overflow-scrolling:touch]">
         <div className={view === "painel" ? "contents" : "hidden"}>

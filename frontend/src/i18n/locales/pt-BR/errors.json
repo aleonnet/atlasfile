@@ -70,6 +70,7 @@
   "MOONSHOT_KEY_NOT_CONFIGURED": "Configure a chave Moonshot antes de validar",
   "MOONSHOT_REQUEST_FAILED": "Falha ao consultar a Moonshot",
   "OLLAMA_REQUEST_FAILED": "Falha ao consultar o Ollama — ele está rodando? (ollama serve)",
+  "PROJECTS_ROOT_UNAVAILABLE": "Pasta de projetos inacessível — recrie a pasta no host e reinicie o stack (docker compose down && docker compose up -d).",
   "api": {
     "setupStatus": "Falha ao verificar status de setup",
     "loadProjects": "Falha ao carregar projetos",

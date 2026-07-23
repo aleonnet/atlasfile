@@ -162,6 +162,8 @@
     "projectNamePlaceholder": "meu_projeto",
     "projectNameHint": "Apenas letras minúsculas, números, _ e - (sem espaços ou acentos)",
     "invalidName": "Nome inválido",
-    "continue": "Continuar"
+    "continue": "Continuar",
+    "rootUnavailableTitle": "Pasta de projetos inacessível.",
+    "rootUnavailableBody": "A pasta de projetos foi removida ou o mount está quebrado. Recrie a pasta no host e reinicie o stack: docker compose down && docker compose up -d. Nenhum dado indexado é apagado enquanto isso."
   }
 }

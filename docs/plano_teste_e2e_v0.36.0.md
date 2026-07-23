@@ -1,6 +1,6 @@
 # Plano de teste E2E — AtlasFile v0.36.x (instância zerada, com autenticação)
 
-> Roteiro canônico de regressão fim-a-fim. Cada estágio vale 1 ponto (total **33**).
+> Roteiro canônico de regressão fim-a-fim. Cada estágio vale 1 ponto (total **34**).
 > Pré-requisitos:
 > - 6 arquivos reais — **4 do mesmo tipo/área** (ex.: 4 contratos jurídicos) + **2 planilhas
 >   XLSX** com colunas categóricas (ex.: CMDB e status de contratos).
@@ -98,6 +98,12 @@
 | 31 | Validação de chave no modal | Configurações do assistente: apagar e redigitar a key OpenAI errada; depois a certa | Badge automático ~700ms após parar de digitar: **✗ inválida** (errada) → **✓ válida** (certa); nada bloqueia o modal; com o backend fora do ar, o badge diz "não foi possível verificar" (≠ inválida) |
 | 32 | Moonshot Kimi K3 | Selecionar `moonshot/kimi-k3` (já na lista, sem digitar) → campo **Moonshot API Key** aparece no modal → colar a chave | Badge ✓ ao vivo; chat com o K3 responde (com saldo) — sem saldo, o erro do provedor aparece **legível** no chat (integração validada: auth + base_url ok). Uso registra custo com os preços do K3 |
 | 33 | Ollama local | Com `ollama serve` rodando no host e `gemma4:12b` baixado: combobox custom `ollama/gemma4:12b` → Validar | ✓ "disponível na Ollama" + hint "**roda localmente — não precisa de chave**" (sem campo de chave); o modelo **aparece no seletor do chat** (custom) e a conversa responde com o modelo local. No Docker o default `host.docker.internal:11434` já funciona sem configurar nada |
+
+## Fase J — Resiliência da raiz de projetos (1 pt) — NOVA na 0.38.0
+
+| # | Estágio | Como testar | Passa se |
+|---|---------|-------------|----------|
+| 34 | Perda e recuperação da pasta de projetos | Com o stack no ar: `rm -rf` da pasta de projetos do host → aguardar ≤20s → recriar a pasta → `docker compose down && docker compose up -d` → completar o wizard → Reconcile INDEX | Banner claro "Pasta de projetos inacessível" (**nunca** "NetworkError" mudo); wizard NÃO abre com a raiz quebrada; após recriar+restart, wizard reabre COM o template default na lista; reconcile mostra órfãos removidos e os docs fantasmas somem do Dashboard |
 
 ## Fase H — Internacionalização (smoke, não pontuado)
 

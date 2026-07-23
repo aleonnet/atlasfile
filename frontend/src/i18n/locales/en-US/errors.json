@@ -70,6 +70,7 @@
   "MOONSHOT_KEY_NOT_CONFIGURED": "Configure the Moonshot key before validating",
   "MOONSHOT_REQUEST_FAILED": "Failed to reach Moonshot",
   "OLLAMA_REQUEST_FAILED": "Failed to reach Ollama — is it running? (ollama serve)",
+  "PROJECTS_ROOT_UNAVAILABLE": "Projects folder unavailable — recreate the folder on the host and restart the stack (docker compose down && docker compose up -d).",
   "api": {
     "setupStatus": "Failed to check setup status",
     "loadProjects": "Failed to load projects",

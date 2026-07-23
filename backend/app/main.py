@@ -97,6 +97,7 @@ from .project_profile import list_project_roots, load_project_profile
 from .profile_runtime import inbox_rel
 from .profile_schema_v2 import OperationalClassifierMode
 from .profile_store import ensure_profile, load_profile, save_profile
+from .projects_root import projects_root_health
 from .template_store import (
     create_profile_from_template,
     delete_template as _delete_template,
@@ -1020,6 +1021,24 @@ def _start_auto_reconcile_if_enabled() -> None:
     thread.start()
 
 
+@app.exception_handler(OSError)
+async def _oserror_handler(request, exc: OSError):
+    """PermissionError/OSError em operação de projeto com a raiz indisponível
+    (pasta deletada / mount quebrado) vira código estável em vez de 500 cru."""
+    health = projects_root_health()
+    if not health["ok"]:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": {
+                "code": "PROJECTS_ROOT_UNAVAILABLE",
+                "params": {"error": health.get("error")},
+                "message": "Pasta de projetos inacessível. Recrie a pasta no host e reinicie o stack (docker compose down && docker compose up -d).",
+            }},
+        )
+    _logger.exception("OSError não relacionado à raiz de projetos", exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": {"code": "INTERNAL_ERROR", "params": {}, "message": str(exc)}})
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -1035,13 +1054,16 @@ def setup_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
             initialized_count += 1
         except Exception:
             pass
+    root_health = projects_root_health()
     return {
         "app_env": settings.app_env,
         "projects_root": settings.projects_root,
         "projects_host_root": settings.projects_host_root,
         "total_project_dirs": len(roots),
         "initialized_projects": initialized_count,
-        "onboarding_suggested": initialized_count == 0,
+        "onboarding_suggested": initialized_count == 0 and root_health["ok"],
+        "projects_root_ok": root_health["ok"],
+        "projects_root_error": root_health.get("error"),
     }
 
 

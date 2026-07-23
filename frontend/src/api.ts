@@ -113,6 +113,9 @@ export interface SetupStatus {
   total_project_dirs: number;
   initialized_projects: number;
   onboarding_suggested: boolean;
+  /** Saúde da raiz de projetos (false = pasta deletada / mount quebrado). */
+  projects_root_ok?: boolean;
+  projects_root_error?: string | null;
 }
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {

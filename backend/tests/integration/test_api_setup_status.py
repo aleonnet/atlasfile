@@ -14,6 +14,15 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _healthy_projects_root(tmp_path, monkeypatch):
+    """onboarding_suggested agora exige a raiz SAUDÁVEL (v0.38.0) — os testes
+    apontam para um tmp existente em vez do default /projects (ausente no host)."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "projects_root", str(tmp_path), raising=False)
+
+
 def _mock_root(name: str) -> Path:
     return Path(f"/tmp/projects/{name}")
 

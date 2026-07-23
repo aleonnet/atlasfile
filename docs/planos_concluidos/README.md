@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.38.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [projects_root_resilience_v0380](projects_root_resilience_v0380.plan.md) | Resiliência à perda da raiz de projetos: sonda de saúde (`projects_root_health`) une três fixes — 503 `PROJECTS_ROOT_UNAVAILABLE` + banner global com instrução (fim do "NetworkError" mudo), limpeza de órfãos do índice destravada (guard distinguindo raiz saudável-vazia de raiz inacessível) e templates builtin imunes a OSError do diretório user; wizard não abre com mount quebrado |
+
+---
+
 ## 0.37.0
 
 | # | Plano | Escopo |

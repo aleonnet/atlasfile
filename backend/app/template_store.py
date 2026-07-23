@@ -171,11 +171,17 @@ def _extract_meta(data: dict[str, Any], slug: str, *, source: str = "builtin") -
 
 
 def _scan_dir(directory: Path, source: str) -> dict[str, dict[str, Any]]:
-    """Scan a directory for template JSON files, return {slug: meta}."""
+    """Scan a directory for template JSON files, return {slug: meta}.
+    Tolerante a OSError (raiz de projetos deletada/mount quebrado): o diretório
+    user indisponível NUNCA derruba a listagem — os builtin permanecem."""
     result: dict[str, dict[str, Any]] = {}
-    if not directory.exists():
+    try:
+        if not directory.exists():
+            return result
+        paths = sorted(directory.glob("*.json"))
+    except OSError:
         return result
-    for path in sorted(directory.glob("*.json")):
+    for path in paths:
         slug = path.stem
         try:
             data = _read_json(path)
@@ -193,9 +199,14 @@ def list_templates() -> list[dict[str, Any]]:
 
 
 def _resolve_template_path(slug: str) -> tuple[Path, str]:
-    """Find template by slug: user dir first, then builtin. Returns (path, source)."""
+    """Find template by slug: user dir first, then builtin. Returns (path, source).
+    Diretório user indisponível (OSError) cai no builtin — o default nunca some."""
     user_path = _user_dir() / f"{slug}.json"
-    if user_path.exists():
+    try:
+        user_exists = user_path.exists()
+    except OSError:
+        user_exists = False
+    if user_exists:
         return user_path, "user"
     builtin_path = BUILTIN_DIR / f"{slug}.json"
     if builtin_path.exists():
