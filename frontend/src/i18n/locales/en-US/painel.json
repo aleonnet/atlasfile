@@ -165,5 +165,16 @@
     "continue": "Continue",
     "rootUnavailableTitle": "Projects folder unavailable.",
     "rootUnavailableBody": "The projects folder was removed or the mount is broken. Recreate the folder on the host and restart the stack: docker compose down && docker compose up -d. No indexed data is deleted meanwhile."
+  },
+  "recovery": {
+    "label": "Recovery",
+    "title": "Projects folder deleted",
+    "body": "The projects folder was deleted or replaced while the app was running. The index still references documents that no longer exist on disk, and uploads are blocked to prevent silent data loss. Folder:",
+    "explain": "Recovery restarts the app: Docker recreates the folder and re-attaches the storage; the orphaned index is then cleaned and the setup wizard reopens.",
+    "actionRestart": "Recreate folder and restart",
+    "actionRevalidate": "I restored it manually — revalidate",
+    "waitingHealth": "Restarting — waiting for the app to come back…",
+    "reconciling": "Cleaning orphaned index…",
+    "failed": "The app did not come back in time. Check that Docker is running and reload the page."
   }
 }

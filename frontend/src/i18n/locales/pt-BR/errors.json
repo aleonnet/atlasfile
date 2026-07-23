@@ -143,6 +143,8 @@
     "createTaxonomyEntry": "Falha ao criar entrada de taxonomia",
     "aliasSuggestions": "Falha ao carregar sugestões de aliases",
     "addTaxonomyAliases": "Falha ao adicionar aliases à taxonomia",
-    "dismissAliasSuggestion": "Falha ao dispensar a sugestão"
-  }
+    "dismissAliasSuggestion": "Falha ao dispensar a sugestão",
+    "restartSystem": "Falha ao reiniciar a aplicação"
+  },
+  "PROJECTS_ROOT_EMPTIED": "A pasta de projetos foi excluída ou substituída. Use a recuperação para recriar e reiniciar."
 }

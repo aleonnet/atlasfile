@@ -113,6 +113,65 @@ def test_oserror_vira_codigo_estavel_quando_raiz_indisponivel(tmp_path, monkeypa
     assert _json.loads(resp2.body)["detail"]["code"] == "INTERNAL_ERROR"
 
 
+def test_estado_emptied_exige_marcador_ausente_e_vida_anterior(tmp_path, monkeypatch):
+    """v0.40: raiz saudável sem marcador só é `emptied` com evidência de vida
+    anterior (índice com docs). Instância nova → `ok`; marcador presente → `ok`."""
+    from app.projects_root import ensure_root_marker, projects_root_state
+
+    monkeypatch.setattr(settings, "projects_root", str(tmp_path), raising=False)
+    # instância nova: sem marcador, sem dados anteriores → ok
+    assert projects_root_state(has_prior_data=False)["state"] == "ok"
+    # mount fantasma: sem marcador, índice com docs → emptied
+    assert projects_root_state(has_prior_data=True)["state"] == "emptied"
+    # startup grava o marcador → volta a ok mesmo com dados no índice
+    assert ensure_root_marker() is True
+    assert projects_root_state(has_prior_data=True)["state"] == "ok"
+    # raiz indisponível prevalece sobre tudo
+    monkeypatch.setattr(settings, "projects_root", str(tmp_path / "sumiu"), raising=False)
+    assert projects_root_state(has_prior_data=True)["state"] == "unavailable"
+    assert ensure_root_marker() is False
+
+
+def test_setup_status_expoe_estado_emptied_e_bloqueia_onboarding(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "projects_root", str(tmp_path), raising=False)
+    with patch("app.main._index_has_documents", return_value=True):
+        body = client.get("/api/setup/status").json()
+    assert body["projects_root_state"] == "emptied"
+    # wizard não pode abrir sobre mount fantasma (escreveria no limbo)
+    assert body["onboarding_suggested"] is False
+    assert body["projects_root_ok"] is True  # sonda básica segue ok (dir existe)
+
+
+def test_escritas_bloqueadas_com_raiz_esvaziada(client, tmp_path, monkeypatch):
+    """Guard anti-limbo: upload/scan/initialize retornam 503 PROJECTS_ROOT_EMPTIED."""
+    monkeypatch.setattr(settings, "projects_root", str(tmp_path), raising=False)
+    with patch("app.main._index_has_documents", return_value=True):
+        r1 = client.post("/api/projects/novo_projeto/initialize")
+        r2 = client.post("/api/ingest/scan/qualquer")
+        r3 = client.post("/api/ingest/upload/qualquer", files={"files": ("a.txt", b"x")})
+    for r in (r1, r2, r3):
+        assert r.status_code == 503
+        assert r.json()["detail"]["code"] == "PROJECTS_ROOT_EMPTIED"
+
+
+def test_restart_endpoint_agenda_saida_graciosa(client):
+    with patch("app.main.threading.Timer") as mock_timer:
+        r = client.post("/api/system/restart")
+    assert r.status_code == 200
+    assert r.json()["status"] == "restarting"
+    mock_timer.assert_called_once()
+    delay, fn = mock_timer.call_args[0]
+    assert delay == 0.5
+    mock_timer.return_value.start.assert_called_once()
+    # a função agendada envia SIGTERM ao próprio processo (shutdown gracioso)
+    with patch("app.main.os.kill") as mock_kill:
+        fn()
+    mock_kill.assert_called_once()
+    import signal as _signal
+
+    assert mock_kill.call_args[0][1] == _signal.SIGTERM
+
+
 def test_templates_builtin_sobrevivem_a_raiz_quebrada(tmp_path, monkeypatch):
     # raiz aponta para um ARQUIVO: glob no dir user levanta OSError → só builtin
     f = tmp_path / "arquivo.txt"

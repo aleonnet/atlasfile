@@ -143,6 +143,8 @@
     "createTaxonomyEntry": "Failed to create taxonomy entry",
     "aliasSuggestions": "Failed to load alias suggestions",
     "addTaxonomyAliases": "Failed to add aliases to the taxonomy",
-    "dismissAliasSuggestion": "Failed to dismiss the suggestion"
-  }
+    "dismissAliasSuggestion": "Failed to dismiss the suggestion",
+    "restartSystem": "Failed to restart the app"
+  },
+  "PROJECTS_ROOT_EMPTIED": "The projects folder was deleted or replaced. Use recovery to recreate and restart."
 }

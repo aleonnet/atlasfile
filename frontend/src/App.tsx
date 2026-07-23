@@ -48,6 +48,7 @@ import { CorrectDecisionModal } from "./features/triage/CorrectDecisionModal";
 import { TemplateSelectModal } from "./features/templates/TemplateSelectModal";
 import { AssistenteView } from "./views/AssistenteView";
 import { GlobalDropPortal } from "./features/ingest/GlobalDropPortal";
+import { RootRecoveryModal } from "./features/recovery/RootRecoveryModal";
 import { AuthGate } from "./features/onboarding/AuthGate";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import type {
@@ -178,6 +179,7 @@ function AppShell() {
     retry: false,
   });
   const projectsRootDown = setupStatusQuery.data?.projects_root_ok === false;
+  const projectsRootEmptied = setupStatusQuery.data?.projects_root_state === "emptied";
 
   const healthFailuresRef = useRef(0);
   useEffect(() => {
@@ -518,6 +520,13 @@ function AppShell() {
             {t("painel:app.rootUnavailableBody")}
           </div>
         )}
+
+        <RootRecoveryModal
+          open={projectsRootEmptied}
+          hostRoot={setupStatusQuery.data?.projects_host_root}
+          onRevalidate={() => void setupStatusQuery.refetch()}
+        />
+
 
         <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden px-7 pb-8 pt-6 [-webkit-overflow-scrolling:touch]">
         <div className={view === "painel" ? "contents" : "hidden"}>

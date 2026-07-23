@@ -2,6 +2,7 @@ services:
   opensearch:
     image: opensearchproject/opensearch:2.17.1
     container_name: atlasfile-opensearch
+    restart: unless-stopped
     environment:
       - discovery.type=single-node
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
@@ -19,6 +20,7 @@ services:
   opensearch-dashboards:
     image: opensearchproject/opensearch-dashboards:2.17.1
     container_name: atlasfile-dashboards
+    restart: unless-stopped
     environment:
       - OPENSEARCH_HOSTS=["https://opensearch:9200"]
       - OPENSEARCH_USERNAME=admin
@@ -37,6 +39,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: atlasfile-api
+    restart: unless-stopped
     environment:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       - OPENSEARCH_HOST=https://opensearch:9200
@@ -81,6 +84,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: atlasfile-mcp
+    restart: unless-stopped
     command: ["python", "-m", "app.mcp.server"]
     environment:
       - ATLASFILE_API_BASE=http://api:8000
@@ -96,6 +100,7 @@ services:
     build:
       context: ./frontend
     container_name: atlasfile-web
+    restart: unless-stopped
     environment:
       - VITE_API_URL=http://localhost:8000
     ports:

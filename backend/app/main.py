@@ -5,6 +5,8 @@ import html as html_module
 import httpx
 import json
 import mimetypes
+import os
+import signal
 import unicodedata
 import urllib.parse
 import re
@@ -97,7 +99,7 @@ from .project_profile import list_project_roots, load_project_profile
 from .profile_runtime import inbox_rel
 from .profile_schema_v2 import OperationalClassifierMode
 from .profile_store import ensure_profile, load_profile, save_profile
-from .projects_root import projects_root_health
+from .projects_root import ensure_root_marker, projects_root_health, projects_root_state
 from .template_store import (
     create_profile_from_template,
     delete_template as _delete_template,
@@ -454,6 +456,9 @@ def _maybe_refresh_catalog_on_startup() -> bool:
 async def lifespan(app: FastAPI):
     """Startup: ensure OpenSearch index, optional auto-reconcile, and channels. Shutdown: stop channels and reconcile."""
     global channel_manager
+    # Marcador da raiz de projetos: no startup o bind mount está garantidamente
+    # vinculado ao host — é o único momento seguro para gravá-lo (self-healing)
+    ensure_root_marker()
     max_attempts = 30
     last_error: Exception | None = None
     for _ in range(max_attempts):
@@ -1044,6 +1049,45 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _index_has_documents() -> bool:
+    """Evidência de vida anterior para a detecção de raiz esvaziada. Indisponibilidade
+    do OpenSearch conta como False — nunca declarar `emptied` sem evidência."""
+    try:
+        res = os_client.count(index=settings.opensearch_index)
+        return int(res.get("count", 0)) > 0
+    except Exception:
+        return False
+
+
+def _projects_root_state() -> dict[str, Any]:
+    return projects_root_state(has_prior_data=_index_has_documents())
+
+
+def _require_projects_root_usable() -> None:
+    """Bloqueia escrita quando a raiz foi esvaziada (mount fantasma pós-deleção):
+    qualquer write iria para um inode deletado e se perderia em silêncio."""
+    state = _projects_root_state()
+    if state["state"] == "emptied":
+        raise http_error(
+            503,
+            "PROJECTS_ROOT_EMPTIED",
+            "A pasta de projetos foi excluída ou substituída. Use a recuperação para recriar e reiniciar.",
+        )
+
+
+@app.post("/api/system/restart")
+def system_restart(auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+    """Self-healing da raiz esvaziada: encerra o processo graciosamente; a política
+    `restart: unless-stopped` religa o container e o Docker recria a pasta host
+    ausente e re-vincula o bind mount (validado no Docker Desktop/macOS)."""
+
+    def _graceful_exit() -> None:
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Timer(0.5, _graceful_exit).start()
+    return {"status": "restarting"}
+
+
 @app.get("/api/setup/status")
 def setup_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     roots = list_project_roots(Path(settings.projects_root))
@@ -1055,15 +1099,18 @@ def setup_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
         except Exception:
             pass
     root_health = projects_root_health()
+    root_state = _projects_root_state()
     return {
         "app_env": settings.app_env,
         "projects_root": settings.projects_root,
         "projects_host_root": settings.projects_host_root,
         "total_project_dirs": len(roots),
         "initialized_projects": initialized_count,
-        "onboarding_suggested": initialized_count == 0 and root_health["ok"],
+        # nunca sugerir onboarding sobre mount fantasma — o wizard escreveria no limbo
+        "onboarding_suggested": initialized_count == 0 and root_state["state"] == "ok",
         "projects_root_ok": root_health["ok"],
         "projects_root_error": root_health.get("error"),
+        "projects_root_state": root_state["state"],
     }
 
 
@@ -1097,6 +1144,7 @@ def get_projects(auth: AuthContext = Depends(require_auth)) -> list[dict[str, An
 @app.post("/api/projects/{project_ref}/initialize")
 def initialize_project(project_ref: str, template: str = Query("default"), auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     enforce_project_scope(auth, project_ref)
+    _require_projects_root_usable()
     project_root = Path(settings.projects_root) / project_ref
     project_root.mkdir(parents=True, exist_ok=True)
     _, created = ensure_profile(
@@ -1795,6 +1843,7 @@ def reconcile_all_projects(reindex_search: bool = True, auth: AuthContext = Depe
 @app.post("/api/ingest/scan/{project_id}")
 def scan_project_inbox(project_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     enforce_project_scope(auth, project_id)
+    _require_projects_root_usable()
     if _ingest_status.get("running"):
         raise http_error(409, "INGEST_IN_PROGRESS", "Ingest already in progress")
     project_root = _resolve_project_root(project_id)
@@ -1876,6 +1925,7 @@ async def upload_to_inbox(
     files: list[UploadFile] = FastAPIFile(...),
     auth: AuthContext = Depends(require_auth),
 ) -> dict[str, Any]:
+    _require_projects_root_usable()
     enforce_project_scope(auth, project_id)
     project_root = _resolve_project_root(project_id)
     profile = load_project_profile(project_root)

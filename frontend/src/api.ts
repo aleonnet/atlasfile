@@ -116,6 +116,9 @@ export interface SetupStatus {
   /** Saúde da raiz de projetos (false = pasta deletada / mount quebrado). */
   projects_root_ok?: boolean;
   projects_root_error?: string | null;
+  /** Estado fino da raiz: emptied = pasta host excluída sob bind mount (mount
+   *  fantasma) — recuperação via RootRecoveryModal. */
+  projects_root_state?: "ok" | "unavailable" | "emptied";
 }
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {
@@ -463,6 +466,14 @@ export function getSessionEventsUrl(sessionId: string): string {
 export async function fetchHealth(): Promise<{ ok: boolean }> {
   const res = await apiFetch(`${API_URL}/health`);
   return { ok: res.ok };
+}
+
+/** Self-healing da raiz esvaziada: reinicia a aplicação (o Docker recria a
+ *  pasta host e re-vincula o bind mount). */
+export async function restartSystem(): Promise<{ status: string }> {
+  const res = await apiFetch(`${API_URL}/api/system/restart`, { method: "POST" });
+  if (!res.ok) await raiseApiError(res, "errors:api.restartSystem");
+  return res.json();
 }
 
 /** List LLM models (provider/model) for chat. */

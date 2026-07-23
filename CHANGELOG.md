@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.40.0] - 2026-07-23
+
+### Adicionado
+- **Self-healing da raiz de projetos esvaziada** (pasta host deletada sob bind mount — no macOS/VirtioFS o container passa a ver um "mount fantasma" vazio, sem quebrar a sonda):
+  - Estado novo `emptied` em `/api/setup/status`: raiz saudável sem o marcador `.atlasfile_root` (gravado no startup) + índice com documentos = pasta foi excluída/substituída.
+  - Modal de recuperação com um clique: `POST /api/system/restart` encerra a API graciosamente, a política `restart: unless-stopped` (nova no compose, 5 serviços) religa o container, o Docker recria a pasta host e re-vincula o mount (comportamento validado no Docker Desktop/macOS); a UI aguarda o health voltar, roda o reconcile global (limpa o índice órfão) e recarrega no onboarding.
+  - Guard anti-limbo: upload, scan e criação de projeto retornam `503 PROJECTS_ROOT_EMPTIED` enquanto o estado persistir — sem ele, escritas iriam para um inode deletado e se perderiam em silêncio. Onboarding também não é sugerido sobre mount fantasma.
+
 ## [0.39.2] - 2026-07-23
 
 ### Corrigido
