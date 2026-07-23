@@ -184,16 +184,18 @@
   },
   "aliasSuggest": {
     "title": "Alias suggestions (bootstrap)",
-    "intro": "Terms mined from {{corrected}} triage correction(s) — the bootstrap learns the vocabulary you corrected. Approving adds the alias to the template and projects.",
     "kindDomain": "domain",
     "kindType": "type",
-    "evidence": "{{support}} doc(s) · precision {{precision}}",
     "approveTitle": "Add as alias on the default template and propagate to projects",
     "dismiss": "Dismiss",
     "dismissTitle": "Do not suggest this term again",
     "applied": "Alias \"{{term}}\" added to {{label}} ({{count}} project(s) updated)",
     "applyFailed": "Failed to apply the alias",
     "dismissed": "Suggestion \"{{term}}\" dismissed",
-    "dismissFailed": "Failed to dismiss the suggestion"
+    "dismissFailed": "Failed to dismiss the suggestion",
+    "intro_one": "Terms mined from {{count}} triage correction — the bootstrap learns the vocabulary you corrected. Approving adds the alias to the template and projects.",
+    "intro_other": "Terms mined from {{count}} triage corrections — the bootstrap learns the vocabulary you corrected. Approving adds the alias to the template and projects.",
+    "evidence_one": "{{count}} doc · precision {{precision}}",
+    "evidence_other": "{{count}} docs · precision {{precision}}"
   }
 }

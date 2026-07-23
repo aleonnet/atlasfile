@@ -38,6 +38,10 @@ MIN_SUPPORT = 2          # docs corrigidos da classe-alvo contendo o termo
 MIN_PRECISION = 0.8      # fração dos docs (todas as classes) com o termo que são da classe-alvo
 MAX_TERMS_PER_TARGET = 5
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+# Marcadores estruturais do extrator ("[page 1]", "[sheet X row 1 col A]") não são
+# conteúdo do documento — jamais viram alias.
+_EXTRACTOR_MARKER_RE = re.compile(r"\[[^\]]*\]")
+_MIN_TOKEN_LEN = 3
 
 _KIND_FIELDS = {
     "business_domain": ("suggested_business_domain", "business_domain"),
@@ -46,15 +50,17 @@ _KIND_FIELDS = {
 
 
 def _candidate_terms(text: str) -> set[str]:
-    tokens = _TOKEN_RE.findall(text)
+    tokens = _TOKEN_RE.findall(_EXTRACTOR_MARKER_RE.sub(" ", text))
     terms: set[str] = set()
     for i, tok in enumerate(tokens):
-        if len(tok) >= 3 and not tok.isdigit():
+        if len(tok) >= _MIN_TOKEN_LEN and not tok.isdigit():
             terms.add(tok)
         if i + 1 < len(tokens):
-            bigram = f"{tok} {tokens[i + 1]}"
-            if len(bigram) >= 7 and not bigram.replace(" ", "").isdigit():
-                terms.add(bigram)
+            nxt = tokens[i + 1]
+            # TODO tokens do bigrama com ≥3 letras: mata bordas funcionais
+            # ("partes e", "junto ao") sem lista de stopwords arbitrária
+            if len(tok) >= _MIN_TOKEN_LEN and len(nxt) >= _MIN_TOKEN_LEN                     and not (tok.isdigit() or nxt.isdigit()):
+                terms.add(f"{tok} {nxt}")
     return terms
 
 
@@ -166,8 +172,13 @@ def suggest_aliases(
         if len(labels) < 2:
             continue  # sem contraste não há termo "discriminativo"
 
+
         for (t_kind, target_key), corrected_items in sorted(targets.items()):
             if t_kind != kind:
+                continue
+            # precisão só significa algo com contraste real: ≥2 docs de OUTRAS classes
+            others = [i for i in labeled if str(i["data"].get(final_field)).strip() != target_key]
+            if len(others) < 2:
                 continue
             term_support: dict[str, list[str]] = {}
             for item in corrected_items:

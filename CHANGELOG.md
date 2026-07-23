@@ -15,6 +15,17 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.39.1] -- 2026-07-23
+
+### Corrigido (achados de campo do sugeridor de aliases)
+
+- **Marcadores do extrator não viram alias**: "[page 1]"/"[sheet …]" eram tokenizados junto do conteúdo — "page" chegou a ser proposto como alias. Marcadores `[...]` são removidos antes da mineração.
+- **Bigramas com borda funcional mortos**: "partes e"/"junto ao" passavam pelo corte contrastivo em corpus minúsculo; agora TODO token do n-grama exige ≥3 letras (sem lista de stopwords arbitrária).
+- **Precisão exige contraste real**: com <2 docs de outras classes, precisão 100% é ilusão estatística — o alvo é pulado até haver contraste mínimo.
+- **Plural nativo no i18n**: "2 correção(ões)"/"2 doc(s)" viram pluralização i18next (`_one`/`_other`) nos 2 idiomas.
+
+---
+
 ## [0.39.0] -- 2026-07-23
 
 ### Alterado

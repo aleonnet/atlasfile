@@ -227,7 +227,7 @@ describe("IngestTriageCard", () => {
       expect(screen.getByText(/Sugestões de aliases/i)).toBeInTheDocument();
     });
     expect(screen.getByText("escritura")).toBeInTheDocument();
-    expect(screen.getByText(/2 doc\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/2 docs · precisão/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Aprovar/i }));
     await waitFor(() => {

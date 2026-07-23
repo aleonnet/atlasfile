@@ -184,16 +184,18 @@
   },
   "aliasSuggest": {
     "title": "Sugestões de aliases (bootstrap)",
-    "intro": "Termos minerados de {{corrected}} correção(ões) da triagem — o bootstrap passa a reconhecer o vocabulário que você corrigiu. Aprovar adiciona o alias ao template e aos projetos.",
     "kindDomain": "domínio",
     "kindType": "tipo",
-    "evidence": "{{support}} doc(s) · precisão {{precision}}",
     "approveTitle": "Adicionar como alias no template default e propagar aos projetos",
     "dismiss": "Dispensar",
     "dismissTitle": "Não propor este termo novamente",
     "applied": "Alias \"{{term}}\" adicionado a {{label}} ({{count}} projeto(s) atualizados)",
     "applyFailed": "Falha ao aplicar o alias",
     "dismissed": "Sugestão \"{{term}}\" dispensada",
-    "dismissFailed": "Falha ao dispensar a sugestão"
+    "dismissFailed": "Falha ao dispensar a sugestão",
+    "intro_one": "Termos minerados de {{count}} correção da triagem — o bootstrap passa a reconhecer o vocabulário que você corrigiu. Aprovar adiciona o alias ao template e aos projetos.",
+    "intro_other": "Termos minerados de {{count}} correções da triagem — o bootstrap passa a reconhecer o vocabulário que você corrigiu. Aprovar adiciona o alias ao template e aos projetos.",
+    "evidence_one": "{{count}} doc · precisão {{precision}}",
+    "evidence_other": "{{count}} docs · precisão {{precision}}"
   }
 }

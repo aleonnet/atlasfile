@@ -123,6 +123,8 @@ def test_dispensado_nao_volta_e_sem_contraste_nao_ha_sugestao(project_root):
 
     _write_resolved(project_root, "d3", suggested_bd="operacoes", final_bd="operacoes",
                     filename="c.txt", text="indicadores mensais")
+    _write_resolved(project_root, "d4", suggested_bd="operacoes", final_bd="operacoes",
+                    filename="d.txt", text="painel de chamados")  # contraste mínimo: 2 docs
     com_contraste = suggest_aliases(project_root, PROFILE)
     assert any(t["term"] == "escritura" for s in com_contraste["suggestions"] for t in s["terms"])
 
@@ -150,3 +152,38 @@ def test_unigrama_redundante_cede_ao_bigrama_mais_especifico(project_root):
     assert "lavratura notarial" in terms
     assert "lavratura" not in terms
     assert "notarial" not in terms
+
+
+def test_marcadores_do_extrator_e_bordas_funcionais_nao_viram_alias(project_root):
+    """Reprodução do achado em campo (v0.39.1): "[page 1]" do extrator e bigramas
+    com palavra funcional na borda ("partes e", "junto ao") jamais são propostos;
+    termo legítimo ("traslado") permanece."""
+    corpo = "as partes e testemunhas junto ao cartorio receberam o traslado da escritura"
+    _write_resolved(project_root, "d1", suggested_bd="operacoes", final_bd="juridico",
+                    filename="a.txt", text=f"[page 1] {corpo}")
+    _write_resolved(project_root, "d2", suggested_bd="operacoes", final_bd="juridico",
+                    filename="b.txt", text=f"[page 1] {corpo} registrado")
+    _write_resolved(project_root, "d3", suggested_bd="operacoes", final_bd="operacoes",
+                    filename="c.txt", text="[sheet Frentes row 1] indicadores mensais")
+    _write_resolved(project_root, "d4", suggested_bd="operacoes", final_bd="operacoes",
+                    filename="d.txt", text="[page 1] painel de chamados consolidado")
+
+    result = suggest_aliases(project_root, PROFILE)
+    terms = {t["term"] for s_ in result["suggestions"] for t in s_["terms"]}
+    assert "page" not in terms          # marcador do extrator
+    assert "sheet" not in terms
+    assert "partes e" not in terms      # borda funcional (token < 3 letras)
+    assert "junto ao" not in terms
+    assert "traslado" in terms          # termo real sobrevive
+
+
+def test_sem_contraste_minimo_nao_ha_precisao_fabricada(project_root):
+    """Com <2 docs de outras classes, precisão 100% é ilusão estatística — nada é proposto."""
+    _write_resolved(project_root, "d1", suggested_bd="operacoes", final_bd="juridico",
+                    filename="a.txt", text="escritura lavrada no tabelionato")
+    _write_resolved(project_root, "d2", suggested_bd="operacoes", final_bd="juridico",
+                    filename="b.txt", text="escritura registrada no tabelionato")
+    _write_resolved(project_root, "d3", suggested_bd="operacoes", final_bd="operacoes",
+                    filename="c.txt", text="indicadores mensais")  # só 1 de contraste
+
+    assert suggest_aliases(project_root, PROFILE)["suggestions"] == []

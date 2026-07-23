@@ -70,6 +70,7 @@ def sandbox(tmp_path, monkeypatch):
     resolved("d1", "juridico", "escritura publica lavrada em cartorio", "a.txt")
     resolved("d2", "juridico", "escritura registrada pelo tabeliao", "b.txt")
     resolved("d3", "operacoes", "indicadores mensais de atendimento", "c.txt")
+    resolved("d4", "operacoes", "painel de chamados consolidado", "d.txt")  # contraste mínimo: 2
     return tmp_path
 
 

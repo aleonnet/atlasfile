@@ -905,7 +905,7 @@ export function IngestTriageCard({
           badge={<Badge>{aliasSuggestions.reduce((n, g) => n + g.terms.length, 0)}</Badge>}
         >
           <p className="mb-2 text-[0.78rem] text-muted-foreground">
-            {t("ingest:aliasSuggest.intro", { corrected: aliasCorpus?.corrected_total ?? 0 })}
+            {t("ingest:aliasSuggest.intro", { count: aliasCorpus?.corrected_total ?? 0 })}
           </p>
           <div className="flex flex-col gap-3">
             {aliasSuggestions.map((group) => (
@@ -924,7 +924,7 @@ export function IngestTriageCard({
                       <li key={term.term} className="flex flex-wrap items-center gap-2">
                         <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[0.8rem] text-accent">{term.term}</span>
                         <span className="font-mono text-[0.7rem] text-tertiary" title={term.sample_docs.join(", ")}>
-                          {t("ingest:aliasSuggest.evidence", { support: term.support, precision: formatPercent(term.precision) })}
+                          {t("ingest:aliasSuggest.evidence", { count: term.support, precision: formatPercent(term.precision) })}
                         </span>
                         <span className="ml-auto flex gap-1.5">
                           <Button size="sm" onClick={() => void handleApproveAlias(group, term)} disabled={aliasBusy === token} title={t("ingest:aliasSuggest.approveTitle")}>
