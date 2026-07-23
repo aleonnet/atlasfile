@@ -1037,7 +1037,7 @@ async def _oserror_handler(request, exc: OSError):
             content={"detail": {
                 "code": "PROJECTS_ROOT_UNAVAILABLE",
                 "params": {"error": health.get("error")},
-                "message": "Pasta de projetos inacessível. Recrie a pasta no host e reinicie o stack (docker compose down && docker compose up -d).",
+                "message": "Pasta de projetos inacessível. Use a recuperação na tela para recriar e reiniciar.",
             }},
         )
     _logger.exception("OSError não relacionado à raiz de projetos", exc_info=exc)
@@ -1090,7 +1090,12 @@ def system_restart(auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
 
 @app.get("/api/setup/status")
 def setup_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
-    roots = list_project_roots(Path(settings.projects_root))
+    # Endpoint de diagnóstico: NUNCA pode 503 — com o mount quebrado (EPERM no
+    # listdir) é ele quem leva o estado `unavailable` até o modal de recuperação
+    try:
+        roots = list_project_roots(Path(settings.projects_root))
+    except OSError:
+        roots = []
     initialized_count = 0
     for r in roots:
         try:

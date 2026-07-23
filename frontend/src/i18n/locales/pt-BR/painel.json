@@ -162,14 +162,12 @@
     "projectNamePlaceholder": "meu_projeto",
     "projectNameHint": "Apenas letras minúsculas, números, _ e - (sem espaços ou acentos)",
     "invalidName": "Nome inválido",
-    "continue": "Continuar",
-    "rootUnavailableTitle": "Pasta de projetos inacessível.",
-    "rootUnavailableBody": "A pasta de projetos foi removida ou o mount está quebrado. Recrie a pasta no host e reinicie o stack: docker compose down && docker compose up -d. Nenhum dado indexado é apagado enquanto isso."
+    "continue": "Continuar"
   },
   "recovery": {
     "label": "Recuperação",
-    "title": "Pasta de projetos excluída",
-    "body": "A pasta de projetos foi excluída ou substituída enquanto a aplicação rodava. O índice ainda conhece documentos que não existem mais no disco, e uploads estão bloqueados para evitar perda silenciosa de dados. Pasta:",
+    "title": "Pasta de projetos excluída ou inacessível",
+    "body": "A pasta de projetos foi excluída, substituída ou ficou inacessível enquanto a aplicação rodava. Operações de arquivo estão bloqueadas para evitar perda silenciosa de dados. Pasta:",
     "explain": "A recuperação reinicia a aplicação: o Docker recria a pasta e religa o armazenamento; em seguida o índice órfão é limpo e o assistente de configuração reabre.",
     "actionRestart": "Recriar pasta e reiniciar",
     "actionRevalidate": "Restaurei manualmente — revalidar",

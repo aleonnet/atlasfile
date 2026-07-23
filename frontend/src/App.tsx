@@ -178,8 +178,11 @@ function AppShell() {
     refetchIntervalInBackground: false,
     retry: false,
   });
-  const projectsRootDown = setupStatusQuery.data?.projects_root_ok === false;
-  const projectsRootEmptied = setupStatusQuery.data?.projects_root_state === "emptied";
+  // Raiz esvaziada (mount fantasma) OU inacessível (mount quebrado): a deleção
+  // da pasta host manifesta dos dois jeitos no VirtioFS — a cura é a mesma
+  // (restart re-vincula o mount e o Docker recria a pasta)
+  const rootState = setupStatusQuery.data?.projects_root_state;
+  const projectsRootBroken = rootState === "emptied" || rootState === "unavailable";
 
   const healthFailuresRef = useRef(0);
   useEffect(() => {
@@ -514,15 +517,8 @@ function AppShell() {
           )}
         </Topbar>
 
-        {projectsRootDown && (
-          <div role="alert" className="mx-auto mt-3 w-full max-w-[1200px] rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-foreground">
-            <strong className="text-destructive">{t("painel:app.rootUnavailableTitle")}</strong>{" "}
-            {t("painel:app.rootUnavailableBody")}
-          </div>
-        )}
-
         <RootRecoveryModal
-          open={projectsRootEmptied}
+          open={projectsRootBroken}
           hostRoot={setupStatusQuery.data?.projects_host_root}
           onRevalidate={() => void setupStatusQuery.refetch()}
         />

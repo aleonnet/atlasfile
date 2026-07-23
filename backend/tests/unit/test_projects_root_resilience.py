@@ -154,6 +154,20 @@ def test_escritas_bloqueadas_com_raiz_esvaziada(client, tmp_path, monkeypatch):
         assert r.json()["detail"]["code"] == "PROJECTS_ROOT_EMPTIED"
 
 
+def test_setup_status_nunca_503_com_mount_quebrado(client, tmp_path, monkeypatch):
+    """v0.40.1 (achado em campo): com EPERM no listdir (mount quebrado de verdade,
+    não fantasma), o setup/status respondia 503 via handler de OSError — e o modal
+    de recuperação nunca aparecia. O endpoint de diagnóstico não pode falhar."""
+    monkeypatch.setattr(settings, "projects_root", str(tmp_path / "sumiu"), raising=False)
+    with patch("app.main.list_project_roots", side_effect=PermissionError(1, "Operation not permitted")):
+        r = client.get("/api/setup/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["projects_root_state"] == "unavailable"
+    assert body["projects_root_ok"] is False
+    assert body["onboarding_suggested"] is False
+
+
 def test_restart_endpoint_agenda_saida_graciosa(client):
     with patch("app.main.threading.Timer") as mock_timer:
         r = client.post("/api/system/restart")

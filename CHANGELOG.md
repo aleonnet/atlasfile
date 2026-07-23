@@ -15,6 +15,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.40.1] - 2026-07-23
+
+### Corrigido
+- **Recuperação da raiz cobre o segundo modo de falha (achado no teste destrutivo)**: a deleção da pasta host pode manifestar como mount QUEBRADO (EPERM no listdir), não só como mount fantasma vazio. Nesse modo o `/api/setup/status` respondia 503 via handler de OSError e o modal de recuperação nunca aparecia — sobrava a mensagem manual antiga. Agora: `setup/status` nunca falha (reporta `projects_root_state: unavailable`), o modal de um clique abre nos DOIS estados (`emptied` e `unavailable`) e o banner passivo antigo foi removido. Validado com probe real: `docker restart` com a pasta host deletada recria a pasta, re-vincula o mount e escritas voltam ao host.
+
 ## [0.40.0] - 2026-07-23
 
 ### Adicionado
