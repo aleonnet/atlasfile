@@ -22,6 +22,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 - **Uso LLM do chat achatado**: novo índice `atlasfile_chat_usage` (1 evento por chamada: provider, modelo, tokens, cache, custo, projeto, canal), gravado em `/api/chat` (web) e no fluxo de canais; falha na gravação nunca afeta a resposta do chat (testado). Resolve a limitação do custo aninhado em `usage_by_model` das sessões.
 - Aprendizados de plataforma registrados no gerador: nunca setar `fields` no index-pattern (substitui o cache de campos inteiro); TSVB do fork 7.10 usa strings lucene em `filter_ratio`; heatmap hora×dia exigiria campo derivado na indexação (candidato futuro).
 
+## [0.43.4] - 2026-07-23
+
+### Corrigido
+- **Número de versão congelado em 0.42.0**: o bump da v0.43.0 fez um replace sem assert que virou no-op silencioso (procurava "0.41.1" com o arquivo já em "0.42.0") e a cadeia inteira 0.43.x nunca tocou o `package.json` — o CHANGELOG avançou, a sidebar não. O código em si sempre acompanhou o main; só o rótulo mentia. Corrigido para 0.43.4 com verificação.
+
 ## [0.43.3] - 2026-07-23
 
 ### Adicionado
