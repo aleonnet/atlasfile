@@ -181,5 +181,19 @@
     "succeeded": "concluído",
     "failed": "falhou",
     "running": "em execução"
+  },
+  "aliasSuggest": {
+    "title": "Sugestões de aliases (bootstrap)",
+    "intro": "Termos minerados de {{corrected}} correção(ões) da triagem — o bootstrap passa a reconhecer o vocabulário que você corrigiu. Aprovar adiciona o alias ao template e aos projetos.",
+    "kindDomain": "domínio",
+    "kindType": "tipo",
+    "evidence": "{{support}} doc(s) · precisão {{precision}}",
+    "approveTitle": "Adicionar como alias no template default e propagar aos projetos",
+    "dismiss": "Dispensar",
+    "dismissTitle": "Não propor este termo novamente",
+    "applied": "Alias \"{{term}}\" adicionado a {{label}} ({{count}} projeto(s) atualizados)",
+    "applyFailed": "Falha ao aplicar o alias",
+    "dismissed": "Sugestão \"{{term}}\" dispensada",
+    "dismissFailed": "Falha ao dispensar a sugestão"
   }
 }

@@ -173,6 +173,31 @@ export interface ModelOption {
   openai_api?: string;
 }
 
+/** Sugestões de aliases do bootstrap mineradas das correções da triagem. */
+export interface AliasSuggestionTerm {
+  term: string;
+  support: number;
+  precision: number;
+  sample_docs: string[];
+}
+
+export interface AliasSuggestionGroup {
+  kind: "business_domain" | "document_type";
+  key: string;
+  label: string;
+  terms: AliasSuggestionTerm[];
+}
+
+export interface AliasSuggestionsResponse {
+  suggestions: AliasSuggestionGroup[];
+  corpus: {
+    resolved_total: number;
+    analyzed_total: number;
+    corrected_total: number;
+    distinct_labels: number;
+  };
+}
+
 /** Token usage and estimated cost for one chat turn. */
 export interface TurnUsage {
   input_tokens: number;

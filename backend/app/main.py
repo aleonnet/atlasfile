@@ -1352,6 +1352,19 @@ class TaxonomyMigrateRequest(BaseModel):
     remove_old: bool = True
 
 
+class TaxonomyAliasesRequest(BaseModel):
+    kind: str  # document_type | business_domain
+    key: str
+    aliases: list[str]
+    created_from: str = ""
+
+
+class AliasSuggestionDismissRequest(BaseModel):
+    kind: str
+    key: str
+    term: str
+
+
 def _taxonomy_project_context(project_id: str) -> tuple[Path, dict[str, Any]]:
     project_root = _resolve_project_root(project_id)
     profile = load_project_profile(project_root)
@@ -1395,6 +1408,56 @@ def delete_taxonomy_entry(kind: str, key: str, auth: AuthContext = Depends(requi
     except TaxonomyMigrationError as exc:
         code = 409 if "ainda é usada" in str(exc) else 400
         raise HTTPException(status_code=code, detail=str(exc))
+
+
+@app.post("/api/taxonomy/aliases")
+def add_taxonomy_aliases_endpoint(request: TaxonomyAliasesRequest, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Adiciona aliases a uma entrada EXISTENTE (template default + profiles) —
+    caminho de aprovação do sugeridor de aliases do bootstrap."""
+    from app.taxonomy import add_taxonomy_aliases
+
+    try:
+        result = add_taxonomy_aliases(
+            kind=request.kind,
+            key=request.key,
+            aliases=request.aliases,
+            created_from=request.created_from,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", **result}
+
+
+@app.get("/api/projects/{project_ref}/alias-suggestions")
+def get_alias_suggestions(project_ref: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
+    """Minera as correções da triagem do projeto e propõe aliases (análise pura,
+    nada é persistido; aprovação humana via POST /api/taxonomy/aliases)."""
+    from app.alias_suggester import suggest_aliases
+
+    enforce_project_scope(auth, project_ref)
+    project_root = _resolve_project_root(project_ref)
+    profile = load_project_profile(project_root)
+    dismissed = set((profile.get("classification") or {}).get("alias_suggestions_dismissed") or [])
+    return suggest_aliases(project_root, profile, dismissed=dismissed)
+
+
+@app.post("/api/projects/{project_ref}/alias-suggestions/dismiss")
+def dismiss_alias_suggestion(
+    project_ref: str,
+    request: AliasSuggestionDismissRequest,
+    auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    """Registra a dispensa de uma sugestão no profile — o minerador não a propõe de novo."""
+    enforce_project_scope(auth, project_ref)
+    project_root = _resolve_project_root(project_ref)
+    token = f"{request.kind}:{request.key}:{request.term.strip().lower()}"
+    profile = load_profile(project_root)
+    raw = profile.model_dump(mode="json")
+    dismissed = raw.setdefault("classification", {}).setdefault("alias_suggestions_dismissed", [])
+    if token not in dismissed:
+        dismissed.append(token)
+        save_profile(project_root=project_root, profile=raw, updated_by="alias-suggest:dismiss")
+    return {"status": "ok", "dismissed": dismissed}
 
 
 @app.post("/api/taxonomy/create")

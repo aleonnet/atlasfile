@@ -120,3 +120,76 @@ def create_taxonomy_entry(
         "template_updated": template_updated,
         "updated_projects": updated_projects,
     }
+
+
+def _merge_aliases_into_entry(raw: dict[str, Any], kind: str, key: str, aliases: list[str]) -> bool:
+    """Funde aliases numa entrada EXISTENTE (complemento do create, que só cria novas)."""
+    bucket_name = "document_types" if kind == "document_type" else "business_domains"
+    for item in (raw.get("classification") or {}).get(bucket_name, []):
+        if item.get("key") != key:
+            continue
+        current = {str(a).strip().lower() for a in (item.get("aliases") or []) if str(a).strip()}
+        merged = sorted(current | {a for a in aliases})
+        if merged == sorted(current):
+            return False
+        item["aliases"] = merged
+        return True
+    return False
+
+
+def add_taxonomy_aliases(
+    *,
+    kind: str,
+    key: str,
+    aliases: list[str],
+    created_from: str = "",
+) -> dict[str, Any]:
+    """Adiciona aliases a uma entrada EXISTENTE no template `default` e propaga aos
+    profiles dos projetos (espelho do create_taxonomy_entry para o caso append).
+
+    Idempotente: alias já presente não duplica. A entrada precisa existir no
+    template default — senão ValueError (para criar, use create_taxonomy_entry)."""
+    if kind not in VALID_KINDS:
+        raise ValueError(f"kind inválido: {kind} (use document_type ou business_domain)")
+    key = _slugify_key(key)
+    clean_aliases = sorted({a.strip().lower() for a in aliases if a and a.strip()})
+    if not key or not clean_aliases:
+        raise ValueError("key e aliases são obrigatórios")
+
+    provenance = f"taxonomy:aliases:{kind}:{key} += {', '.join(clean_aliases)} em {utc_now_iso()}" + (
+        f" a partir de {created_from}" if created_from else ""
+    )
+
+    template_raw = get_template("default")["profile"]
+    bucket_name = "document_types" if kind == "document_type" else "business_domains"
+    if not _entry_exists((template_raw.get("classification") or {}).get(bucket_name, []), key):
+        raise ValueError(f"entrada {kind}:{key} não existe no template default")
+
+    template_updated = _merge_aliases_into_entry(template_raw, kind, key, clean_aliases)
+    if template_updated:
+        meta = template_raw.setdefault("template_meta", {})
+        meta["updated_at"] = utc_now_iso()
+        notes = meta.get("notes") or ""
+        meta["notes"] = (notes + " | " + provenance).strip(" |")
+        save_template("default", template_raw)
+
+    updated_projects: list[str] = []
+    projects_root = Path(settings.projects_root)
+    for project_root in list_project_roots(projects_root):
+        try:
+            profile = load_profile(project_root)
+        except Exception:
+            continue
+        raw = profile.model_dump(mode="json")
+        if not _merge_aliases_into_entry(raw, kind, key, clean_aliases):
+            continue
+        save_profile(project_root=project_root, profile=raw, updated_by=f"taxonomy:{created_from or 'alias-suggest'}")
+        updated_projects.append(raw.get("project_id") or project_root.name)
+
+    return {
+        "kind": kind,
+        "key": key,
+        "aliases": clean_aliases,
+        "template_updated": template_updated,
+        "updated_projects": updated_projects,
+    }

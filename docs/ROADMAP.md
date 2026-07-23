@@ -13,6 +13,17 @@ _Contexto: v0.33.0 entregou UI PT-BR/EN-US completa e classificação bilíngue 
 | `topics` EN validado por corpus | Os +315 sinônimos EN (v0.33.0) foram derivados por tradução de domínio; validação estatística exige corpus EN rotulado no pipeline do classificador | Volume real de documentos EN decididos na triagem suficiente para compor validação |
 | Localização de prompts LLM | **Rejeitada com critério** (v0.33.0): prompt canônico único + regra "responda no idioma do usuário" cobre o caso sem duplicar manutenção/QA | Só reavaliar se um idioma exibir qualidade de resposta comprovadamente inferior |
 
+## Classificador
+
+_O item "Sugeridor de aliases a partir da triagem" foi executado — ver
+`planos_concluidos/bootstrap_alias_suggester_v0370.plan.md` (v0.37.0)._
+
+## Instalação / onboarding
+
+| Item | O que é | Gatilho para executar |
+|---|---|---|
+| Instalador bootstrapa os próprios pré-requisitos | Hoje o `install.sh` **falha com link** quando falta Docker/git (`fail "Docker não encontrado — instale..."`, L113-122). Proposta: detectar o que falta e **oferecer instalar** (macOS: brew/download do Docker Desktop + abrir o app e aguardar o daemon; Linux: Docker Engine + Compose plugin via repositório oficial da distro; git idem), sempre com confirmação do usuário antes de tocar o sistema. Elimina a seção "Before you start" do site de instalação (chaves `install.req.*`), deixando o one-liner realmente autossuficiente. Referências citadas pelo usuário a validar no plano: instaladores do OpenClaw (`curl -fsSL https://openclaw.ai/install.sh \| bash`, instala Node se faltar) e do Claude Code fazem bootstrap de dependências. | Antes da próxima rodada de divulgação pública do site, ou ao primeiro relato real de fricção no passo "Before you start" |
+
 ## Direção de arte / visual
 
 | Item | O que é | Estado |

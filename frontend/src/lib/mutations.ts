@@ -60,6 +60,7 @@ export function invalidateAfterTaxonomyChange(): void {
     ["ingest-history"],
     qk.classifier.scope(),
     ["search"],
+    ["alias-suggestions"],
   ]);
 }
 

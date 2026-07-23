@@ -152,7 +152,24 @@ vi.mock("../../api", () => ({
       { provider: "openai", model: "gpt-4o-mini", label: "OpenAI gpt-4o-mini (base)" },
       { provider: "openai", model: "gpt-4.1", label: "OpenAI gpt-4.1 (médio)" }
     ])
-  )
+  ),
+  fetchAliasSuggestions: vi.fn(() =>
+    Promise.resolve({
+      suggestions: [
+        {
+          kind: "business_domain",
+          key: "juridico",
+          label: "Jurídico",
+          terms: [{ term: "escritura", support: 2, precision: 1.0, sample_docs: ["a.txt", "b.txt"] }]
+        }
+      ],
+      corpus: { resolved_total: 4, analyzed_total: 4, corrected_total: 2, distinct_labels: 2 }
+    })
+  ),
+  addTaxonomyAliases: vi.fn(() =>
+    Promise.resolve({ status: "ok", key: "juridico", aliases: ["escritura"], updated_projects: ["p1"] })
+  ),
+  dismissAliasSuggestion: vi.fn(() => Promise.resolve({ status: "ok", dismissed: ["business_domain:juridico:escritura"] }))
 }));
 
 function defaultProps(overrides: Partial<React.ComponentProps<typeof IngestTriageCard>> = {}) {
@@ -200,6 +217,45 @@ describe("IngestTriageCard", () => {
     });
     expect(screen.getByText(/Benchmark oficial/i)).toBeInTheDocument();
     expect(screen.getAllByText(/bootstrap/i).length).toBeGreaterThan(0);
+  });
+
+  it("mostra sugestões de aliases mineradas e aprova com um clique", async () => {
+    const api = await import("../../api");
+    const onStatus = vi.fn();
+    renderWithProviders(<IngestTriageCard {...defaultProps({ onStatus })} />);
+    await waitFor(() => {
+      expect(screen.getByText(/Sugestões de aliases/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText("escritura")).toBeInTheDocument();
+    expect(screen.getByText(/2 doc\(s\)/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Aprovar/i }));
+    await waitFor(() => {
+      expect(api.addTaxonomyAliases).toHaveBeenCalledWith({
+        kind: "business_domain",
+        key: "juridico",
+        aliases: ["escritura"],
+        created_from: "alias-suggest:p1",
+      });
+    });
+    expect(onStatus).toHaveBeenCalledWith(expect.stringContaining("escritura"));
+  });
+
+  it("dispensa uma sugestão sem aplicá-la", async () => {
+    const api = await import("../../api");
+    renderWithProviders(<IngestTriageCard {...defaultProps()} />);
+    await waitFor(() => {
+      expect(screen.getByText("escritura")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Dispensar/i }));
+    await waitFor(() => {
+      expect(api.dismissAliasSuggestion).toHaveBeenCalledWith("p1", {
+        kind: "business_domain",
+        key: "juridico",
+        term: "escritura",
+      });
+    });
+    expect(api.addTaxonomyAliases).not.toHaveBeenCalled();
   });
 
   it("shows empty state when all projects selected", async () => {

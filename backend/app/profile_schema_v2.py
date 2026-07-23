@@ -206,6 +206,9 @@ class ClassificationConfig(BaseModel):
     llm_policy: LLMPolicy = Field(default_factory=LLMPolicy)
     operational: ClassificationOperationalConfig = Field(default_factory=ClassificationOperationalConfig)
     augmentation: AugmentationConfig = Field(default_factory=AugmentationConfig)
+    # Sugestões de alias dispensadas pelo usuário ("kind:key:term") — o minerador
+    # não volta a propor o que foi rejeitado.
+    alias_suggestions_dismissed: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_areas(self) -> "ClassificationConfig":

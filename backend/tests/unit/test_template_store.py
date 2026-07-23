@@ -211,6 +211,7 @@ def test_save_template_persists_minimal_bootstrap_contract(tmp_path: Path, monke
     stored = json.loads((tmp_path / "minimal_bootstrap.json").read_text(encoding="utf-8"))
     classification = stored["classification"]
     assert sorted(classification.keys()) == [
+        "alias_suggestions_dismissed",
         "augmentation",
         "business_domains",
         "confidence_thresholds",

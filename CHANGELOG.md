@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.37.0] -- 2026-07-23
+
+### Adicionado
+
+- **Sugeridor de aliases do bootstrap** (nova seção no Classificador): minera n-gramas discriminativos das CORREÇÕES humanas da triagem (par sugerido→final dos metadados resolvidos) e **propõe** aliases de domínio/tipo com evidência (nº de docs, precisão) — aprovação com um clique adiciona ao template default e propaga aos projetos (`taxonomy.add_taxonomy_aliases`, novo caminho de append em entrada existente); dispensa persiste no profile e o termo não volta. Corte contrastivo (suporte ≥2 docs corrigidos da classe, precisão ≥0.8 sobre todas as classes, ≥2 rótulos no corpus) sem stopwords artesanais — validado em dados reais: correções isoladas e ruído de OCR não passam. Candidatos garantidamente compatíveis com o matching real do bootstrap (`fold_ocr_spacing` + word boundary, colisão com o léxico de tipos descartada; extensões de arquivo nunca viram alias). Endpoints: `GET /api/projects/{ref}/alias-suggestions`, `POST /api/taxonomy/aliases`, `POST .../alias-suggestions/dismiss`.
+
+---
+
 ## [0.36.0] -- 2026-07-22
 
 ### Corrigido

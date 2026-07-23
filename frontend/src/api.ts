@@ -1,4 +1,5 @@
 import type {
+  AliasSuggestionsResponse,
   ClassifierCycleStatus,
   ClassifierReport,
   ClassifierReportSummary,
@@ -988,5 +989,42 @@ export async function createTaxonomyEntry(input: {
     body: JSON.stringify(input),
   });
   if (!res.ok) await raiseApiError(res, "errors:api.createTaxonomyEntry");
+  return res.json();
+}
+
+/** Sugestões de aliases mineradas das correções da triagem (análise pura). */
+export async function fetchAliasSuggestions(projectRef: string): Promise<AliasSuggestionsResponse> {
+  const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/alias-suggestions`);
+  if (!res.ok) await raiseApiError(res, "errors:api.aliasSuggestions");
+  return res.json();
+}
+
+/** Aprova aliases sugeridos: append em entrada EXISTENTE (template + profiles). */
+export async function addTaxonomyAliases(input: {
+  kind: "document_type" | "business_domain";
+  key: string;
+  aliases: string[];
+  created_from?: string;
+}): Promise<{ status: string; key: string; aliases: string[]; updated_projects: string[] }> {
+  const res = await apiFetch(`${API_URL}/api/taxonomy/aliases`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) await raiseApiError(res, "errors:api.addTaxonomyAliases");
+  return res.json();
+}
+
+/** Dispensa uma sugestão (persistida no profile — não volta a ser proposta). */
+export async function dismissAliasSuggestion(
+  projectRef: string,
+  input: { kind: string; key: string; term: string }
+): Promise<{ status: string; dismissed: string[] }> {
+  const res = await apiFetch(`${API_URL}/api/projects/${encodeURIComponent(projectRef)}/alias-suggestions/dismiss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) await raiseApiError(res, "errors:api.dismissAliasSuggestion");
   return res.json();
 }

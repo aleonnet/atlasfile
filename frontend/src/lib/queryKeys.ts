@@ -36,6 +36,7 @@ export const qk = {
 
   // ── Escopados por projeto ──
   stats: (projectId?: string) => ["stats", projectId ?? null] as const,
+  aliasSuggestions: (projectId: string) => ["alias-suggestions", projectId] as const,
   triage: {
     scope: () => ["triage"] as const,
     list: (projectId: string) => ["triage", projectId] as const,

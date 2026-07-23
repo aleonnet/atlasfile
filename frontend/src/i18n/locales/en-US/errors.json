@@ -139,6 +139,9 @@
     "listRejected": "Failed to list rejected items",
     "restoreRejected": "Failed to restore rejected item",
     "deleteRejected": "Failed to delete rejected item",
-    "createTaxonomyEntry": "Failed to create taxonomy entry"
+    "createTaxonomyEntry": "Failed to create taxonomy entry",
+    "aliasSuggestions": "Failed to load alias suggestions",
+    "addTaxonomyAliases": "Failed to add aliases to the taxonomy",
+    "dismissAliasSuggestion": "Failed to dismiss the suggestion"
   }
 }

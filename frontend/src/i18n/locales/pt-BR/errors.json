@@ -139,6 +139,9 @@
     "listRejected": "Falha ao listar rejeitados",
     "restoreRejected": "Falha ao restaurar rejeitado",
     "deleteRejected": "Falha ao excluir rejeitado",
-    "createTaxonomyEntry": "Falha ao criar entrada de taxonomia"
+    "createTaxonomyEntry": "Falha ao criar entrada de taxonomia",
+    "aliasSuggestions": "Falha ao carregar sugestões de aliases",
+    "addTaxonomyAliases": "Falha ao adicionar aliases à taxonomia",
+    "dismissAliasSuggestion": "Falha ao dispensar a sugestão"
   }
 }

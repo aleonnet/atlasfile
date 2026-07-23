@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.37.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [bootstrap_alias_suggester_v0370](bootstrap_alias_suggester_v0370.plan.md) | Sugeridor de aliases do bootstrap: minera n-gramas discriminativos das correções da triagem (par sugerido→final do triage_resolved) e propõe aliases com evidência para aprovação humana na nova seção do Classificador; append governado `add_taxonomy_aliases` (template+profiles), dispensas persistidas no profile; corte contrastivo (suporte ≥2, precisão ≥0.8) validado em dados reais; candidatos compatíveis com o matching do bootstrap por construção |
+
+---
+
 ## 0.36.0
 
 | # | Plano | Escopo |

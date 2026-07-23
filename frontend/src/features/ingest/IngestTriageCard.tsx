@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, RefreshCw, Settings, Sparkles } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Lightbulb, RefreshCw, Settings, Sparkles, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import {
@@ -15,10 +15,15 @@ import {
   startClassifierCycle,
   updateBenchmarkEnabledModes,
   updateClassifierOverride,
-  updateProjectProfile
+  updateProjectProfile,
+  fetchAliasSuggestions,
+  addTaxonomyAliases,
+  dismissAliasSuggestion,
 } from "../../api";
 import i18n from "../../i18n";
 import type {
+  AliasSuggestionGroup,
+  AliasSuggestionTerm,
   ClassifierCycleStatus,
   ClassifierReport,
   DatasetReadiness,
@@ -45,7 +50,7 @@ import { formatDateTimeShort, formatPercent } from "../../lib/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { qk } from "../../lib/queryKeys";
 import { useSseChannel } from "../../hooks/useSseChannel";
-import { invalidateAfterProfileChange } from "../../lib/mutations";
+import { invalidateAfterProfileChange, invalidateAfterTaxonomyChange } from "../../lib/mutations";
 import { MiniOrb } from "../../components/ui/processing-aura";
 
 /* Bloco de progresso de operação (ingest / ciclo do classificador) */
@@ -215,6 +220,50 @@ export function IngestTriageCard({
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  // ── Sugestor de aliases do bootstrap (minerado das correções da triagem) ──
+  const aliasSuggestionsQuery = useQuery({
+    queryKey: qk.aliasSuggestions(selectedProject),
+    queryFn: () => fetchAliasSuggestions(selectedProject),
+    enabled: isSingleProject,
+    staleTime: 30_000,
+  });
+  const aliasSuggestions = aliasSuggestionsQuery.data?.suggestions ?? [];
+  const aliasCorpus = aliasSuggestionsQuery.data?.corpus;
+  const [aliasBusy, setAliasBusy] = useState("");
+
+  async function handleApproveAlias(group: AliasSuggestionGroup, term: AliasSuggestionTerm) {
+    const token = `${group.kind}:${group.key}:${term.term}`;
+    setAliasBusy(token);
+    try {
+      const result = await addTaxonomyAliases({
+        kind: group.kind,
+        key: group.key,
+        aliases: [term.term],
+        created_from: `alias-suggest:${selectedProject}`,
+      });
+      onStatus(t("ingest:aliasSuggest.applied", { term: term.term, label: group.label, count: result.updated_projects.length }));
+      invalidateAfterTaxonomyChange();
+    } catch (e) {
+      onStatus(e instanceof Error ? e.message : t("ingest:aliasSuggest.applyFailed"), "error");
+    } finally {
+      setAliasBusy("");
+    }
+  }
+
+  async function handleDismissAlias(group: AliasSuggestionGroup, term: AliasSuggestionTerm) {
+    const token = `${group.kind}:${group.key}:${term.term}`;
+    setAliasBusy(token);
+    try {
+      await dismissAliasSuggestion(selectedProject, { kind: group.kind, key: group.key, term: term.term });
+      onStatus(t("ingest:aliasSuggest.dismissed", { term: term.term }));
+      void queryClient.invalidateQueries({ queryKey: qk.aliasSuggestions(selectedProject) });
+    } catch (e) {
+      onStatus(e instanceof Error ? e.message : t("ingest:aliasSuggest.dismissFailed"), "error");
+    } finally {
+      setAliasBusy("");
+    }
+  }
 
   // Sync: modal changed selectedModelTriage → update project profile
   useEffect(() => {
@@ -846,6 +895,52 @@ export function IngestTriageCard({
                 )}
               </>
             )}
+        </CollapsibleSection>
+      )}
+
+      {isSingleProject && aliasSuggestions.length > 0 && (
+        <CollapsibleSection
+          className="mt-2"
+          title={t("ingest:aliasSuggest.title")} persistKey="sugestoes-aliases"
+          badge={<Badge>{aliasSuggestions.reduce((n, g) => n + g.terms.length, 0)}</Badge>}
+        >
+          <p className="mb-2 text-[0.78rem] text-muted-foreground">
+            {t("ingest:aliasSuggest.intro", { corrected: aliasCorpus?.corrected_total ?? 0 })}
+          </p>
+          <div className="flex flex-col gap-3">
+            {aliasSuggestions.map((group) => (
+              <div key={`${group.kind}:${group.key}`} className="rounded-md border border-border bg-card p-2.5">
+                <div className="mb-1.5 flex items-center gap-2 text-[0.85rem]">
+                  <Lightbulb className="size-3.5 text-accent" aria-hidden />
+                  <span className="font-medium text-foreground">{group.label}</span>
+                  <span className="font-mono text-[0.7rem] text-tertiary">
+                    {group.kind === "business_domain" ? t("ingest:aliasSuggest.kindDomain") : t("ingest:aliasSuggest.kindType")} · {group.key}
+                  </span>
+                </div>
+                <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+                  {group.terms.map((term) => {
+                    const token = `${group.kind}:${group.key}:${term.term}`;
+                    return (
+                      <li key={term.term} className="flex flex-wrap items-center gap-2">
+                        <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[0.8rem] text-accent">{term.term}</span>
+                        <span className="font-mono text-[0.7rem] text-tertiary" title={term.sample_docs.join(", ")}>
+                          {t("ingest:aliasSuggest.evidence", { support: term.support, precision: formatPercent(term.precision) })}
+                        </span>
+                        <span className="ml-auto flex gap-1.5">
+                          <Button size="sm" onClick={() => void handleApproveAlias(group, term)} disabled={aliasBusy === token} title={t("ingest:aliasSuggest.approveTitle")}>
+                            <Check /> {t("common:action.approve")}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => void handleDismissAlias(group, term)} disabled={aliasBusy === token} title={t("ingest:aliasSuggest.dismissTitle")}>
+                            <X /> {t("ingest:aliasSuggest.dismiss")}
+                          </Button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
         </CollapsibleSection>
       )}
 
