@@ -23,4 +23,5 @@ backend/runs/config/api_keys.json
 # Bancadas de desenvolvimento — não fazem parte do app do usuário final
 extractor-benchmark/
 extractor-benchmark_mdxaf/
+frontend/vite.e2e.config.ts
 .claude/skills/safe-exec/

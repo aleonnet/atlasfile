@@ -55,12 +55,6 @@ estado vazio explicativo)._
 | Eixo `doc_kind` no lead do catálogo | "classified by business domain and document type" está incompleto — existe o 3º eixo de formato (item 5 da auditoria). | 2026-07-23 |
 | og:image no domínio próprio | Comentários `ABSOLUTE-URL: update on custom domain` a revisar quando o site migrar de GitHub Pages para domínio próprio (item 6 da auditoria). | 2026-07-23 |
 
-## Decisões aguardando o usuário
-
-| Item | O que é |
-|---|---|
-| `frontend/vite.e2e.config.ts` | Entrou no repo por acidente na v0.40.4 (era bancada temporária untracked de E2E) — remover do rastreamento (política de bancadas fora do repo público) ou adotar oficialmente. |
-
 ## Direção de arte / visual
 
 | Item | O que é | Estado |
