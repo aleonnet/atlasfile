@@ -1,6 +1,6 @@
 # Workflow do documento — ponta a ponta
 
-O caminho completo de um documento no AtlasFile, da chegada ao uso no chat, com o **ponto de observação** de cada etapa (UI, API, filesystem e índice). Para o roteiro de validação com score, ver [`plano_teste_e2e_v0.20.0.md`](plano_teste_e2e_v0.20.0.md).
+O caminho completo de um documento no AtlasFile, da chegada ao uso no chat, com o **ponto de observação** de cada etapa (UI, API, filesystem e índice). Para o roteiro de validação com score, ver [`plano_teste_e2e_v0.36.0.md`](plano_teste_e2e_v0.36.0.md).
 
 ```
 arquivo → [1 drop] → _INBOX_DROP → [2 dedup SHA256] → [3 extração de texto]

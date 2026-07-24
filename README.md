@@ -56,7 +56,7 @@ The installer clones the project, configures the `.env`, brings up the Docker st
 | MCP | FastMCP server (search, tags, stats tools) |
 | Runtime | Docker Compose (5 services) |
 
-The full document workflow (drop → dedup → extraction → classification → routing → indexing → embeddings → search → chat), with the observation points for each stage, is described in [`docs/workflow_documento.md`](docs/workflow_documento.md). The validation script with per-stage scores is in [`docs/plano_teste_e2e_v0.20.0.md`](docs/plano_teste_e2e_v0.20.0.md).
+The full document workflow (drop → dedup → extraction → classification → routing → indexing → embeddings → search → chat), with the observation points for each stage, is described in [`docs/workflow_documento.md`](docs/workflow_documento.md). The validation script with per-stage scores is in [`docs/plano_teste_e2e_v0.36.0.md`](docs/plano_teste_e2e_v0.36.0.md).
 
 ## Monorepo structure
 
@@ -277,6 +277,7 @@ Ollama models are not listed in the catalog on purpose — the models are whatev
 |------|-----------|
 | `list_documents` | Document listing/browsing with filters by project, `business_domain`, and `document_type` |
 | `search_documents` | Full-text search with filters by project, `business_domain`, `document_type`, tags, and dates |
+| `semantic_search_chunks` | Semantic search (embeddings/kNN) returning the chunks most similar to the query — RAG-style answers with citations |
 | `get_stats` | Aggregated statistics by `doc_kind`, `business_domain`, `document_type`, and `project_id` |
 | `get_document` | Metadata + chunks of a document |
 | `get_document_chunks` | Specific chunks by location (page:N, sheet:Name) |
@@ -284,6 +285,8 @@ Ollama models are not listed in the catalog on purpose — the models are whatev
 | `spreadsheet_query` | SELECT (DuckDB, read-only) directly against the original file — exact counts and aggregations |
 | `apply_tags` | Adds/removes tags |
 | `set_metadata` | Updates `document_type`, `business_domain`, `correspondent`, and `review_status` |
+| `list_tags` | Lists the unique tags in the index (optionally filtered by project) |
+| `create_review_marker` | Marks a document for review (`legal_review`, `finance_review`, `needs_review`): applies the `REVIEW_*` tag and sets `review_status` |
 | `submit_classification` | Supports LLM-driven classification/review when the configured flow requires it |
 
 ## Tests
@@ -315,8 +318,10 @@ The suites cover classifier lifecycle, benchmark, datasets, ingestion, triage, s
 | `08_project_profile_template.md` | Profile V2 template (JSON) with a complete example |
 | `09_field_mapping.md` | Complete field mapping: origin, derivation, LLM usage |
 | `10_classifier_design.md` | Classifier design: operational runtime, benchmark, promotion, and fallback |
-| `plano_teste_e2e_v0.8.0.md` | E2E delta script for 0.8.0, oriented to testing through the frontend |
-| `plano_teste_e2e_v0.7.0.md` | Recorded E2E baseline reused as the reference for the real batch |
+| `11_scripts_and_operations.md` | Operational guide to the repo scripts: what each one does, when to use it, inputs/outputs |
+| `workflow_documento.md` | Full document workflow (drop → … → chat) with the observation points of each stage |
+| `plano_teste_e2e_v0.36.0.md` | Canonical E2E regression script (34 scored stages, fresh instance) |
 | `agent-tools-flow.md` | MCP → LLM → tools flow (how the agent receives and uses tools) |
+| `git_cheatsheet.md` | Git conventions cheat sheet (Conventional Commits) |
 
 Completed implementation plans live in `docs/planos_concluidos/` as a record of decisions. Future evolutions under evaluation (with an explicit execution trigger) live in `docs/ROADMAP.md`.

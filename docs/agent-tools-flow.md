@@ -40,17 +40,21 @@ Cada ferramenta é uma função Python decorada com `@mcp.tool()`. O servidor MC
 
 Ferramentas expostas hoje (e só essas):
 
-| Ferramenta              | Descrição (resumo do docstring) |
-|-------------------------|----------------------------------|
-| `search_documents`      | Busca full-text com filtros (project_id, business_domain, document_type, doc_kind, tags, datas, page, size) |
-| `get_stats`             | Estatísticas e contagens: total_documents + breakdowns por doc_kind, business_domain, document_type, extension, tags |
-| `get_document`          | Obtém documento por doc_id (metadata, excerpt, content_chunks; trunca docs longos) |
-| `get_document_chunks`   | Retorna chunks específicos por localização (page:N, sheet:Name), sem carregar o documento inteiro |
-| `apply_tags`            | Adiciona/remove tags de um documento |
-| `set_metadata`          | Atualiza document_type, correspondent, business_domain, review_status |
-| `list_tags`             | Lista tags únicas (opcionalmente por project_id) |
-| `create_review_marker`  | Marca documento para revisão (legal_review, finance_review, needs_review) |
-| `submit_classification` | Usado pelo fluxo de classificação: document_type, tags, confidence, business_domain, topics, explanation |
+| Ferramenta                | Descrição (resumo do docstring) |
+|---------------------------|----------------------------------|
+| `list_documents`          | Listagem/browse de documentos com filtros (project_id, doc_kind, document_type, business_domain, page, size), sem query de texto |
+| `search_documents`        | Busca full-text com filtros (project_id, business_domain, document_type, doc_kind, tags, datas, page, size) e mode hybrid/lexical/semantic |
+| `semantic_search_chunks`  | Busca semântica (embeddings/kNN) retornando os chunks mais similares à query, com doc_id, location, text e score — para respostas RAG com citações |
+| `get_stats`               | Estatísticas e contagens: total_documents + breakdowns por doc_kind, business_domain, document_type, extension, tags |
+| `get_document`            | Obtém documento por doc_id (metadata, excerpt, content_chunks; trunca docs longos) |
+| `get_document_chunks`     | Retorna chunks específicos por localização (page:N, sheet:Name), sem carregar o documento inteiro |
+| `spreadsheet_schema`      | Inspeciona a estrutura de uma planilha (xlsx/xlsm/csv): tabelas por aba, colunas sanitizadas, row_count e amostra — chamar antes de `spreadsheet_query` |
+| `spreadsheet_query`       | SELECT read-only (DuckDB) direto no arquivo original da planilha — contagens, somas e GROUP BY exatos (cap de 500 linhas) |
+| `apply_tags`              | Adiciona/remove tags de um documento |
+| `set_metadata`            | Atualiza document_type, correspondent, business_domain, review_status |
+| `list_tags`               | Lista tags únicas (opcionalmente por project_id) |
+| `create_review_marker`    | Marca documento para revisão (legal_review, finance_review, needs_review) |
+| `submit_classification`   | Usado pelo fluxo de classificação: document_type, tags, confidence, business_domain, topics, explanation |
 
 Não existe no nosso código nenhuma ferramenta `multi_tool_use.parallel` nem “functions.search_documents” como namespace; o nome enviado ao LLM é exatamente o nome da função (ex.: `search_documents`).
 
@@ -147,7 +151,8 @@ O `inputSchema` vem direto do MCP; se estiver vazio, usamos `{"type": "object", 
         }
       }
     }
-    // ... demais ferramentas (apply_tags, set_metadata, list_tags, create_review_marker, submit_classification)
+    // ... demais ferramentas (get_document_chunks, spreadsheet_schema, spreadsheet_query, apply_tags,
+    //     set_metadata, list_tags, create_review_marker, submit_classification)
   ]
 }
 ```

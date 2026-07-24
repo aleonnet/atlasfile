@@ -56,7 +56,7 @@ O instalador clona o projeto, configura o `.env`, sobe a stack Docker e abre `ht
 | MCP | FastMCP server (tools de busca, tags, stats) |
 | Runtime | Docker Compose (5 serviços) |
 
-O workflow completo de um documento (drop → dedup → extração → classificação → roteamento → indexação → embeddings → busca → chat), com os pontos de observação de cada etapa, está descrito em [`docs/workflow_documento.md`](docs/workflow_documento.md). O roteiro de validação com score por etapa está em [`docs/plano_teste_e2e_v0.20.0.md`](docs/plano_teste_e2e_v0.20.0.md).
+O workflow completo de um documento (drop → dedup → extração → classificação → roteamento → indexação → embeddings → busca → chat), com os pontos de observação de cada etapa, está descrito em [`docs/workflow_documento.md`](docs/workflow_documento.md). O roteiro de validação com score por etapa está em [`docs/plano_teste_e2e_v0.36.0.md`](docs/plano_teste_e2e_v0.36.0.md).
 
 ## Estrutura do monorepo
 
@@ -277,6 +277,7 @@ Modelos do Ollama não aparecem no catálogo de propósito — os modelos são o
 |------|-----------|
 | `list_documents` | Listagem/browse de documentos com filtros por projeto, `business_domain` e `document_type` |
 | `search_documents` | Busca full-text com filtros por projeto, `business_domain`, `document_type`, tags e datas |
+| `semantic_search_chunks` | Busca semântica (embeddings/kNN) retornando os chunks mais similares à query — respostas estilo RAG com citações |
 | `get_stats` | Estatísticas agregadas por `doc_kind`, `business_domain`, `document_type` e `project_id` |
 | `get_document` | Metadados + chunks de um documento |
 | `get_document_chunks` | Chunks específicos por localização (page:N, sheet:Name) |
@@ -284,6 +285,8 @@ Modelos do Ollama não aparecem no catálogo de propósito — os modelos são o
 | `spreadsheet_query` | SELECT (DuckDB, read-only) direto no arquivo original — contagens e agregações exatas |
 | `apply_tags` | Adiciona/remove tags |
 | `set_metadata` | Atualiza `document_type`, `business_domain`, `correspondent` e `review_status` |
+| `list_tags` | Lista as tags únicas do índice (opcionalmente filtradas por projeto) |
+| `create_review_marker` | Marca documento para revisão (`legal_review`, `finance_review`, `needs_review`): aplica a tag `REVIEW_*` e define `review_status` |
 | `submit_classification` | Suporte a classificação/revisão via LLM quando o fluxo configurado exigir |
 
 ## Testes
@@ -315,8 +318,10 @@ As suites cobrem lifecycle do classificador, benchmark, datasets, ingestao, tria
 | `08_project_profile_template.md` | Template de profile V2 (JSON) com exemplo completo |
 | `09_field_mapping.md` | Mapeamento completo de campos: origem, derivação, uso pelo LLM |
 | `10_classifier_design.md` | Design do classificador: runtime operacional, benchmark, promocao e fallback |
-| `plano_teste_e2e_v0.8.0.md` | Roteiro E2E delta da 0.8.0, orientado a teste pelo frontend |
-| `plano_teste_e2e_v0.7.0.md` | Baseline E2E registrada e reutilizada como referencia do lote real |
+| `11_scripts_and_operations.md` | Guia operacional dos scripts do repositório: o que cada um faz, quando usar, entrada/saída |
+| `workflow_documento.md` | Workflow completo do documento (drop → … → chat) com os pontos de observação de cada etapa |
+| `plano_teste_e2e_v0.36.0.md` | Roteiro canônico de regressão E2E (34 estágios com score, instância zerada) |
 | `agent-tools-flow.md` | Fluxo MCP → LLM → tools (como o agente recebe e usa ferramentas) |
+| `git_cheatsheet.md` | Cheat sheet de convenções Git (Conventional Commits) |
 
 Planos de implementação concluídos ficam em `docs/planos_concluidos/` como registro de decisões. Evoluções futuras avaliadas (com gatilho explícito de execução) ficam em `docs/ROADMAP.md`.
