@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time as _time
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +96,40 @@ def _trim_payload_to_limit(enriched: dict[str, Any], limit_bytes: int) -> dict[s
     return final
 
 
+class IndexWriteBlockedError(RuntimeError):
+    """Índice em somente-leitura por disco cheio (flood-stage watermark).
+    NÃO é transitório: retry só mascararia — o histórico precisa da causa real."""
+
+
+def _os_write_with_retry(write_fn, *, attempts: int = 3, base_delay_seconds: float = 1.0):
+    """Escritas no OpenSearch com os DOIS 429 do incidente de 2026-07-25
+    (plano incidente_429): circuit_breaking_exception (heap) é rajada — o
+    parent breaker libera assim que o bulk vizinho termina, então backoff de
+    1s/2s cobre; cluster_block_exception (disco/flood-stage) NÃO se resolve
+    esperando — vira erro legível imediato, sem retry."""
+    from opensearchpy.exceptions import TransportError
+
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return write_fn()
+        except TransportError as exc:
+            detail = str(exc)
+            if "cluster_block_exception" in detail:
+                raise IndexWriteBlockedError(
+                    "Disco cheio: o OpenSearch colocou o índice em somente-leitura "
+                    "(flood-stage watermark). Libere espaço em disco (ex.: docker image/builder prune) "
+                    "e rode Reconciliar INDEX para recuperar os documentos que falharam."
+                ) from exc
+            if getattr(exc, "status_code", None) == 429 and "circuit_breaking_exception" in detail and attempt < attempts - 1:
+                logger.warning("circuit breaker do OpenSearch (tentativa %d/%d) — aguardando backoff", attempt + 1, attempts)
+                _time.sleep(base_delay_seconds * (2**attempt))
+                last_exc = exc
+                continue
+            raise
+    raise last_exc  # type: ignore[misc]  # inalcançável com attempts >= 1
+
+
 def index_document(
     client: OpenSearch,
     payload: dict[str, Any],
@@ -106,11 +141,13 @@ def index_document(
     limit_bytes = _indexing_pressure_limit_bytes(client)
     if isinstance(limit_bytes, int) and limit_bytes > 0:
         enriched = _trim_payload_to_limit(enriched, limit_bytes)
-    client.index(
-        index=settings.opensearch_index,
-        id=enriched["doc_id"],
-        body=enriched,
-        refresh=refresh,
+    _os_write_with_retry(
+        lambda: client.index(
+            index=settings.opensearch_index,
+            id=enriched["doc_id"],
+            body=enriched,
+            refresh=refresh,
+        )
     )
     return enriched
 
@@ -388,7 +425,7 @@ def index_document_chunks_embeddings(
             }
             for (chunk_index, text, location), embedding in zip(indexed_chunks, embeddings, strict=True)
         ]
-        bulk(client, actions, refresh=False)
+        _os_write_with_retry(lambda actions=list(actions): bulk(client, actions, refresh=False))
 
         if record_usage and tokens_used > 0:
             from .training_usage import generate_run_id, persist_training_usage
@@ -458,11 +495,11 @@ def backfill_search_fields(client: OpenSearch) -> int:
             }
         )
         if len(actions) >= 200:
-            bulk(client, actions, refresh=False)
+            _os_write_with_retry(lambda actions=list(actions): bulk(client, actions, refresh=False))
             updated += len(actions)
             actions.clear()
     if actions:
-        bulk(client, actions, refresh=False)
+        _os_write_with_retry(lambda actions=list(actions): bulk(client, actions, refresh=False))
         updated += len(actions)
     if updated:
         client.indices.refresh(index=settings.opensearch_index)

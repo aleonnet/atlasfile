@@ -5,7 +5,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { cn } from "../../lib/utils";
-import { ProcessingAura } from "../../components/ui/processing-aura";
+import { MiniOrb, ProcessingAura } from "../../components/ui/processing-aura";
 import { useTranslation } from "react-i18next";
 import { formatDecisionAction, formatDecisionPhase, useProcessing } from "../../contexts/ProcessingContext";
 import type { TriageItem } from "../../types";
@@ -159,6 +159,15 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                     startedAt={processingOp.startedAt}
                     label={`${formatDecisionAction(processingOp.action)} — ${formatDecisionPhase(processingPhase)}`}
                   />
+                )}
+                {/* v0.47.0 (achado do usuário): card em ESPERA explica por que os
+                    botões estão travados — sem isso, um doc que cai na fila
+                    durante um processamento parece quebrado */}
+                {processingOp && processingOp.docId !== item.doc_id && (
+                  <p className="mt-2 flex items-center gap-1.5 font-mono text-[0.7rem] text-tertiary">
+                    <MiniOrb className="size-2.5" />
+                    {t("triage:queue.waitingOther", { filename: processingOp.filename })}
+                  </p>
                 )}
               </motion.li>
             );

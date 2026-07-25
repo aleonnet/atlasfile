@@ -7,7 +7,8 @@
     "noSuggestion": "sem sugestão",
     "noExtractableText": "sem texto extraível (OCR vazio) — decida manualmente",
     "confidence": "confiança",
-    "noDomainSuggestion": "Sem sugestão de domínio"
+    "noDomainSuggestion": "Sem sugestão de destino para aprovar — use Corrigir para escolher o domínio manualmente",
+    "waitingOther": "Aguardando — processando \"{{filename}}\"…"
   },
   "rejected": {
     "title": "Rejeitados",

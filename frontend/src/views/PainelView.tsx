@@ -23,7 +23,6 @@ import { buildEvidenceGroups, topLocations } from "../features/search/searchForm
 import { cn } from "../lib/utils";
 import { formatDate } from "../lib/format";
 import { invalidateAfterMove } from "../lib/mutations";
-import { useProcessing } from "../contexts/ProcessingContext";
 import { usePainelSearch } from "../hooks/usePainelSearch";
 import type {
   Project,
@@ -283,7 +282,6 @@ export function PainelView({
     setSearchFilters: onSearchFiltersChange,
     clearSearch: onClearSearch,
   } = usePainelSearch({ onStatus });
-  const { active: processingOp } = useProcessing();
   const [moveHit, setMoveHit] = useState<SearchHit | null>(null);
   const [moveSubmitting, setMoveSubmitting] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
@@ -352,15 +350,9 @@ export function PainelView({
   return (
     // gap-4 entre os cards — mesmo respiro do Classificador (ClassificadorView)
     <div className="relative flex flex-col gap-4">
-      {/* Scrim de processamento: decisão em série é a regra — o resto do Painel
-          esmaece e bloqueia cliques; o card focal (z-40) fica acima, vivo */}
-      {processingOp && (
-        <div
-          aria-hidden
-          className="absolute inset-0 z-30 cursor-wait rounded-lg bg-background/55 backdrop-blur-[1px]"
-          onClick={(e) => e.stopPropagation()}
-        />
-      )}
+      {/* v0.47.0: o véu de processamento agora é GLOBAL e vive dentro da
+          ProcessingAura (esmaece a página inteira + cursor progress); o card
+          focal segue z-40 no TriageQueue. O scrim local daqui saiu. */}
       <Card>
         <CardHeader>
           <CardTitle className="flex min-h-9 items-center gap-2">

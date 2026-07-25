@@ -15,6 +15,33 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.48.0] - 2026-07-25
+
+### Adicionado
+- **OCR de imagens embutidas em Office "envelope"** (caso real na instância: DOCX com zero texto próprio e o scan das atas colado como PNG único saía "sem texto extraível" com confiança 0, sem o sistema jamais tentar OCR): quando docx/pptx/xlsx não têm NENHUM texto nativo, o extrator agora roda tesseract (mesmo motor do PDF escaneado, por+eng) sobre as imagens do pacote (`word/media/*`, `ppt/media/*`, `xl/media/*`) — o envelope legível passa a classificar normalmente. Cap de 10 imagens (decks de ícones não viram fatura de OCR), nunca silencioso (`embedded_images_ocr_capped` no metadata); documento com texto próprio não paga nada; contadores `embedded_images_found/ocr` ficam no metadata como insumo para a UI dizer a causa real. Validado no docx original que motivou o item: `ok_ocr`, 1.698 chars legíveis. Cobre a família moderna `.xlsx/.xlsm/.xltx/.xltm`; legados OLE2 (.doc/.xls/.ppt) registrados no ROADMAP com gatilho. 7 testes novos com Tesseract real.
+
+## [0.47.0] - 2026-07-25
+
+### Adicionado
+- **Sugestão de document_type pelo LLM, governada** (decisão do usuário após o caso real do gpt-5 respondendo 'outro'): o prompt **bane a sentinela 'outro'** (omissão honesta + justificativa no lugar); o tipo do LLM só é APLICADO se existir na taxonomia do profile (espelho da validação que o business_domain sempre teve); valor desconhecido vira `llm_proposed_document_type`, visível ao revisor. Cinto e suspensório: rótulo sem pasta configurada degrada para TRIAGEM com motivo legível, nunca FALHA do arquivo.
+- **Medidor de contexto honesto**: janela REAL dos modelos Ollama via `/api/show` (fato medido: gemma4:12b = 262.144 tokens, o dobro do fallback de 128k; cache em processo, falha não vira tempestade de consultas); o percentual **recalcula na hora ao trocar de modelo** (antes ficava defasado até a próxima mensagem); tooltip do gauge documenta a janela e a heurística (≈4 chars/token).
+
+- **Extensão banida como critério de tipo no prompt** (caso real: gpt-5 recusou classificar um diagrama .png "porque não corresponde às extensões esperadas"): a lista de tipos no briefing perdeu as extensões, e o prompt instrui explicitamente que document_type é GÊNERO pelo CONTEÚDO — um plano pode chegar em .docx, .pptx ou .png. Reverte com registro uma decisão da era pré-v0.39 (tipos-formato).
+
+- **Histórico de processamentos com estado vivo** (achado do usuário): a linha do doc que está processando mostra o orb pulsante no lugar do ícone da decisão — o checkmark com o arquivo ainda em voo mentia; ao concluir, o ícone real volta automaticamente.
+- **Card em espera na triagem explica o porquê** (achado do usuário): quando um doc cai na fila durante um processamento, os botões travados agora vêm com a linha "Aguardando — processando «arquivo»…" — antes pareciam quebrados, sem indicação nenhuma.
+
+### Mudado
+- **Aura de processamento com wow de verdade** (design iterado ao vivo com o usuário): o card focal ganha o **shader backdrop do blackhole (deriva + lente gravitacional)** atrás do conteúdo + borda accent em respiração + orb junto ao rótulo; o cursor da página vira "progress" enquanto processa. Véu global e bloqueio de cliques foram avaliados e DISPENSADOS após análise factual: os botões de decisão já desabilitam em todos os cards e o backend serializa por claim atômico (409 amigável) — redundância sem função. O progresso do ciclo do classificador também ganhou o lensing (sem véu — roda em background). Scrim local do Painel removido (o véu global o substitui); halo arco-íris e seu CSS removidos. Flagrado ao vivo: véu + 2 canvas + cursor em 100ms após o clique de aprovação. O item de arte do ROADMAP foi redefinido pelo usuário para este destino.
+
+## [0.46.1] - 2026-07-25
+
+### Corrigido (incidente do 429 — diagnóstico factual completo no plano)
+- **Dedup só contra documento VIVO**: metas da triagem são trilha de auditoria e sobreviviam à deleção+reconcile — uma meta órfã em `rejected/` (deixada por um 429 antigo) envenenava todo re-drop do mesmo SHA ("DUP compliance" para doc vivo em TI, e DUP até para arquivo deletado). Agora: `pending/` só vale com o arquivo na fila; `resolved/` só com `final_path` existente; `rejected/` nunca (tombstone); hit do índice confere existência do path (janela deleção→reconcile). Deletar + reconciliar + re-drop = reprocessa.
+- **Os dois 429 do OpenSearch com tratamentos opostos no indexador**: `circuit_breaking_exception` (heap, rajada) → retry com backoff 1s/2s; `cluster_block_exception` (disco/flood-stage, NÃO transitório) → sem retry e erro legível no histórico ("Disco cheio: índice em somente-leitura… libere espaço e rode Reconciliar"). Incidente real: VM Docker a 97% bloqueou o índice em silêncio.
+- **Heap do OpenSearch: 1g default, parametrizável** (`OPENSEARCH_JAVA_OPTS` no .env): com 512m o parent breaker saturou de fato (`502.6mb > 486.3mb`, 72 trips) sob indexação com vetores kNN.
+- ROADMAP: item de alerting ganha o monitor "disco acima do watermark / índice com bloco read-only" com o incidente como gatilho.
+
 ## [0.46.0] - 2026-07-25
 
 ### Adicionado

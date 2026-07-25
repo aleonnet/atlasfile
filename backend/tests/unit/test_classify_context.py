@@ -48,20 +48,24 @@ def test_build_project_context_includes_document_types():
     assert "aliases: contrato, agreement, acordo" in ctx
 
 
-def test_build_project_context_inclui_extensoes_esperadas():
-    """A extensão é evidência estrutural: sem ela no briefing, o LLM já
-    classificou um .pptx como 'plano' (tipo que espera .pdf/.docx)."""
+def test_build_project_context_sem_extensoes_e_com_regra_de_genero():
+    """v0.47.0 (decisão do usuário, caso real: gpt-5 recusou classificar um
+    diagrama .png "porque não corresponde às extensões esperadas"): extensão
+    NÃO é critério de gênero — saiu do briefing, e o prompt instrui
+    explicitamente conteúdo > formato. Reverte a decisão anterior deste teste,
+    da era pré-v0.39 em que tipos-formato ('apresentacao') ainda existiam."""
     ctx = _build_project_context(_sample_profile())
-    assert "contrato (Contrato) — aliases: contrato, agreement, acordo — extensões esperadas: .pdf, .docx" in ctx
-    assert "apresentacao (Apresentação) — aliases: apresentacao — extensões esperadas: .pptx" in ctx
-    # tipo sem extensões declaradas não ganha o sufixo
-    assert "parecer (Parecer) — aliases: parecer, opiniao\n" in ctx or "parecer (Parecer) — aliases: parecer, opiniao" in ctx
-    assert "parecer (Parecer) — aliases: parecer, opiniao — extensões" not in ctx
+    assert "extensões esperadas" not in ctx
+    assert "contrato (Contrato) — aliases: contrato, agreement, acordo" in ctx
+    assert "GÊNERO" in ctx
+    assert "nunca pela extensão" in ctx
 
 
 def test_build_project_context_includes_instructions():
     ctx = _build_project_context(_sample_profile())
-    assert "Escolha sempre um dos business_domains e document_types" in ctx
+    # v0.47.0: sentinela 'outro' banida do prompt (caso real do gpt-5)
+    assert "Escolha SEMPRE um dos business_domains e document_types" in ctx
+    assert "NUNCA use 'outro'" in ctx
     assert "confidence < 0.6" in ctx
 
 

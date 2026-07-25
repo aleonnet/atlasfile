@@ -128,37 +128,15 @@
   100% { transform: translateX(100%); }
 }
 
-/* Aura do compose (estilo Apple Intelligence): conic-gradient girando via
-   @property — pseudo-elemento não é necessário, o JSX renderiza a div. */
-@property --atlas-aura-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-.atlas-aura {
-  background: conic-gradient(
-    from var(--atlas-aura-angle),
-    var(--chart-1),
-    var(--chart-2),
-    var(--chart-5),
-    var(--chart-3),
-    var(--chart-1)
-  );
-  filter: blur(7px);
-  animation: atlas-aura-spin 2.8s linear infinite;
-}
-
-@keyframes atlas-aura-spin {
-  to {
-    --atlas-aura-angle: 360deg;
+/* Respiração da borda na aura de processamento (v0.47.0 — substitui o antigo
+   halo conic arco-íris, removido por decisão do usuário) */
+@keyframes atlas-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
   }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .atlas-aura {
-    animation: none;
-    opacity: 0.5;
+  50% {
+    opacity: 1;
   }
 }
 

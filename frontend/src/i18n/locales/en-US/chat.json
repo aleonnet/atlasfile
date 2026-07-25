@@ -82,8 +82,8 @@
     "resolveFailed": "Failed to locate the cited document"
   },
   "context": {
-    "tooltip": "Session context: {{pct}}% used",
-    "criticalTooltip": "Context: {{pct}}% used — click to start a new session."
+    "tooltip": "Session context: {{pct}}% of the {{window}}-token window (estimate ≈4 chars/token)",
+    "criticalTooltip": "Context: {{pct}}% of the {{window}}-token window — click to start a new session."
   },
   "thinking": {
     "aria": "Thinking",

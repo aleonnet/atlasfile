@@ -5,7 +5,9 @@ services:
     restart: unless-stopped
     environment:
       - discovery.type=single-node
-      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      # 1g: incidente 2026-07-25 — com 512m o parent breaker saturou de fato
+      # (502.6mb > 486.3mb, 72 trips) sob carga de indexação com vetores kNN
+      - OPENSEARCH_JAVA_OPTS=${OPENSEARCH_JAVA_OPTS:--Xms1g -Xmx1g}
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?defina OPENSEARCH_INITIAL_ADMIN_PASSWORD no .env (o install.sh gera automaticamente)}
     ulimits:
       memlock:

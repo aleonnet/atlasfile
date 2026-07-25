@@ -4,6 +4,30 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.48.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [ocr_imagens_embutidas_office_v0480](ocr_imagens_embutidas_office_v0480.plan.md) | OCR de imagens embutidas em docx/pptx/xlsx "envelope" (documento sem texto próprio → tesseract em `word/media/*`, `ppt/media/*`, `xl/media/*`; cap 10 imagens em metadata; mesmo motor do PDF escaneado); validado no docx real das atas do RCA (1.698 chars extraídos); legados OLE2 e mensagem com causa real registrados no ROADMAP |
+
+---
+
+## 0.47.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [llm_type_aura_medidor_v0470](llm_type_aura_medidor_v0470.plan.md) | document_type do LLM governado (sentinela 'outro' banida do prompt; aplica só se existir na taxonomia; degradação para triagem em vez de FALHA); aura de processamento com orb blackhole no lugar do halo arco-íris; medidor de contexto honesto (janela real do Ollama via /api/show — gemma4 = 262k medido; recálculo na troca de modelo; tooltip com heurística) |
+
+---
+
+## 0.46.1
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [incidente_429_disco_heap_dedup_vivo_v0461](incidente_429_disco_heap_dedup_vivo_v0461.plan.md) | Post-mortem factual do 429 (disco flood-stage dominante + heap 512m saturado): dedup só contra documento vivo (rejected nunca; pending/resolved com arquivo existente), retry diferenciado no indexador (breaker sim, cluster_block vira erro legível), heap 1g parametrizável, monitor de disco no alerting do ROADMAP |
+
+---
+
 ## 0.46.0
 
 | # | Plano | Escopo |

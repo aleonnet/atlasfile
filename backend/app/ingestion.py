@@ -124,8 +124,20 @@ def _apply_llm_policy(
         classification["confidence"] = llm_conf
     if "tags" in allow and llm_result.get("tags"):
         classification["suggested_tags"] = list(llm_result.get("tags") or [])
-    if "document_type" in allow and llm_result.get("document_type"):
-        classification["document_type"] = llm_result.get("document_type")
+    # v0.47.0 (decisão do usuário): document_type do LLM só é APLICADO se
+    # existir na taxonomia do profile — espelho exato da validação que o
+    # business_domain sempre teve (linhas abaixo). Valor desconhecido (ex.: a
+    # antiga sentinela 'outro' de modelo desatualizado) fica registrado como
+    # llm_proposed_document_type, visível ao revisor; o tipo da regra permanece.
+    document_type_keys = {
+        str(row.get("key") or "").strip()
+        for row in (profile.get("document_types") or profile.get("classification", {}).get("document_types") or [])
+    }
+    if "document_type" in allow and llm_document_type:
+        if llm_document_type in document_type_keys:
+            classification["document_type"] = llm_document_type
+        else:
+            classification["llm_proposed_document_type"] = llm_document_type
     if "topics" in allow and llm_result.get("topics"):
         classification["suggested_topics"] = [str(t).strip() for t in (llm_result.get("topics") or []) if str(t).strip()]
 
@@ -292,9 +304,17 @@ def _unwrap_canonical_stem(filename: str, profile: dict[str, Any]) -> str | None
 
 
 def _find_original_in_triage(project_root: Path, profile: dict[str, Any], sha256: str) -> dict[str, Any] | None:
-    """Return metadata of the first existing document matching sha256 in triage dirs."""
+    """Original VIVO com o mesmo sha256 nas filas da triagem.
+
+    Incidente 2026-07-25: as metas são trilha de auditoria e sobrevivem à
+    deleção do arquivo e ao reconcile — meta só vale como original de dedup se
+    o ARQUIVO referenciado ainda existir (pending → arquivo na fila; resolved →
+    final_path no disco). `rejected/` é tombstone e NUNCA vale: uma meta órfã
+    de um 429 antigo envenenava todo re-drop do mesmo arquivo ("DUP compliance"
+    para um doc vivo em TI, e DUP até para arquivo deletado+reconciliado)."""
     triage = triage_paths(profile)
-    for rel in (triage["pending"], triage["resolved"], triage["rejected"]):
+    pending_rel = triage["pending"]
+    for rel in (pending_rel, triage["resolved"]):
         d = project_root / rel
         if not d.exists():
             continue
@@ -303,8 +323,16 @@ def _find_original_in_triage(project_root: Path, profile: dict[str, Any], sha256
                 data = json.loads(meta.read_text(encoding="utf-8"))
             except Exception:
                 continue
-            if data.get("sha256") == sha256:
-                return data
+            if data.get("sha256") != sha256:
+                continue
+            if rel == pending_rel:
+                filename = str(data.get("filename") or "")
+                if filename and (d / filename).exists():
+                    return data
+            else:
+                final_path = str(data.get("final_path") or "")
+                if final_path and Path(final_path).exists():
+                    return data
     return None
 
 
@@ -326,7 +354,13 @@ def _find_original_in_search_index(client: OpenSearch, project_id: str, sha256: 
         result = client.search(index=settings.opensearch_index, body=query)
         hits = result.get("hits", {}).get("hits", [])
         if hits:
-            return hits[0].get("_source", {})
+            source = hits[0].get("_source", {})
+            # Janela deleção→reconcile: doc ainda no índice mas arquivo já
+            # removido do disco não é original vivo — re-drop deve reprocessar
+            path = str(source.get("path") or "")
+            if path and not Path(path).exists():
+                return None
+            return source
     except Exception:
         pass
     return None
@@ -446,17 +480,26 @@ def process_inbox_file(
     if not document_type and not no_extractable_text:
         raise ValueError("bootstrap classification did not return document_type")
 
-    area_path = (
-        resolve_classification_path(
-            project_root=project_root,
-            profile=profile,
-            business_domain=str(business_domain),
-            document_type=document_type,
-            create_if_missing=True,
+    # Cinto e suspensório (v0.47.0): rótulo sem pasta configurada NUNCA derruba
+    # o arquivo inteiro em FALHA — degrada para triagem com motivo legível
+    # (caso real: sentinela 'outro' do LLM estourava aqui e o doc morria).
+    try:
+        area_path = (
+            resolve_classification_path(
+                project_root=project_root,
+                profile=profile,
+                business_domain=str(business_domain),
+                document_type=document_type,
+                create_if_missing=True,
+            )
+            if business_domain
+            else None
         )
-        if business_domain
-        else None
-    )
+    except ValueError as exc:
+        _ingestion_logger.warning("roteamento sem pasta configurada — degradando para triagem: %s", exc)
+        classification["reason"] = "routing_unconfigured"
+        area_path = None
+        force_triage_pending = True
 
     ingested_at = utc_now_iso()
 

@@ -8,6 +8,7 @@ def _profile_with_mode(mode: str) -> dict:
     return {
         "business_domains": [{"key": "juridica"}, {"key": "financeiro"}],
         "classification": {
+            "document_types": [{"key": "memo"}, {"key": "contrato"}],
             "llm_policy": {
                 "enabled": True,
                 "mode": mode,
@@ -103,3 +104,45 @@ def test_llm_policy_persiste_resposta_crua_do_llm_para_visibilidade() -> None:
     assert merged["llm_business_domain"] == "financeiro"
     assert merged["llm_document_type"] == "memo"
     assert merged["llm_confidence"] == 0.92
+
+
+def test_llm_document_type_fora_da_taxonomia_nao_e_aplicado() -> None:
+    """v0.47.0 (caso real: gpt-5 respondeu a sentinela 'outro' em tag_only e o
+    roteamento explodia com 'document_type folder is not configured'): tipo do
+    LLM só é aplicado se existir na taxonomia; desconhecido vira
+    llm_proposed_document_type (visível ao revisor) e o tipo da regra fica."""
+    classification = {"business_domain": "juridica", "document_type": "contrato", "confidence": 0.7, "reason": "rule"}
+    merged, force_triage = _apply_llm_policy(
+        profile=_profile_with_mode("tag_only"),
+        classification=classification,
+        llm_result={"document_type": "outro", "confidence": 0.9},
+    )
+    assert force_triage is False
+    assert merged["document_type"] == "contrato"  # regra preservada
+    assert merged["llm_proposed_document_type"] == "outro"  # proposta registrada
+    assert merged["llm_document_type"] == "outro"  # resposta crua visível
+
+
+def test_llm_document_type_valido_e_aplicado() -> None:
+    classification = {"business_domain": "juridica", "document_type": "contrato", "confidence": 0.7, "reason": "rule"}
+    merged, _ = _apply_llm_policy(
+        profile=_profile_with_mode("tag_only"),
+        classification=classification,
+        llm_result={"document_type": "memo", "confidence": 0.9},
+    )
+    assert merged["document_type"] == "memo"
+    assert "llm_proposed_document_type" not in merged
+
+
+def test_prompt_de_classificacao_bane_a_sentinela_outro() -> None:
+    """O prompt não pode mais instruir 'outro' — omissão honesta + justificativa."""
+    from app.orchestrator import _build_project_context
+
+    prompt = _build_project_context({
+        "project_id": "p1",
+        "business_domains": [{"key": "juridica"}],
+        "classification": {"document_types": [{"key": "contrato"}]},
+    })
+    assert "Se nenhum se encaixar, use 'outro'" not in prompt  # instrução antiga banida
+    assert "NUNCA use 'outro'" in prompt
+    assert "OMITA" in prompt

@@ -14,13 +14,14 @@ import { cn } from "../lib/utils";
 import { useCustomModelStatusText } from "../hooks/useCustomModelStatus";
 import { ALL_MODELS_OPTION, groupQuickModelValues } from "../lib/modelGroups";
 import { useSettings } from "../contexts/SettingsContext";
-import { formatTimeShort } from "../lib/format";
+import { formatNumber, formatTimeShort } from "../lib/format";
 import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
 import { toast } from "./ui/sonner";
 import { ChartBlock } from "./ChartBlock";
 import { Orb } from "./OrbGL";
 import type { CompanionState } from "./CompanionOrb";
+import type { ModelOption } from "../types";
 import { useCompanionState } from "../hooks/useCompanionState";
 
 const _safeImgSrc = (src: string | undefined): boolean =>
@@ -132,7 +133,7 @@ export interface ChatPanelProps {
   error: string | null;
   canAbort: boolean;
   selectedModel: string;
-  models: { provider: string; model: string; label: string; supports_reasoning_effort?: boolean }[];
+  models: ModelOption[];
   /** Modelos validados pelo usuário ("provider/model") — ex.: locais via Ollama */
   customModels?: string[];
   onModelChange: (value: string) => void;
@@ -692,7 +693,13 @@ export function ChatPanel({
               />
             </label>
             <div className="flex items-center gap-2 px-2.5 pb-2.5 pt-1.5">
-              <ContextGauge ratio={contextPressureRatio} onNewSession={onNewSession} />
+              <ContextGauge
+                ratio={contextPressureRatio}
+                windowTokens={
+                  models.find((m) => `${m.provider}/${m.model}` === selectedModel)?.context_tokens ?? 128_000
+                }
+                onNewSession={onNewSession}
+              />
               <span className="flex-1" />
               <Button variant="ghost" size="sm" disabled={disabled || sending} onClick={onNewSession}>
                 <Plus /> {t("chat:toolbar.newSession")}
@@ -946,7 +953,7 @@ function CitationChip({ filename }: { filename: string }) {
  * o sistema pulsa e o clique "colapsa" para uma nova sessão. O % aparece ao
  * lado no hover.
  */
-function ContextGauge({ ratio, onNewSession }: { ratio: number; onNewSession: () => void }) {
+function ContextGauge({ ratio, windowTokens, onNewSession }: { ratio: number; windowTokens: number; onNewSession: () => void }) {
   const { t } = useTranslation();
   const r = Math.max(0, Math.min(ratio, 1));
   const pct = Math.round(r * 100);
@@ -956,9 +963,10 @@ function ContextGauge({ ratio, onNewSession }: { ratio: number; onNewSession: ()
   const warning = r >= 0.75;
   const coreColor = critical ? "var(--danger)" : warning ? "var(--chart-3)" : "var(--accent)";
 
+  // v0.47.0: tooltip honesto — janela do modelo + a heurística da estimativa
   const tooltip = critical
-    ? t("chat:context.criticalTooltip", { pct })
-    : t("chat:context.tooltip", { pct });
+    ? t("chat:context.criticalTooltip", { pct, window: formatNumber(windowTokens) })
+    : t("chat:context.tooltip", { pct, window: formatNumber(windowTokens) });
 
   return (
     <button

@@ -52,8 +52,10 @@ def test_find_original_in_triage_returns_match(tmp_path: Path) -> None:
     profile = _minimal_profile(tmp_path)
     pending_dir = tmp_path / "_TRIAGE_REVIEW" / "pending"
     pending_dir.mkdir(parents=True)
-    meta = {"doc_id": "orig-001", "sha256": "abc123", "business_domain": "juridica"}
+    # v0.46.1: dedup exige documento VIVO — a meta referencia o arquivo na fila
+    meta = {"doc_id": "orig-001", "sha256": "abc123", "business_domain": "juridica", "filename": "orig-001__doc.pdf"}
     (pending_dir / "orig-001.json").write_text(json.dumps(meta))
+    (pending_dir / "orig-001__doc.pdf").write_bytes(b"x")
 
     result = _find_original_in_triage(tmp_path, profile, "abc123")
     assert result is not None
@@ -69,7 +71,10 @@ def test_find_original_in_triage_returns_none_when_no_match(tmp_path: Path) -> N
     assert result is None
 
 
-def test_find_original_in_triage_searches_all_subdirs(tmp_path: Path) -> None:
+def test_find_original_in_triage_rejected_e_tombstone_nao_original(tmp_path: Path) -> None:
+    """v0.46.1 (incidente 2026-07-25): rejected NUNCA vale como original de
+    dedup — meta órfã de um 429 antigo envenenava todo re-drop do mesmo sha
+    (comportamento anterior deste teste era o próprio bug)."""
     profile = _minimal_profile(tmp_path)
     rejected_dir = tmp_path / "_TRIAGE_REVIEW" / "rejected"
     rejected_dir.mkdir(parents=True)
@@ -77,8 +82,7 @@ def test_find_original_in_triage_searches_all_subdirs(tmp_path: Path) -> None:
     (rejected_dir / "orig-rej.json").write_text(json.dumps(meta))
 
     result = _find_original_in_triage(tmp_path, profile, "rej_sha")
-    assert result is not None
-    assert result["doc_id"] == "orig-rej"
+    assert result is None
 
 
 # ── _find_original_in_search_index ──

@@ -586,13 +586,13 @@ def _build_project_context(profile: dict[str, Any] | None) -> str:
             label = dtype.get("label", key)
             aliases = dtype.get("aliases") or []
             alias_str = ", ".join(str(a) for a in aliases if str(a).strip())
-            extensions = dtype.get("extensions") or []
-            ext_str = ", ".join(str(e) for e in extensions if str(e).strip())
+            # v0.47.0 (caso real): listar "extensões esperadas" fazia o LLM
+            # tratar extensão como critério eliminatório ("é .png, logo nenhum
+            # tipo serve"). Tipo documental é GÊNERO pelo conteúdo — um plano
+            # pode chegar em .docx, .pptx ou .png. Extensões saem do prompt.
             line = f"- {key} ({label})"
             if alias_str:
                 line += f" — aliases: {alias_str}"
-            if ext_str:
-                line += f" — extensões esperadas: {ext_str}"
             lines.append(line)
         if len(lines) > 1:
             parts.append("\n".join(lines))
@@ -603,8 +603,17 @@ def _build_project_context(profile: dict[str, Any] | None) -> str:
         parts.append(f"Topics válidos: {', '.join(topic_keys[:40])}")
 
     parts.append(
-        "Escolha sempre um dos business_domains e document_types configurados no projeto.\n"
-        "Se nenhum se encaixar, use 'outro' e explique na justificativa.\n"
+        # v0.47.0: a sentinela 'outro' foi banida do prompt — ela é proibida na
+        # taxonomia (taxonomy.py) e escorria até o roteamento explodir (caso
+        # real: gpt-5 respondeu 'outro' em tag_only → 'document_type folder is
+        # not configured'). Omissão honesta + justificativa substitui a sentinela.
+        "Escolha SEMPRE um dos business_domains e document_types configurados no projeto — "
+        "exatamente como listados. NUNCA invente valores novos e NUNCA use 'outro'.\n"
+        "O document_type é o GÊNERO do documento, decidido pelo CONTEÚDO — nunca pela extensão "
+        "ou formato do arquivo: um plano pode chegar em .docx, .pptx ou .png; um diagrama "
+        "exportado como imagem continua sendo o gênero do que ele representa.\n"
+        "Se nenhum document_type se encaixar PELO CONTEÚDO, OMITA o campo document_type e "
+        "explique o porquê na justificativa (sua explicação fica visível para o revisor humano).\n"
         "Se a classificação for ambígua entre domínios, use confidence < 0.6."
     )
     return "\n\n".join(parts)

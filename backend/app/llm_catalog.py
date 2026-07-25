@@ -170,11 +170,42 @@ def get_openai_api(provider: str, model: str) -> str:
 _FALLBACK_CONTEXT_TOKENS = 128_000
 
 
+# v0.47.0: janela real dos modelos Ollama via /api/show (model_info traz
+# "<arquitetura>.context_length" — fato verificado: gemma4:12b = 262144, o
+# DOBRO do fallback de 128k que o medidor usava). Cache em processo inclui
+# falhas (None) — Ollama fora do ar não vira uma consulta por request.
+_OLLAMA_CONTEXT_CACHE: dict[str, int | None] = {}
+
+
+def _ollama_context_tokens(model: str) -> int | None:
+    if model in _OLLAMA_CONTEXT_CACHE:
+        return _OLLAMA_CONTEXT_CACHE[model]
+    value: int | None = None
+    try:
+        import httpx
+
+        root = str(settings.ollama_base_url).rsplit("/v1", 1)[0]
+        resp = httpx.post(f"{root}/api/show", json={"model": model}, timeout=2.0)
+        info = (resp.json() or {}).get("model_info") or {}
+        for key, raw in info.items():
+            if str(key).endswith(".context_length") and isinstance(raw, int) and raw > 0:
+                value = raw
+                break
+    except Exception:
+        value = None
+    _OLLAMA_CONTEXT_CACHE[model] = value
+    return value
+
+
 def get_context_tokens(provider: str, model: str) -> int:
     """Return the context window size (tokens) for a given model, or fallback."""
     opt = _find(provider, model)
     if opt is not None and opt.context_tokens is not None:
         return opt.context_tokens
+    if (provider or "").strip().lower() == "ollama":
+        live = _ollama_context_tokens(model)
+        if live:
+            return live
     return _FALLBACK_CONTEXT_TOKENS
 
 

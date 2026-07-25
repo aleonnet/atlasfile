@@ -56,6 +56,7 @@ import { invalidateAfterProfileChange, invalidateAfterTaxonomyChange } from "../
 import { providerNeedsKey } from "../../lib/providers";
 import { useSettings } from "../../contexts/SettingsContext";
 import { MiniOrb } from "../../components/ui/processing-aura";
+import { BlackholeGL } from "../../components/BlackholeGL/BlackholeGL";
 
 /* Bloco de progresso de operação (ingest / ciclo do classificador) */
 const opProgressClass = "mb-2.5 flex flex-col gap-1 rounded-md border border-border bg-elevated px-3 py-2.5";
@@ -643,7 +644,17 @@ export function IngestTriageCard({
             )}
 
             {classifierCycleStatus && (classifierCycleStatus.running || classifierCycleStatus.phase === "failed" || classifierCycleStatus.phase === "cancelled") && (
-              <div className={opProgressClass}>
+              <div className={cn(opProgressClass, classifierCycleStatus.running && "relative isolate overflow-hidden")}>
+                {/* v0.47.0 (pedido do usuário): lensing do blackhole também no
+                    progresso do ciclo — sem véu/cursor (roda em background) */}
+                {classifierCycleStatus.running && (
+                  <BlackholeGL
+                    variant="backdrop"
+                    intensity={0.7}
+                    starGain={0.5}
+                    className="pointer-events-none absolute inset-0 -z-10 rounded-[inherit] opacity-60"
+                  />
+                )}
                 <p className={cn(opPhaseClass, classifierCycleStatus.phase === "failed" && "text-destructive", classifierCycleStatus.phase === "cancelled" && "text-accent")}>
                   {classifierCycleStatus.running && <MiniOrb className="mr-1.5 size-2.5" />}
                   {cancellingCycle && classifierCycleStatus.running ? t("ingest:classifier.awaitingCancellation") : formatPhaseLabel(classifierCycleStatus.phase)}

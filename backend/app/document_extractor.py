@@ -339,6 +339,53 @@ def _extract_pdf(path: Path, max_chars: int) -> ExtractionResult:
     )
 
 
+# v0.47.0: OCR de imagens embutidas em Office (caso real: docx-"envelope" com
+# zero texto e o scan das atas colado como PNG — saía "sem texto extraível"
+# sem nunca tentar OCR). Só roda quando o documento NÃO tem texto próprio.
+# Cap: envelopes reais têm 1-3 imagens; 10 protege contra decks com centenas
+# de ícones decorativos (estouro registrado em metadata, nunca silencioso).
+_EMBEDDED_OCR_MAX_IMAGES = 10
+
+
+def _ocr_embedded_images(path: Path, media_prefix: str, max_chars: int) -> tuple[list[tuple[str, str]], dict[str, Any]]:
+    """OCR das imagens dentro do zip Office (word/media/*, ppt/media/*).
+
+    Retorna (chunk_rows location→texto, metadata). Mesmo motor do PDF escaneado
+    (pytesseract por+eng); pytesseract ausente → ([], {ocr: unavailable})."""
+    meta: dict[str, Any] = {"embedded_images_found": 0, "embedded_images_ocr": 0}
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError:
+        meta["embedded_images_ocr_status"] = "ocr_unavailable"
+        return [], meta
+
+    import io
+
+    rows: list[tuple[str, str]] = []
+    try:
+        with zipfile.ZipFile(path) as zf:
+            images = sorted(
+                name for name in zf.namelist()
+                if name.startswith(media_prefix) and Path(name).suffix.lower() in _IMAGE_EXTS
+            )
+            meta["embedded_images_found"] = len(images)
+            if len(images) > _EMBEDDED_OCR_MAX_IMAGES:
+                meta["embedded_images_ocr_capped"] = True
+            for index, name in enumerate(images[:_EMBEDDED_OCR_MAX_IMAGES], start=1):
+                try:
+                    with Image.open(io.BytesIO(zf.read(name))) as img:
+                        text = (pytesseract.image_to_string(img, lang="por+eng") or "").strip()
+                except Exception:
+                    continue
+                if text:
+                    meta["embedded_images_ocr"] += 1
+                    rows.extend(_format_chunks("image", index, _safe_excerpt(text, max_chars)))
+    except Exception:
+        meta["embedded_images_ocr_status"] = "zip_error"
+    return rows, meta
+
+
 def _extract_docx(path: Path, max_chars: int) -> ExtractionResult:
     declared_pages = _read_docx_declared_pages(path)
     chunk_rows: list[tuple[str, str]] = []
@@ -353,13 +400,17 @@ def _extract_docx(path: Path, max_chars: int) -> ExtractionResult:
     )
 
     if not paragraphs:
+        # Docx-"envelope": zero texto próprio → última chance é OCR das imagens
+        # embutidas (word/media/*) antes de declarar sem texto extraível.
+        ocr_rows, ocr_meta = _ocr_embedded_images(path, "word/media/", max_chars)
+        chunk_text = "\n".join(value for _, value in ocr_rows)
         return ExtractionResult(
-            text_excerpt="",
-            chunk_text="",
-            chunk_locations=[],
-            chunks=[],
+            text_excerpt=_safe_excerpt(chunk_text, max_chars),
+            chunk_text=chunk_text,
+            chunk_locations=[loc for loc, _ in ocr_rows],
+            chunks=_chunks_from_rows(ocr_rows),
             content_type="docx",
-            extraction_status="partial",
+            extraction_status="ok_ocr" if ocr_rows else "partial",
             metadata={
                 "extension": ".docx",
                 "paragraphs": 0,
@@ -369,6 +420,7 @@ def _extract_docx(path: Path, max_chars: int) -> ExtractionResult:
                 "docx_explicit_page_breaks_found": 0,
                 "docx_pages_detected": 0,
                 "docx_declared_pages": declared_pages,
+                **ocr_meta,
             },
         )
     page = 1
@@ -406,8 +458,6 @@ def _extract_docx(path: Path, max_chars: int) -> ExtractionResult:
                 page += breaks_after
                 paragraph_in_page = 0
 
-    chunk_text = "\n".join(value for _, value in chunk_rows)
-    excerpt = _safe_excerpt(chunk_text, max_chars)
     pages_detected = 0
     if chunk_rows:
         marker = "docx_page_est:" if estimated_mode else "docx_page:"
@@ -416,6 +466,19 @@ def _extract_docx(path: Path, max_chars: int) -> ExtractionResult:
             for loc, _ in chunk_rows
             if loc.startswith(marker)
         )
+
+    # Caso real do docx-"envelope": parágrafos existem (<w:p> com <w:drawing>)
+    # mas nenhum tem texto → chunk_rows vazio. Última chance é OCR das imagens
+    # embutidas antes de declarar sem texto extraível.
+    status = "ok" if chunk_rows else "partial"
+    ocr_meta: dict[str, Any] = {}
+    if not chunk_rows:
+        chunk_rows, ocr_meta = _ocr_embedded_images(path, "word/media/", max_chars)
+        if chunk_rows:
+            status = "ok_ocr"
+
+    chunk_text = "\n".join(value for _, value in chunk_rows)
+    excerpt = _safe_excerpt(chunk_text, max_chars)
     docx_page_mode = break_source if not estimated_mode else "estimated"
     return ExtractionResult(
         text_excerpt=excerpt,
@@ -423,7 +486,7 @@ def _extract_docx(path: Path, max_chars: int) -> ExtractionResult:
         chunk_locations=[loc for loc, _ in chunk_rows],
         chunks=_chunks_from_rows(chunk_rows),
         content_type="docx",
-        extraction_status="ok" if chunk_rows else "partial",
+        extraction_status=status,
         metadata={
             "extension": ".docx",
             "paragraphs": paragraphs_with_text,
@@ -433,6 +496,7 @@ def _extract_docx(path: Path, max_chars: int) -> ExtractionResult:
             "docx_explicit_page_breaks_found": explicit_page_breaks,
             "docx_pages_detected": pages_detected,
             "docx_declared_pages": declared_pages,
+            **ocr_meta,
         },
     )
 
@@ -471,6 +535,15 @@ def _extract_xlsx(path: Path, max_chars: int) -> ExtractionResult:
         if indexed_cells >= max_cells:
             break
 
+    metadata: dict[str, Any] = {"extension": ".xlsx", "sheets": [s.title for s in wb.worksheets]}
+    status = "ok"
+    if not chunk_rows:
+        # Planilha-"envelope": nenhuma célula com texto → OCR das imagens
+        # embutidas (xl/media/*), mesmo tratamento do docx/pptx.
+        chunk_rows, ocr_meta = _ocr_embedded_images(path, "xl/media/", max_chars)
+        metadata.update(ocr_meta)
+        status = "ok_ocr" if chunk_rows else "partial"
+
     chunk_text = "\n".join(value for _, value in chunk_rows)
     excerpt = _safe_excerpt(chunk_text, max_chars)
     return ExtractionResult(
@@ -479,8 +552,8 @@ def _extract_xlsx(path: Path, max_chars: int) -> ExtractionResult:
         chunk_locations=[loc for loc, _ in chunk_rows],
         chunks=_chunks_from_rows(chunk_rows),
         content_type="xlsx",
-        extraction_status="ok" if chunk_rows else "partial",
-        metadata={"extension": ".xlsx", "sheets": [s.title for s in wb.worksheets]},
+        extraction_status=status,
+        metadata=metadata,
     )
 
 
@@ -525,6 +598,15 @@ def _extract_pptx(path: Path, max_chars: int) -> ExtractionResult:
             # overlap=0 para não duplicar frase em slide:N:1 e slide:N:2
             chunk_rows.extend(_format_chunks("slide", idx, "\n".join(texts), overlap=0))
 
+    metadata: dict[str, Any] = {"extension": ".pptx", "slides": len(prs.slides)}
+    status = "ok"
+    if not chunk_rows:
+        # Deck-"envelope": nenhum slide com texto → OCR das imagens embutidas
+        # (ppt/media/*), mesmo tratamento do docx.
+        chunk_rows, ocr_meta = _ocr_embedded_images(path, "ppt/media/", max_chars)
+        metadata.update(ocr_meta)
+        status = "ok_ocr" if chunk_rows else "partial"
+
     chunk_text = "\n".join(value for _, value in chunk_rows)
     excerpt = chunk_text[:max_chars]
     return ExtractionResult(
@@ -533,8 +615,8 @@ def _extract_pptx(path: Path, max_chars: int) -> ExtractionResult:
         chunk_locations=[loc for loc, _ in chunk_rows],
         chunks=_chunks_from_rows(chunk_rows),
         content_type="pptx",
-        extraction_status="ok" if chunk_rows else "partial",
-        metadata={"extension": ".pptx", "slides": len(prs.slides)},
+        extraction_status=status,
+        metadata=metadata,
     )
 
 

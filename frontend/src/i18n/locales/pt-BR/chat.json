@@ -82,8 +82,8 @@
     "resolveFailed": "Falha ao localizar o documento citado"
   },
   "context": {
-    "tooltip": "Contexto da sessão: {{pct}}% utilizado",
-    "criticalTooltip": "Contexto: {{pct}}% utilizado — clique para iniciar uma nova sessão."
+    "tooltip": "Contexto da sessão: {{pct}}% da janela de {{window}} tokens (estimativa ≈4 caracteres/token)",
+    "criticalTooltip": "Contexto: {{pct}}% da janela de {{window}} tokens — clique para iniciar uma nova sessão."
   },
   "thinking": {
     "aria": "Pensando",

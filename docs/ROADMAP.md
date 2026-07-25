@@ -39,13 +39,21 @@ visível na UI" (label + tooltip por modo)._
 |---|---|---|
 | ~~Instalador bootstrapa os próprios pré-requisitos~~ | **Entregue na v0.43.0** — ver `planos_concluidos/installer_bootstrap_prereqs_v0430.plan.md` (bootstrap com confirmação, `--install-deps`, Ollama opt-in `--with-ollama`, en-US, step 0 do site removido) | — |
 
+## Extração
+
+| Item | O que é | Registrado em |
+|---|---|---|
+| ~~OCR de imagens embutidas em DOCX/PPTX/XLSX~~ | **Entregue na v0.48.0** — ver `planos_concluidos/ocr_imagens_embutidas_office_v0480.plan.md` (OCR de `word/media/*`, `ppt/media/*`, `xl/media/*` quando o documento não tem texto próprio; cap de 10 imagens registrado em metadata; validado no docx-envelope real que motivou o item: 1.698 chars extraídos) | — |
+| Causa real na mensagem da triagem "sem texto extraível" | O extrator agora registra `embedded_images_found`/`embedded_images_ocr` no metadata — insumo pronto para a UI dizer "contém apenas imagem embutida sem texto legível" em vez do genérico. Falta plumbing metadata → meta da triagem → `TriageItem` → i18n. Caso ficou raro (scans legíveis agora classificam normalmente). | 2026-07-25, observação da v0.48.0 |
+| OCR embutido em Office legado (.doc/.xls/.ppt) | Legados são binários OLE2, não zip — `_ocr_embedded_images` (zipfile) não os alcança; exigiria parser OLE dedicado (ex.: olefile). Gatilho: aparecer envelope legado real na triagem. | 2026-07-25, limitação registrada na v0.48.0 |
+
 ## Dashboard / observabilidade
 
 | Item | O que é | Registrado em |
 |---|---|---|
 | ~~Link "Observabilidade" na UI~~ | **Entregue na v0.45.0** — ver `planos_concluidos/ciclo1_confianca_acesso_naming_v0450.plan.md` (URL derivada do host atual + `DASHBOARDS_PUBLIC_URL` opcional para proxy) | — |
 | Heatmap hora × dia da ingestão | Exige campo derivado na INDEXAÇÃO (`ingested_hour`/`ingested_weekday`) — scripted fields via ndjson apagam o cache de campos do index-pattern (aprendido em campo, v0.42.0). | 2026-07-23 |
-| Alerting nativo do OpenSearch | Monitores: extração `failed` acima de N, custo LLM diário acima de teto, fila de triagem acumulando — pendente de o usuário definir canal de notificação (e-mail/webhook). | 2026-07-23 |
+| Alerting nativo do OpenSearch | Monitores: extração `failed` acima de N, custo LLM diário acima de teto, fila de triagem acumulando, **disco acima do high watermark / índice com bloco read-only** (incidente real de 2026-07-25: flood-stage silencioso derrubou toda ingestão até o diagnóstico manual) — pendente de o usuário definir canal de notificação (e-mail/webhook). | 2026-07-23; monitor de disco em 2026-07-25 |
 | Reporting PDF agendado | Relatório periódico do dashboard "AtlasFile — Operação" via plugin de reporting. | 2026-07-23 |
 | ~~Cookie password por instalação no Dashboards~~ | **Entregue na v0.44.0** — ver `planos_concluidos/tier1_confianca_aprendizado_reconcile_cookie_v0440.plan.md` (`DASHBOARDS_COOKIE_PASSWORD` via flag CLI no compose; install.sh + guard no make; a allowlist de env do entrypoint não cobre `opensearch_security.*`) | — |
 
@@ -73,7 +81,7 @@ visível na UI" (label + tooltip por modo)._
 
 | Item | O que é | Estado |
 |---|---|---|
-| Shader blackhole como **indicador de contexto do chat** | Item (a) restante do trio: buraco negro cresce com o % de contexto da sessão (análogo do MODE_TOKENS do shader original; o dado já existe no botão "Contexto da sessão"). **Restrição de design do usuário: não pode ficar muito pequeno** — presença visual desde o início (semente já legível), não um ícone tímido. Base pronta: `BlackholeGL` entregue na v0.34.0 (itens b — fundo do gate/wizard — e c — orb no ciclo do classificador — já em produção) | Aguardando plano com mockups (o `uIntensity` do componente já aceita o fill 0..1) |
+| ~~Shader blackhole (item a do trio)~~ | **Redefinido pelo usuário e entregue na v0.47.0**: em vez de indicador de contexto do chat, o blackhole substituiu o halo arco-íris da **aura de processamento** (orb + respiração accent — ver `planos_concluidos/llm_type_aura_medidor_v0470.plan.md`). O medidor de contexto seguiu textual e ficou honesto (janela real do Ollama, recálculo na troca, tooltip com heurística). | — |
 
 ## Como usar este arquivo
 

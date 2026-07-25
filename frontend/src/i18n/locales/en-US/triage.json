@@ -7,7 +7,8 @@
     "noSuggestion": "no suggestion",
     "noExtractableText": "no extractable text (empty OCR) — decide manually",
     "confidence": "confidence",
-    "noDomainSuggestion": "No domain suggestion"
+    "noDomainSuggestion": "No suggested destination to approve — use Correct to pick the domain manually",
+    "waitingOther": "Waiting — processing \"{{filename}}\"…"
   },
   "rejected": {
     "title": "Rejected",

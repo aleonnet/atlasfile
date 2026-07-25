@@ -10,6 +10,8 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { CollapsibleSection, rowActionButtonClass } from "../../components/ui/collapsible-section";
+import { MiniOrb } from "../../components/ui/processing-aura";
+import { useProcessing } from "../../contexts/ProcessingContext";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { invalidateAfterMove } from "../../lib/mutations";
 import type { IngestHistoryEntry, ProjectProfileV2, StatusSeverity } from "../../types";
@@ -133,6 +135,7 @@ type Props = {
 
 export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
   const { t } = useTranslation();
+  const { active: processingOp } = useProcessing();
   const [page, setPage] = useState(0);
   const [expandedLlm, setExpandedLlm] = useState<Set<string>>(new Set());
   const [moveRow, setMoveRow] = useState<FlatRow | null>(null);
@@ -208,7 +211,17 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                     return (
                       <React.Fragment key={row.key}>
                         <tr className={hasLlmDetail ? "cursor-pointer" : undefined} onClick={hasLlmDetail ? () => toggleLlmRow(row.key) : undefined}>
-                          <td>{decisionIcon(row.decision)}</td>
+                          {/* v0.47.0 (achado do usuário): enquanto ESTE doc está
+                              processando, o ícone da decisão vira o orb pulsante —
+                              checkmark com o arquivo ainda em voo mentia; ao terminar,
+                              processingOp limpa e o ícone real volta sozinho */}
+                          <td>
+                            {processingOp?.docId === row.doc_id ? (
+                              <MiniOrb className="size-3" />
+                            ) : (
+                              decisionIcon(row.decision)
+                            )}
+                          </td>
                           <td className="whitespace-nowrap">
                             {formatDate(row.timestamp, {
                               day: "2-digit", month: "2-digit", year: "2-digit",

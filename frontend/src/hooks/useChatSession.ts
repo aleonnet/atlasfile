@@ -35,7 +35,7 @@ function messagesToStored(messages: ChatMessageType[]): StoredChatMessage[] {
 export function useChatSession() {
   const { t } = useTranslation();
   const { selectedProjectScope } = useProject();
-  const { selectedModel, setSelectedModel, openaiApiKey, anthropicApiKey, moonshotApiKey, showThinking, autoTitleLLM } = useSettings();
+  const { selectedModel, setSelectedModel, models, openaiApiKey, anthropicApiKey, moonshotApiKey, showThinking, autoTitleLLM } = useSettings();
 
   const [chatMessages, setChatMessages] = useState<ChatMessageType[]>([]);
   const [chatSending, setChatSending] = useState(false);
@@ -43,6 +43,19 @@ export function useChatSession() {
   const [chatAbortRef, setChatAbortRef] = useState<AbortController | null>(null);
   const [lastToolCalls, setLastToolCalls] = useState<{ name: string; result_preview?: string }[]>([]);
   const [contextPressureRatio, setContextPressureRatio] = useState(0);
+  // Estimativa de tokens da última resposta (backend, ~4 chars/token): guarda
+  // para o gauge RECALCULAR na troca de modelo (v0.47.0 — antes o percentual
+  // ficava defasado até a próxima mensagem). Custom fora do catálogo espelha o
+  // fallback do backend (128k) até a próxima resposta trazer a janela real.
+  const [contextTokensEstimate, setContextTokensEstimate] = useState(0);
+  useEffect(() => {
+    if (!contextTokensEstimate || !selectedModel) return;
+    const [prov, ...rest] = selectedModel.split("/");
+    const windowTokens =
+      models.find((m) => m.provider === prov && m.model === rest.join("/"))?.context_tokens ?? 128_000;
+    setContextPressureRatio(Math.min(contextTokensEstimate / windowTokens, 1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedModel, models]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -301,6 +314,7 @@ export function useChatSession() {
       }
       if (res.context_pressure) {
         setContextPressureRatio(res.context_pressure.context_pressure_ratio);
+        setContextTokensEstimate(res.context_pressure.context_tokens_estimate ?? 0);
       }
       setLastToolCalls(res.tool_calls_used ?? []);
     } catch (e) {
@@ -323,6 +337,7 @@ export function useChatSession() {
     setChatMessages([]);
     setChatError(null);
     setContextPressureRatio(0);
+    setContextTokensEstimate(0);
     setLastToolCalls([]);
     setActiveSessionId(null);
     setSessionUsageTotals(null);
