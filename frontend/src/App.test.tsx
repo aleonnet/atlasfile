@@ -100,6 +100,7 @@ vi.mock("./api", () => ({
     Promise.resolve({ total: 0, page: 1, page_size: 20, total_pages: 0, hits: [] })
   ),
   getFileDownloadUrl: vi.fn((path: string) => `http://api/files?path=${path}`),
+  getObservabilityUrl: vi.fn(() => "http://localhost:8000/api/observability/open"),
   fetchModels: vi.fn(() => Promise.resolve([{ provider: "openai", model: "gpt-4o-mini", label: "OpenAI gpt-4o-mini (base)" }])),
   initializeProject: vi.fn(() => Promise.resolve({ status: "ok", already_initialized: false })),
   runReconcile: vi.fn(() => Promise.resolve({ status: "started" })),
@@ -259,11 +260,15 @@ describe("App", () => {
     }
   });
 
-  it("link Observabilidade aponta para o Dashboards derivado do host atual (v0.45.0)", async () => {
+  it("link Observabilidade passa pelo SSO da API, não direto no Dashboards (v0.45.0→v0.51.0)", async () => {
+    // v0.45.0 apontava direto para :5601 e o usuário caía na tela de login (a
+    // senha mora no .env). v0.51.0: o link vai para a API, que loga pela rede
+    // interna e devolve o cookie de sessão no redirect — ela também decide o
+    // destino final, inclusive quando não há SSO possível.
     await mockReconcileIdle();
     render(<App />);
     const link = await screen.findByRole("link", { name: /Observabilidade/i }, { timeout: 5000 });
-    expect(link).toHaveAttribute("href", "http://localhost:5601");
+    expect(link).toHaveAttribute("href", "http://localhost:8000/api/observability/open");
     expect(link).toHaveAttribute("target", "_blank");
   });
 

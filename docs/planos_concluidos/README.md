@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.51.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [sso_local_observabilidade_v0510](sso_local_observabilidade_v0510.plan.md) | Link "Observabilidade" abre o Dashboards já autenticado: a API loga pela rede interna e devolve o cookie de sessão no redirect (cookies ignoram porta — provado no Chrome real); a senha nunca chega ao browser/URL/histórico; guarda explícita quando Dashboards está em outro domínio e degradação para a tela de login em qualquer falha |
+
+---
+
 ## 0.50.5
 
 | # | Plano | Escopo |

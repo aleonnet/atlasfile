@@ -21,7 +21,7 @@
     "failures": "Falhas:",
     "orphans": "Órfãos:",
     "observability": "Observabilidade",
-    "observabilityHint": "Abrir o OpenSearch Dashboards (dashboards de operação do AtlasFile) — login admin + senha do .env",
+    "observabilityHint": "Abrir o OpenSearch Dashboards (dashboards de operação do AtlasFile) — já autenticado; se a sessão não for aceita, entre com admin + a senha do .env",
     "reconcileNow": "Reconciliar agora"
   },
   "results": {

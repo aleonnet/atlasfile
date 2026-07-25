@@ -550,7 +550,6 @@ function AppShell() {
             onDecision={handleDecision}
             onStatus={handleStatus}
             onScanComplete={handleDataChanged}
-            dashboardsPublicUrl={setupStatusQuery.data?.dashboards_public_url}
           />
           )}
         </div>

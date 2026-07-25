@@ -19,10 +19,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File as FastAPIFile, Header, HTTPException, Query, Response, UploadFile
+from fastapi import Depends, FastAPI, File as FastAPIFile, Header, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 
 from .api.layout import router as layout_router
 from .api.profile import router as profile_router
@@ -1196,6 +1196,36 @@ def setup_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
         # do host atual; dashboards_url interno da rede Docker não serve aqui)
         "dashboards_public_url": settings.dashboards_public_url,
     }
+
+
+@app.get("/api/observability/open")
+def open_observability(request: Request, auth: AuthContext = Depends(require_auth)):
+    """Abre o OpenSearch Dashboards já autenticado (v0.51.0).
+
+    A API loga pela rede interna com a senha que já tem no ambiente e devolve
+    o cookie de sessão no redirect — a senha nunca chega ao browser. Qualquer
+    falha (ou Dashboards em outro domínio) degrada para a tela de login normal,
+    que é exatamente o comportamento anterior.
+    """
+    from .observability_sso import SESSION_COOKIE, fetch_session_cookie, public_dashboards_url, sso_applicable
+
+    host_header = request.headers.get("host") or ""
+    target = f"{public_dashboards_url(host_header)}/app/home"
+    response = RedirectResponse(url=target, status_code=302)
+    if not sso_applicable(host_header):
+        # Dashboards em outro domínio: o cookie não seria aceito — não adianta
+        # tentar, e fingir que deu certo seria pior que a tela de login.
+        return response
+    cookie_value = fetch_session_cookie()
+    if cookie_value:
+        response.set_cookie(
+            key=SESSION_COOKIE,
+            value=cookie_value,
+            path="/",
+            httponly=True,
+            samesite="lax",
+        )
+    return response
 
 
 @app.get("/api/projects")

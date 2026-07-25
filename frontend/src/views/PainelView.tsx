@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
-import { fetchProjectProfile, getFileDownloadUrl, moveDocument } from "../api";
+import { fetchProjectProfile, getFileDownloadUrl, getObservabilityUrl, moveDocument } from "../api";
 import { MoveDocumentModal } from "../components/MoveDocumentModal";
 import { AnimatedNumber } from "../components/ui/animated-number";
 import { Badge } from "../components/ui/badge";
@@ -46,12 +46,9 @@ type Props = {
   reconcileStatus: ReconcileStatus | null;
   reconcilingNow: boolean;
   onReconcile: () => void;
-  /** URL do Dashboards para o browser; vazio/ausente = derivar do host atual. */
-  dashboardsPublicUrl?: string;
   onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => void;
   onStatus: (msg: string, severity?: StatusSeverity) => void;
   onScanComplete: () => void;
-
 };
 
 function extractFolder(path: string): string {
@@ -258,7 +255,6 @@ export function PainelView({
   reconcileStatus,
   reconcilingNow,
   onReconcile,
-  dashboardsPublicUrl,
   onDecision,
   onStatus,
   onScanComplete,
@@ -330,10 +326,11 @@ export function PainelView({
     }
   }
 
-  // Dashboards para o BROWSER: a env interna da rede Docker não serve aqui;
-  // sem config explícita, deriva do host em que a própria UI está aberta.
-  const dashboardsHref =
-    (dashboardsPublicUrl || "").trim() || `${window.location.protocol}//${window.location.hostname}:5601`;
+  // v0.51.0: o link passa pela API, que loga no Dashboards e devolve o cookie
+  // de sessão no redirect (achado do usuário: caía na tela de login e a senha
+  // mora no .env). A API decide o destino — inclusive quando não há SSO
+  // possível (Dashboards em outro domínio), aí o redirect leva ao login normal.
+  const dashboardsHref = getObservabilityUrl();
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
   const initializedCount = projects.filter((p) => p.initialized).length;

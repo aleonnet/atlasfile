@@ -15,6 +15,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.51.0] - 2026-07-25
+
+### Adicionado
+- **Link "Observabilidade" abre o Dashboards já logado** (achado do usuário, duas ocorrências: o link caía na tela de login e a senha mora no `.env`): novo `GET /api/observability/open` — a API autentica no OpenSearch Dashboards pela rede interna com a senha que já tem no ambiente e devolve o cookie de sessão no redirect. **A senha nunca chega ao browser, à URL ou ao histórico**; o que trafega é o mesmo cookie que um login manual geraria. O truque que sustenta isso foi medido no Chrome real antes de projetar: cookies ignoram porta, então um cookie do host vale entre a API (:8000) e o Dashboards (:5601). Guardas explícitas: com `DASHBOARDS_PUBLIC_URL` em outro domínio o cookie não valeria e o endpoint **nem tenta logar** (redireciona para o login normal); falha de login, resposta sem cookie ou Dashboards fora do ar degradam do mesmo jeito, nunca em erro na cara do usuário. A API key entra sozinha no link (mesmo helper de SSE/downloads), então funciona com `API_AUTH_ENABLED`. Validado ao vivo: cookies limpos → clique → Home do Dashboards sem login.
+
 ## [0.50.5] - 2026-07-25
 
 ### Corrigido

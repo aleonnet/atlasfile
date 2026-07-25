@@ -103,6 +103,13 @@ export function getFileDownloadUrl(filePath: string): string {
   return withApiKeyParam(`${API_URL}/api/files/download?path=${encodeURIComponent(filePath)}`);
 }
 
+/** URL que abre o OpenSearch Dashboards já autenticado (v0.51.0): a API loga
+ *  pela rede interna e devolve o cookie de sessão no redirect — a senha nunca
+ *  passa pelo browser. Sem SSO possível, o redirect leva à tela de login. */
+export function getObservabilityUrl(): string {
+  return withApiKeyParam(`${API_URL}/api/observability/open`);
+}
+
 /* ── Setup / Onboarding ── */
 
 export interface SetupStatus {
