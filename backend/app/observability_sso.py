@@ -28,8 +28,10 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
-SESSION_COOKIE = "security_authentication"
 LOGIN_TIMEOUT_SECONDS = 10.0
+LOOKUP_TIMEOUT_SECONDS = 5.0
+# id fixo do objeto importado por dashboards_setup (app/data/dashboards.ndjson)
+OPERATION_DASHBOARD_ID = "atlasfile-dashboard-operacao"
 
 
 def public_dashboards_url(request_host: str) -> str:
@@ -51,9 +53,16 @@ def sso_applicable(request_host: str) -> bool:
     return bool(api_host) and api_host == dash_host
 
 
-def fetch_session_cookie() -> str | None:
-    """Loga no Dashboards pela rede interna e devolve o valor do cookie de
-    sessão. None em qualquer falha — o chamador degrada para a tela de login."""
+def fetch_session_cookies() -> dict[str, str]:
+    """Loga no Dashboards pela rede interna e devolve TODOS os cookies de
+    sessão emitidos. Dicionário vazio em qualquer falha — o chamador degrada
+    para a tela de login.
+
+    v0.51.1: repassar tudo em vez de procurar `security_authentication` pelo
+    nome cobre dois casos reais do security plugin — sessão grande dividida em
+    `security_authentication_1/_2/...` e nome trocado por
+    `opensearch_security.cookie.name`.
+    """
     import httpx
 
     base = settings.dashboards_url.rstrip("/")
@@ -69,8 +78,33 @@ def fetch_session_cookie() -> str | None:
             )
         if resp.status_code != 200:
             logger.warning("SSO do Observabilidade: login no Dashboards devolveu %s", resp.status_code)
-            return None
-        return resp.cookies.get(SESSION_COOKIE)
+            return {}
+        return {name: value for name, value in resp.cookies.items() if value}
     except Exception:
         logger.exception("SSO do Observabilidade: falha ao autenticar no Dashboards")
-        return None
+        return {}
+
+
+def dashboard_target_path(session_cookies: dict[str, str]) -> str:
+    """Caminho de destino no Dashboards: o dashboard de operação quando ele
+    existe, senão o Home.
+
+    O objeto tem id fixo, mas o auto-import roda em background no boot com
+    retry — mandar direto para um id ainda inexistente mostraria "Dashboard
+    not found", pior que o Home. Uma consulta local (~ms) decide.
+    """
+    import httpx
+
+    base = settings.dashboards_url.rstrip("/")
+    try:
+        with httpx.Client(timeout=LOOKUP_TIMEOUT_SECONDS, cookies=session_cookies) as client:
+            resp = client.get(f"{base}/api/saved_objects/dashboard/{OPERATION_DASHBOARD_ID}")
+        if resp.status_code == 200:
+            return f"/app/dashboards#/view/{OPERATION_DASHBOARD_ID}"
+        logger.info(
+            "SSO do Observabilidade: dashboard de operação indisponível (%s) — abrindo o Home",
+            resp.status_code,
+        )
+    except Exception:
+        logger.exception("SSO do Observabilidade: falha ao consultar o dashboard de operação")
+    return "/app/home"

@@ -1207,24 +1207,27 @@ def open_observability(request: Request, auth: AuthContext = Depends(require_aut
     falha (ou Dashboards em outro domínio) degrada para a tela de login normal,
     que é exatamente o comportamento anterior.
     """
-    from .observability_sso import SESSION_COOKIE, fetch_session_cookie, public_dashboards_url, sso_applicable
+    from .observability_sso import (
+        dashboard_target_path,
+        fetch_session_cookies,
+        public_dashboards_url,
+        sso_applicable,
+    )
 
     host_header = request.headers.get("host") or ""
-    target = f"{public_dashboards_url(host_header)}/app/home"
-    response = RedirectResponse(url=target, status_code=302)
+    base = public_dashboards_url(host_header)
     if not sso_applicable(host_header):
         # Dashboards em outro domínio: o cookie não seria aceito — não adianta
         # tentar, e fingir que deu certo seria pior que a tela de login.
-        return response
-    cookie_value = fetch_session_cookie()
-    if cookie_value:
-        response.set_cookie(
-            key=SESSION_COOKIE,
-            value=cookie_value,
-            path="/",
-            httponly=True,
-            samesite="lax",
-        )
+        return RedirectResponse(url=f"{base}/app/home", status_code=302)
+
+    session_cookies = fetch_session_cookies()
+    # Sem sessão o destino tem de ser o Home: o login do Dashboards redireciona
+    # para lá depois, e um deep link para o dashboard sem sessão só confunde.
+    path = dashboard_target_path(session_cookies) if session_cookies else "/app/home"
+    response = RedirectResponse(url=f"{base}{path}", status_code=302)
+    for name, value in session_cookies.items():
+        response.set_cookie(key=name, value=value, path="/", httponly=True, samesite="lax")
     return response
 
 

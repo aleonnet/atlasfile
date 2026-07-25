@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.51.1] - 2026-07-25
+
+### Mudado
+- **O link "Observabilidade" cai direto no dashboard "AtlasFile — Operação"** (follow-up aprovado pelo usuário), em vez do Home. Como o auto-import roda em background com retry no boot, um deep link para um id ainda inexistente mostraria "Dashboard not found" — pior que o Home: o endpoint consulta o saved object antes (uma request local, na mesma sessão recém-criada) e cai no Home se não existir. Sem sessão, o destino continua sendo o Home.
+
+### Corrigido
+- **SSO robusto a sessão dividida e a cookie renomeado** (pergunta do usuário sobre risco futuro): o endpoint passa a repassar **todos** os cookies devolvidos pelo login, em vez de procurar `security_authentication` pelo nome. Cobre os dois modos de falha mais prováveis — o security plugin divide sessões grandes em `security_authentication_1/_2/…` e o nome pode ser trocado por `opensearch_security.cookie.name`. Os riscos remanescentes (proposta de Origin-Bound Cookies no Chromium; mudança do `/auth/login` numa major futura) degradam para a tela de login, que é o comportamento anterior — nenhum caminho quebra a aplicação.
+
 ## [0.51.0] - 2026-07-25
 
 ### Adicionado

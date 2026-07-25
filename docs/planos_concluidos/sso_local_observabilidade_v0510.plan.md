@@ -52,8 +52,31 @@ O link levava direto à tela de login do OpenSearch Dashboards e a senha mora no
   nova aba abre em `localhost:5601/app/home` **sem passar pelo login**, com a
   API key carregada sozinha no href.
 
-## Follow-up sugerido (não implementado)
+## Adendo v0.51.1 — hardening e destino direto
 
-O redirect leva ao Home do Dashboards; poderia levar direto ao dashboard
-"AtlasFile — Operação" (id fixo no ndjson de import). Fica para decisão do
-usuário — muda o destino do link, não a mecânica do SSO.
+Origem: pergunta do usuário — "tem risco de quebrar no futuro?" — mais a
+aprovação do follow-up do destino.
+
+**Riscos analisados** (todos convergem para "abre a tela de login", o
+comportamento pré-v0.51.0 — nenhum quebra a aplicação):
+
+| Risco | Natureza | Tratamento |
+|---|---|---|
+| Sessão grande dividida em `security_authentication_1/_2/…` | Comportamento conhecido do security plugin (medido aqui: 1 cookie só neste setup) | **Eliminado**: repassa todos os cookies do login, não um nome fixo |
+| Nome trocado por `opensearch_security.cookie.name` | Opção do plugin | **Eliminado** pelo mesmo repasse |
+| Origin-Bound Cookies (proposta do Chromium de isolar cookie por porta) | Proposta futura, não é fato do ambiente | Degrada para a tela de login |
+| Mudança do `/auth/login` em major futura do OpenSearch | Possível | Degrada para a tela de login |
+
+**Destino direto**: o redirect passa a levar ao dashboard "AtlasFile —
+Operação" (`atlasfile-dashboard-operacao`, id fixo do ndjson). Como o
+auto-import roda em background com retry no boot, um deep link para um id
+ainda inexistente mostraria "Dashboard not found" — pior que o Home. Então o
+endpoint **consulta o saved object antes** (uma request local, na mesma
+sessão recém-criada) e cai no Home se não existir. Sem sessão, o destino é
+sempre o Home: deep link para quem vai ver a tela de login só confunde.
+
+Validações do adendo: backend **708/708** (6 testes novos: sessão dividida,
+nome customizado, destino com dashboard presente, 404 e exceção caindo no
+Home, sem-sessão não consulta o dashboard); E2E no browser real com cookies
+limpos → o clique abre o dashboard "AtlasFile — Operação" com os painéis
+carregados, sem login e sem "not found".
