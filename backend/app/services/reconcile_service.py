@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from threading import Lock
@@ -13,6 +14,8 @@ from ..projects_root import projects_root_health
 from ..reconcile import cleanup_orphan_projects, rebuild_search_index, reconcile_project_index, sync_search_index_for_project
 from ..utils import utc_now_iso
 
+
+logger = logging.getLogger(__name__)
 
 def count_rows_to_process(valid_projects: list[tuple[Path, str]]) -> int:
     from ..reconcile import _is_ignored_file, _parse_index_rows
@@ -101,6 +104,18 @@ def run_reconcile(
                     progress=status,
                 )
 
+        # v0.53.0: chats e eventos de custo voltam do journal local quando o
+        # índice está vazio (cenário de perda de volume). Só restaura o que
+        # está VAZIO — nunca sobrescreve um índice vivo; falha aqui não pode
+        # comprometer a reconciliação de documentos.
+        journal_report: dict[str, Any] = {}
+        try:
+            from ..journal_restore import restore_from_journal
+
+            journal_report = restore_from_journal(os_client, only_if_empty=True)
+        except Exception:
+            logger.exception("Reconcile: falha ao restaurar do journal")
+
         orphan_report = {"orphan_projects_found": 0, "orphan_docs_deleted": 0}
         # Limpeza de órfãos: liberada com a raiz SAUDÁVEL (mesmo vazia — instância
         # recomeçada limpa o índice antigo); pulada com a raiz indisponível (mount
@@ -131,12 +146,15 @@ def run_reconcile(
             "orphan_pending_files_moved": sum(
                 int(r.get("orphan_pending_files_moved", 0)) for r in project_reports
             ),
+            "journal_sessions_restored": int(journal_report.get("sessions_restored", 0)),
+            "journal_events_restored": sum(int(v) for v in (journal_report.get("events_restored") or {}).values()),
         }
         report = {
             "projects": project_reports,
             "skipped_projects": skipped,
             "search": search_report,
             "orphan_cleanup": orphan_report,
+            "journal_restore": journal_report,
             "summary": summary,
             "started_at": started_at,
             "finished_at": finished_at,

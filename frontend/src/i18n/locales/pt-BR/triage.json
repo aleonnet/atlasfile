@@ -5,10 +5,19 @@
     "waiting_other": "{{count}} documentos aguardando decisão",
     "suggestion": "sugestão:",
     "noSuggestion": "sem sugestão",
-    "noExtractableText": "sem texto extraível (OCR vazio) — decida manualmente",
     "confidence": "confiança",
     "noDomainSuggestion": "Sem sugestão de destino para aprovar — use Corrigir para escolher o domínio manualmente",
-    "waitingOther": "Aguardando — processando \"{{filename}}\"…"
+    "waitingOther": "Aguardando — processando \"{{filename}}\"…",
+    "noText": {
+      "generic": "sem texto extraível — decida manualmente",
+      "only_embedded_image": "contém apenas imagem embutida sem texto legível — decida manualmente",
+      "image_without_text": "imagem sem texto legível (OCR não encontrou nada) — decida manualmente",
+      "scan_unreadable": "PDF escaneado sem texto legível pelo OCR — decida manualmente",
+      "ocr_unavailable": "OCR indisponível no servidor — decida manualmente",
+      "unsupported_format": "formato sem extrator disponível — decida manualmente",
+      "extraction_error": "falha ao ler o arquivo (pode estar corrompido) — decida manualmente",
+      "empty_document": "documento sem conteúdo de texto — decida manualmente"
+    }
   },
   "rejected": {
     "title": "Rejeitados",

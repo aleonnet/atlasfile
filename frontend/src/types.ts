@@ -102,6 +102,9 @@ export interface ReconcileSummary {
   orphan_projects_found?: number;
   orphan_docs_deleted?: number;
   orphan_pending_files_moved?: number;
+  /** v0.53.0: chats/eventos de custo trazidos de volta do journal local. */
+  journal_sessions_restored?: number;
+  journal_events_restored?: number;
 }
 
 export interface ReconcileStatus {
@@ -132,6 +135,10 @@ export interface TriageItem {
   business_domain_confidence?: number | null;
   document_type_confidence?: number | null;
   reason: string;
+  /** v0.52.0: causa real quando reason=sem_texto_extraivel (only_embedded_image,
+   *  ocr_unavailable, scan_unreadable, image_without_text, unsupported_format,
+   *  extraction_error, empty_document) — traduzida em triage:queue.noText.*. */
+  no_text_cause?: string | null;
   top_candidates: Array<{ business_domain?: string; score: number }>;
   top_document_type_candidates?: Array<{ document_type?: string; score: number }>;
   source_path: string;

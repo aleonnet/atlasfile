@@ -4,6 +4,15 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.52.0 – 0.53.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [causa_real_sem_texto_e_toggle_idioma_v0520](causa_real_sem_texto_e_toggle_idioma_v0520.plan.md) | A triagem diz POR QUE não houve texto (7 causas derivadas do `ExtractionResult`, com precedência do OCR indisponível sobre imagem embutida) no lugar do genérico "(OCR vazio)", que às vezes era falso; toggle de idioma na sidebar no mesmo padrão do tema (pedido do usuário) |
+| 2 | [journal_durabilidade_chats_custos_v0530](journal_durabilidade_chats_custos_v0530.plan.md) | Chats e eventos de custo deixam de viver só no índice: journal append-only em `_ATLASFILE/journal/` (NDJSON por mês) + snapshot atômico por sessão, restauração idempotente no reconcile que nunca sobrescreve índice vivo; E2E do incidente: índice apagado → sessão restaurada |
+
+---
+
 ## 0.51.0 – 0.51.1
 
 | # | Plano | Escopo |

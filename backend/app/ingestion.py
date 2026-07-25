@@ -14,7 +14,9 @@ from .area_resolver import resolve_classification_path
 from .bootstrap import ensure_project_structure
 from .config import settings
 from .classifier_runtime import classify_with_operational_mode
-from .indexer import index_document, index_document_chunks_embeddings, read_text_excerpt
+from .document_extractor import ExtractionResult, extract_document_content
+from .event_journal import append_event
+from .indexer import index_document, index_document_chunks_embeddings
 from .profile_runtime import areas_root_rel, triage_paths
 from .triage import save_pending_metadata
 from .utils import (
@@ -32,6 +34,35 @@ import logging as _logging
 import time as _time
 
 _ingestion_logger = _logging.getLogger(__name__)
+
+# Mesmo teto que o read_text_excerpt do indexer usa por default.
+_TEXT_EXCERPT_LIMIT = 20_000
+
+
+def _no_text_cause(extraction: ExtractionResult) -> str:
+    """Por que este documento não rendeu texto (v0.52.0).
+
+    O extrator já sabia a resposta, mas ela morria no `ExtractionResult` e a
+    triagem só mostrava "(OCR vazio)" — genérico e às vezes falso (o OCR podia
+    nem ter rodado). Códigos estáveis; a tradução vive no i18n.
+    """
+    status = extraction.extraction_status or ""
+    metadata = extraction.metadata or {}
+    if status == "unsupported":
+        return "unsupported_format"
+    if status == "error":
+        return "extraction_error"
+    if status == "ocr_unavailable" or metadata.get("embedded_images_ocr_status") == "ocr_unavailable":
+        return "ocr_unavailable"
+    # Office "envelope" ou imagem solta: houve imagem, o OCR rodou e não achou texto
+    if int(metadata.get("embedded_images_found") or 0) > 0:
+        return "only_embedded_image"
+    if extraction.content_type == "image":
+        return "image_without_text"
+    if extraction.content_type == "pdf":
+        return "scan_unreadable"
+    return "empty_document"
+
 
 def _persist_classification_usage(
     doc_id: str,
@@ -59,6 +90,7 @@ def _persist_classification_usage(
             "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens") or 0),
             "estimated_cost_usd": float(usage.get("estimated_cost_usd") or 0),
         }
+        append_event("classification_usage", doc)  # v0.53.0: durabilidade fora do índice
         client.index(index=idx, body=doc)
     except Exception:
         _ingestion_logger.exception("Failed to persist classification usage")
@@ -415,7 +447,8 @@ def process_inbox_file(
 
     # ── Classification pipeline (only for non-duplicates) ──
     doc_id = str(uuid.uuid4())
-    text_excerpt = read_text_excerpt(inbox_file)
+    extraction = extract_document_content(inbox_file, max_chars=_TEXT_EXCERPT_LIMIT)
+    text_excerpt = extraction.text_excerpt
     classification = classify_with_operational_mode(profile=profile, source_path=inbox_file, text_excerpt=text_excerpt)
 
     # Proteção: sem texto extraível (imagem sem texto, formato ilegível) não há
@@ -428,6 +461,7 @@ def process_inbox_file(
         classification["business_domain_confidence"] = 0.0
         classification["document_type_confidence"] = 0.0
         classification["reason"] = "sem_texto_extraivel"
+        classification["no_text_cause"] = _no_text_cause(extraction)
 
     llm_result: dict[str, Any] | None = None
     policy = _llm_policy(profile)
@@ -567,6 +601,7 @@ def process_inbox_file(
             "business_domain_confidence": float(classification.get("business_domain_confidence") or confidence),
             "document_type_confidence": float(classification.get("document_type_confidence") or 0.0),
             "reason": classification.get("reason", "triage_pending"),
+            "no_text_cause": classification.get("no_text_cause", ""),
             "top_candidates": classification["top_candidates"],
             "top_document_type_candidates": classification.get("top_document_type_candidates", []),
             "source_path": str(dest_file),
@@ -622,6 +657,7 @@ def process_inbox_file(
             "business_domain_confidence": float(classification.get("business_domain_confidence") or confidence),
             "document_type_confidence": float(classification.get("document_type_confidence") or 0.0),
             "reason": classification.get("reason") if classification.get("reason") == "sem_texto_extraivel" else "below_triage_min",
+            "no_text_cause": classification.get("no_text_cause", ""),
             "top_candidates": classification.get("top_candidates", []),
             "top_document_type_candidates": classification.get("top_document_type_candidates", []),
             "source_path": str(dest_file),

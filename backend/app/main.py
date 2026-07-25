@@ -87,6 +87,7 @@ from .models import (
 )
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from .auth import AuthContext, enforce_project_scope, require_auth
+from .event_journal import append_event, delete_session as journal_delete_session, save_session as journal_save_session
 from .opensearch_client import ensure_chat_sessions_index, ensure_chat_usage_index, ensure_classification_usage_index, ensure_index, ensure_training_usage_index, get_client
 from .search_hybrid import (
     build_chunk_filters,
@@ -257,20 +258,24 @@ def _record_chat_usage(usage: dict[str, Any] | None, *, provider: str, model: st
     """Evento achatado de uso LLM do chat (dashboard de custo). Nunca falha o chat."""
     if not usage or not isinstance(usage, dict):
         return
+    event = {
+        "session_id": session_id or "",
+        "channel": channel,
+        "project_id": project_id or "",
+        "provider": provider,
+        "model": model,
+        "timestamp": utc_now_iso(),
+        "input_tokens": int(usage.get("input_tokens") or 0),
+        "output_tokens": int(usage.get("output_tokens") or 0),
+        "cache_read_input_tokens": int(usage.get("cache_read_input_tokens") or 0),
+        "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens") or 0),
+        "estimated_cost_usd": float(usage.get("estimated_cost_usd") or 0.0),
+    }
+    # v0.53.0: journal PRIMEIRO — o disco é a fonte durável; o índice é a
+    # projeção consultável (perder o volume não pode mais apagar o custo).
+    append_event("chat_usage", event)
     try:
-        os_client.index(index=settings.opensearch_chat_usage_index, body={
-            "session_id": session_id or "",
-            "channel": channel,
-            "project_id": project_id or "",
-            "provider": provider,
-            "model": model,
-            "timestamp": utc_now_iso(),
-            "input_tokens": int(usage.get("input_tokens") or 0),
-            "output_tokens": int(usage.get("output_tokens") or 0),
-            "cache_read_input_tokens": int(usage.get("cache_read_input_tokens") or 0),
-            "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens") or 0),
-            "estimated_cost_usd": float(usage.get("estimated_cost_usd") or 0.0),
-        })
+        os_client.index(index=settings.opensearch_chat_usage_index, body=event)
     except Exception:
         _logger.debug("Falha ao registrar evento de uso do chat", exc_info=True)
 
@@ -321,13 +326,16 @@ async def _handle_channel_message(msg: ChannelMessage) -> str:
             existing_by_model = session.get("usage_by_model") or {}
             model_totals = _merge_usage(existing_by_model.get(provider_model_key), usage, provider_model_key)
             existing_by_model[provider_model_key] = model_totals
-            os_client.update(index=_idx, id=session["id"], body={"doc": {
+            patch = {
                 "messages": existing_msgs,
                 "usage_totals": new_totals,
                 "usage_by_model": existing_by_model,
                 "updatedAt": now_ms,
                 **({"project_id": active_project_id} if active_project_id else {}),
-            }})
+            }
+            # Snapshot com o doc INTEIRO (já em memória): evita reler do índice
+            journal_save_session(session["id"], {**session, **patch})
+            os_client.update(index=_idx, id=session["id"], body={"doc": patch})
             _notify_session_update(session["id"])
         else:
             title = msg.text[:80] if msg.text else "Telegram"
@@ -345,6 +353,7 @@ async def _handle_channel_message(msg: ChannelMessage) -> str:
                 **({"project_id": active_project_id} if active_project_id else {}),
             }
             session_id = str(uuid.uuid4())
+            journal_save_session(session_id, doc)
             os_client.index(index=_idx, id=session_id, body=doc)
             _notify_session_update(session_id)
 
@@ -2869,6 +2878,7 @@ def create_chat_session(body: ChatSessionCreate, auth: AuthContext = Depends(req
         doc["usage_totals"] = body.usage_totals.model_dump()
     if body.usage_by_model is not None:
         doc["usage_by_model"] = {k: v.model_dump() for k, v in body.usage_by_model.items()}
+    journal_save_session(doc_id, doc)
     os_client.index(index=_CHAT_SESSIONS_INDEX, id=doc_id, body=doc, refresh=True)
     return _session_doc_to_model(doc_id, doc)
 
@@ -2986,6 +2996,9 @@ def delete_chat_session(session_id: str, auth: AuthContext = Depends(require_aut
         os_client.delete(index=_CHAT_SESSIONS_INDEX, id=session_id, refresh=True)
     except Exception:
         raise http_error(404, "CHAT_SESSION_NOT_FOUND", "Sessão não encontrada")
+    # Exclusão é intencional: sair do índice e ficar no journal faria a
+    # restauração ressuscitar o que o usuário apagou.
+    journal_delete_session(session_id)
     return None
 
 

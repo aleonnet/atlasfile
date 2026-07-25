@@ -25,6 +25,15 @@ function formatClassifierModeLabel(mode?: string | null): string {
   return mode || "—";
 }
 
+/** v0.52.0: a causa REAL de não haver texto, em vez do genérico "(OCR vazio)"
+ *  — que era impreciso quando o OCR nem chegou a rodar. Código desconhecido
+ *  (meta antigo ou versão futura) cai na mensagem genérica, nunca em branco. */
+function noTextMessage(cause: string | null | undefined, t: (key: string) => string): string {
+  const key = `triage:queue.noText.${cause || "generic"}`;
+  const message = t(key);
+  return message === key ? t("triage:queue.noText.generic") : message;
+}
+
 export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props) {
   const { t } = useTranslation();
   const reducedMotion = useReducedMotion();
@@ -97,7 +106,7 @@ export function TriageQueue({ triageItems, projectLabelById, onDecision }: Props
                       {item.suggested_document_type ? ` / ${item.suggested_document_type}` : ""}
                     </>
                   ) : item.reason === "sem_texto_extraivel" ? (
-                    <span className="text-accent">{t("triage:queue.noExtractableText")}</span>
+                    <span className="text-accent">{noTextMessage(item.no_text_cause, t)}</span>
                   ) : (
                     t("triage:queue.noSuggestion")
                   )}

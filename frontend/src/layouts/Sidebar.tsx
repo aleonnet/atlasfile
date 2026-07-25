@@ -8,6 +8,7 @@ import {
   Layers,
   LayoutDashboard,
   MessageCircle,
+  Languages,
   Monitor,
   Moon,
   PanelLeftClose,
@@ -51,6 +52,10 @@ const THEME_ICON: Record<ThemeMode, React.ReactNode> = {
   system: <Monitor size={16} aria-hidden />,
   light: <Sun size={16} aria-hidden />,
   dark: <Moon size={16} aria-hidden />,
+};
+const LANGUAGE_LABEL_KEY: Record<string, string> = {
+  "pt-BR": "settings:language.ptBR",
+  "en-US": "settings:language.enUS",
 };
 const THEME_LABEL_KEY: Record<ThemeMode, string> = {
   system: "painel:shell.themeSystem",
@@ -215,7 +220,8 @@ function ProjectSwitcher({
 
 /** Sidebar colapsável: navegação, project switcher rico e status — a coluna viva do shell. */
 export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const nextLanguage = (i18n.resolvedLanguage ?? "pt-BR") === "pt-BR" ? "en-US" : "pt-BR";
   const { view, setView } = useNavigation();
   const { theme, setTheme } = useSettings();
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -390,6 +396,18 @@ export function Sidebar({ healthOk, onSelectProject, onNewProject, onOpenSearch 
               {!collapsed && <span className="text-tertiary/70">· v{APP_VERSION}</span>}
             </span>
             <div className={cn("flex items-center gap-0.5", collapsed && "flex-col")}>
+              {/* v0.52.0 (pedido do usuário): idioma ganha acesso rápido na
+                  mesma fileira do tema. São 2 idiomas — clique alterna direto,
+                  como o tema cicla; o tooltip diz o estado e o destino. */}
+              <button
+                type="button"
+                onClick={() => void i18n.changeLanguage(nextLanguage)}
+                title={t("painel:shell.languageSwitchTo", { lang: t(LANGUAGE_LABEL_KEY[nextLanguage]) })}
+                aria-label={t("painel:shell.languageSwitchTo", { lang: t(LANGUAGE_LABEL_KEY[nextLanguage]) })}
+                className="rounded-md border-0 bg-transparent p-1.5 text-tertiary shadow-none transition-colors hover:bg-panel-strong hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Languages size={16} aria-hidden />
+              </button>
               <button
                 type="button"
                 onClick={() => setTheme(THEME_CYCLE[theme])}

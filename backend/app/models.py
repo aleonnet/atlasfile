@@ -59,6 +59,9 @@ class TriageItem(BaseModel):
     business_domain_confidence: float | None = None
     document_type_confidence: float | None = None
     reason: str
+    # v0.52.0: por que não houve texto (só quando reason=sem_texto_extraivel) —
+    # código estável derivado do ExtractionResult; a tradução vive no i18n.
+    no_text_cause: str | None = None
     top_candidates: list[dict[str, Any]] = Field(default_factory=list)
     top_document_type_candidates: list[dict[str, Any]] = Field(default_factory=list)
     source_path: str

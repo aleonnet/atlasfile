@@ -15,6 +15,18 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.53.0] - 2026-07-25
+
+### Adicionado
+- **Chats e eventos de custo deixam de viver só no índice** (incidente real do dia: dois resets de volume levaram o período inteiro, sem origem para reconstruir): journal local-first em `_ATLASFILE/journal/` — eventos (`chat_usage`, `classification_usage`, `training_usage`) em NDJSON append-only por mês, e sessões de chat em snapshot atômico por arquivo. O journal é gravado **antes** do índice: o disco vira a fonte durável e o índice, a projeção consultável. Falha de escrita nunca derruba a operação; linha corrompida por append interrompido não inutiliza o journal.
+- **Restauração automática no reconcile**, com guarda: só age em índice **vazio** (o cenário de perda de volume) e jamais sobrescreve índice vivo; id determinístico por conteúdo torna a reimportação idempotente. Sessão apagada de propósito some do journal — a restauração não ressuscita o que o usuário excluiu. Os números entram no resumo do reconcile e contam como correção (o run automático anuncia). **E2E do incidente**: sessão criada → índice de sessões apagado → reconcile → sessão de volta.
+
+## [0.52.0] - 2026-07-25
+
+### Adicionado
+- **A triagem passa a dizer a causa REAL de "sem texto extraível"** (item do roadmap registrado na v0.48.0): a mensagem era sempre "(OCR vazio)" — genérica e às vezes **falsa**, porque o OCR podia nem ter rodado. O `ExtractionResult` já sabia a resposta e ela morria no extrator; agora 7 causas estáveis chegam à UI nos dois idiomas — imagem embutida sem texto legível, imagem sem texto, PDF escaneado ilegível, OCR indisponível no servidor, formato sem extrator, arquivo corrompido, documento vazio. Precedência decidida com critério: OCR indisponível vence "só imagem embutida" (com o motor fora do ar, culpar a imagem mentiria).
+- **Toggle de idioma na sidebar** (pedido do usuário): ícone na mesma fileira do tema e do colapso, com as mesmas classes. São dois idiomas — o clique alterna direto, como o tema cicla, e o tooltip diz o destino. Complementa o seletor de Configuração e o das telas de primeiro acesso.
+
 ## [0.51.1] - 2026-07-25
 
 ### Mudado

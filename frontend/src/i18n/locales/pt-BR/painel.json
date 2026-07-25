@@ -64,7 +64,7 @@
     "starting": "Iniciando reconciliação de {{scope}}...",
     "progress": "Reconciliando: {{current}} / {{total}} docs | Projeto: {{project}} | Arquivo: {{file}}{{skip}}",
     "progressSkip": " (skip: {{count}})",
-    "summary": "Reconciliação concluída{{scope}}: {{adjustments}}, {{indexed}}{{skip}}{{fail}}{{orphan}}{{pendingOrphan}}",
+    "summary": "Reconciliação concluída{{scope}}: {{adjustments}}, {{indexed}}{{skip}}{{fail}}{{orphan}}{{pendingOrphan}}{{journal}}",
     "scopeSuffix": " ({{scope}})",
     "summaryAdjustments_one": "{{count}} ajuste",
     "summaryAdjustments_other": "{{count}} ajustes",
@@ -77,7 +77,8 @@
     "summaryOrphan_other": ", {{count}} órfãos removidos",
     "summaryPendingOrphan_one": ", {{count}} arquivo órfão da triagem movido para rejeitados",
     "summaryPendingOrphan_other": ", {{count}} arquivos órfãos da triagem movidos para rejeitados",
-    "autoLabel": "Reconciliação automática:"
+    "autoLabel": "Reconciliação automática:",
+    "summaryJournal": ", restaurados do journal local: {{sessions}} chat(s) e {{events}} evento(s) de custo"
   },
   "location": {
     "pageParagraph": "Página {{page}} / {{paragraph}}º parágrafo{{part}}",
@@ -139,7 +140,8 @@
     "projectsGroup": "Projetos",
     "themeGroup": "Tema",
     "actionsGroup": "Ações",
-    "noResultsFor": "Nenhum resultado para “{{query}}”."
+    "noResultsFor": "Nenhum resultado para “{{query}}”.",
+    "languageSwitchTo": "Mudar para {{lang}}"
   },
   "app": {
     "statusReady": "Pronto",

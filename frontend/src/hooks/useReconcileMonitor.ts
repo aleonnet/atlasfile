@@ -32,6 +32,13 @@ function summaryMessage(latest: ReconcileStatus, scopeLabel?: string): string {
       (Number(latest.summary?.orphan_pending_files_moved) || 0) > 0
         ? i18n.t("painel:reconcile.summaryPendingOrphan", { count: Number(latest.summary?.orphan_pending_files_moved) })
         : "",
+    journal:
+      (Number(latest.summary?.journal_sessions_restored) || 0) + (Number(latest.summary?.journal_events_restored) || 0) > 0
+        ? i18n.t("painel:reconcile.summaryJournal", {
+            sessions: Number(latest.summary?.journal_sessions_restored) || 0,
+            events: Number(latest.summary?.journal_events_restored) || 0,
+          })
+        : "",
   });
 }
 
@@ -58,7 +65,9 @@ export function useReconcileMonitor({ onStatus }: { onStatus: (msg: string, seve
         (Number(latest.summary?.adjustments_applied) || 0) +
         (Number(latest.summary?.indexed_docs) || 0) +
         (Number(latest.summary?.orphan_docs_deleted) || 0) +
-        (Number(latest.summary?.orphan_pending_files_moved) || 0);
+        (Number(latest.summary?.orphan_pending_files_moved) || 0) +
+        (Number(latest.summary?.journal_sessions_restored) || 0) +
+        (Number(latest.summary?.journal_events_restored) || 0);
       if (latest.summary && startedHereRef.current) {
         onStatus(summaryMessage(latest, scopeLabelRef.current));
       } else if (latest.summary && meta.observedTransition && fixes > 0) {

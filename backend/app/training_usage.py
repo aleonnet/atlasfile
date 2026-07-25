@@ -58,6 +58,9 @@ def persist_training_usage(
             "records_processed": records_processed,
             "error_count": error_count,
         }
+        from .event_journal import append_event
+
+        append_event("training_usage", doc)  # v0.53.0: durabilidade fora do índice
         client.index(index=idx, body=doc)
     except Exception:
         logger.exception("Failed to persist training usage for %s", script_name)

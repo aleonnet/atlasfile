@@ -15,7 +15,6 @@ from app.ingestion import (
     process_inbox_file,
 )
 
-
 def _minimal_profile(project_root: Path) -> dict[str, Any]:
     return {
         "project_id": "test_dedup",
@@ -46,6 +45,25 @@ def _write_file(path: Path, content: bytes = b"test content") -> Path:
 
 
 # ── _find_original_in_triage ──
+
+
+def _fake_extraction(text: str = "", **kwargs):
+    """v0.52.0: a ingestão passou a usar o ExtractionResult completo (para
+    derivar a causa de 'sem texto extraível'), então o mock devolve o objeto,
+    não só a string."""
+    from app.document_extractor import ExtractionResult
+
+    base = dict(
+        text_excerpt=text,
+        chunk_text=text,
+        chunk_locations=[],
+        chunks=[],
+        content_type="plain_text",
+        extraction_status="ok" if text else "partial",
+        metadata={},
+    )
+    base.update(kwargs)
+    return ExtractionResult(**base)
 
 
 def test_find_original_in_triage_returns_match(tmp_path: Path) -> None:
@@ -193,7 +211,7 @@ def test_process_inbox_file_dedup_via_search_index(
 @patch("app.ingestion._find_original_in_triage", return_value=None)
 @patch("app.ingestion._find_original_in_search_index", return_value=None)
 @patch("app.ingestion.classify_with_operational_mode")
-@patch("app.ingestion.read_text_excerpt", return_value="excerpt text")
+@patch("app.ingestion.extract_document_content", return_value=_fake_extraction("excerpt text"))
 @patch("app.ingestion.index_document")
 @patch("app.ingestion._append_index_md")
 def test_process_inbox_file_non_dup_proceeds_to_classification(
@@ -281,7 +299,7 @@ def test_process_inbox_file_dedup_no_new_json_or_index_entry(
 @patch("app.ingestion._find_original_in_triage", return_value=None)
 @patch("app.ingestion._find_original_in_search_index", return_value=None)
 @patch("app.ingestion.classify_with_operational_mode")
-@patch("app.ingestion.read_text_excerpt", return_value="")
+@patch("app.ingestion.extract_document_content", return_value=_fake_extraction("", content_type="image", extraction_status="no_text"))
 @patch("app.ingestion._append_index_md")
 def test_sem_texto_extraivel_nao_fabrica_sugestao_e_pula_llm(
     mock_append: MagicMock,

@@ -8,14 +8,34 @@ from app.profile_store import create_default_profile, save_profile
 from app.project_profile import load_project_profile
 
 
+def _fake_extraction(text: str = "", **kwargs):
+    """v0.52.0: a ingestão passou a usar o ExtractionResult completo (para
+    derivar a causa de 'sem texto extraível'), então o mock devolve o objeto,
+    não só a string."""
+    from app.document_extractor import ExtractionResult
+
+    base = dict(
+        text_excerpt=text,
+        chunk_text=text,
+        chunk_locations=[],
+        chunks=[],
+        content_type="plain_text",
+        extraction_status="ok" if text else "partial",
+        metadata={},
+    )
+    base.update(kwargs)
+    return ExtractionResult(**base)
+
+
 @patch("app.ingestion.ensure_project_structure")
 @patch("app.ingestion.sha256_file", return_value="runtime_sha")
 @patch("app.ingestion._find_original_in_triage", return_value=None)
 @patch("app.ingestion._find_original_in_search_index", return_value=None)
 @patch("app.ingestion.classify_with_operational_mode")
-@patch("app.ingestion.read_text_excerpt", return_value="excerpt text")
+@patch("app.ingestion.extract_document_content", return_value=_fake_extraction("excerpt text"))
 @patch("app.ingestion.index_document")
 @patch("app.ingestion._append_index_md")
+
 def test_load_project_profile_preserves_naming_for_ingestion(
     mock_append: MagicMock,
     mock_index: MagicMock,

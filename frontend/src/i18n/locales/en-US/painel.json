@@ -64,7 +64,7 @@
     "starting": "Starting reconciliation of {{scope}}...",
     "progress": "Reconciling: {{current}} / {{total}} docs | Project: {{project}} | File: {{file}}{{skip}}",
     "progressSkip": " (skip: {{count}})",
-    "summary": "Reconciliation completed{{scope}}: {{adjustments}}, {{indexed}}{{skip}}{{fail}}{{orphan}}{{pendingOrphan}}",
+    "summary": "Reconciliation completed{{scope}}: {{adjustments}}, {{indexed}}{{skip}}{{fail}}{{orphan}}{{pendingOrphan}}{{journal}}",
     "scopeSuffix": " ({{scope}})",
     "summaryAdjustments_one": "{{count}} adjustment",
     "summaryAdjustments_other": "{{count}} adjustments",
@@ -77,7 +77,8 @@
     "summaryOrphan_other": ", {{count}} orphans removed",
     "summaryPendingOrphan_one": ", {{count}} orphan triage file moved to rejected",
     "summaryPendingOrphan_other": ", {{count}} orphan triage files moved to rejected",
-    "autoLabel": "Automatic reconciliation:"
+    "autoLabel": "Automatic reconciliation:",
+    "summaryJournal": ", restored from the local journal: {{sessions}} chat(s) and {{events}} cost event(s)"
   },
   "location": {
     "pageParagraph": "Page {{page}} / paragraph {{paragraph}}{{part}}",
@@ -139,7 +140,8 @@
     "projectsGroup": "Projects",
     "themeGroup": "Theme",
     "actionsGroup": "Actions",
-    "noResultsFor": "No results for “{{query}}”."
+    "noResultsFor": "No results for “{{query}}”.",
+    "languageSwitchTo": "Switch to {{lang}}"
   },
   "app": {
     "statusReady": "Ready",

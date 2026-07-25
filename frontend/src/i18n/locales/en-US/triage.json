@@ -5,10 +5,19 @@
     "waiting_other": "{{count}} documents awaiting a decision",
     "suggestion": "suggestion:",
     "noSuggestion": "no suggestion",
-    "noExtractableText": "no extractable text (empty OCR) — decide manually",
     "confidence": "confidence",
     "noDomainSuggestion": "No suggested destination to approve — use Correct to pick the domain manually",
-    "waitingOther": "Waiting — processing \"{{filename}}\"…"
+    "waitingOther": "Waiting — processing \"{{filename}}\"…",
+    "noText": {
+      "generic": "no extractable text — decide manually",
+      "only_embedded_image": "contains only an embedded image with no readable text — decide manually",
+      "image_without_text": "image with no readable text (OCR found nothing) — decide manually",
+      "scan_unreadable": "scanned PDF with no OCR-readable text — decide manually",
+      "ocr_unavailable": "OCR unavailable on the server — decide manually",
+      "unsupported_format": "no extractor available for this format — decide manually",
+      "extraction_error": "failed to read the file (it may be corrupted) — decide manually",
+      "empty_document": "document has no text content — decide manually"
+    }
   },
   "rejected": {
     "title": "Rejected",
