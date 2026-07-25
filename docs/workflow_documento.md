@@ -31,7 +31,7 @@ arquivo → [1 drop] → _INBOX_DROP → [2 dedup SHA256] → [3 extração de t
 
 | | |
 |---|---|
-| **O que acontece** | `document_extractor.py` extrai texto de PDF (com OCR tesseract para escaneados), DOCX, XLSX, PPTX, MSG/EML, TXT e imagens soltas (OCR); documentos Office sem texto próprio ("envelopes") passam por OCR das imagens embutidas (`word/media/*`, `ppt/media/*`, `xl/media/*`) |
+| **O que acontece** | `document_extractor.py` extrai texto de PDF (com OCR tesseract para escaneados), DOCX, XLSX, PPTX, MSG/EML, TXT e imagens soltas (OCR); documentos Office sem texto próprio ("envelopes") passam por OCR das imagens embutidas (`word/media/*`, `ppt/media/*`, `xl/media/*`); no PPTX o OCR de imagens roda sempre (âncora `slide:N:image:M`, corte de ruído calibrado, logos do master fora) |
 | **Observar** | Conteúdo extraído: `GET /api/documents/{doc_id}` e `GET /api/documents/{doc_id}/chunks`; falha de extração aparece como `FALHA` com o motivo no histórico de processamentos |
 
 ## 4. Classificação

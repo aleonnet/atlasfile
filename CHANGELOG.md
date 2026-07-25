@@ -15,6 +15,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.49.0] - 2026-07-25
+
+### Adicionado
+- **OCR de imagens no PPTX roda SEMPRE, não só no deck-"envelope"** (pergunta do usuário sobre a v0.48.0; decisão de custo-benefício: só PPTX, onde imagem É conteúdo — docx/xlsx seguem só-envelope): shape PICTURE de cada slide passa por tesseract com âncora exata `slide:N:image:M`, texto da imagem entra após o texto nativo do mesmo slide. Bônus do caminho por `slide.shapes`: logos herdados do master/layout nem aparecem — timbre não paga OCR. Corte de ruído **medido, não arbitrado**: 40 imagens de 12 decks reais do corpus → logos OCRizam para 0–14 chars, diagramas para 513+; corte em 85 (média geométrica dos extremos), sem efeito no modo envelope (onde OCR fraco é o único sinal). WMF/EMF (PIL não abre) pulados por imagem. Validado no deck real de sistemas: 2 diagramas de topologia viraram chunks pesquisáveis, 2 ruídos filtrados.
+
 ## [0.48.0] - 2026-07-25
 
 ### Adicionado

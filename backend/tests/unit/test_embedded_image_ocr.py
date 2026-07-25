@@ -114,6 +114,73 @@ def test_pptx_envelope_extrai_texto_da_imagem_embutida(tmp_path: Path) -> None:
     assert result.metadata["embedded_images_found"] == 1
 
 
+def _make_paragraph_image(path: Path, lines: list[str]) -> None:
+    """Imagem com texto longo o suficiente para passar o corte de ruído de 85
+    chars (calibrado no corpus real: logo = 0-14 chars, diagrama = 513+)."""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (1100, 90 + 70 * len(lines)), "white")
+    draw = ImageDraw.Draw(img)
+    for i, line in enumerate(lines):
+        draw.text((20, 40 + 70 * i), line, fill="black", font_size=44)
+    img.save(path)
+
+
+@pytest.mark.skipif(not _HAS_TESSERACT, reason="tesseract não instalado no host")
+def test_pptx_com_texto_nativo_tambem_le_imagem_de_conteudo(tmp_path: Path) -> None:
+    """v0.49.0: no PPTX o OCR roda SEMPRE — deck com texto nativo E diagrama
+    colado extrai os dois, com âncora slide:N:image:M."""
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    diagrama = tmp_path / "diagrama.png"
+    _make_paragraph_image(
+        diagrama,
+        [
+            "FLUXO DE INTEGRACAO ENTRE OS SISTEMAS DE COBRANCA",
+            "O FATURAMENTO ENVIA OS EVENTOS PARA A FILA CENTRAL",
+            "A CONCILIACAO VALIDA OS TOTAIS ANTES DO ENVIO FINAL",
+        ],
+    )
+    path = tmp_path / "deck_misto.pptx"
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[5])  # layout com título
+    slide.shapes.title.text = "Arquitetura de Cobrança"
+    slide.shapes.add_picture(str(diagrama), Inches(0), Inches(2))
+    prs.save(str(path))
+
+    result = extract_document_content(path)
+    assert result.extraction_status == "ok"  # texto nativo manda no status
+    assert "Arquitetura" in result.text_excerpt
+    assert "INTEGRACAO" in result.text_excerpt.upper()
+    assert any(loc.startswith("slide:1:image:") for loc in result.chunk_locations)
+    assert result.metadata["embedded_images_found"] == 1
+    assert result.metadata["embedded_images_ocr"] == 1
+
+
+@pytest.mark.skipif(not _HAS_TESSERACT, reason="tesseract não instalado no host")
+def test_pptx_logo_com_texto_curto_e_filtrado_como_ruido(tmp_path: Path) -> None:
+    """Corte de 85 chars medido no corpus: OCR de logo (texto curto) não vira
+    chunk quando o deck tem texto nativo."""
+    from pptx import Presentation
+    from pptx.util import Inches
+
+    logo = tmp_path / "logo.png"
+    _make_text_image(logo, "ACME SA")  # OCR ~7 chars, bem abaixo do corte
+    path = tmp_path / "deck_com_logo.pptx"
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "Relatório mensal de operações"
+    slide.shapes.add_picture(str(logo), Inches(0), Inches(2))
+    prs.save(str(path))
+
+    result = extract_document_content(path)
+    assert result.extraction_status == "ok"
+    assert not any(":image:" in loc for loc in result.chunk_locations)
+    assert result.metadata["embedded_images_found"] == 1
+    assert result.metadata["embedded_images_ocr"] == 0
+
+
 @pytest.mark.skipif(not _HAS_TESSERACT, reason="tesseract não instalado no host")
 def test_xlsx_envelope_extrai_texto_da_imagem_embutida(tmp_path: Path) -> None:
     from openpyxl import Workbook

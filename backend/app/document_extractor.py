@@ -346,6 +346,13 @@ def _extract_pdf(path: Path, max_chars: int) -> ExtractionResult:
 # de ícones decorativos (estouro registrado em metadata, nunca silencioso).
 _EMBEDDED_OCR_MAX_IMAGES = 10
 
+# Corte de ruído para OCR inline no PPTX (deck COM texto nativo): calibrado em
+# 2026-07-25 sobre 12 decks reais do corpus do classificador — logos/ícones
+# OCRizam para 0-14 chars, conteúdo real (diagramas) para 513+; 85 é a média
+# geométrica entre os dois extremos medidos. NÃO se aplica ao modo envelope
+# (documento sem nenhum texto: qualquer OCR é o único sinal disponível).
+_EMBEDDED_OCR_MIN_CHARS = 85
+
 
 def _ocr_embedded_images(path: Path, media_prefix: str, max_chars: int) -> tuple[list[tuple[str, str]], dict[str, Any]]:
     """OCR das imagens dentro do zip Office (word/media/*, ppt/media/*).
@@ -568,9 +575,28 @@ def _excel_col_letter(col_idx: int) -> str:
 
 def _extract_pptx(path: Path, max_chars: int) -> ExtractionResult:
     from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    # v0.49.0: no PPTX o OCR de imagens roda SEMPRE (não só no deck-"envelope"),
+    # porque em deck imagem É conteúdo (diagramas, screenshots). Iterar
+    # slide.shapes tem um bônus medido: logos herdados do master/layout não
+    # aparecem — só imagens colocadas no slide pagam OCR. Âncora exata
+    # slide:N:image:M. docx/xlsx seguem só-envelope (decisão de custo-benefício
+    # do usuário, 2026-07-25).
+    try:
+        import pytesseract
+        from PIL import Image as PILImage
+
+        ocr_available = True
+    except ImportError:
+        ocr_available = False
+    import io
 
     prs = Presentation(str(path))
     chunk_rows: list[tuple[str, str]] = []
+    images_found = 0
+    images_ocr = 0
+    images_capped = False
     for idx, slide in enumerate(prs.slides, start=1):
         # Ordenar shapes por posição visual (top, left) para que "antes/depois" no texto
         # correspondam ao que o usuário vê no slide (ex.: tabela: linhas de cima antes das de baixo).
@@ -579,6 +605,8 @@ def _extract_pptx(path: Path, max_chars: int) -> ExtractionResult:
             key=lambda s: (getattr(s, "top", 0), getattr(s, "left", 0)),
         )
         texts: list[str] = []
+        image_rows: list[tuple[str, str]] = []
+        slide_image_index = 0
         for shape in shapes_sorted:
             if hasattr(shape, "has_table") and shape.has_table:
                 # Tabela: extrair célula a célula em ordem linha/coluna (top→bottom, left→right).
@@ -590,6 +618,26 @@ def _extract_pptx(path: Path, max_chars: int) -> ExtractionResult:
                             row_texts.append(t)
                     if row_texts:
                         texts.append(" ".join(row_texts))
+            elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                slide_image_index += 1
+                images_found += 1
+                if not ocr_available:
+                    continue
+                if images_found > _EMBEDDED_OCR_MAX_IMAGES:
+                    images_capped = True
+                    continue
+                try:
+                    # WMF/EMF vetoriais (image/x-wmf) não abrem no PIL → pula
+                    # (fato medido no corpus: TypeError 'Unsupported image format')
+                    with PILImage.open(io.BytesIO(shape.image.blob)) as img:
+                        text = (pytesseract.image_to_string(img, lang="por+eng") or "").strip()
+                except Exception:
+                    continue
+                if len(text) >= _EMBEDDED_OCR_MIN_CHARS:
+                    images_ocr += 1
+                    image_rows.extend(
+                        _format_chunks(f"slide:{idx}:image", slide_image_index, _safe_excerpt(text, max_chars))
+                    )
             elif hasattr(shape, "text") and shape.text:
                 text = str(shape.text).strip()
                 if text:
@@ -597,12 +645,22 @@ def _extract_pptx(path: Path, max_chars: int) -> ExtractionResult:
         if texts:
             # overlap=0 para não duplicar frase em slide:N:1 e slide:N:2
             chunk_rows.extend(_format_chunks("slide", idx, "\n".join(texts), overlap=0))
+        # Texto de imagem entra APÓS o texto nativo do mesmo slide, com âncora própria
+        chunk_rows.extend(image_rows)
 
     metadata: dict[str, Any] = {"extension": ".pptx", "slides": len(prs.slides)}
-    status = "ok"
+    if images_found:
+        metadata["embedded_images_found"] = images_found
+        metadata["embedded_images_ocr"] = images_ocr
+        if images_capped:
+            metadata["embedded_images_ocr_capped"] = True
+        if not ocr_available:
+            metadata["embedded_images_ocr_status"] = "ocr_unavailable"
+    native_text_found = any(loc.startswith("slide:") and ":image" not in loc for loc, _ in chunk_rows)
+    status = "ok" if native_text_found else ("ok_ocr" if chunk_rows else "partial")
     if not chunk_rows:
-        # Deck-"envelope": nenhum slide com texto → OCR das imagens embutidas
-        # (ppt/media/*), mesmo tratamento do docx.
+        # Fallback envelope via zip (ppt/media/*): cobre o caso patológico de
+        # conteúdo que não aparece em slide.shapes (ex.: imagem só no master).
         chunk_rows, ocr_meta = _ocr_embedded_images(path, "ppt/media/", max_chars)
         metadata.update(ocr_meta)
         status = "ok_ocr" if chunk_rows else "partial"

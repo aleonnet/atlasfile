@@ -46,6 +46,7 @@ visível na UI" (label + tooltip por modo)._
 | ~~OCR de imagens embutidas em DOCX/PPTX/XLSX~~ | **Entregue na v0.48.0** — ver `planos_concluidos/ocr_imagens_embutidas_office_v0480.plan.md` (OCR de `word/media/*`, `ppt/media/*`, `xl/media/*` quando o documento não tem texto próprio; cap de 10 imagens registrado em metadata; validado no docx-envelope real que motivou o item: 1.698 chars extraídos) | — |
 | Causa real na mensagem da triagem "sem texto extraível" | O extrator agora registra `embedded_images_found`/`embedded_images_ocr` no metadata — insumo pronto para a UI dizer "contém apenas imagem embutida sem texto legível" em vez do genérico. Falta plumbing metadata → meta da triagem → `TriageItem` → i18n. Caso ficou raro (scans legíveis agora classificam normalmente). | 2026-07-25, observação da v0.48.0 |
 | OCR embutido em Office legado (.doc/.xls/.ppt) | Legados são binários OLE2, não zip — `_ocr_embedded_images` (zipfile) não os alcança; exigiria parser OLE dedicado (ex.: olefile). Gatilho: aparecer envelope legado real na triagem. | 2026-07-25, limitação registrada na v0.48.0 |
+| OCR inline em DOCX/XLSX (doc COM texto + imagem de conteúdo) | **Rejeitado com critério na v0.49.0** (decisão do usuário, custo-benefício): em docx o conteúdo está no texto e em xlsx imagem é logo/gráfico decorativo — só o PPTX ganhou modo "sempre" (ver `planos_concluidos/ocr_inline_pptx_calibrado_v0490.plan.md`). Gatilho para reavaliar: caso real de docx/xlsx com texto nativo + scan embutido relevante perdido. | 2026-07-25 |
 
 ## Dashboard / observabilidade
 

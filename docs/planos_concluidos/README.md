@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.49.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [ocr_inline_pptx_calibrado_v0490](ocr_inline_pptx_calibrado_v0490.plan.md) | OCR de imagens no PPTX roda SEMPRE (não só envelope): shape PICTURE → tesseract com âncora `slide:N:image:M`; logos do master fora de graça; corte de ruído de 85 chars calibrado por medição em 12 decks reais (logo=0–14, diagrama=513+); WMF pulado; validado no deck real `doc_0075` (2 diagramas de topologia viraram chunks pesquisáveis); docx/xlsx seguem só-envelope por decisão de custo-benefício |
+
+---
+
 ## 0.48.0
 
 | # | Plano | Escopo |
