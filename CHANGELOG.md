@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.50.5] - 2026-07-25
+
+### Corrigido
+- **Dashboard volta a viver depois de um rebuild do índice** (pergunta do usuário: "por que o dashboard está quase vazio mesmo com 108 documentos reindexados?"): o reconcile zerava `ingested_at`/`processed_at` na mão e o index pattern do dashboard usa `ingested_at` como time field — **todo painel temporal ficava cego para sempre** (medido: 0 de 108 docs com data). Quem reconstruísse o índice pela reconciliação — o fluxo de recuperação que o produto promove — perdia o dashboard inteiro. Agora os **fatos do evento original** são restaurados das fontes que sobrevivem em filesystem (`_PROFILE/ingest_history.json` + metas do `_TRIAGE_REVIEW/resolved`, com o prefixo `YYYYMMDD__` do nome canônico como terceira fonte só para data), com merge campo a campo e sem inventar valor quando não há fonte. Medido: `ingested_at` 0 → 108/108 (83 na janela default de 30 dias).
+- **Modo do classificador e entidades repostos no rebuild**: mesma família do bug acima — campos que o reconcile não deriva do disco e não repunha (medido: `classifier_mode` 0/108 → **73/108**, 69 bootstrap + 4 sparse_logreg; os demais não têm fonte no filesystem — o `ingest_history` é FIFO de 50 entradas de scan — e ficam honestamente vazios em vez de receber valor inventado).
+- **Saúde de embeddings deixa de mentir**: `index_document_chunks_embeddings` devolvia `up_to_date` sem gravar a flag; como o delete do doc principal não apaga os vetores, todo doc reindexado perdia o `embedding_status` e nunca o recuperava (0/108 com 10k+ vetores presentes). Agora a flag é regravada nesse retorno **e** reposta no caminho de skip do reconcile quando o doc a perdeu num ciclo anterior — em ambos os casos com um `update`, sem recomputar embedding nenhum. Medido: 0 → **108/108**.
+- **Backfill sem reescrita infinita**: o caminho incremental reindexa só quando o campo está ausente no índice **e** disponível na fonte — e os campos restauráveis entraram no `_source` do `get` do skip, senão pareceriam sempre ausentes (teste dedicado à guarda; prova ao vivo: segundo reconcile seguido pula os 108 docs).
+
 ## [0.50.4] - 2026-07-25
 
 ### Corrigido

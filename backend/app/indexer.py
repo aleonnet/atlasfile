@@ -384,6 +384,11 @@ def index_document_chunks_embeddings(
 
         sha = str(payload.get("sha256") or "")
         if not force and document_embeddings_up_to_date(client, doc_id, sha, provider):
+            # v0.50.5: doc REINDEXADO (rebuild) perde o embedding_status, mas os
+            # vetores sobrevivem ao delete do doc principal — o skip devolvia sem
+            # regravar a flag e o painel de saúde de embeddings ficava vazio para
+            # sempre (medido: 0/108 docs com status e 10k+ vetores no índice).
+            _set_embedding_status(client, doc_id, "indexed")
             return {"status": "skipped", "reason": "up_to_date", "chunks": 0}
 
         chunks = payload.get("content_chunks") or []

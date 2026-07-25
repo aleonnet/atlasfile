@@ -15,6 +15,7 @@ from opensearchpy.exceptions import TransportError
 
 from .config import settings
 from .indexer import (
+    _set_embedding_status,
     delete_document_chunk_vectors,
     document_embeddings_up_to_date,
     index_document,
@@ -429,6 +430,64 @@ def _infer_document_type_from_layout_path(
     return None
 
 
+# v0.50.5 (bug real: dashboard cego após rebuild): o reconcile zerava as datas
+# na mão e TODO painel temporal ficava vazio para sempre (medido: 0 de 108 docs
+# com ingested_at após o primeiro índice nascido de reconcile; o index pattern
+# do dashboard usa ingested_at como time field).
+#
+# Regra do desenho: o DISCO é a fonte da verdade para o que o layout expressa
+# (business_domain, document_type, path, sha256 — o reconcile deriva e deve
+# continuar derivando). O que o rebuild perde são os FATOS DO EVENTO original,
+# que sobrevivem em dois artefatos de filesystem:
+#   1. metas do _TRIAGE_REVIEW/resolved (sem cap; docs que passaram por triagem)
+#   2. _PROFILE/ingest_history.json (registro do evento de indexação; FIFO de
+#      50 entradas de scan — vence campo a campo quando tem valor)
+# Data ainda tem uma terceira fonte: o prefixo YYYYMMDD__ do nome canônico.
+# Doc fora de todas as fontes segue sem o campo — inventar valor violaria a
+# régua de zero defaults arbitrários.
+_CANONICAL_DATE_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})__")
+_RESTORABLE_FIELDS = ("ingested_at", "processed_at", "classifier_mode", "entities")
+
+
+def _known_doc_facts(project_root: Path) -> dict[str, dict[str, Any]]:
+    """doc_id → {campo restaurável: valor} a partir do filesystem. Construir
+    UMA vez por projeto e passar aos payloads (nunca por doc — O(n²))."""
+    from .ingest_history import load_ingest_history
+    from .triage import triage_resolved_dir
+
+    facts: dict[str, dict[str, Any]] = {}
+
+    def _absorb(doc_id: str, source: dict[str, Any]) -> None:
+        if not doc_id:
+            return
+        target = facts.setdefault(doc_id, {})
+        for field in _RESTORABLE_FIELDS:
+            value = source.get(field)
+            if value:  # merge por campo: fonte sem o dado não apaga o já conhecido
+                target[field] = value
+
+    resolved_dir = triage_resolved_dir(project_root)
+    if resolved_dir.exists():
+        for meta_path in resolved_dir.glob("*.json"):
+            try:
+                data = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            _absorb(str(data.get("doc_id") or ""), data)
+    for entry in load_ingest_history(project_root):
+        for item in entry.get("items") or []:
+            _absorb(str(item.get("doc_id") or ""), item)
+    return facts
+
+
+def _canonical_date_fallback(canonical_filename: str) -> str | None:
+    m = _CANONICAL_DATE_RE.match(canonical_filename or "")
+    if not m:
+        return None
+    y, mo, d = m.groups()
+    return f"{y}-{mo}-{d}T00:00:00+00:00"
+
+
 def _build_doc_payload(
     row: dict[str, str],
     p: Path,
@@ -436,6 +495,7 @@ def _build_doc_payload(
     *,
     project_root: Path,
     profile: dict[str, Any],
+    known_facts: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     document_type = _infer_document_type_from_layout_path(
         p,
@@ -445,6 +505,9 @@ def _build_doc_payload(
     tags = [row["business_domain"]] if row["business_domain"] else []
     if document_type:
         tags.append(document_type)
+    facts = (known_facts or {}).get(row["doc_id"]) or {}
+    ingested_at = facts.get("ingested_at") or _canonical_date_fallback(row["canonical_filename"])
+    processed_at = facts.get("processed_at") or ingested_at
     return {
         "doc_id": row["doc_id"],
         "project_id": row["project_id"],
@@ -458,13 +521,18 @@ def _build_doc_payload(
         "source_ref": "",
         "sender": "",
         "received_at": None,
-        "ingested_at": None,
-        "processed_at": None,
+        "ingested_at": ingested_at,
+        "processed_at": processed_at,
         "decision": row["decision"],
         "confidence_score": float(row["confidence"] or 0.0),
         "sha256": current_sha,
         "tags": tags,
         "document_type": document_type,
+        # Fatos do evento original: o reconcile não reclassifica, então só
+        # restaura o que as fontes de filesystem souberem (None/[] quando não
+        # há fonte — jamais um valor inventado).
+        "classifier_mode": facts.get("classifier_mode"),
+        "entities": facts.get("entities") or [],
     }
 
 
@@ -499,6 +567,7 @@ def rebuild_search_index(
                 profile = load_project_profile(project_root)
             except Exception:
                 profile = {}
+            known_facts = _known_doc_facts(project_root)
             for row in _parse_index_rows(project_root / "_INDEX.md"):
                 if row["decision"] not in {"auto", "approved", "corrected"}:
                     continue
@@ -514,6 +583,7 @@ def rebuild_search_index(
                     current_sha,
                     project_root=project_root,
                     profile=profile,
+                    known_facts=known_facts,
                 )
                 enriched = index_document(client, payload, refresh=False, profile=profile)
                 if embed_provider is not None:
@@ -633,6 +703,7 @@ def sync_search_index_for_project(
     rows = [r for r in rows if not _is_ignored_file(Path(r["path"]))]
 
     embed_provider = _resolve_embedding_provider()
+    known_facts = _known_doc_facts(project_root)
 
     if not use_incremental:
         delete_result = client.delete_by_query(
@@ -652,6 +723,7 @@ def sync_search_index_for_project(
                 current_sha,
                 project_root=project_root,
                 profile=profile,
+                known_facts=known_facts,
             )
             enriched = index_document(client, payload, refresh=False, profile=profile)
             if embed_provider is not None:
@@ -700,7 +772,10 @@ def sync_search_index_for_project(
             get_res = client.get(
                 index=settings.opensearch_index,
                 id=doc_id,
-                _source=["sha256", "project_id", "business_domain", "document_type", "path"],
+                _source=[
+                    "sha256", "project_id", "business_domain", "document_type", "path",
+                    "embedding_status", *_RESTORABLE_FIELDS,
+                ],
             )
             src = get_res.get("_source") or {}
             existing_sha = src.get("sha256") or ""
@@ -711,9 +786,23 @@ def sync_search_index_for_project(
                 project_root=project_root,
                 profile=profile,
             ) or ""
+            # v0.50.5: doc SEM um fato restaurável no índice, mas COM fonte
+            # disponível, não pode ser pulado — senão o backfill nunca acontece
+            # (o rebuild pós-incidente deixou 108 docs sem ingested_at e o
+            # incremental os pulava para sempre). Sem fonte, pula normalmente:
+            # é o que impede reescrever os mesmos docs a cada ciclo. Os campos
+            # restauráveis PRECISAM estar no _source do get acima, senão parecem
+            # sempre ausentes e o loop de reescrita volta.
+            doc_facts = known_facts.get(doc_id) or {}
+            needs_facts_backfill = any(
+                not src.get(field) and doc_facts.get(field) for field in _RESTORABLE_FIELDS
+            ) or (
+                not src.get("ingested_at") and _canonical_date_fallback(row["canonical_filename"]) is not None
+            )
             # Skip only when both content hash AND project_id match
             if (
-                existing_sha == current_sha
+                not needs_facts_backfill
+                and existing_sha == current_sha
                 and existing_pid == row["project_id"]
                 and (src.get("business_domain") or "") == expected_business_domain
                 and (src.get("document_type") or "") == expected_document_type
@@ -729,6 +818,11 @@ def sync_search_index_for_project(
                         if not document_embeddings_up_to_date(client, doc_id, current_sha, embed_provider):
                             full_src = client.get(index=settings.opensearch_index, id=doc_id).get("_source") or {}
                             index_document_chunks_embeddings(client, full_src, embed_provider)
+                        elif not src.get("embedding_status"):
+                            # v0.50.5: doc reindexado num ciclo anterior perdeu a
+                            # flag enquanto os vetores seguiam em dia — repor é um
+                            # update, sem recomputar embedding nenhum.
+                            _set_embedding_status(client, doc_id, "indexed")
                     except Exception:
                         logger.exception("Falha no backfill de embeddings doc_id=%s", doc_id)
                 continue
@@ -747,6 +841,7 @@ def sync_search_index_for_project(
                 current_sha,
                 project_root=project_root,
                 profile=profile,
+                known_facts=known_facts,
             )
             for attempt in range(3):
                 try:

@@ -523,6 +523,104 @@ def test_sync_search_reindexes_same_sha_when_document_type_missing(tmp_path: Pat
     assert payload["tags"] == ["financeiro", "contrato"]
 
 
+def _sync_with_indexed_source(tmp_path: Path, indexed_source: dict) -> dict:
+    """Roda o sync incremental com um doc já indexado cujo _source é dado.
+    O arquivo tem nome canônico (prefixo de data) e não há ingest_history."""
+    profile = _two_level_profile()
+    contract_dir = tmp_path / "02_AREAS" / "financeiro" / "contrato"
+    contract_dir.mkdir(parents=True)
+    file_path = contract_dir / "20260302__test_proj__Contrato TI__v01.pdf"
+    file_path.write_bytes(b"contract")
+    (tmp_path / "_INDEX.md").write_text(
+        "\n".join([
+            "# _INDEX",
+            "",
+            "| doc_id | project_id | business_domain | original_filename | canonical_filename | decision | confidence | path | naming_pattern |",
+            "|---|---|---|---|---|---|---:|---|---|",
+            f"| doc-1 | test_proj | financeiro | Contrato TI.pdf | {file_path.name} | auto | 0.90 | {file_path} | {{date}}__{{project}}__{{original_name}} |",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    src = {
+        "sha256": sha256_file(file_path),
+        "project_id": "test_proj",
+        "business_domain": "financeiro",
+        "document_type": "contrato",
+        "path": str(file_path),
+        **indexed_source,
+    }
+    client = MagicMock()
+    client.search.return_value = {"hits": {"hits": [{"_id": "doc-1"}]}}
+    client.get.return_value = {"_source": src}
+    with (
+        patch("app.reconcile.ensure_index"),
+        patch("app.reconcile.index_document"),
+    ):
+        return sync_search_index_for_project(client, tmp_path, "test_proj", profile=profile)
+
+
+def test_backfill_reindexa_doc_sem_data_no_indice(tmp_path: Path) -> None:
+    """Doc idêntico no disco mas SEM ingested_at: precisa ser reindexado, senão
+    o backfill nunca acontece (era o estado dos 108 docs pós-rebuild)."""
+    report = _sync_with_indexed_source(tmp_path, {})
+    assert report["indexed_docs"] == 1
+    assert report["skipped_docs"] == 0
+
+
+def test_sem_fato_faltando_o_doc_e_pulado_sem_loop(tmp_path: Path) -> None:
+    """Guarda anti-loop: com a data já no índice e nenhuma fonte para os demais
+    campos, o ciclo seguinte pula — nada de reescrever os mesmos docs sempre."""
+    report = _sync_with_indexed_source(tmp_path, {"ingested_at": "2026-03-02T00:00:00+00:00"})
+    assert report["indexed_docs"] == 0
+    assert report["skipped_docs"] == 1
+
+
+def test_doc_pulado_recupera_embedding_status_sem_recomputar(tmp_path: Path) -> None:
+    """Doc pulado cujos vetores estão em dia mas perdeu a flag num rebuild
+    anterior: repõe o status com um update, sem gerar embedding nenhum."""
+    profile = _two_level_profile()
+    contract_dir = tmp_path / "02_AREAS" / "financeiro" / "contrato"
+    contract_dir.mkdir(parents=True)
+    file_path = contract_dir / "20260302__test_proj__Contrato TI__v01.pdf"
+    file_path.write_bytes(b"contract")
+    (tmp_path / "_INDEX.md").write_text(
+        "\n".join([
+            "# _INDEX",
+            "",
+            "| doc_id | project_id | business_domain | original_filename | canonical_filename | decision | confidence | path | naming_pattern |",
+            "|---|---|---|---|---|---|---:|---|---|",
+            f"| doc-1 | test_proj | financeiro | Contrato TI.pdf | {file_path.name} | auto | 0.90 | {file_path} | {{date}}__{{project}}__{{original_name}} |",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+    client = MagicMock()
+    client.search.return_value = {"hits": {"hits": [{"_id": "doc-1"}]}}
+    client.get.return_value = {"_source": {
+        "sha256": sha256_file(file_path),
+        "project_id": "test_proj",
+        "business_domain": "financeiro",
+        "document_type": "contrato",
+        "path": str(file_path),
+        "ingested_at": "2026-03-02T00:00:00+00:00",
+    }}
+
+    with (
+        patch("app.reconcile.ensure_index"),
+        patch("app.reconcile.index_document"),
+        patch("app.reconcile._resolve_embedding_provider", return_value=object()),
+        patch("app.reconcile.document_embeddings_up_to_date", return_value=True),
+        patch("app.reconcile.index_document_chunks_embeddings") as mock_embed,
+        patch("app.reconcile._set_embedding_status") as mock_status,
+    ):
+        report = sync_search_index_for_project(client, tmp_path, "test_proj", profile=profile)
+
+    assert report["skipped_docs"] == 1
+    mock_embed.assert_not_called()  # vetores em dia: nada é recomputado
+    mock_status.assert_called_once_with(client, "doc-1", "indexed")
+
+
 # ── cleanup_orphans flag in run_reconcile ──
 
 
@@ -597,3 +695,120 @@ def test_full_reconcile_runs_cleanup_orphans(tmp_path, monkeypatch) -> None:
         )
 
     mock_cleanup.assert_called_once()
+
+
+# ── Fatos do evento restaurados no rebuild (v0.50.5) ─────────────────────────
+# Bug real: o reconcile zerava ingested_at/processed_at (dashboard, todo
+# filtrado por tempo, cego para sempre — medido: 0 de 108 docs com data) e
+# tampouco repunha classifier_mode/entities. O disco continua sendo a fonte da
+# verdade do layout; os fatos do evento vêm do ingest_history e das metas do
+# triage_resolved, com o prefixo do nome canônico como 3ª fonte só de data.
+
+
+def _date_row(doc_id: str, canonical: str) -> dict[str, str]:
+    return {
+        "doc_id": doc_id,
+        "project_id": "proj",
+        "business_domain": "juridico",
+        "original_filename": "a.txt",
+        "canonical_filename": canonical,
+        "decision": "auto",
+        "confidence": "0.9",
+        "path": "/tmp/nao-usado.txt",
+    }
+
+
+def test_payload_recupera_fatos_do_ingest_history(tmp_path):
+    from app.ingest_history import append_ingest_entry
+    from app.reconcile import _build_doc_payload, _known_doc_facts
+
+    append_ingest_entry(tmp_path, scan_result={
+        "project_id": "proj",
+        "processed_count": 1,
+        "failed_count": 0,
+        "items": [{"doc_id": "d1", "ingested_at": "2026-07-20T10:00:00+00:00",
+                   "processed_at": "2026-07-20T10:00:05+00:00",
+                   "classifier_mode": "sparse_logreg"}],
+        "errors": [],
+    })
+    doc_file = tmp_path / "x.txt"
+    doc_file.write_text("conteudo")
+    known = _known_doc_facts(tmp_path)
+    payload = _build_doc_payload(
+        _date_row("d1", "20260101__proj__x__v01.txt"), doc_file, "sha",
+        project_root=tmp_path, profile={}, known_facts=known,
+    )
+    assert payload["ingested_at"] == "2026-07-20T10:00:00+00:00"
+    assert payload["processed_at"] == "2026-07-20T10:00:05+00:00"
+    # Modo do classificador alimenta o painel "Modo do classificador"
+    assert payload["classifier_mode"] == "sparse_logreg"
+
+
+def test_payload_recupera_fatos_do_meta_resolvido(tmp_path):
+    from app.reconcile import _build_doc_payload, _known_doc_facts
+    from app.triage import triage_resolved_dir
+
+    resolved = triage_resolved_dir(tmp_path)
+    resolved.mkdir(parents=True)
+    (resolved / "d2.json").write_text(json.dumps({
+        "doc_id": "d2", "ingested_at": "2026-07-18T09:00:00+00:00",
+        "processed_at": "2026-07-18T09:30:00+00:00",
+        "classifier_mode": "llm", "entities": ["ACME S.A."],
+    }), encoding="utf-8")
+    doc_file = tmp_path / "y.txt"
+    doc_file.write_text("conteudo")
+    known = _known_doc_facts(tmp_path)
+    payload = _build_doc_payload(
+        _date_row("d2", "20260101__proj__y__v01.txt"), doc_file, "sha",
+        project_root=tmp_path, profile={}, known_facts=known,
+    )
+    assert payload["ingested_at"] == "2026-07-18T09:00:00+00:00"
+    assert payload["classifier_mode"] == "llm"
+    assert payload["entities"] == ["ACME S.A."]
+
+
+def test_history_vence_campo_a_campo_sem_apagar_o_resolvido(tmp_path):
+    """Merge por campo: o history é o registro do evento e vence onde tem
+    valor, mas não apaga o que só a meta do resolved conhece."""
+    from app.ingest_history import append_ingest_entry
+    from app.reconcile import _known_doc_facts
+    from app.triage import triage_resolved_dir
+
+    resolved = triage_resolved_dir(tmp_path)
+    resolved.mkdir(parents=True)
+    (resolved / "d5.json").write_text(json.dumps({
+        "doc_id": "d5", "ingested_at": "2026-01-01T00:00:00+00:00",
+        "classifier_mode": "bootstrap", "entities": ["Fulano"],
+    }), encoding="utf-8")
+    append_ingest_entry(tmp_path, scan_result={
+        "project_id": "proj", "processed_count": 1, "failed_count": 0,
+        "items": [{"doc_id": "d5", "ingested_at": "2026-07-20T10:00:00+00:00"}],
+        "errors": [],
+    })
+    facts = _known_doc_facts(tmp_path)["d5"]
+    assert facts["ingested_at"] == "2026-07-20T10:00:00+00:00"  # history vence
+    assert facts["classifier_mode"] == "bootstrap"  # só o resolved sabia
+    assert facts["entities"] == ["Fulano"]
+
+
+def test_payload_fallback_prefixo_canonico_e_sem_fonte(tmp_path):
+    from app.reconcile import _build_doc_payload
+
+    doc_file = tmp_path / "z.txt"
+    doc_file.write_text("conteudo")
+    payload = _build_doc_payload(
+        _date_row("d3", "20260315__proj__z__v02.txt"), doc_file, "sha",
+        project_root=tmp_path, profile={}, known_facts={},
+    )
+    assert payload["ingested_at"] == "2026-03-15T00:00:00+00:00"
+    assert payload["processed_at"] == "2026-03-15T00:00:00+00:00"
+
+    payload = _build_doc_payload(
+        _date_row("d4", "nome_fora_do_padrao.txt"), doc_file, "sha",
+        project_root=tmp_path, profile={}, known_facts={},
+    )
+    # Sem nenhuma fonte: honestamente sem dado (nunca inventar)
+    assert payload["ingested_at"] is None
+    assert payload["processed_at"] is None
+    assert payload["classifier_mode"] is None
+    assert payload["entities"] == []

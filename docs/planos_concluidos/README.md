@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.50.5
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [reconcile_restaura_fatos_dashboard_v0505](reconcile_restaura_fatos_dashboard_v0505.plan.md) | Dashboard cego após rebuild: o reconcile zerava `ingested_at`/`processed_at` (time field de TODO painel temporal) e não repunha `classifier_mode`/`entities`; `embedding_status` nunca era regravado no caminho `up_to_date`. Fatos do evento restaurados do `ingest_history` + metas do `resolved` (+ prefixo do nome canônico para data), com backfill no incremental e guarda anti-loop; medido 0→108/108 datas, 0→104/108 modo |
+
+---
+
 ## 0.50.3
 
 | # | Plano | Escopo |
