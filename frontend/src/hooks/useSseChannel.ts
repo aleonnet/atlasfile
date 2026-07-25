@@ -10,10 +10,21 @@ type UseSseChannelOptions<T> = {
   streamUrl: () => string;
   /** O canal só abre SSE/poll enquanto o status indicar operação em curso. */
   isActive: (data: T) => boolean;
-  /** Chamado UMA vez quando o status transiciona ativo→terminado (invalidations). */
-  onFinished?: (data: T) => void;
+  /** Chamado quando o status transiciona ativo→terminado (invalidations).
+   *  `meta.observedTransition` distingue um término REAL observado nesta
+   *  sessão do disparo de boot com snapshot idle (que os consumidores não
+   *  devem anunciar). */
+  onFinished?: (data: T, meta: { observedTransition: boolean }) => void;
   /** Poll de fallback quando o SSE está caído (ms). */
   pollMs?: number;
+  /** v0.50.1: poll LENTO enquanto idle (ms) — sem ele, um run iniciado pelo
+   *  SERVIDOR (auto-ingest, auto-reconcile) é invisível até um reload: o SSE
+   *  só abre com `active` e o poll de fallback também. 0/undefined desliga. */
+  idlePollMs?: number;
+  /** v0.50.1: identidade do último run terminado (ex.: last_run_finished_at).
+   *  Se ela MUDA enquanto idle, um run inteiro aconteceu entre polls (curto
+   *  demais para ser visto como running) — onFinished dispara mesmo assim. */
+  runStamp?: (data: T) => unknown;
 };
 
 /** Ponte única SSE→TanStack Query (F3) — substitui as 3 cópias do padrão
@@ -31,21 +42,28 @@ export function useSseChannel<T>({
   isActive,
   onFinished,
   pollMs = 1000,
+  idlePollMs,
+  runStamp,
 }: UseSseChannelOptions<T>) {
   const queryClient = useQueryClient();
   const [sseConnected, setSseConnected] = useState(false);
   const finishedRef = useRef(false);
+  const observedActiveRef = useRef(false);
+  const lastStampRef = useRef<unknown>(undefined);
+  const stampBaselinedRef = useRef(false);
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
 
   const snapshotQuery = useQuery({
     queryKey: queryKey as unknown[],
     queryFn: fetchSnapshot,
-    // Poll de fallback: apenas com operação ativa e SSE caído
     refetchInterval: (query) => {
       const data = query.state.data as T | undefined;
-      if (!data || !isActive(data) || sseConnected) return false;
-      return pollMs;
+      if (!data) return false;
+      // Poll de fallback: operação ativa e SSE caído
+      if (isActive(data)) return sseConnected ? false : pollMs;
+      // Poll lento de vigia: detecta runs iniciados pelo servidor
+      return idlePollMs && idlePollMs > 0 ? idlePollMs : false;
     },
     refetchIntervalInBackground: false,
   });
@@ -53,16 +71,29 @@ export function useSseChannel<T>({
   const data = snapshotQuery.data as T | undefined;
   const active = data !== undefined && isActive(data);
 
-  // Transição ativo→terminado: onFinished uma única vez por operação
+  // Transição ativo→terminado — E término "perdido": se o runStamp muda
+  // enquanto idle, um run inteiro rodou entre dois polls (curto demais para
+  // aparecer como running); dispara onFinished do mesmo jeito.
   useEffect(() => {
     if (active) {
+      observedActiveRef.current = true;
       finishedRef.current = false;
       return;
     }
-    if (data !== undefined && !finishedRef.current) {
-      finishedRef.current = true;
-      onFinishedRef.current?.(data);
+    if (data === undefined) return;
+    const stamp = runStamp?.(data);
+    const stampChanged = runStamp !== undefined && stampBaselinedRef.current && stamp !== lastStampRef.current;
+    if (runStamp !== undefined) {
+      lastStampRef.current = stamp;
+      stampBaselinedRef.current = true;
     }
+    if (!finishedRef.current || stampChanged) {
+      finishedRef.current = true;
+      const observedTransition = observedActiveRef.current || stampChanged;
+      observedActiveRef.current = false;
+      onFinishedRef.current?.(data, { observedTransition });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, data]);
 
   // Canal SSE: abre enquanto ativo; cada evento vira snapshot no cache

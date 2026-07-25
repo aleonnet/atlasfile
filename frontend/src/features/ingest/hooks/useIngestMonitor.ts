@@ -33,10 +33,17 @@ export function useIngestMonitor() {
     fetchSnapshot: fetchIngestStatus,
     streamUrl: getIngestStatusStreamUrl,
     isActive: (status) => !!status.running,
-    onFinished: (status) => {
-      if (status.last_run_finished_at) invalidateAfterScan();
+    onFinished: (status, meta) => {
+      // Só um término observado NESTA sessão invalida (o boot com snapshot
+      // de um run antigo não deve refazer as listas à toa)
+      if (meta.observedTransition && status.last_run_finished_at) invalidateAfterScan();
     },
     pollMs: 500,
+    // v0.50.1: vigia de runs do auto-ingest — 3s limita o atraso do widget ao
+    // custo de um GET de dict em memória; runs curtos (DUP ~3s, medido) podem
+    // nem aparecer como running, e aí o runStamp garante o término
+    idlePollMs: 3000,
+    runStamp: (status) => status.last_run_finished_at,
   });
 
   const setPending = useCallback(

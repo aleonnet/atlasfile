@@ -48,11 +48,12 @@ export function useReconcileMonitor({ onStatus }: { onStatus: (msg: string, seve
     fetchSnapshot: fetchReconcileStatus,
     streamUrl: getReconcileStatusStreamUrl,
     isActive: (status) => !!status.running,
-    onFinished: (latest) => {
-      invalidateAfterReconcile();
+    onFinished: (latest, meta) => {
+      if (meta.observedTransition) invalidateAfterReconcile();
       // v0.50.0 (sem CTA de reconciliar): run pedido pelo usuário sempre anuncia
       // o resumo; run AUTOMÁTICO (loop de AUTO_RECONCILE_INTERVAL_SECONDS) só
-      // anuncia quando CORRIGIU algo — transparência sem ruído a cada ciclo
+      // anuncia quando CORRIGIU algo — e apenas se o término foi OBSERVADO
+      // nesta sessão (o boot com resumo de um run antigo não anuncia nada)
       const fixes =
         (Number(latest.summary?.adjustments_applied) || 0) +
         (Number(latest.summary?.indexed_docs) || 0) +
@@ -60,13 +61,17 @@ export function useReconcileMonitor({ onStatus }: { onStatus: (msg: string, seve
         (Number(latest.summary?.orphan_pending_files_moved) || 0);
       if (latest.summary && startedHereRef.current) {
         onStatus(summaryMessage(latest, scopeLabelRef.current));
-      } else if (latest.summary && latest.last_run_finished_at && fixes > 0) {
+      } else if (latest.summary && meta.observedTransition && fixes > 0) {
         onStatus(`${i18n.t("painel:reconcile.autoLabel")} ${summaryMessage(latest)}`);
       }
       startedHereRef.current = false;
       scopeLabelRef.current = undefined;
     },
     pollMs: 1500,
+    // v0.50.1: vigia do auto-reconcile (600s de cadência — 5s de poll idle
+    // sobre um dict em memória é custo nulo e o progresso aparece sozinho)
+    idlePollMs: 5000,
+    runStamp: (latest) => latest.last_run_finished_at,
   });
 
   const status = channel.data ?? null;

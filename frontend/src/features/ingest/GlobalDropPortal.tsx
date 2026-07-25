@@ -92,27 +92,37 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
   // global também o convoca quando o auto-ingest (watcher/sweep) dispara um
   // scan sem nenhum upload envolvido.
   const { ingestStatus, setPending, startMonitor } = useIngestMonitor();
-  const wasRunning = useRef(false);
+  // v0.50.1: keia no last_run_finished_at, não na transição de running — um
+  // run curto do auto-ingest (DUP ~3s, medido) termina ENTRE dois polls e
+  // nunca aparece como running; a mudança do timestamp é o fato confiável.
+  const lastFinishedSeen = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    const running = !!ingestStatus?.running;
-    if (wasRunning.current && !running && ingestStatus?.last_run_finished_at && queue.length === 0) {
-      // Run do auto-ingest (sem fila de upload): anuncia o resultado e
-      // atualiza triagem/stats — o fluxo do portal já faz isso no próprio flow
-      const processed = ingestStatus.processed_count ?? 0;
-      const failed = ingestStatus.failed_count ?? 0;
-      if (failed > 0) {
-        toast.error(
-          `${t("ingest:count.processed", { count: processed })}, ${t("ingest:count.failure", { count: failed })}`,
-          { duration: 8000 }
-        );
-      } else if (processed > 0) {
-        toast.success(t("ingest:portal.autoScanSuccess", { count: processed }));
-      }
-      if (processed > 0 || failed > 0) onScanComplete();
+    const finishedAt = ingestStatus?.last_run_finished_at;
+    if (ingestStatus === null || ingestStatus === undefined) return;
+    if (lastFinishedSeen.current === undefined) {
+      lastFinishedSeen.current = finishedAt; // baseline do boot: run antigo não anuncia
+      return;
     }
-    wasRunning.current = running;
+    if (finishedAt && finishedAt !== lastFinishedSeen.current) {
+      lastFinishedSeen.current = finishedAt;
+      if (queue.length === 0) {
+        // Run do auto-ingest (sem fila de upload): anuncia o resultado e
+        // atualiza triagem/stats — o fluxo do portal já faz isso no próprio flow
+        const processed = ingestStatus.processed_count ?? 0;
+        const failed = ingestStatus.failed_count ?? 0;
+        if (failed > 0) {
+          toast.error(
+            `${t("ingest:count.processed", { count: processed })}, ${t("ingest:count.failure", { count: failed })}`,
+            { duration: 8000 }
+          );
+        } else if (processed > 0) {
+          toast.success(t("ingest:portal.autoScanSuccess", { count: processed }));
+        }
+        if (processed > 0 || failed > 0) onScanComplete();
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ingestStatus?.running]);
+  }, [ingestStatus?.last_run_finished_at]);
 
   const enqueue = useCallback((projectId: string, files: File[]) => {
     if (!files.length) return;

@@ -52,3 +52,24 @@ widget?", "se o widget aparece sozinho, pra que o botão?".
   escape hatch preservando as asserções de escopo) + tsc limpo.
 - E2E vivo na stack dev (OneDrive real): `cp` de arquivo na `_INBOX_DROP` pelo
   host → widget aparece sem clique → documento processado.
+
+## Adendo v0.50.1 — a UI não reagia (achado do usuário no 1º teste real)
+
+Sintoma: o arquivo sumiu da inbox em segundos (backend OK), mas widget/toast/
+listas só apareceram após reload. Causa CONFIRMADA no `useSseChannel`: o SSE só
+abria com `active` observado e o poll de fallback idem — **run iniciado pelo
+servidor era invisível** para a UI; pior, um run curto (DUP ~3s) terminava
+entre dois polls e o `onFinished` não re-disparava (finishedRef já consumido
+no boot). O mesmo furo tornava o toast do auto-reconcile da v0.50.0 letra morta.
+
+Fix no canal (beneficia ingest, reconcile e ciclo): (1) `idlePollMs` — poll
+lento de vigia em idle (ingest 3s, reconcile 5s; GET de dict em memória, custo
+nulo); (2) `runStamp` — se `last_run_finished_at` muda em idle, um run inteiro
+rodou entre polls e `onFinished` dispara mesmo sem `running` visto; (3)
+`meta.observedTransition` — distingue término real do disparo de boot com
+snapshot antigo (boot não anuncia nem invalida). Widget/toast keiados no stamp.
+
+Validação: 3 testes novos do canal (boot não anuncia; stamp em idle = término
+observado; running do servidor ativa o canal) + E2E vivo no browser real:
+página aberta, `cp` pelo host, toast "Auto-ingest: 1 document processed" aos
+~11s SEM reload (screenshot v0501-ui-reage-auto-ingest.jpeg).

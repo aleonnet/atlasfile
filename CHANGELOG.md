@@ -15,6 +15,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.50.1] - 2026-07-25
+
+### Corrigido
+- **UI agora reage a runs iniciados pelo servidor** (achado do usuário no primeiro teste do auto-ingest: arquivo sumiu da inbox mas widget/toast/listas só apareceram após reload): o `useSseChannel` só abria SSE/poll quando já via `running=true` — run disparado pelo backend era invisível, e run curto (DUP ~3s) terminava entre dois polls sem re-disparar o `onFinished`. Fix no canal, para os três consumidores: poll de vigia em idle (`idlePollMs` — ingest 3s, reconcile 5s; GET de dict em memória), `runStamp` (mudança de `last_run_finished_at` em idle = run inteiro perdido → dispara término mesmo assim) e `meta.observedTransition` (boot com snapshot de run antigo não anuncia nem invalida nada). Widget e toast keiados no stamp. Validado ao vivo no browser: página aberta, `cp` pelo host, toast do auto-ingest aos ~11s sem reload.
+
 ## [0.50.0] - 2026-07-25
 
 ### Adicionado
