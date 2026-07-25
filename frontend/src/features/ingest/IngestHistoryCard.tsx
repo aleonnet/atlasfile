@@ -86,9 +86,11 @@ function flattenHistory(entries: IngestHistoryEntry[]): FlatRow[] {
   const rows: FlatRow[] = [];
   for (const entry of entries) {
     const ts = entry.timestamp;
-    for (const item of entry.items) {
+    for (const [itemIndex, item] of entry.items.entries()) {
       rows.push({
-        key: `${ts}-${item.doc_id}`,
+        // itemIndex desempata: dois DUPs do MESMO doc num scan em lote têm
+        // ts e doc_id idênticos (key duplicada flagrada pelo React, v0.50.2)
+        key: `${ts}-${item.doc_id}-${itemIndex}`,
         doc_id: item.doc_id,
         project_id: item.project_id,
         timestamp: ts,

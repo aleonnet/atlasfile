@@ -140,7 +140,9 @@ describe("GlobalDropPortal", () => {
     });
 
     expect(await screen.findByTestId("upload-queue")).toBeInTheDocument();
-    expect(screen.getByText("doc.pdf")).toBeInTheDocument();
+    // v0.50.2: item enviado colapsa na linha-resumo (upload mockado resolve
+    // na hora, então o nome individual já saiu da lista)
+    expect(await screen.findByText("1 enviado")).toBeInTheDocument();
     await waitFor(() => expect(uploadFileWithProgress).toHaveBeenCalledTimes(1));
     expect(uploadFileWithProgress.mock.calls[0][0]).toBe("p1");
     await waitFor(() => expect(triggerScan).toHaveBeenCalledWith("p1"));
@@ -166,7 +168,7 @@ describe("GlobalDropPortal", () => {
     });
 
     expect(await screen.findByTestId("upload-queue")).toBeInTheDocument();
-    expect(screen.getByText("picked.pdf")).toBeInTheDocument();
+    expect(await screen.findByText("1 enviado")).toBeInTheDocument();
     await waitFor(() => expect(uploadFileWithProgress).toHaveBeenCalledTimes(1));
     expect(uploadFileWithProgress.mock.calls[0][0]).toBe("p1");
     await waitFor(() => expect(triggerScan).toHaveBeenCalledWith("p1"));

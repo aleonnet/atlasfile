@@ -72,7 +72,9 @@
     "statusWaiting": "waiting",
     "autoScanSuccess_one": "Auto-ingest: {{count}} document processed",
     "autoScanSuccess_other": "Auto-ingest: {{count}} documents processed",
-    "scanDeferred": "Another run is in progress — your files stay queued and auto-ingest picks them up next"
+    "scanDeferred": "Another run is in progress — your files stay queued and auto-ingest picks them up next",
+    "sentSummary_one": "{{count}} sent",
+    "sentSummary_other": "{{count}} sent"
   },
   "history": {
     "title": "Processing history",

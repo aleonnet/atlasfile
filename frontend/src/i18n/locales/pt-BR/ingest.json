@@ -72,7 +72,9 @@
     "statusWaiting": "aguardando",
     "autoScanSuccess_one": "Auto-ingest: {{count}} documento processado",
     "autoScanSuccess_other": "Auto-ingest: {{count}} documentos processados",
-    "scanDeferred": "Outro processamento em andamento — seus arquivos ficam na fila e o auto-ingest os processa em seguida"
+    "scanDeferred": "Outro processamento em andamento — seus arquivos ficam na fila e o auto-ingest os processa em seguida",
+    "sentSummary_one": "{{count}} enviado",
+    "sentSummary_other": "{{count}} enviados"
   },
   "history": {
     "title": "Processamentos",

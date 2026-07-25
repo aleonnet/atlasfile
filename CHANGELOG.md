@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.50.2] - 2026-07-25
+
+### Mudado
+- **Widget de upload sem pilha de concluídos** (sugestão do usuário após lote de 18 arquivos): item enviado colapsa numa linha-resumo ("✓ N enviados") — padrão de gerenciador de upload; em voo e aguardando seguem individuais e **erro nunca colapsa** (fica visível com a mensagem até fechar). A fase do scan volta a ser protagonista no widget. Validado ao vivo: upload de 2 arquivos pelo picker → "2 enviados" no lugar de duas barras.
+
+### Corrigido
+- **Key React duplicada no histórico de processamentos** (flagrada pelo próprio teste em lote): dois DUPs do mesmo documento no mesmo scan compartilham timestamp e doc_id — linhas podiam sumir/duplicar; índice do item no lote desempata.
+
 ## [0.50.1] - 2026-07-25
 
 ### Corrigido

@@ -403,15 +403,22 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
                 </button>
               )}
             </div>
+            {/* v0.50.2: item enviado colapsa numa linha-resumo (padrão de
+                gerenciador de upload — concluído é ruído); erro NUNCA colapsa */}
+            {queue.some((item) => item.status === "enviado") && (
+              <p className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CheckCircle2 size={13} className="shrink-0 text-success" aria-hidden />
+                {t("ingest:portal.sentSummary", { count: queue.filter((item) => item.status === "enviado").length })}
+              </p>
+            )}
             <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-              {queue.map((item) => (
+              {queue.filter((item) => item.status !== "enviado").map((item) => (
                 <li key={item.id} className="text-xs">
                   <div className="flex items-center gap-1.5">
                     <span className="shrink-0 text-muted-foreground">{docIcon(item.file.name)}</span>
                     <span className="min-w-0 flex-1 truncate text-foreground" title={item.file.name}>
                       {item.file.name}
                     </span>
-                    {item.status === "enviado" && <CheckCircle2 size={13} className="shrink-0 text-success" aria-hidden />}
                     {item.status === "erro" && <XCircle size={13} className="shrink-0 text-destructive" aria-hidden />}
                     {item.status === "enviando" && (
                       <span className="shrink-0 font-mono text-[0.65rem] text-accent">{item.progress}%</span>
@@ -428,7 +435,7 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
                           ? "bg-destructive"
                           : "bg-gradient-to-r from-accent to-accent-light shadow-[0_0_8px_var(--accent-soft)]"
                       )}
-                      style={{ width: `${item.status === "enviado" ? 100 : item.progress}%` }}
+                      style={{ width: `${item.progress}%` }}
                     />
                   </div>
                   {item.error && <p className="mt-0.5 font-mono text-[0.65rem] text-destructive">{item.error}</p>}
