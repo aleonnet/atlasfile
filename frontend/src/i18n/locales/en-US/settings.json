@@ -110,5 +110,15 @@
     "modelMissing": "Model not found on the endpoint — run: ollama pull {{model}}",
     "endpointDown": "Unavailable now — is Ollama running? run: ollama serve",
     "unknown": "Model state not confirmed"
+  },
+  "providerGroup": {
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "moonshot": "Moonshot",
+    "ollama": "Ollama (local)",
+    "other": "{{provider}}"
+  },
+  "quickModels": {
+    "allOption": "All models…"
   }
 }

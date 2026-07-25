@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.46.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [seletores_agrupados_por_provedor_v0460](seletores_agrupados_por_provedor_v0460.plan.md) | Combo rápido de modelos com curadoria (benchmark ChatGPT/Cursor): atual + recentes + customs em `<optgroup>` por provedor; "Todos os modelos…" abre o settings com a busca dos 68+; recentes em localStorage (cap 5); cascata provedor→modelo rejeitada com critério; "Estrutura de Layout" do perfil inicia fechada |
+
+---
+
 ## 0.45.0
 
 | # | Plano | Escopo |

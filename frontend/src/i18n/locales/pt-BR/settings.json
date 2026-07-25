@@ -110,5 +110,15 @@
     "modelMissing": "Modelo não existe no endpoint — rode: ollama pull {{model}}",
     "endpointDown": "Indisponível agora — Ollama parado? rode: ollama serve",
     "unknown": "Estado do modelo não confirmado"
+  },
+  "providerGroup": {
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "moonshot": "Moonshot",
+    "ollama": "Ollama (local)",
+    "other": "{{provider}}"
+  },
+  "quickModels": {
+    "allOption": "Todos os modelos…"
   }
 }

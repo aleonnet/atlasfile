@@ -14,6 +14,19 @@ const ANTHROPIC_API_KEY_STORAGE = STORAGE_KEYS.anthropicApiKey;
 const MOONSHOT_API_KEY_STORAGE = STORAGE_KEYS.moonshotApiKey;
 const AUTO_TITLE_LLM_KEY = STORAGE_KEYS.autoTitleLLM;
 const CUSTOM_MODELS_KEY = STORAGE_KEYS.customModels;
+const RECENT_MODELS_KEY = STORAGE_KEYS.recentModels;
+// Benchmark dos players (ChatGPT expõe ~5 modelos; Cursor ~6 recentes):
+// o combo rápido carrega no máximo este nº de recentes além do atual/customs
+const RECENT_MODELS_MAX = 5;
+
+function readRecentModels(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENT_MODELS_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 /** Entrada persistida de modelo custom. validatedAt null = formato legado
  *  (≤0.44 guardava só a string) — o selo mostra "data desconhecida". */
@@ -72,6 +85,8 @@ type SettingsContextValue = {
   customModels: string[];
   /** value → data ISO da validação (null = validado antes da 0.45, sem data). */
   customModelsMeta: Record<string, string | null>;
+  /** Modelos usados recentemente (chat/triagem) — alimentam o combo rápido. */
+  recentModels: string[];
   addCustomModel: (value: string) => void;
   /** Recarrega o catálogo do backend (após um refresh remoto). */
   reloadModels: () => Promise<void>;
@@ -98,6 +113,7 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
   const [customModelEntries, setCustomModelEntries] = useState<CustomModelEntry[]>(readCustomModelEntries);
+  const [recentModels, setRecentModels] = useState<string[]>(readRecentModels);
   const customModels = useMemo(() => customModelEntries.map((e) => e.value), [customModelEntries]);
   const customModelsMeta = useMemo(
     () => Object.fromEntries(customModelEntries.map((e) => [e.value, e.validatedAt])),
@@ -151,6 +167,19 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [models, customModels]);
 
+  // Rastreio de recentes: toda seleção efetiva (chat ou triagem) entra na
+  // frente da fila, dedup, cap RECENT_MODELS_MAX — persiste entre sessões
+  useEffect(() => {
+    const picks = [selectedModel, selectedModelTriage].filter(Boolean);
+    if (picks.length === 0) return;
+    setRecentModels((prev) => {
+      const next = [...new Set([...picks, ...prev])].slice(0, RECENT_MODELS_MAX);
+      if (next.length === prev.length && next.every((v, i) => v === prev[i])) return prev;
+      writeStorage(RECENT_MODELS_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [selectedModel, selectedModelTriage]);
+
   const addCustomModel = useMemo(
     () => (value: string) => {
       setCustomModelEntries((prev) => {
@@ -182,6 +211,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       models,
       customModels,
       customModelsMeta,
+      recentModels,
       addCustomModel,
       reloadModels,
       selectedModel,
@@ -207,6 +237,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       models,
       customModels,
       customModelsMeta,
+      recentModels,
       addCustomModel,
       reloadModels,
       selectedModel,

@@ -1,5 +1,5 @@
 /// <reference types="@testing-library/jest-dom/vitest" />
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../test/utils";
 import { SettingsProvider } from "../contexts/SettingsContext";
@@ -40,20 +40,31 @@ const BASE_PROPS = {
   onShowThinkingChange: vi.fn(),
 };
 
-describe("ChatPanel — modelos custom no seletor", () => {
-  it("modelos validados pelo usuário (ex.: ollama) aparecem no select", () => {
+describe("ChatPanel — combo rápido de modelos (v0.46.0)", () => {
+  it("customs aparecem agrupados sob o provedor, com label sem prefixo de marca", () => {
     renderPanel(<ChatPanel {...BASE_PROPS} customModels={["ollama/gemma4:12b"]} />);
-    expect(
-      screen.getByRole("option", { name: /ollama\/gemma4:12b/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /Ollama \(local\)/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "gemma4:12b" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /gpt-4o-mini/i })).toBeInTheDocument();
   });
 
-  it("custom já presente no catálogo não duplica", () => {
+  it("custom já presente no catálogo não duplica; sentinela 'Todos os modelos' presente", () => {
     renderPanel(
       <ChatPanel {...BASE_PROPS} customModels={["openai/gpt-4o-mini", "ollama/gemma4:12b"]} />
     );
-    expect(screen.getAllByRole("option")).toHaveLength(2);
+    // gpt-4o-mini (dedup) + gemma4:12b + a sentinela que abre o settings
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    expect(screen.getByRole("option", { name: /todos os modelos/i })).toBeInTheDocument();
+  });
+
+  it("escolher 'Todos os modelos…' abre o settings e NÃO troca o modelo", () => {
+    const onOpenSettings = vi.fn();
+    const onModelChange = vi.fn();
+    renderPanel(<ChatPanel {...BASE_PROPS} onOpenSettings={onOpenSettings} onModelChange={onModelChange} />);
+    const select = document.getElementById("chat-panel-model") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "__all_models__" } });
+    expect(onOpenSettings).toHaveBeenCalled();
+    expect(onModelChange).not.toHaveBeenCalled();
   });
 
   it("sem catálogo mas com custom validado o select continua utilizável", () => {

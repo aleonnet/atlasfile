@@ -38,6 +38,7 @@ import type {
 } from "../../types";
 import { Badge } from "../../components/ui/badge";
 import { useCustomModelStatusText } from "../../hooks/useCustomModelStatus";
+import { ALL_MODELS_OPTION, groupQuickModelValues } from "../../lib/modelGroups";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { ProjectHeaderMeta } from "../../components/ProjectHeaderMeta";
@@ -469,18 +470,18 @@ export function IngestTriageCard({
   }
 
   const currentProviderModel = `${llmPolicy.provider}/${llmPolicy.model}`;
-  const modelLabel = models.find((m) => `${m.provider}/${m.model}` === currentProviderModel)?.label;
   // Modelos custom validados (ex.: ollama/gemma3:12b) entram como opções — sem
   // isso o select nativo exibiria a PRIMEIRA opção do catálogo em vez do valor salvo
-  const { customModels, moonshotApiKey } = useSettings();
+  const { customModels, moonshotApiKey, recentModels } = useSettings();
   const triageModelStatus = useCustomModelStatusText(currentProviderModel);
-  const catalogValues = new Set(models.map((m) => `${m.provider}/${m.model}`));
-  const extraModelOptions = [
-    ...customModels.filter((v) => !catalogValues.has(v)),
-    ...(!catalogValues.has(currentProviderModel) && !customModels.includes(currentProviderModel)
-      ? [currentProviderModel]
-      : []),
-  ];
+  // Combo rápido (benchmark ChatGPT/Cursor, v0.46.0): atual + recentes +
+  // customs agrupados por provedor; o catálogo inteiro fica no settings (⚙ ao
+  // lado e opção "Todos os modelos…"). O valor salvo no profile SEMPRE entra
+  // (mesmo fora do catálogo) — o select nativo exibiria a 1ª opção no lugar.
+  const triageQuickGroups = groupQuickModelValues(
+    [currentProviderModel, ...recentModels, ...customModels],
+    models
+  );
   // chave só é exigida por provider que exige chave (registro central) — ollama nunca
   const hasKey =
     !providerNeedsKey(llmPolicy.provider) ||
@@ -894,24 +895,33 @@ export function IngestTriageCard({
                         )}
                         title={triageModelStatus.title}
                         value={currentProviderModel}
-                        onChange={(e) => handleProviderChange(e.target.value)}
+                        onChange={(e) => {
+                          if (e.target.value === ALL_MODELS_OPTION) {
+                            e.target.value = currentProviderModel; // sentinela não é seleção
+                            onOpenSettings();
+                            return;
+                          }
+                          handleProviderChange(e.target.value);
+                        }}
                         disabled={llmSaving}
                       >
-                        {models.map((m) => (
-                          <option key={`${m.provider}/${m.model}`} value={`${m.provider}/${m.model}`}>
-                            {m.label}
-                          </option>
+                        {triageQuickGroups.map((group) => (
+                          <optgroup
+                            key={group.provider}
+                            label={
+                              ["openai", "anthropic", "moonshot", "ollama"].includes(group.provider)
+                                ? t(`settings:providerGroup.${group.provider}`)
+                                : t("settings:providerGroup.other", { provider: group.provider })
+                            }
+                          >
+                            {group.options.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
-                        {extraModelOptions.map((value) => (
-                          <option key={value} value={value}>
-                            {value}
-                          </option>
-                        ))}
-                        {models.length === 0 && extraModelOptions.length === 0 && (
-                          <option value={currentProviderModel}>
-                            {modelLabel || currentProviderModel}
-                          </option>
-                        )}
+                        <option value={ALL_MODELS_OPTION}>{t("settings:quickModels.allOption")}</option>
                       </select>
                       <button
                         type="button"

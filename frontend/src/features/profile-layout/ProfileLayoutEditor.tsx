@@ -96,7 +96,8 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
   return (
     <div className="flex flex-col gap-2.5">
       {/* ── Estrutura de Layout (Modo + Raízes + Areas root) ── */}
-      <CollapsibleSection title={t("profileLayout:editor.layoutSection")} defaultOpen>
+      {/* v0.46.0: fechada por padrão ao abrir o AtlasFile (pedido do usuário) */}
+      <CollapsibleSection title={t("profileLayout:editor.layoutSection")}>
         <div className="flex gap-4">
           <label className="flex items-center gap-1.5 text-sm">
             <input type="radio" name="layout-mode" className="size-3.5 accent-[var(--accent)]" value="para_jd" checked={profile.layout.mode === "para_jd"} onChange={() => updateMode("para_jd")} />

@@ -17,6 +17,7 @@ export const STORAGE_KEYS = {
   moonshotApiKey: "atlasfile-moonshot-api-key",
   autoTitleLLM: "atlasfile-auto-title-llm",
   customModels: "atlasfile-custom-models",
+  recentModels: "atlasfile-recent-models",
   onboardingDone: "atlasfile-onboarding-done",
   telegramBotToken: "atlasfile-telegram-bot-token",
   configTab: "atlasfile-config-tab",

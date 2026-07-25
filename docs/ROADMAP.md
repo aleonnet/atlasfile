@@ -53,7 +53,7 @@ visível na UI" (label + tooltip por modo)._
 
 | Item | O que é | Registrado em |
 |---|---|---|
-| Seletores de modelo agrupados por provedor | Lista plana mistura providers e cresce mal. Decisão de design já tomada: `<optgroup>` (um combo, hierarquia visual provider → modelos, zero clique extra — padrão LM Studio/Cursor), NÃO dois selects encadeados (2 interações para trocar modelo no chat). Alvos: select do chat, select da triagem e combobox do settings (headers de seção na listbox). | 2026-07-25, proposta do usuário |
+| ~~Seletores de modelo agrupados por provedor~~ | **Entregue na v0.46.0** — ver `planos_concluidos/seletores_agrupados_por_provedor_v0460.plan.md` (combo rápido com curadoria: atual + recentes + customs em `<optgroup>`; catálogo completo com busca segue no settings, também via "Todos os modelos…"; cascata rejeitada com critério) | — |
 | ~~Estado vivo do modelo custom no seletor~~ | **Entregue na v0.45.0** — ver `planos_concluidos/ciclo1_confianca_acesso_naming_v0450.plan.md` (LED verde/vermelho com tooltip nos seletores de chat e triagem; cheque vivo a cada 60s enquanto abertos + ao focar a janela; storage com data e migração). Auto-start do daemon segue impossível do container — só instalador/agente no host. | — |
 
 ## E2E pendentes

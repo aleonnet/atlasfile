@@ -454,10 +454,11 @@ describe("IngestTriageCard", () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/Modelo triagem/i)).toHaveValue("ollama/gemma3:12b");
     });
-    // v0.45.0: a opção mostra só o valor — o estado vivo é do LED ao lado, e a
-    // proveniência (data de validação) fica no combobox de settings
+    // v0.46.0: combo rápido agrupado — a opção mostra só o id do modelo
+    // (o optgroup diz o provedor); estado vivo/proveniência ficam fora da opção
     const select = screen.getByLabelText(/Modelo triagem/i) as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.textContent)).toContain("ollama/gemma3:12b");
+    expect(Array.from(select.options).map((o) => o.textContent)).toContain("gemma3:12b");
+    expect(select.value).toBe("ollama/gemma3:12b");
     expect(screen.queryByText(/API Key não configurada/i)).not.toBeInTheDocument();
     localStorage.removeItem("atlasfile-custom-models");
   });

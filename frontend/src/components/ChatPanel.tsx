@@ -12,6 +12,8 @@ import remarkGfm from "remark-gfm";
 import { fetchSuggestions, getFileDownloadUrl } from "../api";
 import { cn } from "../lib/utils";
 import { useCustomModelStatusText } from "../hooks/useCustomModelStatus";
+import { ALL_MODELS_OPTION, groupQuickModelValues } from "../lib/modelGroups";
+import { useSettings } from "../contexts/SettingsContext";
 import { formatTimeShort } from "../lib/format";
 import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
@@ -241,6 +243,11 @@ export function ChatPanel({
   const catalogValues = new Set(models.map((m) => `${m.provider}/${m.model}`));
   const customOptions = customModels.filter((c) => !catalogValues.has(c));
   const modelStatus = useCustomModelStatusText(selectedModel);
+  // Combo rápido (benchmark ChatGPT/Cursor): atual + recentes + customs,
+  // agrupados por provedor; os 68+ do catálogo vivem no settings (⚙ ao lado),
+  // alcançáveis também pela opção sentinela "Todos os modelos…"
+  const { recentModels } = useSettings();
+  const quickGroups = groupQuickModelValues([selectedModel, ...recentModels, ...customModels], models);
   const reasoningSupported =
     selectedModel && (models.find((m) => `${m.provider}/${m.model}` === selectedModel)?.supports_reasoning_effort ?? false);
   const companionState = useCompanionState(sending, error);
@@ -336,7 +343,14 @@ export function ChatPanel({
         <select
           id="chat-panel-model"
           value={selectedModel}
-          onChange={(e) => onModelChange(e.target.value)}
+          onChange={(e) => {
+            if (e.target.value === ALL_MODELS_OPTION) {
+              e.target.value = selectedModel; // sentinela não é seleção
+              onOpenSettings();
+              return;
+            }
+            onModelChange(e.target.value);
+          }}
           disabled={models.length === 0 && customOptions.length === 0}
           title={modelStatus.title}
           className={cn(
@@ -348,18 +362,23 @@ export function ChatPanel({
               "text-muted-foreground opacity-50"
           )}
         >
-          {models.map((m) => (
-            <option key={`${m.provider}/${m.model}`} value={`${m.provider}/${m.model}`}>
-              {m.label}
-            </option>
+          {quickGroups.map((group) => (
+            <optgroup
+              key={group.provider}
+              label={
+                ["openai", "anthropic", "moonshot", "ollama"].includes(group.provider)
+                  ? t(`settings:providerGroup.${group.provider}`)
+                  : t("settings:providerGroup.other", { provider: group.provider })
+              }
+            >
+              {group.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
-          {/* Sem "(validado por você)" aqui: o LED ao lado conta o estado VIVO —
-              a proveniência (data da validação) vive no combobox de settings */}
-          {customOptions.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
+          <option value={ALL_MODELS_OPTION}>{t("settings:quickModels.allOption")}</option>
         </select>
         <button
           type="button"

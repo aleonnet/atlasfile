@@ -15,6 +15,14 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.46.0] - 2026-07-25
+
+### Adicionado
+- **Combo rápido de modelos com curadoria** (proposta do usuário + benchmark ChatGPT/Claude.ai ~5 modelos expostos; Cursor = recentes + busca): os seletores do chat e da triagem deixam de listar o catálogo inteiro (68+ modelos) e mostram só **atual + usados recentemente + customs validados**, agrupados por provedor via `<optgroup>` nativo (labels sem a marca redundante — o grupo já diz o provedor). A opção **"Todos os modelos…"** e a engrenagem ao lado abrem o settings, onde o catálogo completo com busca sempre viveu; escolher lá alimenta os recentes (localStorage `atlasfile-recent-models`, cap 5 — referência dos players). Cascata provedor→modelo foi avaliada e rejeitada com critério: dobraria o custo da troca frequente entre favoritos de provedores diferentes.
+
+### Mudado
+- Seção "Estrutura de Layout" do perfil do projeto agora inicia **fechada** (pedido do usuário).
+
 ## [0.45.0] - 2026-07-25
 
 ### Adicionado
