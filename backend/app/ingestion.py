@@ -18,8 +18,10 @@ from .indexer import index_document, index_document_chunks_embeddings, read_text
 from .profile_runtime import areas_root_rel, triage_paths
 from .triage import save_pending_metadata
 from .utils import (
+    _CANONICAL_TAIL_RE,
     DEFAULT_CANONICAL_PATTERN,
     build_canonical_filename,
+    extract_original_name_from_canonical,
     fs_safe,
     sanitize_token,
     sha256_file,
@@ -242,6 +244,53 @@ def _find_latest_version(
     return latest
 
 
+_DATE_PREFIX_RE = re.compile(r"^\d{8}__")
+
+# Mesma cadeia de patterns do reconcile (reconcile.py): pattern do profile,
+# variante de 3 segmentos e o default de 2 — o extrator só conta separadores.
+_UNWRAP_PATTERN_VARIANTS = ("{date}__{project}__{area}__{original_name}",)
+
+
+def _unwrap_canonical_stem(filename: str, profile: dict[str, Any]) -> str | None:
+    """Nome de INBOX que JÁ é canônico (cauda __vNN) → devolve o nome original
+    embutido, para a reingestão não re-embrulhar prefixo/cauda
+    (20260725__proj__20260320__proj__...__v01__v01) nem quebrar a linhagem de
+    versão. Iterativo (nome pode estar embrulhado mais de uma vez, inclusive
+    por patterns diferentes após migração de naming); um candidato com resíduo
+    de canônico (data, project_id ou domínio conhecido na frente — fatos do
+    profile, não heurística solta) é preterido pelo próximo pattern da cadeia.
+    None quando nada parseia (nome comum segue o fluxo normal)."""
+    naming = profile.get("naming") or {}
+    patterns: list[str] = [naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN)]
+    for variant in (*_UNWRAP_PATTERN_VARIANTS, DEFAULT_CANONICAL_PATTERN):
+        if variant not in patterns:
+            patterns.append(variant)
+
+    project_id = str(profile.get("project_id") or "")
+    domain_keys = {
+        str(d.get("key") or "")
+        for d in (profile.get("classification") or {}).get("business_domains", [])
+    }
+
+    def has_residue(name: str) -> bool:
+        if _DATE_PREFIX_RE.match(name):
+            return True
+        head = name.split("__", 1)[0]
+        return bool(head) and (head == project_id or head in domain_keys)
+
+    current = filename
+    unwrapped = False
+    for _ in range(3):  # embrulhos aninhados reais têm 1-2 níveis; 3 é teto seguro
+        if not _CANONICAL_TAIL_RE.search(current):
+            break
+        candidates = [c for c in (extract_original_name_from_canonical(current, p) for p in patterns) if c]
+        if not candidates:
+            break
+        current = next((c for c in candidates if not has_residue(c)), candidates[0])
+        unwrapped = True
+    return current if unwrapped else None
+
+
 def _find_original_in_triage(project_root: Path, profile: dict[str, Any], sha256: str) -> dict[str, Any] | None:
     """Return metadata of the first existing document matching sha256 in triage dirs."""
     triage = triage_paths(profile)
@@ -411,12 +460,19 @@ def process_inbox_file(
 
     ingested_at = utc_now_iso()
 
+    # Reingestão de canônico: daqui em diante o documento é referido pelo nome
+    # original desembrulhado (nome, título, linhagem de versão, _INDEX/meta) —
+    # o conteúdo/hash seguem do arquivo físico como sempre.
+    unwrapped_name = _unwrap_canonical_stem(inbox_file.name, profile)
+    display_name = unwrapped_name or inbox_file.name
+    display_stem = Path(display_name).stem
+
     next_version = _find_latest_version(
         project_root=project_root,
         profile=profile,
         project_id=project_id,
         business_domain=business_domain or "unclassified",
-        title_token=inbox_file.stem,
+        title_token=display_stem,
         suffix=(inbox_file.suffix or ".bin"),
     ) + 1
 
@@ -430,7 +486,7 @@ def process_inbox_file(
         fields={
             "project": project_id,
             "business_domain": business_domain or "unclassified",
-            "original_name": inbox_file.stem,
+            "original_name": display_stem,
             "document_type": document_type,
         },
         original_suffix=inbox_file.suffix or ".bin",
@@ -450,7 +506,7 @@ def process_inbox_file(
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = _build_unique_triage_pending_path(
             pending_dir=dest_dir,
-            original_name=inbox_file.name,
+            original_name=display_name,
             doc_id=doc_id,
         )
         shutil.move(str(inbox_file), str(dest_file))
@@ -472,7 +528,7 @@ def process_inbox_file(
             "top_document_type_candidates": classification.get("top_document_type_candidates", []),
             "source_path": str(dest_file),
             "metadata_path": "",
-            "original_filename": inbox_file.name,
+            "original_filename": display_name,
             "canonical_filename": canonical_filename,
             "document_type": document_type,
             "topics": classification.get("topics", []),
@@ -506,7 +562,7 @@ def process_inbox_file(
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_file = _build_unique_triage_pending_path(
             pending_dir=dest_dir,
-            original_name=inbox_file.name,
+            original_name=display_name,
             doc_id=doc_id,
         )
         shutil.move(str(inbox_file), str(dest_file))
@@ -527,7 +583,7 @@ def process_inbox_file(
             "top_document_type_candidates": classification.get("top_document_type_candidates", []),
             "source_path": str(dest_file),
             "metadata_path": "",
-            "original_filename": inbox_file.name,
+            "original_filename": display_name,
             "canonical_filename": canonical_filename,
             "document_type": document_type,
             "topics": classification.get("topics", []),
@@ -566,9 +622,9 @@ def process_inbox_file(
         "doc_id": doc_id,
         "project_id": project_id,
         "business_domain": business_domain or "unclassified",
-        "title": inbox_file.stem,
+        "title": display_stem,
         "content": text_excerpt,
-        "original_filename": inbox_file.name,
+        "original_filename": display_name,
         "canonical_filename": canonical_filename,
         "path": path_for_index,
         "source_channel": "",

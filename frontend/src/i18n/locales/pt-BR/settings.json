@@ -32,6 +32,7 @@
   },
   "combobox": {
     "validatedByYou": "{{model}} (validado por você)",
+    "validatedByYouAt": "{{model}} (validado por você em {{date}})",
     "placeholder": "provider/modelo — digite para modelos novos",
     "validateFailed": "Falha ao validar",
     "validate": "Validar",
@@ -102,5 +103,12 @@
     "errorPrefix": "Erro: {{error}}",
     "saving": "Salvando...",
     "comingSoon": "Em breve"
+  },
+  "modelStatus": {
+    "checking": "Verificando o modelo…",
+    "available": "Disponível agora",
+    "modelMissing": "Modelo não existe no endpoint — rode: ollama pull {{model}}",
+    "endpointDown": "Indisponível agora — Ollama parado? rode: ollama serve",
+    "unknown": "Estado do modelo não confirmado"
   }
 }

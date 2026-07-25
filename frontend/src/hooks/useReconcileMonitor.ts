@@ -28,6 +28,10 @@ function summaryMessage(latest: ReconcileStatus, scopeLabel?: string): string {
     skip: skipped > 0 ? i18n.t("painel:reconcile.summarySkip", { count: skipped }) : "",
     fail: failed > 0 ? i18n.t("painel:reconcile.summaryFail", { count: failed }) : "",
     orphan: orphans > 0 ? i18n.t("painel:reconcile.summaryOrphan", { count: orphans }) : "",
+    pendingOrphan:
+      (Number(latest.summary?.orphan_pending_files_moved) || 0) > 0
+        ? i18n.t("painel:reconcile.summaryPendingOrphan", { count: Number(latest.summary?.orphan_pending_files_moved) })
+        : "",
   });
 }
 

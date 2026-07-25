@@ -56,7 +56,7 @@ export function CreateTaxonomyEntryModal({ open, onClose, onCreated }: Props) {
   }
 
   return (
-    <ModalShell label={t("templates:create.title")} title={t("templates:create.title")}>
+    <ModalShell label={t("templates:create.title")} title={t("templates:create.title")} onClose={onClose}>
       <p className="text-sm text-muted-foreground">
         {t("templates:create.introBefore")} <code className="font-mono text-accent">default</code>{" "}
         {t("templates:create.introAfter")}

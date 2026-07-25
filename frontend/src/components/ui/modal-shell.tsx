@@ -1,4 +1,5 @@
 import { cn } from "../../lib/utils";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 export const fieldLabelClass = "mb-1 mt-3 block font-mono text-[0.68rem] uppercase tracking-wide text-tertiary first:mt-0";
 
@@ -12,6 +13,10 @@ type ModalShellProps = {
   title?: string;
   size?: "sm" | "md" | "lg";
   className?: string;
+  /** Fecha com ESC (v0.45.0: padrão de TODOS os modais). Omitir APENAS em
+   *  fluxo bloqueante deliberado (ex.: RootRecoveryModal, onde fechar
+   *  deixaria o app num estado quebrado). */
+  onClose?: () => void;
   children: React.ReactNode;
 };
 
@@ -21,7 +26,8 @@ const SIZES = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-3xl" } as const;
  * Casca de modal do design system para componentes com gestão própria de estado
  * (glass overlay + painel elevado). Para novos fluxos prefira ui/dialog (Radix).
  */
-export function ModalShell({ label, title, size = "md", className, children }: ModalShellProps) {
+export function ModalShell({ label, title, size = "md", className, onClose, children }: ModalShellProps) {
+  useEscapeKey(onClose ?? null);
   return (
     <div
       role="dialog"

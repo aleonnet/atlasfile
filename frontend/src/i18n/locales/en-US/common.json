@@ -40,5 +40,8 @@
     "document_other": "{{count}} documents",
     "result_one": "{{count}} result",
     "result_other": "{{count}} results"
+  },
+  "table": {
+    "actionColumn": "Action"
   }
 }

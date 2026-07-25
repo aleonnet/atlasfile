@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import remarkGfm from "remark-gfm";
 import { fetchSuggestions, getFileDownloadUrl } from "../api";
 import { cn } from "../lib/utils";
+import { useCustomModelStatusText } from "../hooks/useCustomModelStatus";
 import { formatTimeShort } from "../lib/format";
 import { Button } from "./ui/button";
 import { Input, Textarea } from "./ui/input";
@@ -239,6 +240,7 @@ export function ChatPanel({
   // Modelos custom validados (ex.: ollama/...) entram no select sem duplicar o catálogo
   const catalogValues = new Set(models.map((m) => `${m.provider}/${m.model}`));
   const customOptions = customModels.filter((c) => !catalogValues.has(c));
+  const modelStatus = useCustomModelStatusText(selectedModel);
   const reasoningSupported =
     selectedModel && (models.find((m) => `${m.provider}/${m.model}` === selectedModel)?.supports_reasoning_effort ?? false);
   const companionState = useCompanionState(sending, error);
@@ -328,15 +330,22 @@ export function ChatPanel({
         <label htmlFor="chat-panel-model" className="font-mono text-[0.7rem] uppercase tracking-wide text-tertiary">
           {t("chat:toolbar.modelLabel")}
         </label>
+        {/* Estado vivo do modelo custom no PRÓPRIO seletor (gramática do botão
+            de raciocínio): esmaecido = endpoint indisponível, borda/texto
+            laranja = disponível; detalhe e dica no tooltip */}
         <select
           id="chat-panel-model"
           value={selectedModel}
           onChange={(e) => onModelChange(e.target.value)}
           disabled={models.length === 0 && customOptions.length === 0}
+          title={modelStatus.title}
           className={cn(
             "h-8 min-w-0 max-w-full rounded-md border border-border bg-panel px-2.5 text-sm text-foreground shadow-none",
             "transition-[border-color,box-shadow] hover:border-border-strong",
-            "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft"
+            "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft",
+            modelStatus.status === "available" && "border-accent text-accent",
+            (modelStatus.status === "endpoint_down" || modelStatus.status === "model_missing") &&
+              "text-muted-foreground opacity-50"
           )}
         >
           {models.map((m) => (
@@ -344,9 +353,11 @@ export function ChatPanel({
               {m.label}
             </option>
           ))}
+          {/* Sem "(validado por você)" aqui: o LED ao lado conta o estado VIVO —
+              a proveniência (data da validação) vive no combobox de settings */}
           {customOptions.map((c) => (
             <option key={c} value={c}>
-              {t("settings:combobox.validatedByYou", { model: c })}
+              {c}
             </option>
           ))}
         </select>
@@ -536,22 +547,21 @@ export function ChatPanel({
             </>
           )}
         </div>
+        {/* v0.45.0 (desenho do usuário): estado do Telegram na gramática do botão
+            de raciocínio — esmaecido desconectado, destaque laranja conectado;
+            sem LED de bolinha em botão */}
         {onToggleTelegram && (
           <button
             type="button"
-            className={cn(toolbarIconBtnClass, "relative")}
+            className={cn(
+              toolbarIconBtnClass,
+              telegramConnected && "border-accent bg-accent-soft text-accent hover:border-accent hover:text-accent"
+            )}
             onClick={onToggleTelegram}
             title={telegramConnected ? t("chat:toolbar.telegramConnectedTitle") : t("chat:toolbar.telegramDisconnectedTitle")}
             aria-label={telegramConnected ? t("chat:toolbar.telegramDisconnectAria") : t("chat:toolbar.telegramConnectAria")}
           >
             <Send size={16} strokeWidth={2} aria-hidden />
-            <span
-              aria-hidden
-              className={cn(
-                "absolute right-0.5 top-0.5 size-[7px] rounded-full border-[1.5px] border-background",
-                telegramConnected ? "bg-accent" : "bg-muted"
-              )}
-            />
           </button>
         )}
       </div>

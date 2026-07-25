@@ -257,6 +257,14 @@ describe("App", () => {
     }
   });
 
+  it("link Observabilidade aponta para o Dashboards derivado do host atual (v0.45.0)", async () => {
+    await mockReconcileIdle();
+    render(<App />);
+    const link = await screen.findByRole("link", { name: /Observabilidade/i }, { timeout: 5000 });
+    expect(link).toHaveAttribute("href", "http://localhost:5601");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
   it.each(["unavailable", "emptied"] as const)(
     "abre o modal de recuperação quando a raiz está %s (v0.40.1: os dois modos de falha)",
     async (state) => {

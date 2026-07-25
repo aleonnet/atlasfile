@@ -128,6 +128,9 @@ def run_reconcile(
             "failed_docs": int(search_report.get("failed_docs", 0)),
             "orphan_projects_found": orphan_report.get("orphan_projects_found", 0),
             "orphan_docs_deleted": orphan_report.get("orphan_docs_deleted", 0),
+            "orphan_pending_files_moved": sum(
+                int(r.get("orphan_pending_files_moved", 0)) for r in project_reports
+            ),
         }
         report = {
             "projects": project_reports,

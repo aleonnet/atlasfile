@@ -37,6 +37,22 @@ def test_setup_status_no_projects(client: TestClient) -> None:
     assert data["onboarding_suggested"] is True
 
 
+def test_setup_status_expoe_dashboards_public_url(client: TestClient) -> None:
+    """v0.45.0: campo para o link Observabilidade — default vazio (frontend
+    deriva do host atual); configurado, vem verbatim."""
+    from app.config import settings
+
+    with patch("app.main.list_project_roots", return_value=[]):
+        r = client.get("/api/setup/status")
+    assert r.status_code == 200
+    assert r.json()["dashboards_public_url"] == ""
+
+    with patch.object(settings, "dashboards_public_url", "https://atlas.example.com/dashboards"):
+        with patch("app.main.list_project_roots", return_value=[]):
+            r = client.get("/api/setup/status")
+    assert r.json()["dashboards_public_url"] == "https://atlas.example.com/dashboards"
+
+
 def test_setup_status_with_uninitialized_project(client: TestClient) -> None:
     roots = [_mock_root("proj_a")]
     with (

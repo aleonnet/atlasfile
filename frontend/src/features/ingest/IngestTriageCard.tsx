@@ -37,6 +37,7 @@ import type {
   TriageItem
 } from "../../types";
 import { Badge } from "../../components/ui/badge";
+import { useCustomModelStatusText } from "../../hooks/useCustomModelStatus";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { ProjectHeaderMeta } from "../../components/ProjectHeaderMeta";
@@ -472,6 +473,7 @@ export function IngestTriageCard({
   // Modelos custom validados (ex.: ollama/gemma3:12b) entram como opções — sem
   // isso o select nativo exibiria a PRIMEIRA opção do catálogo em vez do valor salvo
   const { customModels, moonshotApiKey } = useSettings();
+  const triageModelStatus = useCustomModelStatusText(currentProviderModel);
   const catalogValues = new Set(models.map((m) => `${m.provider}/${m.model}`));
   const extraModelOptions = [
     ...customModels.filter((v) => !catalogValues.has(v)),
@@ -790,7 +792,7 @@ export function IngestTriageCard({
                       <th className="left">{t("ingest:classifier.colChampion")}</th>
                       <th>{t("ingest:classifier.colExact")}</th>
                       <th>{t("ingest:classifier.colBdF1")}</th>
-                      <th></th>
+                      <th>{t("common:table.actionColumn")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -825,7 +827,7 @@ export function IngestTriageCard({
       )}
 
       {confirmDeleteReportId && (
-        <ModalShell label={t("ingest:classifier.confirmDeleteLabel")} title={t("ingest:classifier.deleteModalTitle")} size="sm">
+        <ModalShell label={t("ingest:classifier.confirmDeleteLabel")} title={t("ingest:classifier.deleteModalTitle")} size="sm" onClose={() => setConfirmDeleteReportId(null)}>
             <p className="m-0 text-sm text-foreground">
               <Trans i18nKey="ingest:classifier.confirmDeleteBody" values={{ id: confirmDeleteReportId }} components={[<strong key="0" />]} />
             </p>
@@ -880,9 +882,17 @@ export function IngestTriageCard({
                   <div className="flex flex-col">
                     <label htmlFor="itc-llm-model" className={fieldLabelClass}>{t("ingest:llm.modelLabel")}</label>
                     <div className="flex items-center gap-2">
+                      {/* Estado vivo do modelo custom no PRÓPRIO seletor (gramática
+                          do botão de raciocínio) — mesmo tratamento do chat */}
                       <select
                         id="itc-llm-model"
-                        className={nativeSelectClass}
+                        className={cn(
+                          nativeSelectClass,
+                          triageModelStatus.status === "available" && "border-accent text-accent",
+                          (triageModelStatus.status === "endpoint_down" || triageModelStatus.status === "model_missing") &&
+                            "text-muted-foreground opacity-50"
+                        )}
+                        title={triageModelStatus.title}
                         value={currentProviderModel}
                         onChange={(e) => handleProviderChange(e.target.value)}
                         disabled={llmSaving}
@@ -894,7 +904,7 @@ export function IngestTriageCard({
                         ))}
                         {extraModelOptions.map((value) => (
                           <option key={value} value={value}>
-                            {t("settings:combobox.validatedByYou", { model: value })}
+                            {value}
                           </option>
                         ))}
                         {models.length === 0 && extraModelOptions.length === 0 && (

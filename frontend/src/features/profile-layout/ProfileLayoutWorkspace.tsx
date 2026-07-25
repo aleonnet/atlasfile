@@ -280,9 +280,11 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
       {/* ── Editor (modo, raízes, áreas, geral) ── */}
       {draft && <ProfileLayoutEditor profile={draft} onChange={setDraft} />}
 
-      {/* ── Seção: Migração ── */}
+      {/* ── Seção: Migração — só existe quando HÁ mudança de layout; a caixa
+          vazia com o hint "sem mudanças" parecia um aviso perdido entre as
+          seções colapsáveis (achado do usuário, v0.45.0) ── */}
+      {layoutChanged && (
       <section className="rounded-lg border border-border p-4">
-        {layoutChanged ? (
           <div className="space-y-3">
             <div className="flex items-start gap-2.5 rounded-md border border-accent/30 bg-accent-soft px-3 py-2.5">
               <AlertTriangle size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
@@ -324,10 +326,8 @@ export function ProfileLayoutWorkspace({ projectRef, disabled = false, onStatus 
               </label>
             </div>
           </div>
-        ) : (
-          <p className="font-mono text-[0.7rem] text-tertiary">{t("profileLayout:workspace.noLayoutChanges")}</p>
-        )}
       </section>
+      )}
 
       {/* ── Preview do plano ── */}
       <LayoutPlanPreview plan={plan} />

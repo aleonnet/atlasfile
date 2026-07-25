@@ -9,7 +9,7 @@ import { MoveDocumentModal } from "../../components/MoveDocumentModal";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
-import { CollapsibleSection } from "../../components/ui/collapsible-section";
+import { CollapsibleSection, rowActionButtonClass } from "../../components/ui/collapsible-section";
 import { DataTable, TableWrap } from "../../components/ui/data-table";
 import { invalidateAfterMove } from "../../lib/mutations";
 import type { IngestHistoryEntry, ProjectProfileV2, StatusSeverity } from "../../types";
@@ -188,6 +188,7 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                     <th>{t("ingest:history.colDomainType")}</th>
                     <th>{t("ingest:history.colDecision")}</th>
                     <th>{t("ingest:history.colConfidence")}</th>
+                    <th style={{ width: 44 }}>{t("common:table.actionColumn")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -220,13 +221,21 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                               <span className="ml-1" title={t("ingest:history.llmBadgeTitle")}>🤖</span>
                             )}
                           </td>
-                          <td className="max-w-44 truncate" title={row.business_domain}>
+                          {/* DE/PARA da reclassificação sai da célula (truncava ilegível,
+                              "societario / contrato← regul…"): agora vive no tooltip e numa
+                              linha do bloco expandido "Detalhes da Classificação" */}
+                          <td
+                            className="max-w-44 truncate"
+                            title={
+                              businessDomainOverridden
+                                ? t("ingest:history.overrideTitle", { from: row.rule_business_domain, to: row.business_domain })
+                                : row.business_domain
+                            }
+                          >
                             {row.business_domain}
                             {row.document_type ? ` / ${row.document_type}` : ""}
                             {businessDomainOverridden && (
-                              <span className="ml-1 text-accent-light" title={t("ingest:history.ruleTitle", { rule: row.rule_business_domain })}>
-                                ← {row.rule_business_domain}
-                              </span>
+                              <span aria-hidden className="ml-1 text-accent-light">*</span>
                             )}
                           </td>
                           <td>{decisionBadge(row.decision)}</td>
@@ -234,25 +243,33 @@ export function IngestHistoryCard({ selectedProject, onStatus }: Props) {
                             <span className="inline-flex items-center gap-1">
                               {row.confidence !== null ? row.confidence.toFixed(2) : "-"}
                               {hasLlmDetail && (isExpanded ? <ChevronDown size={12} aria-hidden /> : <ChevronRight size={12} aria-hidden />)}
-                              {canMove(row) && (
-                                <button
-                                  type="button"
-                                  className="rounded border-0 bg-transparent p-0.5 text-tertiary shadow-none transition-colors hover:text-accent"
-                                  title={t("ingest:history.moveTitle")}
-                                  aria-label={t("ingest:history.moveTitle")}
-                                  onClick={(e) => { e.stopPropagation(); setMoveRow(row); }}
-                                >
-                                  <ArrowRightLeft size={12} aria-hidden />
-                                </button>
-                              )}
                             </span>
+                          </td>
+                          <td>
+                            {canMove(row) && (
+                              <button
+                                type="button"
+                                className={rowActionButtonClass}
+                                title={t("ingest:history.moveTitle")}
+                                aria-label={t("ingest:history.moveTitle")}
+                                onClick={(e) => { e.stopPropagation(); setMoveRow(row); }}
+                              >
+                                <ArrowRightLeft size={12} aria-hidden />
+                              </button>
+                            )}
                           </td>
                         </tr>
                         {isExpanded && hasLlmDetail && (
                           <tr>
-                            <td colSpan={6}>
+                            <td colSpan={7}>
                               <div className="space-y-0.5 rounded-md bg-panel-strong p-2.5 font-mono text-[0.72rem] text-muted-foreground [&_code]:text-accent-light [&_em]:not-italic [&_em]:text-foreground/80">
                                 <strong className="font-display text-foreground-strong">{t("ingest:history.detailsTitle")}</strong>
+                                {businessDomainOverridden && (
+                                  <p>
+                                    {t("ingest:history.overrideDetail")}{" "}
+                                    <code>{row.rule_business_domain}</code> → <code>{row.business_domain}</code>
+                                  </p>
+                                )}
                                 <p>
                                   <code>{formatClassifierModeLabel(row.classifier_mode)}</code>
                                   {row.classifier_requested_mode && row.classifier_requested_mode !== row.classifier_mode

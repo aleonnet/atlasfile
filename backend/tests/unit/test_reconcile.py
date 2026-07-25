@@ -100,6 +100,57 @@ def _two_level_profile() -> dict[str, Any]:
     }
 
 
+def test_sweep_orphan_pending_files(tmp_path: Path) -> None:
+    """v0.45.0 (W-C): arquivo físico sem meta no pending → rejected com meta
+    sidecar; referenciado, recente e dotfile ficam intocados."""
+    import json as _json
+    import os
+    import time as _time
+
+    from app.reconcile import _sweep_orphan_pending_files
+
+    profile = {
+        "project_id": "p1",
+        "paths": {"triage": {"pending": "_TRIAGE_REVIEW/pending", "resolved": "_TRIAGE_REVIEW/resolved", "rejected": "_TRIAGE_REVIEW/rejected"}},
+    }
+    pending = tmp_path / "_TRIAGE_REVIEW" / "pending"
+    rejected = tmp_path / "_TRIAGE_REVIEW" / "rejected"
+    pending.mkdir(parents=True)
+
+    old_mtime = _time.time() - 7200  # bem além da guarda de 600s
+
+    orphan = pending / "orfao_sem_meta.pdf"
+    orphan.write_bytes(b"conteudo")
+    os.utime(orphan, (old_mtime, old_mtime))
+
+    referenced = pending / "com_meta.pdf"
+    referenced.write_bytes(b"conteudo")
+    os.utime(referenced, (old_mtime, old_mtime))
+    (pending / "abc.json").write_text(_json.dumps({"doc_id": "abc", "filename": "com_meta.pdf"}), encoding="utf-8")
+
+    fresh = pending / "em_transito.pdf"  # janela move→meta da ingestão
+    fresh.write_bytes(b"conteudo")
+
+    dotfile = pending / ".DS_Store"
+    dotfile.write_bytes(b"\x00")
+    os.utime(dotfile, (old_mtime, old_mtime))
+
+    moved = _sweep_orphan_pending_files(tmp_path, profile)
+
+    assert moved == 1
+    assert not orphan.exists()
+    assert (rejected / "orfao_sem_meta.pdf").exists()
+    assert referenced.exists() and fresh.exists() and dotfile.exists()
+    sidecars = [p for p in rejected.glob("*.json")]
+    assert len(sidecars) == 1
+    meta = _json.loads(sidecars[0].read_text(encoding="utf-8"))
+    assert meta["decision"] == "orphaned_missing_metadata"
+    assert meta["original_filename"] == "orfao_sem_meta.pdf"
+
+    # idempotente: segunda passada não move nada
+    assert _sweep_orphan_pending_files(tmp_path, profile) == 0
+
+
 def test_is_ignored_file() -> None:
     assert _is_ignored_file(Path(".git/config")) is True
     assert _is_ignored_file(Path("a/.x/file")) is True

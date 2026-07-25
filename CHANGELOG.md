@@ -15,6 +15,22 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.45.0] - 2026-07-25
+
+### Adicionado
+- **Estado vivo do modelo custom** (achado do usuário na v0.44.0): o selo "(validado por você)" era localStorage estático — agora o estado vai **no próprio seletor de modelo** (chat e triagem), na gramática do botão de raciocínio: **esmaecido = endpoint indisponível/desligado, borda/texto laranja = disponível**, detalhe e dica no tooltip ("Indisponível agora — Ollama parado? rode: ollama serve" / "ollama pull"). Sem ícone novo e sem LED de bolinha em botão (o botão do Telegram na toolbar adota a mesma gramática: esmaecido desconectado, laranja conectado). Re-verificação **a cada 15s — inclusive com a janela desfocada** (cenário real do teste: olhar o browser enquanto se desliga o Ollama no terminal) e ao refocar (staleTime 10s); nunca bloqueia nem desabilita a UI. A opção do select mostra só o valor; a proveniência (data da validação) vive no combobox de settings; storage evolui para `{value, validatedAt}` com migração dos legados. Design fechado por desenho anotado do usuário após 3 iterações ao vivo.
+- **Link "Observabilidade" no Painel** (pergunta do usuário na v0.44.0): abre o OpenSearch Dashboards derivando a URL do host atual (`:5601`); env opcional `DASHBOARDS_PUBLIC_URL` para proxy/acesso remoto (a `DASHBOARDS_URL` interna da rede Docker não serve para o browser).
+- **Reconcile varre órfão físico da triagem**: arquivo sem meta em `_TRIAGE_REVIEW/pending` (ex.: interrupção entre o move e a escrita do JSON) era invisível na UI e lixo em disco — agora vai para `rejected/` com meta sidecar (visível e reversível, nunca deletado), com guarda de idade de 600s para não varrer arquivo em trânsito da ingestão; contador no summary da reconciliação.
+
+- **ESC fecha todos os modais** (achado do usuário: "Migrar/remover" e "Novo tipo/domínio" não fechavam): o suporte foi para a casca compartilhada (`ModalShell.onClose` → `useEscapeKey`) — os 5 modais sem ESC ganharam (criar taxonomia, migrar taxonomia, novo projeto, excluir report do ciclo, e os 2 de conflito de rótulos); única exceção deliberada e documentada é o modal de recuperação da raiz (fluxo bloqueante — fechar deixaria o app quebrado).
+- **Caixa vazia removida do Profile**: a seção de Migração/Simulação era sempre renderizada — sem mudanças de layout, sobrava uma caixa órfã com o hint "No pending layout changes…" perdida entre as seções colapsáveis (parecia warning). Agora a seção só existe quando há mudança de layout.
+- **Botões de ação de linha padronizados em toda a aplicação** (varredura completa a pedido do usuário): duas classes canônicas compartilhadas — `rowDeleteButtonClass` (vermelha, já existente) e a nova irmã `rowActionButtonClass` (accent, não-destrutiva, ex.: mover ⇄) — substituem o ✕ fantasma do editor de layout e o ⇄ espremido dentro da célula de confiança do histórico; **toda coluna de ação agora tem rótulo "Ação"/"Action"** (histórico, evolução do classificador, editor de template ×2, editor de layout). No histórico, o DE/PARA de reclassificação saiu da célula (truncava ilegível): célula limpa com marcador `*`, DE→PARA completo no tooltip e linha própria no bloco expandido "Detalhes da Classificação". Auditoria de CSS: zero classe órfã (2 falsos positivos são hooks de tema do Recharts, já documentados no próprio arquivo).
+
+- **LEDs de status uniformizados** (regra de excelência de UI registrada a pedido do usuário): todo indicador de estado usa o padrão do LED "online" da sidebar — pontinho com glow (`--ok`/`--danger`; neutro sem glow) — incluindo o badge do botão do Telegram na toolbar do chat e o status do canal no modal de settings; bolinhas de legenda de gráfico (chaves de cor, não estado) ficam sem glow por decisão.
+
+### Corrigido
+- **Reingestão de arquivo já canônico não re-embrulha o nome** (caso real: `20260725__proj__20260320__proj__...__v01__v01`): a ingestão agora detecta a cauda `__vNN`, extrai o nome original embutido (cadeia de patterns com rejeição de resíduo por fatos do profile — data, project_id, domínios conhecidos) e restaura a linhagem de versão — reingerir vira v02 do mesmo título, não um v01 embrulhado.
+
 ## [0.44.0] - 2026-07-24
 
 ### Adicionado

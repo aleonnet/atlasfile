@@ -101,6 +101,7 @@ export interface ReconcileSummary {
   failed_docs?: number;
   orphan_projects_found?: number;
   orphan_docs_deleted?: number;
+  orphan_pending_files_moved?: number;
 }
 
 export interface ReconcileStatus {

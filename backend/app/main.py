@@ -1145,6 +1145,9 @@ def setup_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
         "projects_root_ok": root_health["ok"],
         "projects_root_error": root_health.get("error"),
         "projects_root_state": root_state["state"],
+        # v0.45.0: URL do Dashboards para o BROWSER (vazio = frontend deriva
+        # do host atual; dashboards_url interno da rede Docker não serve aqui)
+        "dashboards_public_url": settings.dashboards_public_url,
     }
 
 

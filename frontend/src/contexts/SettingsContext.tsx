@@ -15,10 +15,27 @@ const MOONSHOT_API_KEY_STORAGE = STORAGE_KEYS.moonshotApiKey;
 const AUTO_TITLE_LLM_KEY = STORAGE_KEYS.autoTitleLLM;
 const CUSTOM_MODELS_KEY = STORAGE_KEYS.customModels;
 
-function readCustomModels(): string[] {
+/** Entrada persistida de modelo custom. validatedAt null = formato legado
+ *  (≤0.44 guardava só a string) — o selo mostra "data desconhecida". */
+export interface CustomModelEntry {
+  value: string;
+  validatedAt: string | null;
+}
+
+function readCustomModelEntries(): CustomModelEntry[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(CUSTOM_MODELS_KEY) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((v): CustomModelEntry | null => {
+        if (typeof v === "string") return { value: v, validatedAt: null }; // legado
+        if (v && typeof v === "object" && typeof (v as CustomModelEntry).value === "string") {
+          const at = (v as CustomModelEntry).validatedAt;
+          return { value: (v as CustomModelEntry).value, validatedAt: typeof at === "string" ? at : null };
+        }
+        return null;
+      })
+      .filter((v): v is CustomModelEntry => v !== null);
   } catch {
     return [];
   }
@@ -53,6 +70,8 @@ type SettingsContextValue = {
   models: ModelOption[];
   /** Modelos digitados/validados pelo usuário ("provider/model"), persistidos localmente. */
   customModels: string[];
+  /** value → data ISO da validação (null = validado antes da 0.45, sem data). */
+  customModelsMeta: Record<string, string | null>;
   addCustomModel: (value: string) => void;
   /** Recarrega o catálogo do backend (após um refresh remoto). */
   reloadModels: () => Promise<void>;
@@ -78,7 +97,12 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
-  const [customModels, setCustomModels] = useState<string[]>(readCustomModels);
+  const [customModelEntries, setCustomModelEntries] = useState<CustomModelEntry[]>(readCustomModelEntries);
+  const customModels = useMemo(() => customModelEntries.map((e) => e.value), [customModelEntries]);
+  const customModelsMeta = useMemo(
+    () => Object.fromEntries(customModelEntries.map((e) => [e.value, e.validatedAt])),
+    [customModelEntries]
+  );
   const [selectedModel, setSelectedModel] = useState<string>(() => readStorage(CHAT_MODEL_STORAGE_KEY));
   const [selectedModelTriage, setSelectedModelTriage] = useState<string>(() => readStorage(TRIAGE_MODEL_STORAGE_KEY));
   const [openaiApiKey, setOpenaiApiKey] = useState<string>(() => readStorage(OPENAI_API_KEY_STORAGE));
@@ -129,9 +153,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const addCustomModel = useMemo(
     () => (value: string) => {
-      setCustomModels((prev) => {
-        if (prev.includes(value)) return prev;
-        const next = [...prev, value];
+      setCustomModelEntries((prev) => {
+        // Re-validação de um modelo já salvo atualiza a data do selo
+        const entry: CustomModelEntry = { value, validatedAt: new Date().toISOString() };
+        const next = prev.some((e) => e.value === value)
+          ? prev.map((e) => (e.value === value ? entry : e))
+          : [...prev, entry];
         writeStorage(CUSTOM_MODELS_KEY, JSON.stringify(next));
         return next;
       });
@@ -154,6 +181,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setTheme,
       models,
       customModels,
+      customModelsMeta,
       addCustomModel,
       reloadModels,
       selectedModel,
@@ -178,6 +206,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       resolvedTheme,
       models,
       customModels,
+      customModelsMeta,
       addCustomModel,
       reloadModels,
       selectedModel,

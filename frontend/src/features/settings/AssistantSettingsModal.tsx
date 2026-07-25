@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { BadgeCheck, ChevronRight, Eye, EyeOff, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import i18n from "../../i18n";
-import { formatDateTimeShort } from "../../lib/format";
+import { formatDate, formatDateTimeShort } from "../../lib/format";
 import {
   fetchCatalogConfig,
   fetchChannelConfig,
@@ -322,11 +322,22 @@ function ModelCombobox({
   const normalized = normalizeModelValue(draft);
   const isCustom = normalized.length > 0 && !knownValues.has(normalized);
 
+  // Selo com data real da validação (v0.45.0); entradas legadas (≤0.44, sem
+  // data) mantêm o texto antigo — nunca inventar data que não existe
+  const { customModelsMeta } = useSettings();
   const allOptions = [
     ...models.map((m) => ({ value: `${m.provider}/${m.model}`, label: m.label })),
     ...customModels
       .filter((c) => !models.some((m) => `${m.provider}/${m.model}` === c))
-      .map((c) => ({ value: c, label: t("settings:combobox.validatedByYou", { model: c }) })),
+      .map((c) => {
+        const validatedAt = customModelsMeta[c];
+        return {
+          value: c,
+          label: validatedAt
+            ? t("settings:combobox.validatedByYouAt", { model: c, date: formatDate(validatedAt) })
+            : t("settings:combobox.validatedByYou", { model: c }),
+        };
+      }),
   ];
   // Com o valor ativo intacto no campo, mostrar a lista inteira; filtrar só ao digitar
   const filter = draft.trim() === value.trim() ? "" : draft.trim().toLowerCase();
@@ -735,14 +746,24 @@ export function AssistantSettingsModal({
           <span
             className={cn(
               "flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 font-mono text-[0.68rem]",
-              tgStatus?.connected ? "text-success" : tgStatus?.error ? "text-destructive" : "text-tertiary"
+              tgStatus?.connected
+                ? "text-success"
+                : tgStatus?.error || channelCfg.telegram.bot_token
+                  ? "text-destructive"
+                  : "text-tertiary"
             )}
           >
+            {/* v0.45.0: LED no padrão único — verde conectado, vermelho para erro E
+                desconectado-com-token; neutro só quando não há token configurado */}
             <span
               aria-hidden
               className={cn(
                 "size-1.5 rounded-full",
-                tgStatus?.connected ? "bg-success" : tgStatus?.error ? "bg-destructive" : "bg-tertiary"
+                tgStatus?.connected
+                  ? "bg-success shadow-[0_0_6px_var(--ok)]"
+                  : tgStatus?.error || channelCfg.telegram.bot_token
+                    ? "bg-destructive shadow-[0_0_6px_var(--danger)]"
+                    : "bg-tertiary"
               )}
             />
             {tgStatus?.connected ? t("settings:channels.connected") : tgStatus?.error ? t("settings:channels.error") : channelCfg.telegram.bot_token ? t("settings:channels.disconnected") : t("settings:channels.noToken")}

@@ -1,4 +1,4 @@
-import { Database, File, FileSpreadsheet, FileText, FolderOpen, Inbox, LayoutDashboard, Presentation, RefreshCw, Search, X } from "lucide-react";
+import { Database, ExternalLink, File, FileSpreadsheet, FileText, FolderOpen, Inbox, LayoutDashboard, Presentation, RefreshCw, Search, X } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,6 +48,8 @@ type Props = {
   reconcileStatus: ReconcileStatus | null;
   reconcilingNow: boolean;
   onReconcile: () => void;
+  /** URL do Dashboards para o browser; vazio/ausente = derivar do host atual. */
+  dashboardsPublicUrl?: string;
   onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => void;
   onStatus: (msg: string, severity?: StatusSeverity) => void;
   onScanComplete: () => void;
@@ -258,6 +260,7 @@ export function PainelView({
   reconcileStatus,
   reconcilingNow,
   onReconcile,
+  dashboardsPublicUrl,
   onDecision,
   onStatus,
   onScanComplete,
@@ -329,6 +332,11 @@ export function PainelView({
       setMoveSubmitting(false);
     }
   }
+
+  // Dashboards para o BROWSER: a env interna da rede Docker não serve aqui;
+  // sem config explícita, deriva do host em que a própria UI está aberta.
+  const dashboardsHref =
+    (dashboardsPublicUrl || "").trim() || `${window.location.protocol}//${window.location.hostname}:5601`;
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
   const selectedProjectLabel =
@@ -504,6 +512,16 @@ export function PainelView({
                     {t("painel:card.orphans")} <strong className="text-foreground">{reconcileStatus!.summary.orphan_docs_deleted}</strong>
                   </span>
                 )}
+                <a
+                  href={dashboardsHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={t("painel:card.observabilityHint")}
+                  className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-accent hover:underline"
+                >
+                  <ExternalLink className="size-3.5" aria-hidden />
+                  {t("painel:card.observability")}
+                </a>
               </div>
             </div>
           )}

@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.45.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [ciclo1_confianca_acesso_naming_v0450](ciclo1_confianca_acesso_naming_v0450.plan.md) | Estado vivo do modelo custom nos seletores (selo honesto com re-validação; storage com data e migração de legado), link "Observabilidade" no Painel (URL derivada do host + `DASHBOARDS_PUBLIC_URL` opcional), reconcile varre órfão físico do pending (guarda de 600s, rejected com sidecar), e reingestão de nome canônico desembrulha o original (fim do `__v01__v01`; linhagem de versão restaurada) — smokes reais na stack dev, incluindo o Ollama caindo de verdade durante o teste do badge |
+
+---
+
 ## 0.44.0
 
 | # | Plano | Escopo |

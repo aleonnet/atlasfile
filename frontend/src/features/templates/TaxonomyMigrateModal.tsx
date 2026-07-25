@@ -124,7 +124,7 @@ export function TaxonomyMigrateModal({ open, onClose, onChanged }: Props) {
   }
 
   return (
-    <ModalShell label={t("templates:migrate.title")} title={t("templates:migrate.title")} className="max-h-[85vh] overflow-y-auto">
+    <ModalShell label={t("templates:migrate.title")} title={t("templates:migrate.title")} className="max-h-[85vh] overflow-y-auto" onClose={onClose}>
       <p className="text-sm text-muted-foreground">
         {t("templates:migrate.intro")}
       </p>

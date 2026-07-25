@@ -462,7 +462,7 @@ export function TemplateEditorView() {
                   <th>LABEL</th>
                   <th>ALIASES</th>
                   <th>{t("templates:editor.folderHeader")}</th>
-                  <th style={{ width: 40 }} />
+                  <th style={{ width: 44 }}>{t("common:table.actionColumn")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -497,7 +497,7 @@ export function TemplateEditorView() {
                   <th>ALIASES</th>
                   <th>{t("templates:editor.extensionsHeader")}</th>
                   <th>{t("templates:editor.folderHeader")}</th>
-                  <th style={{ width: 40 }} />
+                  <th style={{ width: 44 }}>{t("common:table.actionColumn")}</th>
                 </tr>
               </thead>
               <tbody>

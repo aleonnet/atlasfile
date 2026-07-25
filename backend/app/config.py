@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     # OpenSearch Dashboards: auto-import do conjunto "AtlasFile — Operação" no boot
     dashboards_url: str = "http://opensearch-dashboards:5601"
     dashboards_auto_import: bool = True
+    # URL do Dashboards PARA O BROWSER do usuário (dashboards_url é endereço
+    # interno da rede Docker, inútil fora dela). Vazio = o frontend deriva
+    # http(s)://<host-atual>:5601 sozinho; preencher só em proxy/acesso remoto.
+    dashboards_public_url: str = ""
     opensearch_nested_objects_limit: int = 50000
 
     projects_root: str = "/projects"

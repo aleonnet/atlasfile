@@ -36,7 +36,6 @@
     "simulate": "Simulate",
     "conflictStrategy": "Conflict strategy:",
     "cleanupEmptyDirs": "Delete empty folders",
-    "noLayoutChanges": "No pending layout changes. Edit roots or area mapping to simulate.",
     "applyingAura": "Applying layout — moving folders and updating the profile",
     "applyMigration": "Apply migration",
     "downloadPlan": "Download plan (.json)",

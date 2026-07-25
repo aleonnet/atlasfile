@@ -32,6 +32,7 @@
   },
   "combobox": {
     "validatedByYou": "{{model}} (validated by you)",
+    "validatedByYouAt": "{{model}} (validated by you on {{date}})",
     "placeholder": "provider/model — type for new models",
     "validateFailed": "Failed to validate",
     "validate": "Validate",
@@ -102,5 +103,12 @@
     "errorPrefix": "Error: {{error}}",
     "saving": "Saving...",
     "comingSoon": "Coming soon"
+  },
+  "modelStatus": {
+    "checking": "Checking model…",
+    "available": "Available now",
+    "modelMissing": "Model not found on the endpoint — run: ollama pull {{model}}",
+    "endpointDown": "Unavailable now — is Ollama running? run: ollama serve",
+    "unknown": "Model state not confirmed"
   }
 }

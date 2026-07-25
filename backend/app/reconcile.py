@@ -190,6 +190,67 @@ def _triage_rows(project_root: Path, project_id: str, profile: dict[str, Any]) -
     return out
 
 
+def _sweep_orphan_pending_files(project_root: Path, profile: dict[str, Any]) -> int:
+    """v0.45.0: órfão FÍSICO no pending — arquivo sem meta JSON que o referencie
+    (ex.: interrupção entre o move e a escrita do meta na ingestão). Invisível
+    na UI e lixo em disco; espelho do self-healing inverso já existente
+    (triage.list_pending: meta sem arquivo → rejected). Guarda de idade =
+    AUTO_RECONCILE_INTERVAL_SECONDS (default 600s): arquivo na janela de
+    trânsito move→meta da ingestão nunca é varrido. Dotfiles (.DS_Store)
+    ignorados. Move para rejected com meta sidecar — vira visível e reversível
+    na UI de rejeitados, nunca deletado."""
+    triage = triage_paths(profile)
+    pending_dir = project_root / triage["pending"]
+    rejected_dir = project_root / triage["rejected"]
+    if not pending_dir.exists():
+        return 0
+    min_age = float(settings.auto_reconcile_interval_seconds or 600)
+
+    referenced: set[str] = set()
+    for meta in pending_dir.glob("*.json"):
+        try:
+            data = json.loads(meta.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for field in ("filename", "source_path"):
+            value = str(data.get(field) or "")
+            if value:
+                referenced.add(Path(value).name)
+
+    moved = 0
+    now = time.time()
+    for f in sorted(pending_dir.iterdir()):
+        if not f.is_file() or f.name.startswith(".") or f.suffix.lower() == ".json" or f.name in referenced:
+            continue
+        try:
+            if now - f.stat().st_mtime < min_age:
+                continue
+        except OSError:
+            continue
+        rejected_dir.mkdir(parents=True, exist_ok=True)
+        target = rejected_dir / f.name
+        if target.exists():
+            target = rejected_dir / f"{f.stem}__orphan{f.suffix}"
+        f.rename(target)
+        doc_id = str(uuid.uuid4())
+        meta_payload = {
+            "doc_id": doc_id,
+            "project_id": str(profile.get("project_id") or project_root.name),
+            "filename": target.name,
+            "original_filename": f.name,
+            "decision": "orphaned_missing_metadata",
+            "reason": "pending_file_without_metadata",
+            "confidence_score": 0.0,
+            "source_path": str(target),
+        }
+        (rejected_dir / f"{doc_id}.json").write_text(
+            json.dumps(meta_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        moved += 1
+        logger.info("órfão físico em pending movido para rejected: %s", target.name)
+    return moved
+
+
 def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict[str, Any]:
     project_id = normalize_text(str(profile.get("project_id", project_root.name)))
     index_path = project_root / "_INDEX.md"
@@ -285,6 +346,9 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
                 }
             )
 
+    # varre órfãos físicos ANTES de montar as rows: o meta sidecar recém-criado
+    # já entra como linha de rejected neste mesmo reconcile
+    orphan_pending_moved = _sweep_orphan_pending_files(project_root, profile)
     triage_rows = _triage_rows(project_root, project_id, profile)
 
     rows: list[dict[str, str]] = []
@@ -338,6 +402,7 @@ def reconcile_project_index(project_root: Path, profile: dict[str, Any]) -> dict
         "added_rows": added_rows,
         "removed_rows": removed_rows,
         "adjustments_applied": added_rows + removed_rows,
+        "orphan_pending_files_moved": orphan_pending_moved,
     }
 
 

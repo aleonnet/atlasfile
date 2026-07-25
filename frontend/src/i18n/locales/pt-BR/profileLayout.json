@@ -36,7 +36,6 @@
     "simulate": "Simular",
     "conflictStrategy": "Estratégia conflito:",
     "cleanupEmptyDirs": "Excluir pastas vazias",
-    "noLayoutChanges": "Sem alterações de layout pendentes. Edite raízes ou mapeamento de áreas para simular.",
     "applyingAura": "Aplicando layout — movendo pastas e atualizando o profile",
     "applyMigration": "Aplicar migração",
     "downloadPlan": "Baixar plano (.json)",

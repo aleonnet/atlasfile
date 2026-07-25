@@ -61,6 +61,15 @@ export const rowDeleteButtonClass =
   "text-destructive shadow-none transition-colors hover:bg-destructive/20 " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
 
+/** Irmã não-destrutiva do rowDeleteButtonClass (v0.45.0, padronização dos
+ *  botões de ação de linha): mesma geometria, paleta accent — ex.: mover
+ *  documento (⇄) no histórico. Toda tabela com botão de linha usa uma das
+ *  duas E rotula a coluna ("Ação"). */
+export const rowActionButtonClass =
+  "inline-flex size-6 items-center justify-center rounded-md border-0 bg-accent-soft/60 text-xs font-semibold " +
+  "text-accent shadow-none transition-colors hover:bg-accent-soft " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
+
 /** Classes para inputs embutidos em células de tabela de edição. */
 export const tableInputClass =
   "w-full rounded border-0 bg-transparent px-1.5 py-1 text-[0.82rem] text-foreground shadow-none outline-none " +

@@ -25,6 +25,17 @@ function Probe() {
   );
 }
 
+function CustomModelsProbe() {
+  const { customModels, customModelsMeta, addCustomModel } = useSettings();
+  return (
+    <div>
+      <span data-testid="values">{customModels.join(",")}</span>
+      <span data-testid="meta">{JSON.stringify(customModelsMeta)}</span>
+      <button onClick={() => addCustomModel("ollama/novo:1b")}>add</button>
+    </div>
+  );
+}
+
 describe("SettingsContext — modelo default de instância nova", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -53,5 +64,39 @@ describe("SettingsContext — modelo default de instância nova", () => {
     await waitFor(() => {
       expect(screen.getByTestId("chat")).toHaveTextContent("anthropic/claude-sonnet-5");
     });
+  });
+});
+
+describe("SettingsContext — modelos custom com data de validação (v0.45.0)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it("migra formato legado (string[]) sem perder o modelo; data fica null", async () => {
+    localStorage.setItem("atlasfile-custom-models", JSON.stringify(["ollama/gemma4:12b"]));
+    renderWithProviders(
+      <SettingsProvider>
+        <CustomModelsProbe />
+      </SettingsProvider>
+    );
+    expect(screen.getByTestId("values")).toHaveTextContent("ollama/gemma4:12b");
+    expect(screen.getByTestId("meta")).toHaveTextContent('{"ollama/gemma4:12b":null}');
+  });
+
+  it("addCustomModel persiste no formato novo com validatedAt", async () => {
+    renderWithProviders(
+      <SettingsProvider>
+        <CustomModelsProbe />
+      </SettingsProvider>
+    );
+    screen.getByRole("button", { name: "add" }).click();
+    await waitFor(() => {
+      expect(screen.getByTestId("values")).toHaveTextContent("ollama/novo:1b");
+    });
+    const stored = JSON.parse(localStorage.getItem("atlasfile-custom-models") ?? "[]");
+    expect(stored).toHaveLength(1);
+    expect(stored[0].value).toBe("ollama/novo:1b");
+    expect(typeof stored[0].validatedAt).toBe("string");
   });
 });

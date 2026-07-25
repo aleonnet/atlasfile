@@ -55,6 +55,9 @@ services:
       - PROJECTS_ROOT=/projects
       - DASHBOARDS_URL=${DASHBOARDS_URL:-http://opensearch-dashboards:5601}
       - DASHBOARDS_AUTO_IMPORT=${DASHBOARDS_AUTO_IMPORT:-true}
+      # URL do Dashboards para o BROWSER (proxy/acesso remoto); vazio = o
+      # frontend deriva http(s)://<host-atual>:5601
+      - DASHBOARDS_PUBLIC_URL=${DASHBOARDS_PUBLIC_URL:-}
       # Caminho do host montado em /projects — informativo, para a UI mostrar
       # ao usuário onde os arquivos ficam fisicamente
       - PROJECTS_HOST_ROOT=${PROJECTS_HOST_ROOT:-}

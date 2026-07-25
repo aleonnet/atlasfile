@@ -229,7 +229,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
       </Card>
 
       {correcting && (
-        <ModalShell label={t("triage:conflicts.resolveTitle")} title={t("triage:conflicts.resolveTitle")}>
+        <ModalShell label={t("triage:conflicts.resolveTitle")} title={t("triage:conflicts.resolveTitle")} onClose={() => setCorrecting(null)}>
           <p className="text-sm">
             {t("triage:conflicts.fileLabel")} <strong className="text-foreground-strong">{fileName(correcting.refs[0] || "")}</strong>
           </p>
@@ -301,7 +301,7 @@ export function LabelConflictsCard({ onResolved }: { onResolved?: () => void }) 
       )}
 
       {creating && (
-        <ModalShell label={t("triage:conflicts.createLabel")} title={t("triage:conflicts.createTitle")}>
+        <ModalShell label={t("triage:conflicts.createLabel")} title={t("triage:conflicts.createTitle")} onClose={() => setCreating(null)}>
           <p className="text-sm text-muted-foreground">
             {t("triage:conflicts.createIntroChoice")}{" "}
             <strong className="font-mono text-foreground-strong">

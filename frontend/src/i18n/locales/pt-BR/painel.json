@@ -21,7 +21,9 @@
     "reindexed": "Reindexados:",
     "skip": "Skip:",
     "failures": "Falhas:",
-    "orphans": "Órfãos:"
+    "orphans": "Órfãos:",
+    "observability": "Observabilidade",
+    "observabilityHint": "Abrir o OpenSearch Dashboards (dashboards de operação do AtlasFile) — login admin + senha do .env"
   },
   "results": {
     "title": "Resultados completos",
@@ -63,7 +65,7 @@
     "starting": "Iniciando reconciliação de {{scope}}...",
     "progress": "Reconciliando: {{current}} / {{total}} docs | Projeto: {{project}} | Arquivo: {{file}}{{skip}}",
     "progressSkip": " (skip: {{count}})",
-    "summary": "Reconciliação concluída{{scope}}: {{adjustments}}, {{indexed}}{{skip}}{{fail}}{{orphan}}",
+    "summary": "Reconciliação concluída{{scope}}: {{adjustments}}, {{indexed}}{{skip}}{{fail}}{{orphan}}{{pendingOrphan}}",
     "scopeSuffix": " ({{scope}})",
     "summaryAdjustments_one": "{{count}} ajuste",
     "summaryAdjustments_other": "{{count}} ajustes",
@@ -73,7 +75,9 @@
     "summaryFail_one": ", {{count}} falha",
     "summaryFail_other": ", {{count}} falhas",
     "summaryOrphan_one": ", {{count}} órfão removido",
-    "summaryOrphan_other": ", {{count}} órfãos removidos"
+    "summaryOrphan_other": ", {{count}} órfãos removidos",
+    "summaryPendingOrphan_one": ", {{count}} arquivo órfão da triagem movido para rejeitados",
+    "summaryPendingOrphan_other": ", {{count}} arquivos órfãos da triagem movidos para rejeitados"
   },
   "location": {
     "pageParagraph": "Página {{page}} / {{paragraph}}º parágrafo{{part}}",

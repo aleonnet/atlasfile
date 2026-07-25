@@ -30,7 +30,8 @@ visível na UI" (label + tooltip por modo)._
 
 | Item | O que é | Registrado em |
 |---|---|---|
-| Órfão em `_TRIAGE_REVIEW/pending` | Arquivo físico órfão (sem JSON de metadados) pode sobrar em pending após decisão — invisível na UI, sem efeito, mas é lixo em disco; varrer no reconcile. | 2026-07-23 |
+| ~~Órfão em `_TRIAGE_REVIEW/pending`~~ | **Entregue na v0.45.0** — ver `planos_concluidos/ciclo1_confianca_acesso_naming_v0450.plan.md` (varredura no reconcile com guarda de 600s; move para rejected com meta sidecar, nunca deleta) | — |
+| Nome embrulhado como sinal de classificação | A reingestão de canônico foi corrigida (v0.45.0), mas a CLASSIFICAÇÃO ainda vê o nome embrulhado como sinal de filename (tokens de projeto/domínio no nome podem enviesar aliases). Usar o nome desembrulhado como sinal exige benchmark próprio antes. | 2026-07-25, observação do ciclo 1 |
 
 ## Instalação / onboarding
 
@@ -42,7 +43,7 @@ visível na UI" (label + tooltip por modo)._
 
 | Item | O que é | Registrado em |
 |---|---|---|
-| Link "Observabilidade" na UI | Não há como abrir o OpenSearch Dashboards a partir do AtlasFile — o usuário precisa saber a URL :5601 de cor. Um link no Painel (com o host derivado da config) fecha o buraco. | 2026-07-24, pergunta do usuário no teste da v0.44.0 |
+| ~~Link "Observabilidade" na UI~~ | **Entregue na v0.45.0** — ver `planos_concluidos/ciclo1_confianca_acesso_naming_v0450.plan.md` (URL derivada do host atual + `DASHBOARDS_PUBLIC_URL` opcional para proxy) | — |
 | Heatmap hora × dia da ingestão | Exige campo derivado na INDEXAÇÃO (`ingested_hour`/`ingested_weekday`) — scripted fields via ndjson apagam o cache de campos do index-pattern (aprendido em campo, v0.42.0). | 2026-07-23 |
 | Alerting nativo do OpenSearch | Monitores: extração `failed` acima de N, custo LLM diário acima de teto, fila de triagem acumulando — pendente de o usuário definir canal de notificação (e-mail/webhook). | 2026-07-23 |
 | Reporting PDF agendado | Relatório periódico do dashboard "AtlasFile — Operação" via plugin de reporting. | 2026-07-23 |
@@ -52,7 +53,8 @@ visível na UI" (label + tooltip por modo)._
 
 | Item | O que é | Registrado em |
 |---|---|---|
-| Estado vivo do modelo custom no seletor | O selo "(validado por você)" é localStorage estático: validou uma vez, nunca re-verifica — o usuário pode achar que tem um modelo up quando o Ollama nem está rodando, e a culpa parece dele. Proposta: re-validação ao selecionar/abrir o chat (chamada barata ao `/v1/models`), selo honesto com data e estado ("indisponível agora — Ollama parado?" com dica `ollama serve`/`ollama pull`). Auto-start do daemon NÃO é possível do container (Ollama roda no host); só via instalador/agente no host (`--with-ollama` já existe). | 2026-07-24, achado do usuário no teste da v0.44.0 |
+| Seletores de modelo agrupados por provedor | Lista plana mistura providers e cresce mal. Decisão de design já tomada: `<optgroup>` (um combo, hierarquia visual provider → modelos, zero clique extra — padrão LM Studio/Cursor), NÃO dois selects encadeados (2 interações para trocar modelo no chat). Alvos: select do chat, select da triagem e combobox do settings (headers de seção na listbox). | 2026-07-25, proposta do usuário |
+| ~~Estado vivo do modelo custom no seletor~~ | **Entregue na v0.45.0** — ver `planos_concluidos/ciclo1_confianca_acesso_naming_v0450.plan.md` (LED verde/vermelho com tooltip nos seletores de chat e triagem; cheque vivo a cada 60s enquanto abertos + ao focar a janela; storage com data e migração). Auto-start do daemon segue impossível do container — só instalador/agente no host. | — |
 
 ## E2E pendentes
 

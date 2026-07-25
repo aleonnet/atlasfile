@@ -1,7 +1,6 @@
-import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../../components/ui/button";
-import { CollapsibleSection, editTableClass, tableInputClass } from "../../components/ui/collapsible-section";
+import { CollapsibleSection, editTableClass, rowDeleteButtonClass, tableInputClass } from "../../components/ui/collapsible-section";
 import { Input } from "../../components/ui/input";
 import { nativeSelectClass } from "../../components/ui/modal-shell";
 import type { ProjectProfileV2 } from "./types";
@@ -132,7 +131,7 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
             <tr>
               <th>business_domain</th>
               <th>folder</th>
-              <th style={{ width: 40 }} />
+              <th style={{ width: 44 }}>{t("common:table.actionColumn")}</th>
             </tr>
           </thead>
           <tbody>
@@ -145,9 +144,17 @@ export function ProfileLayoutEditor({ profile, onChange }: Props) {
                   <input className={tableInputClass} value={row.folder} onChange={(e) => updateFolder(idx, e.target.value)} />
                 </td>
                 <td>
-                  <Button variant="ghost" size="icon" className="size-7 text-tertiary hover:text-destructive" title={t("profileLayout:editor.removeTitle")} aria-label={t("profileLayout:editor.removeRowAria")} onClick={() => removeAreaFolder(row.business_domain)}>
-                    <X className="size-3.5" />
-                  </Button>
+                  {/* v0.45.0: padrão único de deleção de linha (rowDeleteButtonClass),
+                      igual às demais tabelas — o ✕ fantasma destoava */}
+                  <button
+                    type="button"
+                    className={rowDeleteButtonClass}
+                    title={t("profileLayout:editor.removeTitle")}
+                    aria-label={t("profileLayout:editor.removeRowAria")}
+                    onClick={() => removeAreaFolder(row.business_domain)}
+                  >
+                    ×
+                  </button>
                 </td>
               </tr>
             ))}

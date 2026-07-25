@@ -550,6 +550,7 @@ function AppShell() {
             onDecision={handleDecision}
             onStatus={handleStatus}
             onScanComplete={handleDataChanged}
+            dashboardsPublicUrl={setupStatusQuery.data?.dashboards_public_url}
           />
           )}
         </div>
@@ -705,7 +706,7 @@ function AppShell() {
       />
 
       {newProjectModalOpen && (
-        <ModalShell label={t("painel:app.newProjectTitle")} title={t("painel:app.newProjectTitle")} size="sm">
+        <ModalShell label={t("painel:app.newProjectTitle")} title={t("painel:app.newProjectTitle")} size="sm" onClose={() => setNewProjectModalOpen(false)}>
           <label className={fieldLabelClass} htmlFor="new-project-name">{t("painel:app.projectNameLabel")}</label>
           <Input
             id="new-project-name"

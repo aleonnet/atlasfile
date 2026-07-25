@@ -119,6 +119,8 @@ export interface SetupStatus {
   /** Estado fino da raiz: emptied = pasta host excluída sob bind mount (mount
    *  fantasma) — recuperação via RootRecoveryModal. */
   projects_root_state?: "ok" | "unavailable" | "emptied";
+  /** URL do Dashboards para o browser (vazio = derivar do host atual :5601). */
+  dashboards_public_url?: string;
 }
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {

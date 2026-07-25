@@ -454,9 +454,10 @@ describe("IngestTriageCard", () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/Modelo triagem/i)).toHaveValue("ollama/gemma3:12b");
     });
-    // exibe o rótulo "validado por você" (asserção DOM: a seção colapsável fica fechada)
+    // v0.45.0: a opção mostra só o valor — o estado vivo é do LED ao lado, e a
+    // proveniência (data de validação) fica no combobox de settings
     const select = screen.getByLabelText(/Modelo triagem/i) as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.textContent)).toContain("ollama/gemma3:12b (validado por você)");
+    expect(Array.from(select.options).map((o) => o.textContent)).toContain("ollama/gemma3:12b");
     expect(screen.queryByText(/API Key não configurada/i)).not.toBeInTheDocument();
     localStorage.removeItem("atlasfile-custom-models");
   });

@@ -21,7 +21,9 @@
     "reindexed": "Reindexed:",
     "skip": "Skip:",
     "failures": "Failures:",
-    "orphans": "Orphans:"
+    "orphans": "Orphans:",
+    "observability": "Observability",
+    "observabilityHint": "Open OpenSearch Dashboards (AtlasFile operations dashboards) — login admin + password from .env"
   },
   "results": {
     "title": "Full results",
@@ -63,7 +65,7 @@
     "starting": "Starting reconciliation of {{scope}}...",
     "progress": "Reconciling: {{current}} / {{total}} docs | Project: {{project}} | File: {{file}}{{skip}}",
     "progressSkip": " (skip: {{count}})",
-    "summary": "Reconciliation completed{{scope}}: {{adjustments}}, {{indexed}}{{skip}}{{fail}}{{orphan}}",
+    "summary": "Reconciliation completed{{scope}}: {{adjustments}}, {{indexed}}{{skip}}{{fail}}{{orphan}}{{pendingOrphan}}",
     "scopeSuffix": " ({{scope}})",
     "summaryAdjustments_one": "{{count}} adjustment",
     "summaryAdjustments_other": "{{count}} adjustments",
@@ -73,7 +75,9 @@
     "summaryFail_one": ", {{count}} failure",
     "summaryFail_other": ", {{count}} failures",
     "summaryOrphan_one": ", {{count}} orphan removed",
-    "summaryOrphan_other": ", {{count}} orphans removed"
+    "summaryOrphan_other": ", {{count}} orphans removed",
+    "summaryPendingOrphan_one": ", {{count}} orphan triage file moved to rejected",
+    "summaryPendingOrphan_other": ", {{count}} orphan triage files moved to rejected"
   },
   "location": {
     "pageParagraph": "Page {{page}} / paragraph {{paragraph}}{{part}}",
