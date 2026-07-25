@@ -32,8 +32,14 @@ ensure-dashboards-cookie:
 	fi
 
 # Sobe todos os serviços (opensearch, api, mcp, web). Não roda test antes.
+# Faxina automática pós-build: o build cache cresce a cada rebuild e NUNCA deve
+# ser tarefa do usuário (caso real 2026-07-25: 36GB acumulados derrubaram a
+# ingestão por disco cheio). Teto de 2GB ≈ 2 ciclos completos de build (um ciclo
+# medido gera ~1GB) — mantém rebuilds rápidos sem crescer sem limite.
 docker-up: ensure-dashboards-cookie
 	docker compose up -d --build
+	docker image prune -f
+	docker builder prune -f --keep-storage=2GB
 
 # Roda test, depois sobe opensearch + dashboards + api + mcp + web com rebuild. Remove imagens <none>.
 # O smoke embutido aqui é curto: template -> initialize -> profile.
@@ -48,6 +54,7 @@ docker-update: test ensure-dashboards-cookie
 	docker compose up -d --build opensearch opensearch-dashboards api mcp web
 	$(MAKE) docker-smoke-init
 	docker image prune -f
+	docker builder prune -f --keep-storage=2GB
 	@echo "OpenSearch, Dashboards, API, MCP e Web atualizados."
 
 docker-smoke-init:

@@ -15,6 +15,12 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.50.4] - 2026-07-25
+
+### Corrigido
+- **Faxina automática do build cache** (pergunta do usuário: "como isso fica com o usuário final?" — resposta: nunca é tarefa dele): `make docker-up` e `make docker-update` agora rodam `docker builder prune --keep-storage=2GB` após o build (caso real: 36GB acumulados em rebuilds derrubaram a ingestão por disco cheio; teto de 2GB ≈ 2 ciclos completos, um ciclo medido gera ~1GB).
+- **Multi-checkout documentado no `.env.example`**: dois clones do repo na mesma máquina derivam o MESMO projeto compose — mesmos containers e mesmo volume do OpenSearch, com os dois `.env` disputando a senha do mesmo índice (a causa factual das quedas recorrentes "instância offline": 401 no boot de quem tem a senha que não bate). Solução: `COMPOSE_PROJECT_NAME` próprio no clone de desenvolvimento.
+
 ## [0.50.3] - 2026-07-25
 
 ### Corrigido
