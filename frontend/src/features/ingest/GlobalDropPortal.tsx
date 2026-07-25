@@ -1,13 +1,23 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckCircle2, File as FileIcon, FileSpreadsheet, FileText, Loader2, Presentation, UploadCloud, X, XCircle } from "lucide-react";
+import { CheckCircle2, File as FileIcon, FileSpreadsheet, FileText, Presentation, UploadCloud, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { triggerScan, uploadFileWithProgress } from "../../api";
+import { ApiError } from "../../lib/apiError";
+import { MiniOrb } from "../../components/ui/processing-aura";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { toast } from "../../components/ui/sonner";
 import { ALL_PROJECTS, useProject } from "../../contexts/ProjectContext";
+import i18n from "../../i18n";
 import { projectColor, projectInitial } from "../../layouts/projectVisual";
 import { cn } from "../../lib/utils";
+import { useIngestMonitor } from "./hooks/useIngestMonitor";
+
+function formatPhaseLabel(phase?: string | null): string {
+  if (!phase) return "";
+  const key = `ingest:phase.${phase}`;
+  return i18n.exists(key) ? i18n.t(key) : phase;
+}
 
 type QueueItemStatus = "aguardando" | "enviando" | "enviado" | "erro";
 
@@ -78,6 +88,32 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
   // concluída espera os 4s de auto-fechamento (scanning volta a false antes).
   const scanFired = useRef(false);
 
+  // v0.50.0: o widget é a superfície ÚNICA de processamento — o monitor SSE
+  // global também o convoca quando o auto-ingest (watcher/sweep) dispara um
+  // scan sem nenhum upload envolvido.
+  const { ingestStatus, setPending, startMonitor } = useIngestMonitor();
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    const running = !!ingestStatus?.running;
+    if (wasRunning.current && !running && ingestStatus?.last_run_finished_at && queue.length === 0) {
+      // Run do auto-ingest (sem fila de upload): anuncia o resultado e
+      // atualiza triagem/stats — o fluxo do portal já faz isso no próprio flow
+      const processed = ingestStatus.processed_count ?? 0;
+      const failed = ingestStatus.failed_count ?? 0;
+      if (failed > 0) {
+        toast.error(
+          `${t("ingest:count.processed", { count: processed })}, ${t("ingest:count.failure", { count: failed })}`,
+          { duration: 8000 }
+        );
+      } else if (processed > 0) {
+        toast.success(t("ingest:portal.autoScanSuccess", { count: processed }));
+      }
+      if (processed > 0 || failed > 0) onScanComplete();
+    }
+    wasRunning.current = running;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ingestStatus?.running]);
+
   const enqueue = useCallback((projectId: string, files: File[]) => {
     if (!files.length) return;
     scanFired.current = false;
@@ -109,7 +145,10 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
       if (finished && anySent && !scanFired.current) {
         scanFired.current = true;
         setScanning(true);
-        triggerScan(queueProject)
+        setPending(queueProject);
+        const scanPromise = triggerScan(queueProject);
+        startMonitor(scanPromise);
+        scanPromise
           .then((result) => {
             if (result.failed_count > 0) {
               const firstError = result.errors?.[0];
@@ -123,7 +162,16 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
             }
             onScanComplete();
           })
-          .catch(() => toast.error(t("ingest:portal.scanFailed")))
+          .catch((error: unknown) => {
+            // 409 = outro scan (auto-ingest/outro projeto) detém o lock; os
+            // arquivos ficam na inbox e o watcher os processa em seguida —
+            // não é falha para o usuário
+            if (error instanceof ApiError && error.code === "INGEST_IN_PROGRESS") {
+              toast.info(t("ingest:portal.scanDeferred"));
+            } else {
+              toast.error(t("ingest:portal.scanFailed"));
+            }
+          })
           .finally(() => {
             setScanning(false);
             window.setTimeout(() => {
@@ -311,9 +359,11 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* Fila de upload (canto inferior esquerdo; sonner ocupa o direito) */}
+      {/* Widget de processamento (canto inferior esquerdo; sonner ocupa o
+          direito). v0.50.0: superfície ÚNICA — fila de upload do portal E
+          qualquer scan em curso (manual via API, auto-ingest do watcher). */}
       <AnimatePresence>
-        {queue.length > 0 && (
+        {(queue.length > 0 || ingestStatus?.running) && (
           <motion.div
             initial={reducedMotion ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -323,12 +373,12 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
           >
             <div className="mb-2 flex items-center justify-between">
               <p className="font-display text-xs font-semibold text-foreground-strong">
-                {scanning
+                {ingestStatus?.running || scanning
                   ? t("ingest:scan.processingInbox")
                   : t("ingest:portal.uploadTitle", { project: projects.find((p) => p.project_id === queueProject)?.project_label ?? queueProject ?? "" })}
               </p>
-              {scanning ? (
-                <Loader2 size={13} className="animate-spin text-accent" aria-hidden />
+              {ingestStatus?.running || scanning ? (
+                <MiniOrb className="size-3" />
               ) : (
                 <button
                   type="button"
@@ -375,6 +425,36 @@ export function GlobalDropPortal({ onScanComplete, disabled = false }: Props) {
                 </li>
               ))}
             </ul>
+            {/* Fase real do scan (SSE): substitui o spinner genérico e aparece
+                também em runs do auto-ingest, sem fila de upload nenhuma */}
+            {ingestStatus?.running && (
+              <div className={cn("space-y-1", queue.length > 0 && "mt-2 border-t border-border pt-2")}>
+                <p className="font-display text-xs font-semibold text-foreground-strong">
+                  {formatPhaseLabel(ingestStatus.phase) || t("ingest:scan.starting")}
+                  {ingestStatus.project_id && (
+                    <span className="ml-1 font-normal text-muted-foreground">
+                      · {projects.find((p) => p.project_id === ingestStatus.project_id)?.project_label ?? ingestStatus.project_id}
+                    </span>
+                  )}
+                </p>
+                <div className="h-1 overflow-hidden rounded-full bg-panel-strong">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-accent to-accent-light shadow-[0_0_8px_var(--accent-soft)] transition-[width] duration-300"
+                    style={{
+                      width: (ingestStatus.progress_total ?? 0) > 0
+                        ? `${Math.min(100, (100 * (ingestStatus.progress_current ?? 0)) / ingestStatus.progress_total!)}%`
+                        : "0%",
+                    }}
+                  />
+                </div>
+                <p className="font-mono text-[0.65rem] text-tertiary">
+                  {t("ingest:scan.progress", { current: ingestStatus.progress_current ?? 0, count: ingestStatus.progress_total ?? 0 })}
+                </p>
+                {ingestStatus.progress_file && (
+                  <p className="truncate font-mono text-[0.65rem] text-tertiary">{ingestStatus.progress_file}</p>
+                )}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

@@ -50,10 +50,18 @@ export function useReconcileMonitor({ onStatus }: { onStatus: (msg: string, seve
     isActive: (status) => !!status.running,
     onFinished: (latest) => {
       invalidateAfterReconcile();
-      // Resumo apenas quando houve uma execução observada (summary presente) —
-      // um boot com status idle não deve anunciar "concluída"
-      if (latest.summary && (startedHereRef.current || latest.last_run_finished_at)) {
+      // v0.50.0 (sem CTA de reconciliar): run pedido pelo usuário sempre anuncia
+      // o resumo; run AUTOMÁTICO (loop de AUTO_RECONCILE_INTERVAL_SECONDS) só
+      // anuncia quando CORRIGIU algo — transparência sem ruído a cada ciclo
+      const fixes =
+        (Number(latest.summary?.adjustments_applied) || 0) +
+        (Number(latest.summary?.indexed_docs) || 0) +
+        (Number(latest.summary?.orphan_docs_deleted) || 0) +
+        (Number(latest.summary?.orphan_pending_files_moved) || 0);
+      if (latest.summary && startedHereRef.current) {
         onStatus(summaryMessage(latest, scopeLabelRef.current));
+      } else if (latest.summary && latest.last_run_finished_at && fixes > 0) {
+        onStatus(`${i18n.t("painel:reconcile.autoLabel")} ${summaryMessage(latest)}`);
       }
       startedHereRef.current = false;
       scopeLabelRef.current = undefined;

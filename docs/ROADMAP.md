@@ -83,6 +83,7 @@ visível na UI" (label + tooltip por modo)._
 | Item | O que é | Estado |
 |---|---|---|
 | ~~Shader blackhole (item a do trio)~~ | **Redefinido pelo usuário e entregue na v0.47.0**: em vez de indicador de contexto do chat, o blackhole substituiu o halo arco-íris da **aura de processamento** (orb + respiração accent — ver `planos_concluidos/llm_type_aura_medidor_v0470.plan.md`). O medidor de contexto seguiu textual e ficou honesto (janela real do Ollama, recálculo na troca, tooltip com heurística). | — |
+| Lensing "por cima do conteúdo" na aura e no ciclo | Pedido do usuário (2026-07-25): o shader hoje fica atrás (`-z-10`), efeito "papel de parede". Limite técnico: WebGL não refrata pixels do DOM. Caminho desenhado e aceito em discussão: canvas ACIMA do conteúdo (blend aditivo, alfa baixo, pointer-events-none) + poço gravitacional com `backdrop-filter` radial seguindo o orb (distorce conteúdo real). Validação obrigatória na GPU real (chrome --headless=new), não Playwright software. | Aguarda plano próprio com mockups |
 
 ## Como usar este arquivo
 

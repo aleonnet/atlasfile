@@ -27,9 +27,14 @@ class Settings(BaseSettings):
     # validation set (0 desliga); warm-up manda os primeiros N por classe ao treino.
     classifier_holdout_modulus: int = 5
     classifier_holdout_min_train_per_class: int = 3
-    auto_scan_on_startup: bool = False
     auto_reconcile_interval_seconds: int = 0
     auto_reconcile_reindex_search: bool = True
+    # Auto-ingest (v0.50.0): inbox processa sozinha via watcher + sweep.
+    # Bases medidas em 2026-07-25 — ver docstring de app/auto_ingest.py.
+    auto_ingest_enabled: bool = True
+    auto_ingest_quiescence_seconds: float = 4.0
+    auto_ingest_sweep_interval_seconds: float = 60.0
+    auto_ingest_min_file_age_seconds: float = 5.0
 
     # --- Busca (search) ---
     # Número de resultados por página na busca completa.

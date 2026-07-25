@@ -12,8 +12,6 @@
     "tableProject": "Projeto",
     "tableDocs": "Docs",
     "reconciling": "Reconciliando...",
-    "reconcileButtonProject": "Reconciliar INDEX — {{project}}",
-    "reconcileButtonAll": "Reconciliar INDEX — todos os projetos",
     "reconcileScopeProjectHint": "Reconcilia só este projeto — sem limpeza global de órfãos no índice",
     "reconcileScopeAllHint": "Reconcilia todos os projetos e inclui a limpeza global de órfãos do índice",
     "lastReconcile": "Última reconciliação:",
@@ -23,7 +21,8 @@
     "failures": "Falhas:",
     "orphans": "Órfãos:",
     "observability": "Observabilidade",
-    "observabilityHint": "Abrir o OpenSearch Dashboards (dashboards de operação do AtlasFile) — login admin + senha do .env"
+    "observabilityHint": "Abrir o OpenSearch Dashboards (dashboards de operação do AtlasFile) — login admin + senha do .env",
+    "reconcileNow": "Reconciliar agora"
   },
   "results": {
     "title": "Resultados completos",
@@ -77,7 +76,8 @@
     "summaryOrphan_one": ", {{count}} órfão removido",
     "summaryOrphan_other": ", {{count}} órfãos removidos",
     "summaryPendingOrphan_one": ", {{count}} arquivo órfão da triagem movido para rejeitados",
-    "summaryPendingOrphan_other": ", {{count}} arquivos órfãos da triagem movidos para rejeitados"
+    "summaryPendingOrphan_other": ", {{count}} arquivos órfãos da triagem movidos para rejeitados",
+    "autoLabel": "Reconciliação automática:"
   },
   "location": {
     "pageParagraph": "Página {{page}} / {{paragraph}}º parágrafo{{part}}",

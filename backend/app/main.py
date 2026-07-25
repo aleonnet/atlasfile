@@ -499,6 +499,7 @@ async def lifespan(app: FastAPI):
             _backfill_channel_web(os_client)
             backfill_search_fields(os_client)
             _start_auto_reconcile_if_enabled()
+            _start_auto_ingest_if_enabled()
             break
         except Exception as exc:  # pragma: no cover - startup resiliency
             last_error = exc
@@ -523,6 +524,8 @@ async def lifespan(app: FastAPI):
     if channel_manager:
         await channel_manager.stop_all()
     _reconcile_stop.set()
+    if _auto_ingest_manager is not None:
+        _auto_ingest_manager.stop()
 
 
 def _cors_origins() -> list[str]:
@@ -1029,6 +1032,50 @@ def _run_reconcile(
         os_client=os_client,
         cleanup_orphans=cleanup_orphans,
     )
+
+
+_auto_ingest_manager = None
+
+
+def _list_project_inboxes() -> list[tuple[str, Path]]:
+    """Inboxes dos projetos inicializados, para o auto-ingest observar."""
+    out: list[tuple[str, Path]] = []
+    for root in list_project_roots(Path(settings.projects_root)):
+        try:
+            profile = load_project_profile(root)
+            out.append((str(profile["project_id"]), root / inbox_rel(profile)))
+        except Exception:
+            continue  # projeto sem profile (não inicializado): sweep futuro pega
+    return out
+
+
+def _auto_ingest_run_scan(project_id: str) -> dict[str, Any] | None:
+    """Scan do auto-ingest: None se outro scan detém o lock (retry no tick)."""
+    if not _ingest_run_lock.acquire(blocking=False):
+        return None
+    try:
+        return _run_inbox_scan(
+            project_id,
+            min_file_age_seconds=float(settings.auto_ingest_min_file_age_seconds),
+        )
+    finally:
+        _ingest_run_lock.release()
+
+
+def _start_auto_ingest_if_enabled() -> None:
+    global _auto_ingest_manager
+    if not bool(settings.auto_ingest_enabled):
+        return
+    from .auto_ingest import AutoIngestManager
+
+    _auto_ingest_manager = AutoIngestManager(
+        list_project_inboxes=_list_project_inboxes,
+        run_scan=_auto_ingest_run_scan,
+        quiescence_seconds=float(settings.auto_ingest_quiescence_seconds),
+        sweep_interval_seconds=float(settings.auto_ingest_sweep_interval_seconds),
+        min_file_age_seconds=float(settings.auto_ingest_min_file_age_seconds),
+    )
+    _auto_ingest_manager.start()
 
 
 def _start_auto_reconcile_if_enabled() -> None:
@@ -1895,21 +1942,40 @@ def reconcile_all_projects(reindex_search: bool = True, auth: AuthContext = Depe
     return JSONResponse(status_code=202, content={"status": "started", "message": "Reconcile started"})
 
 
+# Serializa scans entre endpoint e auto-ingest (o check de `running` sozinho
+# tinha janela de corrida check→set; o lock fecha).
+_ingest_run_lock = threading.Lock()
+
+
 @app.post("/api/ingest/scan/{project_id}")
 def scan_project_inbox(project_id: str, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     enforce_project_scope(auth, project_id)
     _require_projects_root_usable()
-    if _ingest_status.get("running"):
+    if not _ingest_run_lock.acquire(blocking=False):
         raise http_error(409, "INGEST_IN_PROGRESS", "Ingest already in progress")
+    try:
+        return _run_inbox_scan(project_id)
+    finally:
+        _ingest_run_lock.release()
+
+
+def _run_inbox_scan(project_id: str, *, min_file_age_seconds: float = 0.0) -> dict[str, Any]:
+    """Núcleo do scan da inbox — compartilhado pelo endpoint e pelo auto-ingest.
+    O chamador DEVE deter `_ingest_run_lock`. `min_file_age_seconds` > 0 pula
+    arquivos modificados há menos de N segundos (guarda de estabilidade do
+    auto-ingest: OneDrive/sync progressivo ainda escrevendo)."""
     project_root = _resolve_project_root(project_id)
     profile, _ = _initialize_project_if_needed(project_root)
     inbox = project_root / inbox_rel(profile)
     inbox.mkdir(parents=True, exist_ok=True)
 
+    now = time.time()
     files = [
         f
         for f in sorted(inbox.iterdir(), key=lambda p: p.name.lower())
-        if f.is_file() and not f.name.startswith(".")
+        if f.is_file()
+        and not f.name.startswith(".")
+        and (min_file_age_seconds <= 0 or (now - f.stat().st_mtime) >= min_file_age_seconds)
     ]
     started_at = time.time()
     _ingest_status.update(

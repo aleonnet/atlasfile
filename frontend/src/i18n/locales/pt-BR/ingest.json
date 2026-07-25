@@ -40,10 +40,6 @@
   },
   "scan": {
     "processingInbox": "Processando inbox...",
-    "result": "Inbox processado: {{files}}, {{failures}}",
-    "failed": "Falha ao processar inbox",
-    "processing": "Processando...",
-    "button": "Processar INBOX",
     "starting": "Iniciando...",
     "progress_one": "{{current}} / {{count}} arquivo",
     "progress_other": "{{current}} / {{count}} arquivos"
@@ -73,7 +69,10 @@
     "filesWaiting_other": "{{count}} arquivos aguardando destino.",
     "uploadTitle": "Upload — {{project}}",
     "closeQueueAria": "Fechar fila de upload",
-    "statusWaiting": "aguardando"
+    "statusWaiting": "aguardando",
+    "autoScanSuccess_one": "Auto-ingest: {{count}} documento processado",
+    "autoScanSuccess_other": "Auto-ingest: {{count}} documentos processados",
+    "scanDeferred": "Outro processamento em andamento — seus arquivos ficam na fila e o auto-ingest os processa em seguida"
   },
   "history": {
     "title": "Processamentos",

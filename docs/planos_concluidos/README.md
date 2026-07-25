@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.50.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [auto_ingest_widget_unico_sem_botoes_v0500](auto_ingest_widget_unico_sem_botoes_v0500.plan.md) | Auto-ingest de verdade (watcher.py era código morto; escuta ampla pois VirtioFS entrega criação como `modified` — medido; quiescência 4s + estabilidade 5s + sweep 60s + anti-loop de falha); widget global vira superfície única de processamento (aparece sozinho em runs automáticos); botões "Processar INBOX" e "Reconciliar INDEX" eliminados — reconcile automático só anuncia quando corrige algo, escape hatch discreto "Reconciliar agora" preserva o escopo da v0.44.0 |
+
+---
+
 ## 0.49.0
 
 | # | Plano | Escopo |

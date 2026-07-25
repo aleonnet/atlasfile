@@ -10,6 +10,24 @@ import { GlobalDropPortal } from "./GlobalDropPortal";
 const uploadFileWithProgress = vi.fn();
 const triggerScan = vi.fn();
 
+const { fetchIngestStatusMock, idleIngestStatus } = vi.hoisted(() => {
+  const idleIngestStatus = {
+    last_run_started_at: null,
+    last_run_finished_at: null,
+    duration_seconds: null,
+    project_id: null,
+    running: false,
+    phase: "idle",
+    progress_current: 0,
+    progress_total: 0,
+    progress_file: null,
+    processed_count: 0,
+    failed_count: 0,
+    last_error: null,
+  };
+  return { fetchIngestStatusMock: vi.fn(), idleIngestStatus };
+});
+
 vi.mock("../../api", () => ({
   fetchProjects: vi.fn(() =>
     Promise.resolve([
@@ -20,6 +38,9 @@ vi.mock("../../api", () => ({
   fetchModels: vi.fn(() => Promise.resolve([])),
   uploadFileWithProgress: (...args: unknown[]) => uploadFileWithProgress(...args),
   triggerScan: (...args: unknown[]) => triggerScan(...args),
+  // v0.50.0: o widget consome o monitor de ingest global (SSE→Query)
+  fetchIngestStatus: (...args: unknown[]) => fetchIngestStatusMock(...args),
+  getIngestStatusStreamUrl: vi.fn(() => "http://localhost/api/ingest/status/stream"),
 }));
 
 function SelectProject({ id, children }: { id: string; children: React.ReactNode }) {
@@ -66,6 +87,29 @@ describe("GlobalDropPortal", () => {
   beforeEach(() => {
     uploadFileWithProgress.mockReset();
     triggerScan.mockReset();
+    fetchIngestStatusMock.mockReset();
+    fetchIngestStatusMock.mockResolvedValue(idleIngestStatus);
+  });
+
+  it("widget aparece sozinho quando o auto-ingest processa, sem upload nenhum (v0.50.0)", async () => {
+    fetchIngestStatusMock.mockResolvedValue({
+      ...idleIngestStatus,
+      last_run_started_at: "2026-07-25T12:00:00Z",
+      project_id: "p1",
+      running: true,
+      phase: "processing",
+      progress_current: 1,
+      progress_total: 2,
+      progress_file: "relatorio.pdf",
+    });
+    renderPortal("p1");
+    await waitForSelection("p1");
+
+    const widget = await screen.findByTestId("upload-queue");
+    expect(widget).toHaveTextContent("Processando arquivos");
+    expect(widget).toHaveTextContent("1 / 2 arquivos");
+    expect(widget).toHaveTextContent("relatorio.pdf");
+    expect(widget).toHaveTextContent("Projeto 1");
   });
 
   it("mostra o overlay do portal durante o drag e some ao soltar", async () => {

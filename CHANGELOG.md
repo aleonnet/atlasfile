@@ -15,6 +15,17 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.50.0] - 2026-07-25
+
+### Adicionado
+- **Auto-ingest: a inbox processa sozinha** (pergunta do usuário: "se o widget aparece sozinho, pra que o botão?"; fato descoberto: `watcher.py` era código morto — auto-ingest de filesystem nunca existiu): watcher por projeto com escuta ampla (medido no container: VirtioFS entrega criação de arquivo do host como `modified`, o handler antigo de `on_created` perderia tudo) + quiescência de 4s + guarda de estabilidade de 5s (OneDrive sincronizando não é ingerido pela metade) + sweep de 60s (cobre WSL2 sem inotify, arquivos caídos com a API desligada e projetos novos) + anti-loop de falha (sobra na inbox só re-tenta se mudar). `AUTO_INGEST_ENABLED` desliga em manutenção. Lock real no scan (a corrida check→set do flag `running` foi fechada).
+
+### Mudado
+- **Widget global é a superfície única de processamento**: a fase real do scan (SSE) aparece dentro do widget do portal — inclusive em runs do auto-ingest, sem upload nenhum — com projeto, barra, contagem e arquivo; o monitor inline do card do Painel e o spinner genérico saíram. 409 no scan pós-upload virou aviso honesto ("auto-ingest processa em seguida"), não erro.
+
+### Removido
+- **Botões "Processar INBOX" e "Reconciliar INDEX"** (decisão do usuário, premissa "o sistema roda sempre reconciliado" — que JÁ era verdade: auto-reconcile de 600s com o mesmo escopo do botão): fica a linha "Última reconciliação" com o escape hatch discreto "Reconciliar agora" (mesma semântica de escopo da v0.44.0). Run automático de reconcile só anuncia quando CORRIGIU algo — transparência sem ruído a cada ciclo; run manual sempre anuncia. `InboxScanCard` deletado; constante órfã `auto_scan_on_startup` removida.
+
 ## [0.49.0] - 2026-07-25
 
 ### Adicionado

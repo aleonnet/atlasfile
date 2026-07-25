@@ -238,19 +238,21 @@ describe("App", () => {
     } as never);
   }
 
-  it("botão de reconcile expõe o escopo global quando 'Todos os projetos' (v0.44.0)", async () => {
+  it("ação discreta 'Reconciliar agora' expõe o escopo global quando 'Todos os projetos' (v0.44.0→v0.50.0)", async () => {
+    // v0.50.0: o CTA saiu (auto-reconcile é a premissa); a semântica de escopo
+    // do v0.44.0 vive no title do escape hatch discreto
     await mockReconcileIdle();
     render(<App />);
-    const btn = await screen.findByRole("button", { name: /Reconciliar INDEX — todos os projetos/i }, { timeout: 5000 });
+    const btn = await screen.findByRole("button", { name: /Reconciliar agora/i }, { timeout: 5000 });
     expect(btn).toHaveAttribute("title", expect.stringMatching(/limpeza global de órfãos/i));
   });
 
-  it("botão de reconcile mostra o projeto e avisa que não há limpeza global (v0.44.0)", async () => {
+  it("ação discreta 'Reconciliar agora' avisa que projeto único não faz limpeza global (v0.44.0→v0.50.0)", async () => {
     await mockReconcileIdle();
     localStorage.setItem("atlasfile_selected_project", "p1");
     try {
       render(<App />);
-      const btn = await screen.findByRole("button", { name: /Reconciliar INDEX — Projeto 1/i }, { timeout: 5000 });
+      const btn = await screen.findByRole("button", { name: /Reconciliar agora/i }, { timeout: 5000 });
       expect(btn).toHaveAttribute("title", expect.stringMatching(/sem limpeza global/i));
     } finally {
       localStorage.removeItem("atlasfile_selected_project");

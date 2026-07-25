@@ -16,14 +16,14 @@ arquivo → [1 drop] → _INBOX_DROP → [2 dedup SHA256] → [3 extração de t
 | | |
 |---|---|
 | **Ação** | Arrastar arquivo em qualquer tela da UI (portal global) ou copiar para `$PROJECTS_HOST_ROOT/<projeto>/_INBOX_DROP/` |
-| **O que acontece** | Portal: upload sequencial via `POST /api/ingest/upload/{project_id}` com progresso por arquivo; ao fim do lote, dispara 1 scan automaticamente. Pasta: o arquivo aguarda o próximo scan |
-| **Observar** | Fila do portal (toasts com resultado por arquivo); `GET /api/ingest/inbox/{project_id}` lista o conteúdo da inbox antes do scan; orb da sidebar entra em estado *ingesting* durante a fila |
+| **O que acontece** | Portal: upload sequencial via `POST /api/ingest/upload/{project_id}` com progresso por arquivo; ao fim do lote, dispara 1 scan automaticamente. Pasta: o **auto-ingest** (v0.50.0) detecta o arquivo (watcher + sweep de 60s), espera a quiescência/estabilidade (sync em curso não é ingerido pela metade) e processa sozinho |
+| **Observar** | Widget global no canto inferior esquerdo (superfície única: fila de upload E fase do scan, inclusive em runs automáticos sem upload); `GET /api/ingest/inbox/{project_id}` lista o conteúdo da inbox antes do scan; orb da sidebar entra em estado *ingesting* durante a fila |
 
 ## 2. Ingestão + dedup
 
 | | |
 |---|---|
-| **Ação** | Botão **Processar INBOX** (Painel ou Config → Classificador) ou `POST /api/ingest/scan/{project_id}` |
+| **Ação** | Automática (auto-ingest) ou `POST /api/ingest/scan/{project_id}` |
 | **O que acontece** | Cada arquivo da inbox passa por hash SHA256; duplicata exata → decisão `duplicate` (nada é recriado); novo → segue o pipeline |
 | **Observar** | `GET /api/ingest/status` (fase, progresso, arquivo atual; SSE em `/api/ingest/status/stream` — é o que a barra da UI consome); decisão `DUP` no histórico ao reenviar o mesmo arquivo |
 

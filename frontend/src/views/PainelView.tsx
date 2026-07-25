@@ -13,7 +13,6 @@ import { EmptyState } from "../components/ui/empty-state";
 import { Input } from "../components/ui/input";
 import { StatTile } from "../components/ui/stat-tile";
 import { InboxQueueChips } from "../features/ingest/InboxQueueChips";
-import { InboxScanCard } from "../features/ingest/InboxScanCard";
 import { IngestHistoryCard } from "../features/ingest/IngestHistoryCard";
 import { DropHintCard } from "../features/ingest/DropHintCard";
 import { LabelConflictsCard } from "../features/triage/LabelConflictsCard";
@@ -337,8 +336,6 @@ export function PainelView({
     (dashboardsPublicUrl || "").trim() || `${window.location.protocol}//${window.location.hostname}:5601`;
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
-  const selectedProjectLabel =
-    projects.find((p) => p.project_id === selectedProject)?.project_label || selectedProject;
   const initializedCount = projects.filter((p) => p.initialized).length;
 
   function applyFilter(patch: Partial<SearchFilters>) {
@@ -452,32 +449,27 @@ export function PainelView({
                 <InboxQueueChips projectId={selectedProject} onStatus={onStatus} />
               )}
 
+              {/* v0.50.0: os CTAs "Processar INBOX" e "Reconciliar" saíram — a
+                  inbox processa sozinha (auto-ingest via watcher, widget global
+                  mostra o progresso) e a reconciliação roda automática a cada
+                  AUTO_RECONCILE_INTERVAL_SECONDS. Fica só o escape hatch
+                  discreto "agora" (escopo: projeto NÃO faz limpeza global de
+                  órfãos; "todos" faz — POST /api/reconcile/{id}). */}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-4">
-                <div className="flex items-center gap-2">
-                  <InboxScanCard
-                    selectedProject={selectedProject}
-                    projects={projects}
-                    onStatus={onStatus}
-                    onScanComplete={onScanComplete}
-                  />
-                  {/* Escopo explícito: por projeto NÃO faz limpeza global de órfãos
-                      (POST /api/reconcile/{id} → cleanup_orphans=False); "todos" faz. */}
-                  <Button
-                    disabled={reconcilingNow}
-                    onClick={onReconcile}
-                    title={isSingleProject ? t("painel:card.reconcileScopeProjectHint") : t("painel:card.reconcileScopeAllHint")}
-                  >
-                    <RefreshCw className={reconcilingNow ? "animate-spin" : ""} />
-                    {reconcilingNow
-                      ? t("painel:card.reconciling")
-                      : isSingleProject
-                        ? t("painel:card.reconcileButtonProject", { project: selectedProjectLabel })
-                        : t("painel:card.reconcileButtonAll")}
-                  </Button>
-                </div>
                 <span className="text-xs text-muted-foreground">
                   {t("painel:card.lastReconcile")}{" "}
                   <strong className="text-foreground">{formatTimestamp(reconcileStatus?.last_run_finished_at)}</strong>
+                  {" · "}
+                  <button
+                    type="button"
+                    disabled={reconcilingNow}
+                    onClick={onReconcile}
+                    title={isSingleProject ? t("painel:card.reconcileScopeProjectHint") : t("painel:card.reconcileScopeAllHint")}
+                    className="inline-flex items-center gap-1 rounded border-0 bg-transparent p-0 text-xs text-muted-foreground underline-offset-2 shadow-none hover:text-accent hover:underline disabled:opacity-50"
+                  >
+                    <RefreshCw className={cn("size-3", reconcilingNow && "animate-spin")} aria-hidden />
+                    {reconcilingNow ? t("painel:card.reconciling") : t("painel:card.reconcileNow")}
+                  </button>
                 </span>
                 {(reconcileStatus?.summary.adjustments_applied ?? 0) > 0 && (
                   <span className="text-xs text-muted-foreground">
