@@ -1461,6 +1461,8 @@ class TaxonomyAliasesRequest(BaseModel):
     key: str
     aliases: list[str]
     created_from: str = ""
+    scope: str = "global"  # global (template default + todos os profiles) | project (só o profile do projeto)
+    project_ref: str = ""  # obrigatório quando scope="project"
 
 
 class AliasSuggestionDismissRequest(BaseModel):
@@ -1516,20 +1518,36 @@ def delete_taxonomy_entry(kind: str, key: str, auth: AuthContext = Depends(requi
 
 @app.post("/api/taxonomy/aliases")
 def add_taxonomy_aliases_endpoint(request: TaxonomyAliasesRequest, auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
-    """Adiciona aliases a uma entrada EXISTENTE (template default + profiles) —
-    caminho de aprovação do sugeridor de aliases do bootstrap."""
-    from app.taxonomy import add_taxonomy_aliases
+    """Adiciona aliases a uma entrada EXISTENTE — caminho de aprovação do
+    sugeridor do bootstrap. scope="global": template default + todos os
+    profiles; scope="project": só o profile de project_ref (aprendizado local,
+    projetos novos não herdam)."""
+    from app.taxonomy import add_project_aliases, add_taxonomy_aliases
 
     try:
-        result = add_taxonomy_aliases(
-            kind=request.kind,
-            key=request.key,
-            aliases=request.aliases,
-            created_from=request.created_from,
-        )
+        if request.scope == "project":
+            if not request.project_ref.strip():
+                raise ValueError("project_ref é obrigatório quando scope='project'")
+            enforce_project_scope(auth, request.project_ref)
+            result = add_project_aliases(
+                project_root=_resolve_project_root(request.project_ref),
+                kind=request.kind,
+                key=request.key,
+                aliases=request.aliases,
+                created_from=request.created_from,
+            )
+        elif request.scope == "global":
+            result = add_taxonomy_aliases(
+                kind=request.kind,
+                key=request.key,
+                aliases=request.aliases,
+                created_from=request.created_from,
+            )
+        else:
+            raise ValueError(f"scope inválido: {request.scope} (use 'global' ou 'project')")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"status": "ok", **result}
+    return {"status": "ok", "scope": request.scope, **result}
 
 
 @app.get("/api/projects/{project_ref}/alias-suggestions")

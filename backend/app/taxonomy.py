@@ -193,3 +193,48 @@ def add_taxonomy_aliases(
         "template_updated": template_updated,
         "updated_projects": updated_projects,
     }
+
+
+def add_project_aliases(
+    *,
+    project_root: Path,
+    kind: str,
+    key: str,
+    aliases: list[str],
+    created_from: str = "",
+) -> dict[str, Any]:
+    """Adiciona aliases a uma entrada EXISTENTE apenas no profile do projeto —
+    aprendizado local. Nada é propagado ao template default nem aos demais
+    projetos (logo projetos novos NÃO herdam; para isso, add_taxonomy_aliases).
+
+    Idempotente: alias já presente não duplica. A entrada precisa existir no
+    profile do projeto — senão ValueError."""
+    if kind not in VALID_KINDS:
+        raise ValueError(f"kind inválido: {kind} (use document_type ou business_domain)")
+    key = _slugify_key(key)
+    clean_aliases = sorted({a.strip().lower() for a in aliases if a and a.strip()})
+    if not key or not clean_aliases:
+        raise ValueError("key e aliases são obrigatórios")
+
+    profile = load_profile(project_root)
+    raw = profile.model_dump(mode="json")
+    bucket_name = "document_types" if kind == "document_type" else "business_domains"
+    if not _entry_exists((raw.get("classification") or {}).get(bucket_name, []), key):
+        raise ValueError(f"entrada {kind}:{key} não existe no profile do projeto")
+
+    updated = _merge_aliases_into_entry(raw, kind, key, clean_aliases)
+    if updated:
+        save_profile(
+            project_root=project_root,
+            profile=raw,
+            updated_by=f"taxonomy:{created_from or 'alias-suggest'}:project",
+        )
+    project_id = str(raw.get("project_id") or project_root.name)
+    return {
+        "kind": kind,
+        "key": key,
+        "aliases": clean_aliases,
+        "scope": "project",
+        "template_updated": False,
+        "updated_projects": [project_id] if updated else [],
+    }

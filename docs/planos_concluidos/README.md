@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.44.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [tier1_confianca_aprendizado_reconcile_cookie_v0440](tier1_confianca_aprendizado_reconcile_cookie_v0440.plan.md) | Tier 1 do roadmap por ganho de UX: aliases com escopo por projeto (default) ou global na aprovação; scoring do bootstrap corrigido pelo diagnóstico real do kit marítimo (overlap tipo↔domínio só pontua com hit de conteúdo — √N do roadmap refutado pelo novo `trace_classification.py`; benchmark 62 docs idêntico antes/depois); botão do reconcile explicita o escopo e a limpeza de órfãos; `DASHBOARDS_COOKIE_PASSWORD` por instalação (cookie velho vira login limpo em vez de 500) |
+
+---
+
 ## 0.43.0
 
 | # | Plano | Escopo |

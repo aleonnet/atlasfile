@@ -516,6 +516,20 @@ set_env() {
   fi
 }
 
+# ── Dashboards session-cookie key (one per install) ─────────────────────────
+# The default encryption key is identical across installs, so a session cookie
+# from a previous instance decrypts fine but points to a session that does not
+# exist — a 500 on a fresh install. A per-install key turns stale cookies into
+# a clean login redirect. Generated only when missing or still the template
+# placeholder (rotating an existing key just logs Dashboards users out).
+cookie_current="$(grep '^DASHBOARDS_COOKIE_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+if [ -z "${cookie_current}" ] || [ "${cookie_current}" = "Troque-Esta-Senha-De-Cookie-Com-32-Ou-Mais-Chars" ]; then
+  cookie_rand="$( (LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 48)"
+  [ -n "${cookie_rand}" ] || cookie_rand="$(openssl rand -hex 24 2>/dev/null || printf 'Af%s%s0000000000000000' "$(date +%s)" "$$")"
+  set_env DASHBOARDS_COOKIE_PASSWORD "${cookie_rand}"
+  printf '  %s✔%s Dashboards cookie key generated for this install\n' "$GREEN" "$RESET"
+fi
+
 # ── API authentication (opt-in via --enable-auth) ───────────────────────────
 # The key is baked into the image at build time (config/api_keys.json) and into
 # .env for the MCP server (ATLASFILE_API_TOKEN). Re-running preserves the key.

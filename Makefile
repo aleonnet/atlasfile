@@ -1,9 +1,9 @@
 # AtlasFile - test and build targets
 # Recomendado para rebuild do stack base: make docker-update.
 # O smoke funcional completo do ciclo (ingestão, triagem, busca/highlight e assistente)
-# fica documentado em docs/plano_teste_e2e_v0.4.0.md.
+# fica documentado em docs/plano_teste_e2e_v0.36.0.md.
 
-.PHONY: test test-backend test-frontend test-installer docker-build docker-up docker-update docker-smoke-init reset-index reset-chat
+.PHONY: test test-backend test-frontend test-installer docker-build docker-up docker-update docker-smoke-init reset-index reset-chat ensure-dashboards-cookie
 
 test: test-backend test-frontend test-installer
 	@echo "All tests passed."
@@ -22,8 +22,17 @@ test-frontend:
 docker-build: test
 	docker compose build
 
+# DASHBOARDS_COOKIE_PASSWORD é por instalação (cookie de instância anterior
+# causa 500 com a chave default); quem atualiza via git pull sem reinstalar
+# ganha a var aqui, sem precisar rodar o install.sh de novo.
+ensure-dashboards-cookie:
+	@if [ -f .env ] && ! grep -q '^DASHBOARDS_COOKIE_PASSWORD=' .env; then \
+	  printf 'DASHBOARDS_COOKIE_PASSWORD=%s\n' "$$( (LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 48)" >> .env; \
+	  echo "DASHBOARDS_COOKIE_PASSWORD gerada no .env (chave de cookie por instalação)"; \
+	fi
+
 # Sobe todos os serviços (opensearch, api, mcp, web). Não roda test antes.
-docker-up:
+docker-up: ensure-dashboards-cookie
 	docker compose up -d --build
 
 # Roda test, depois sobe opensearch + dashboards + api + mcp + web com rebuild. Remove imagens <none>.
@@ -32,7 +41,7 @@ docker-up:
 #   make docker-update RESET_INDEX=1        → reseta índice de documentos
 #   make docker-update RESET_CHAT=1         → reseta índice de sessões de chat
 #   make docker-update RESET_INDEX=1 RESET_CHAT=1  → reseta ambos
-docker-update: test
+docker-update: test ensure-dashboards-cookie
 	@if [ -n "$${RESET_INDEX}" ] && [ -n "$${RESET_CHAT}" ]; then ./scripts/reset-opensearch-index.sh all; \
 	elif [ -n "$${RESET_INDEX}" ]; then $(MAKE) reset-index; \
 	elif [ -n "$${RESET_CHAT}" ]; then $(MAKE) reset-chat; fi

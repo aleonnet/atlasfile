@@ -224,6 +224,39 @@ describe("App", () => {
     expect(screen.getAllByText(/10/).length).toBeGreaterThan(0);
   });
 
+  // Os dois testes de escopo resetam o mock do reconcile explicitamente:
+  // "shows reconcile progress" deixa running:true no mock compartilhado.
+  async function mockReconcileIdle() {
+    const { fetchReconcileStatus } = await import("./api");
+    vi.mocked(fetchReconcileStatus).mockResolvedValue({
+      running: false,
+      phase: "idle",
+      summary: {},
+      last_run_finished_at: null,
+      progress_current: 0,
+      progress_total: 0
+    } as never);
+  }
+
+  it("botão de reconcile expõe o escopo global quando 'Todos os projetos' (v0.44.0)", async () => {
+    await mockReconcileIdle();
+    render(<App />);
+    const btn = await screen.findByRole("button", { name: /Reconciliar INDEX — todos os projetos/i }, { timeout: 5000 });
+    expect(btn).toHaveAttribute("title", expect.stringMatching(/limpeza global de órfãos/i));
+  });
+
+  it("botão de reconcile mostra o projeto e avisa que não há limpeza global (v0.44.0)", async () => {
+    await mockReconcileIdle();
+    localStorage.setItem("atlasfile_selected_project", "p1");
+    try {
+      render(<App />);
+      const btn = await screen.findByRole("button", { name: /Reconciliar INDEX — Projeto 1/i }, { timeout: 5000 });
+      expect(btn).toHaveAttribute("title", expect.stringMatching(/sem limpeza global/i));
+    } finally {
+      localStorage.removeItem("atlasfile_selected_project");
+    }
+  });
+
   it.each(["unavailable", "emptied"] as const)(
     "abre o modal de recuperação quando a raiz está %s (v0.40.1: os dois modos de falha)",
     async (state) => {

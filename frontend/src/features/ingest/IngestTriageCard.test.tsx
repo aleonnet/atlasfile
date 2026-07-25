@@ -228,7 +228,7 @@ describe("IngestTriageCard", () => {
     expect(screen.getAllByText(/bootstrap/i).length).toBeGreaterThan(0);
   });
 
-  it("mostra sugestões de aliases mineradas e aprova com um clique", async () => {
+  it("mostra sugestões de aliases mineradas e aprova no escopo do projeto (default, v0.44.0)", async () => {
     const api = await import("../../api");
     const onStatus = vi.fn();
     renderCard(defaultProps({ onStatus }));
@@ -238,16 +238,36 @@ describe("IngestTriageCard", () => {
     expect(screen.getByText("escritura")).toBeInTheDocument();
     expect(screen.getByText(/2 docs · precisão/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Aprovar/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Aprovar no projeto/i }));
     await waitFor(() => {
       expect(api.addTaxonomyAliases).toHaveBeenCalledWith({
         kind: "business_domain",
         key: "juridico",
         aliases: ["escritura"],
         created_from: "alias-suggest:p1",
+        scope: "project",
+        project_ref: "p1",
       });
     });
     expect(onStatus).toHaveBeenCalledWith(expect.stringContaining("escritura"));
+  });
+
+  it("aprovação Global propaga ao template default e a todos os projetos (v0.44.0)", async () => {
+    const api = await import("../../api");
+    renderCard(defaultProps());
+    await waitFor(() => {
+      expect(screen.getByText("escritura")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Global/i }));
+    await waitFor(() => {
+      expect(api.addTaxonomyAliases).toHaveBeenCalledWith({
+        kind: "business_domain",
+        key: "juridico",
+        aliases: ["escritura"],
+        created_from: "alias-suggest:p1",
+        scope: "global",
+      });
+    });
   });
 
   it("dispensa uma sugestão sem aplicá-la", async () => {

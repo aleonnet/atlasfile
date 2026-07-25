@@ -20,11 +20,16 @@ _O item "Sugeridor de aliases a partir da triagem" foi executado — ver
 loop de descoberta fechado na v0.39.1–v0.39.2 (cortes de qualidade + toast +
 estado vazio explicativo)._
 
+_Executados na v0.44.0 — ver
+`planos_concluidos/tier1_confianca_aprendizado_reconcile_cookie_v0440.plan.md`:
+"Scoring de domínio sem diluição √N" (diagnóstico do √N foi REFUTADO pelo
+`scripts/trace_classification.py` — a causa real era overlap tipo↔domínio
+pontuando sem evidência de conteúdo, corrigida com gate), "Aliases por projeto
+vs globais" (escopo na aprovação, default projeto) e "Escopo do reconcile
+visível na UI" (label + tooltip por modo)._
+
 | Item | O que é | Registrado em |
 |---|---|---|
-| Scoring de domínio sem diluição √N | O score de alias é `hits/√(nº de aliases do domínio)`: um domínio rico (~20 aliases) quase não se move com 2 termos novos de 1 ocorrência — no teste real do kit marítimo, 4 aliases aprovados deixaram `juridico` abaixo de `operacoes` 46%. Proposta a estudar: saturação por hit (cada acerto contribui com ganho decrescente) em vez de normalização por tamanho do léxico. | 2026-07-23, teste E2E do aprendizado |
-| Aliases por projeto vs globais | Aprovar alias hoje propaga ao template default e a TODOS os projetos; o usuário esperava aprendizado por projeto. Discutir opção de escopo na aprovação. | 2026-07-23 |
-| Escopo do reconcile visível na UI | "Reconciliar INDEX" com projeto selecionado roda o reconcile POR PROJETO (sem limpeza global de órfãos, por design); com "Todos os projetos", o global. O usuário não tem como saber a diferença — deixar explícito no botão/tooltip. | 2026-07-23, teste destrutivo |
 | Órfão em `_TRIAGE_REVIEW/pending` | Arquivo físico órfão (sem JSON de metadados) pode sobrar em pending após decisão — invisível na UI, sem efeito, mas é lixo em disco; varrer no reconcile. | 2026-07-23 |
 
 ## Instalação / onboarding
@@ -37,10 +42,17 @@ estado vazio explicativo)._
 
 | Item | O que é | Registrado em |
 |---|---|---|
+| Link "Observabilidade" na UI | Não há como abrir o OpenSearch Dashboards a partir do AtlasFile — o usuário precisa saber a URL :5601 de cor. Um link no Painel (com o host derivado da config) fecha o buraco. | 2026-07-24, pergunta do usuário no teste da v0.44.0 |
 | Heatmap hora × dia da ingestão | Exige campo derivado na INDEXAÇÃO (`ingested_hour`/`ingested_weekday`) — scripted fields via ndjson apagam o cache de campos do index-pattern (aprendido em campo, v0.42.0). | 2026-07-23 |
 | Alerting nativo do OpenSearch | Monitores: extração `failed` acima de N, custo LLM diário acima de teto, fila de triagem acumulando — pendente de o usuário definir canal de notificação (e-mail/webhook). | 2026-07-23 |
 | Reporting PDF agendado | Relatório periódico do dashboard "AtlasFile — Operação" via plugin de reporting. | 2026-07-23 |
-| Cookie password por instalação no Dashboards | Cookie `security_authentication` de instância ANTERIOR causa 500 (Authentication Exception) em instalação nova — a chave de encriptação default é igual entre instâncias, então o cookie velho decripta mas a sessão não existe. Gerar `opensearch_security.cookie.password` aleatória por instalação no `opensearch_dashboards.yml` transforma o cookie velho em redirect limpo de login. | 2026-07-23, teste do zero |
+| ~~Cookie password por instalação no Dashboards~~ | **Entregue na v0.44.0** — ver `planos_concluidos/tier1_confianca_aprendizado_reconcile_cookie_v0440.plan.md` (`DASHBOARDS_COOKIE_PASSWORD` via flag CLI no compose; install.sh + guard no make; a allowlist de env do entrypoint não cobre `opensearch_security.*`) | — |
+
+## Modelos custom / Ollama
+
+| Item | O que é | Registrado em |
+|---|---|---|
+| Estado vivo do modelo custom no seletor | O selo "(validado por você)" é localStorage estático: validou uma vez, nunca re-verifica — o usuário pode achar que tem um modelo up quando o Ollama nem está rodando, e a culpa parece dele. Proposta: re-validação ao selecionar/abrir o chat (chamada barata ao `/v1/models`), selo honesto com data e estado ("indisponível agora — Ollama parado?" com dica `ollama serve`/`ollama pull`). Auto-start do daemon NÃO é possível do container (Ollama roda no host); só via instalador/agente no host (`--with-ollama` já existe). | 2026-07-24, achado do usuário no teste da v0.44.0 |
 
 ## E2E pendentes
 

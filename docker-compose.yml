@@ -26,6 +26,12 @@ services:
       - OPENSEARCH_USERNAME=admin
       - OPENSEARCH_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD:?defina OPENSEARCH_INITIAL_ADMIN_PASSWORD no .env (o install.sh gera automaticamente)}
       - OPENSEARCH_SSL_VERIFICATIONMODE=none
+    # Chave do cookie de sessão por instalação: cookie de instância anterior vira
+    # redirect limpo de login em vez de 500 (chave default é igual entre instâncias).
+    # Vai como flag CLI porque a allowlist de env do entrypoint não cobre
+    # opensearch_security.* (verificado na imagem 2.17.1); o entrypoint prefixa
+    # "opensearch-dashboards" quando o 1º argumento começa com "-".
+    command: ["--opensearch_security.cookie.password=${DASHBOARDS_COOKIE_PASSWORD:?defina DASHBOARDS_COOKIE_PASSWORD no .env (install.sh ou make docker-up geram automaticamente)}"]
     volumes:
       # Permite header securitytenant no import (tenant Global); conexão segue das env acima.
       - ./config/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml:ro

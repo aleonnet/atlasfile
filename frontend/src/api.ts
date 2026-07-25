@@ -1013,13 +1013,17 @@ export async function fetchAliasSuggestions(projectRef: string): Promise<AliasSu
   return res.json();
 }
 
-/** Aprova aliases sugeridos: append em entrada EXISTENTE (template + profiles). */
+/** Aprova aliases sugeridos: append em entrada EXISTENTE. scope "global"
+ *  (default) = template default + todos os profiles; "project" = só o profile
+ *  de project_ref (aprendizado local — projetos novos não herdam). */
 export async function addTaxonomyAliases(input: {
   kind: "document_type" | "business_domain";
   key: string;
   aliases: string[];
   created_from?: string;
-}): Promise<{ status: string; key: string; aliases: string[]; updated_projects: string[] }> {
+  scope?: "global" | "project";
+  project_ref?: string;
+}): Promise<{ status: string; scope: string; key: string; aliases: string[]; updated_projects: string[] }> {
   const res = await apiFetch(`${API_URL}/api/taxonomy/aliases`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

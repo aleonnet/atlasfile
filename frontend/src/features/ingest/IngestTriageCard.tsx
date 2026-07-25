@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronRight, Lightbulb, RefreshCw, Settings, Sparkles, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Globe, Lightbulb, RefreshCw, Settings, Sparkles, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import {
@@ -234,7 +234,11 @@ export function IngestTriageCard({
   const aliasCorpus = aliasSuggestionsQuery.data?.corpus;
   const [aliasBusy, setAliasBusy] = useState("");
 
-  async function handleApproveAlias(group: AliasSuggestionGroup, term: AliasSuggestionTerm) {
+  async function handleApproveAlias(
+    group: AliasSuggestionGroup,
+    term: AliasSuggestionTerm,
+    scope: "global" | "project"
+  ) {
     const token = `${group.kind}:${group.key}:${term.term}`;
     setAliasBusy(token);
     try {
@@ -243,8 +247,14 @@ export function IngestTriageCard({
         key: group.key,
         aliases: [term.term],
         created_from: `alias-suggest:${selectedProject}`,
+        scope,
+        ...(scope === "project" ? { project_ref: selectedProject } : {}),
       });
-      onStatus(t("ingest:aliasSuggest.applied", { term: term.term, label: group.label, count: result.updated_projects.length }));
+      onStatus(
+        scope === "project"
+          ? t("ingest:aliasSuggest.appliedProject", { term: term.term, label: group.label })
+          : t("ingest:aliasSuggest.applied", { term: term.term, label: group.label, count: result.updated_projects.length })
+      );
       invalidateAfterTaxonomyChange();
     } catch (e) {
       onStatus(e instanceof Error ? e.message : t("ingest:aliasSuggest.applyFailed"), "error");
@@ -959,8 +969,13 @@ export function IngestTriageCard({
                           {t("ingest:aliasSuggest.evidence", { count: term.support, precision: formatPercent(term.precision) })}
                         </span>
                         <span className="ml-auto flex gap-1.5">
-                          <Button size="sm" onClick={() => void handleApproveAlias(group, term)} disabled={aliasBusy === token} title={t("ingest:aliasSuggest.approveTitle")}>
-                            <Check /> {t("common:action.approve")}
+                          {/* Default recomendado = projeto (aprendizado local); global propaga
+                              ao template default e a TODOS os projetos — escolha explícita. */}
+                          <Button size="sm" onClick={() => void handleApproveAlias(group, term, "project")} disabled={aliasBusy === token} title={t("ingest:aliasSuggest.approveProjectTitle")}>
+                            <Check /> {t("ingest:aliasSuggest.approveProject")}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => void handleApproveAlias(group, term, "global")} disabled={aliasBusy === token} title={t("ingest:aliasSuggest.approveGlobalTitle")}>
+                            <Globe /> {t("ingest:aliasSuggest.approveGlobal")}
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => void handleDismissAlias(group, term)} disabled={aliasBusy === token} title={t("ingest:aliasSuggest.dismissTitle")}>
                             <X /> {t("ingest:aliasSuggest.dismiss")}

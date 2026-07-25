@@ -382,7 +382,13 @@ def classify_business_domain(
         filename_hits = len(filename_hit_set)
         text_hits = len(text_hit_set)
         entity_hits = len(entity_hit_set)
-        document_type_hits = len(alias_set & document_type_tokens)
+        # Overlap com o vocabulário do TIPO é desempate, não evidência primária:
+        # sem nenhum hit de conteúdo (nome/texto/entidades), não pontua — senão
+        # todo `relatorio` nasce "operacoes" com 46% por compartilhar "status
+        # report", mesmo com zero evidência no documento (caso real do kit
+        # marítimo, diagnosticado com scripts/trace_classification.py).
+        content_hits = filename_hits + text_hits + entity_hits
+        document_type_hits = len(alias_set & document_type_tokens) if content_hits else 0
         specificity = (
             _alias_specificity(filename_hit_set) * _DOMAIN_FILENAME_HIT_WEIGHT
             + _alias_specificity(text_hit_set) * _DOMAIN_TEXT_HIT_WEIGHT

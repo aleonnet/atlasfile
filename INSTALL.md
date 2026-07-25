@@ -89,6 +89,8 @@ PROJECTS_HOST_ROOT=/mnt/c/Users/seu_usuario/Documents/Projects
 
 Se a pasta não existir, o AtlasFile a cria automaticamente no primeiro uso.
 
+**Senhas por instalação**: o `install.sh` gera automaticamente `OPENSEARCH_PASSWORD`/`OPENSEARCH_INITIAL_ADMIN_PASSWORD` e, desde a v0.44.0, `DASHBOARDS_COOKIE_PASSWORD` (chave que encripta o cookie de sessão do Dashboards — com chave própria, cookie de uma instalação anterior vira redirect limpo de login em vez de erro 500). Na instalação manual, defina as três no `.env` — a de cookie com **32+ caracteres**. Quem atualiza uma instalação existente via `git pull` não precisa fazer nada: `make docker-up`/`make docker-update` geram a variável nova se estiver faltando.
+
 ### Variáveis opcionais
 
 ```bash

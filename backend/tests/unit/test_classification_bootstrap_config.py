@@ -88,6 +88,39 @@ def test_classify_bootstrap_never_returns_empty_even_without_clear_signal() -> N
     assert result["confidence"] >= 0.0
 
 
+def test_overlap_com_tipo_nao_pontua_sem_hit_de_conteudo() -> None:
+    """v0.44.0 (caso real do kit marítimo): domínio não pode vencer só por
+    compartilhar vocabulário com o TIPO detectado ("status report" ∈ relatorio
+    ∩ operacoes). Sem nenhum hit de conteúdo, o honesto é best_effort com
+    confiança mínima (vai para triagem), não 'operacoes 46%'."""
+    profile = _load_runtime_profile()
+
+    result = classify_bootstrap(
+        profile=profile,
+        source_path=Path("notificacao_sobreestadia_v99.pdf"),
+        text_excerpt="Prezados, notificamos a ocorrencia de sobreestadia do navio na atracacao conforme apuracao anexa.",
+    )
+
+    assert "alias_best_effort" in result["reason"]
+    assert result["business_domain_confidence"] <= 0.05
+
+
+def test_overlap_com_tipo_conta_quando_ha_hit_de_conteudo() -> None:
+    """Controle positivo do gate acima: com hit real de conteúdo, o overlap com
+    o tipo segue somando (é desempate legítimo entre candidatos com evidência)."""
+    profile = _load_runtime_profile()
+
+    result = classify_bootstrap(
+        profile=profile,
+        source_path=Path("status_semanal.pdf"),
+        text_excerpt="Cronograma atualizado do workstream com milestones da transicao e status report da semana.",
+    )
+
+    assert result["business_domain"] == "operacoes"
+    assert "bootstrap_aliases" in result["reason"]
+    assert result["business_domain_confidence"] > 0.4
+
+
 def test_classify_bootstrap_uses_domain_aliases_for_parecer() -> None:
     profile = _load_runtime_profile()
 

@@ -331,6 +331,8 @@ export function PainelView({
   }
 
   const isSingleProject = selectedProject !== ALL_PROJECTS;
+  const selectedProjectLabel =
+    projects.find((p) => p.project_id === selectedProject)?.project_label || selectedProject;
   const initializedCount = projects.filter((p) => p.initialized).length;
 
   function applyFilter(patch: Partial<SearchFilters>) {
@@ -458,9 +460,19 @@ export function PainelView({
                     onStatus={onStatus}
                     onScanComplete={onScanComplete}
                   />
-                  <Button disabled={reconcilingNow} onClick={onReconcile}>
+                  {/* Escopo explícito: por projeto NÃO faz limpeza global de órfãos
+                      (POST /api/reconcile/{id} → cleanup_orphans=False); "todos" faz. */}
+                  <Button
+                    disabled={reconcilingNow}
+                    onClick={onReconcile}
+                    title={isSingleProject ? t("painel:card.reconcileScopeProjectHint") : t("painel:card.reconcileScopeAllHint")}
+                  >
                     <RefreshCw className={reconcilingNow ? "animate-spin" : ""} />
-                    {reconcilingNow ? t("painel:card.reconciling") : t("painel:card.reconcileButton")}
+                    {reconcilingNow
+                      ? t("painel:card.reconciling")
+                      : isSingleProject
+                        ? t("painel:card.reconcileButtonProject", { project: selectedProjectLabel })
+                        : t("painel:card.reconcileButtonAll")}
                   </Button>
                 </div>
                 <span className="text-xs text-muted-foreground">

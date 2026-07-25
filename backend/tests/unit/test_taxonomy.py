@@ -118,3 +118,51 @@ def test_rejeita_outro_e_kind_invalido(sandbox):
         taxonomy.create_taxonomy_entry(kind="document_type", key="outro")
     with pytest.raises(ValueError):
         taxonomy.create_taxonomy_entry(kind="tipo", key="x")
+
+
+def test_add_project_aliases_soh_no_profile_do_projeto(sandbox):
+    """v0.44.0: aprovação com escopo de projeto — aprendizado local, sem tocar
+    template default nem os demais projetos."""
+    from app.profile_store import ensure_profile, load_profile
+
+    project_b = sandbox / "proj_b"
+    project_b.mkdir()
+    ensure_profile(project_root=project_b, project_id="proj_b", project_label="Projeto B")
+
+    result = taxonomy.add_project_aliases(
+        project_root=sandbox / "proj_a",
+        kind="business_domain",
+        key="juridico",
+        aliases=["Afretamento", "demurrage"],
+        created_from="alias-suggest:proj_a",
+    )
+    assert result["scope"] == "project"
+    assert result["template_updated"] is False
+    assert result["updated_projects"] == ["proj_a"]
+    assert result["aliases"] == ["afretamento", "demurrage"]
+
+    # projeto A aprendeu
+    domain_a = next(d for d in load_profile(sandbox / "proj_a").classification.business_domains if d.key == "juridico")
+    assert "afretamento" in domain_a.aliases
+    # template default intacto
+    template = json.loads((sandbox / "_ATLASFILE" / "templates" / "default.json").read_text(encoding="utf-8"))
+    entry = next(d for d in template["classification"]["business_domains"] if d["key"] == "juridico")
+    assert "afretamento" not in entry["aliases"]
+    # projeto B intacto
+    domain_b = next(d for d in load_profile(project_b).classification.business_domains if d.key == "juridico")
+    assert "afretamento" not in domain_b.aliases
+
+    # idempotente: reaplicar não regrava nada
+    again = taxonomy.add_project_aliases(
+        project_root=sandbox / "proj_a", kind="business_domain", key="juridico", aliases=["afretamento"]
+    )
+    assert again["updated_projects"] == []
+
+
+def test_add_project_aliases_valida_input(sandbox):
+    with pytest.raises(ValueError, match="não existe"):
+        taxonomy.add_project_aliases(project_root=sandbox / "proj_a", kind="business_domain", key="inexistente", aliases=["x"])
+    with pytest.raises(ValueError, match="obrigatórios"):
+        taxonomy.add_project_aliases(project_root=sandbox / "proj_a", kind="document_type", key="contrato", aliases=["   "])
+    with pytest.raises(ValueError, match="kind inválido"):
+        taxonomy.add_project_aliases(project_root=sandbox / "proj_a", kind="tag", key="contrato", aliases=["x"])

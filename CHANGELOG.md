@@ -15,6 +15,17 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.44.0] - 2026-07-24
+
+### Adicionado
+- **Aliases por projeto**: aprovar sugestão do minerador agora escolhe o escopo — "Aprovar no projeto" (default recomendado: só o profile do projeto aprende; projetos novos não herdam) ou "Global" (template default + todos os profiles, comportamento anterior). API: `POST /api/taxonomy/aliases` ganha `scope` e `project_ref` (compat retro: default `global`); nova `add_project_aliases` em `taxonomy.py`.
+- **`backend/scripts/trace_classification.py`**: bancada de diagnóstico do bootstrap — mostra por domínio/tipo quais aliases casaram (por campo), o que foi filtrado por colisão de léxico e a conta exata da confiança. Foi ela que diagnosticou o caso do kit marítimo.
+- **Chave do cookie de sessão do Dashboards por instalação** (`DASHBOARDS_COOKIE_PASSWORD`): cookie de instância anterior vira redirect limpo de login em vez de 500 (a chave default era igual entre instâncias). Gerada pelo `install.sh` (só quando ausente) e pelo `make docker-up` (guard para quem atualiza via git pull); vai ao container como flag CLI porque a allowlist de env do entrypoint não cobre `opensearch_security.*` (verificado na imagem 2.17.1).
+
+### Corrigido
+- **Classificador: domínio não vence mais só por overlap com o vocabulário do TIPO**: todo doc classificado como `relatorio` nascia "operacoes 46%" por compartilhar o alias "status report", mesmo com zero evidência no documento (caso real do kit marítimo — o item do roadmap atribuía o sintoma ao √N, diagnóstico refutado pelo trace). Overlap tipo↔domínio agora só pontua com hit de conteúdo (nome/texto/entidades); sem evidência, cai em best-effort (0.05) e vai para triagem. Benchmark 62 docs: idêntico antes/depois (domínio 87.1%, tipo 93.6%, exact 82.3%) — zero regressão; thresholds mantidos com base em dados.
+- **Escopo do reconcile explícito na UI**: o botão agora mostra "Reconciliar INDEX — {{projeto}}" (tooltip: sem limpeza global de órfãos; `cleanup_orphans=False` no endpoint por projeto) ou "— todos os projetos" (tooltip: inclui limpeza global). Antes os dois modos eram indistinguíveis no botão.
+
 ## [0.42.0] - 2026-07-23
 
 ### Adicionado

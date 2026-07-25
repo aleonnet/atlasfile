@@ -8,7 +8,7 @@ Esta página consolida os scripts do repositório e explica, de forma operaciona
 |---|---|
 | Bootstrap do ambiente e projeto | `scripts/bootstrap_project.py`, `scripts/smoke-project-init.sh` |
 | Preparação manual de datasets do classificador | `backend/scripts/bootstrap_validation_set.py`, `backend/scripts/backfill_training_pool.py` |
-| Benchmark, ciclo e inspeção do classificador | `backend/scripts/benchmark_classification.py`, `backend/scripts/run_classifier_cycle.py`, `backend/scripts/classifier_status.py` |
+| Benchmark, ciclo e inspeção do classificador | `backend/scripts/benchmark_classification.py`, `backend/scripts/run_classifier_cycle.py`, `backend/scripts/classifier_status.py`, `backend/scripts/trace_classification.py` |
 | Operação e manutenção do stack | `scripts/reset-opensearch-index.sh`, `scripts/import-dashboards.sh` |
 | Testes e automação técnica | `scripts/ci.sh`, `scripts/e2e_layout_scenarios.py` |
 
@@ -87,6 +87,17 @@ Esta página consolida os scripts do repositório e explica, de forma operaciona
 - Saída:
   - JSON em stdout com `registry`, `latest_report_summary` e `latest_report_id`
 - Etapa do processo: observabilidade/diagnóstico do classificador em operação.
+
+### `backend/scripts/trace_classification.py`
+
+- O que faz: trace completo do bootstrap para UM arquivo contra UM projeto — caminho vencedor do document_type (e a conta do √N no caminho alias), e por domínio: aliases carregados, filtrados por colisão de léxico, hits por campo (filename/texto/entidades), overlap com o tipo (pontuado ou ignorado pela regra de conteúdo, v0.44.0), score e a conta da confiança; fecha com o `classify_bootstrap` real como cross-check.
+- Quando usar: sempre que uma classificação "não fizer sentido" — antes de mexer em alias, threshold ou scoring (zero trial-and-error). Foi a ferramenta que diagnosticou o caso do kit marítimo (v0.44.0).
+- Pré-requisitos: virtualenv do backend; profile do projeto acessível; arquivo legível pelo extrator.
+- Entrada:
+  - obrigatórios `--project-root` e `--file`
+  - opcional `--json` (resultado bruto ao final)
+- Saída: relatório legível em stdout com os hits por domínio e a decomposição da confiança.
+- Etapa do processo: diagnóstico de classificação em operação e em E2E.
 
 ## `scripts`
 
