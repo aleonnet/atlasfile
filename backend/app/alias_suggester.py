@@ -31,6 +31,7 @@ from typing import Any
 
 from .classification_bootstrap import _document_type_lexicon, _word_pattern
 from .classifier_cycle import extract_feature_text
+from .profile_store import PROFILE_DIR
 from .triage import triage_resolved_dir
 from .utils import fold_ocr_spacing
 
@@ -78,12 +79,49 @@ def _load_resolved_docs(project_root: Path) -> list[dict[str, Any]]:
     return docs
 
 
-def _doc_text(data: dict[str, Any]) -> tuple[str, list[str]] | None:
+# v0.50.3: cache persistente do feature text por sha256 (identidade de
+# CONTEÚDO — rename não invalida, edição gera sha novo). Motivo medido: a
+# extração roda a cada GET das sugestões, e um único PDF escaneado de 46
+# páginas no triage_resolved passou a custar ~60s de OCR por request (o
+# usuário viu a lista "não atualizar mais" — era o refetch pendurado).
+_FEATURE_CACHE_DIRNAME = "feature_text_cache"
+
+
+def _feature_text_cached(project_root: Path, path: Path, original_name: str, sha256: str) -> str:
+    """Mesma composição do extract_feature_text (nome + excerpt, foldados),
+    com o EXCERPT (a parte cara) cacheado por sha — a linha do nome é
+    recomposta por chamada, então o mesmo conteúdo re-resolvido sob outro
+    nome não herda o nome antigo do cache."""
+    if not sha256:
+        return extract_feature_text(path, original_name=original_name)
+    cache_path = project_root / PROFILE_DIR / _FEATURE_CACHE_DIRNAME / f"{sha256}.txt"
+    excerpt: str | None = None
+    if cache_path.exists():
+        try:
+            excerpt = cache_path.read_text(encoding="utf-8")
+        except OSError:
+            excerpt = None
+    if excerpt is None:
+        from .classifier_cycle import _MAX_EXTRACT_CHARS
+        from .document_extractor import extract_document_content
+
+        excerpt = extract_document_content(path, max_chars=_MAX_EXTRACT_CHARS).text_excerpt
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(excerpt, encoding="utf-8")
+        except OSError:
+            pass  # cache é otimização: falha de escrita nunca derruba a análise
+    parts = [original_name or path.name, excerpt]
+    return fold_ocr_spacing("\n".join(part for part in parts if part).strip())
+
+
+def _doc_text(project_root: Path, data: dict[str, Any]) -> tuple[str, list[str]] | None:
     """Retorna (texto completo foldado — o MESMO que o bootstrap vê, para a
     auto-verificação do matching) e as PARTES para mineração de candidatos:
     stem do nome original (sem extensão — 'txt'/'pdf' não é alias) e o excerpt,
     separadas para n-gramas não atravessarem a fronteira nome→texto."""
     original_name = str(data.get("original_filename") or "")
+    sha256 = str(data.get("sha256") or "")
     for field in ("final_path", "path", "source_path"):
         raw = str(data.get(field) or "").strip()
         if not raw:
@@ -91,7 +129,7 @@ def _doc_text(data: dict[str, Any]) -> tuple[str, list[str]] | None:
         path = Path(raw)
         if path.exists():
             try:
-                full = extract_feature_text(path, original_name=original_name)
+                full = _feature_text_cached(project_root, path, original_name, sha256)
             except Exception:
                 return None
             name_part = fold_ocr_spacing(Path(original_name or path.name).stem)
@@ -120,7 +158,7 @@ def suggest_aliases(
 
     analyzed: list[dict[str, Any]] = []
     for data in docs:
-        extracted = _doc_text(data)
+        extracted = _doc_text(project_root, data)
         if extracted is None:
             continue
         full_text, parts = extracted

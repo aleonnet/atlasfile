@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.50.3
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [cache_feature_text_sugestor_v0503](cache_feature_text_sugestor_v0503.plan.md) | Sugestões de alias "não somem após a ação" = refetch pendurado em GET de 61,8s (re-extração de TODOS os resolvidos a cada request; PDF escaneado de 46 págs re-OCRizado toda vez); cache persistente do excerpt por sha256 em `_PROFILE/feature_text_cache/` → 35ms (1.780×); nome recomposto por chamada (sem contaminação); E2E: linha some em ~1s |
+
+---
+
 ## 0.50.0
 
 | # | Plano | Escopo |

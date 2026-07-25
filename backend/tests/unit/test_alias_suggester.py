@@ -187,3 +187,63 @@ def test_sem_contraste_minimo_nao_ha_precisao_fabricada(project_root):
                     filename="c.txt", text="indicadores mensais")  # só 1 de contraste
 
     assert suggest_aliases(project_root, PROFILE)["suggestions"] == []
+
+
+# ── Cache persistente do feature text (v0.50.3) ──────────────────────────────
+# Motivo medido: extração rodava a cada GET; um PDF escaneado de 46 páginas no
+# triage_resolved custava ~60s de OCR por request (UI parecia "não atualizar").
+
+
+def _write_resolved_with_sha(project_root: Path, doc_id: str, *, sha: str,
+                             filename: str, text: str, final_bd: str = "juridico") -> None:
+    _write_resolved(project_root, doc_id, suggested_bd="operacoes", final_bd=final_bd,
+                    filename=filename, text=text)
+    meta = triage_resolved_dir(project_root) / f"{doc_id}.json"
+    data = json.loads(meta.read_text(encoding="utf-8"))
+    data["sha256"] = sha
+    meta.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_cache_por_sha_evita_reextracao(project_root, monkeypatch):
+    _write_resolved_with_sha(project_root, "d1", sha="abc123",
+                             filename="a.txt", text="escritura publica lavrada em cartorio")
+
+    import app.document_extractor as extractor_module
+    real = extractor_module.extract_document_content
+    calls = {"n": 0}
+
+    def counting(path, max_chars=None):
+        calls["n"] += 1
+        return real(path, max_chars=max_chars)
+
+    monkeypatch.setattr(extractor_module, "extract_document_content", counting)
+
+    suggest_aliases(project_root, PROFILE)
+    assert calls["n"] == 1, "primeira análise extrai e grava o cache"
+    cache_file = project_root / "_PROFILE" / "feature_text_cache" / "abc123.txt"
+    assert cache_file.exists()
+
+    suggest_aliases(project_root, PROFILE)
+    assert calls["n"] == 1, "segunda análise lê do cache — zero re-extração"
+
+
+def test_cache_nao_contamina_nome_de_outro_resolvido(project_root):
+    """Mesmo conteúdo (sha igual) resolvido sob OUTRO nome: o cache guarda só o
+    excerpt — a linha do nome é recomposta por meta, nunca herdada."""
+    _write_resolved_with_sha(project_root, "d1", sha="samesha",
+                             filename="escritura_original.txt",
+                             text="escritura publica lavrada em cartorio")
+    # Contraste (≥2 classes) exigido pelo corte contrastivo da mineração
+    _write_resolved(project_root, "c1", suggested_bd="operacoes", final_bd="operacoes",
+                    filename="c1.txt", text="indicadores mensais de atendimento e backlog")
+    _write_resolved(project_root, "c2", suggested_bd="operacoes", final_bd="operacoes",
+                    filename="c2.txt", text="painel de chamados e disponibilidade")
+    suggest_aliases(project_root, PROFILE)  # aquece o cache com o 1º nome
+
+    _write_resolved_with_sha(project_root, "d2", sha="samesha",
+                             filename="renomeado_v2.txt",
+                             text="escritura publica lavrada em cartorio")
+    result = suggest_aliases(project_root, PROFILE)
+    analyzed_names = [d for s in result["suggestions"] for t in s["terms"] for d in t["sample_docs"]]
+    assert any("renomeado_v2" in n for n in analyzed_names), \
+        f"nome novo deve aparecer nos samples, não o herdado do cache: {analyzed_names}"

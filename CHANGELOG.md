@@ -15,6 +15,11 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.50.3] - 2026-07-25
+
+### Corrigido
+- **Sugestões de alias voltam a sumir na hora após aprovar/dispensar** (bug report do usuário; backend sempre aplicou — a UI é que não refletia): o refetch disparava e ficava pendurado porque o GET das sugestões re-extraía TODOS os docs resolvidos a cada request, e o PDF escaneado de 46 páginas que entrou no triage_resolved no teste da aura passou a custar ~60s de OCR por chamada (medido: 61,8s no *080 vs 0,66s em projeto leve). Fix: cache persistente do excerpt por sha256 (identidade de conteúdo, já no meta) em `_PROFILE/feature_text_cache/` — medido 62,5s na primeira chamada (aquece) e **35ms** nas seguintes (1.780×); nome do arquivo recomposto por chamada (mesmo conteúdo re-resolvido sob outro nome não herda o antigo); falha do cache degrada para extração ao vivo. E2E no browser real: linha some em ~1s após a ação.
+
 ## [0.50.2] - 2026-07-25
 
 ### Mudado
