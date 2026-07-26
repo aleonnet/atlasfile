@@ -478,3 +478,42 @@ tar -czf AtlasFileProjects_$(date +%Y%m%d).tar.gz -C "$(dirname <PROJECTS_HOST_R
 ```
 
 O índice OpenSearch pode ser reconstruído a qualquer momento com **Reconciliar INDEX** no Painel.
+
+---
+
+## 18) Desinstalação
+
+O instalador sabe se desinstalar, e reverte **apenas o que ele criou** — o que já existia na máquina antes fica intacto.
+
+```bash
+# a partir da instalação
+bash ~/AtlasFile/install.sh --uninstall
+
+# ou, se o clone já não existir
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --uninstall --dir ~/AtlasFile
+
+# a partir do repositório
+make uninstall
+```
+
+```powershell
+# Windows
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -Uninstall
+```
+
+**Como ele sabe o que é dele.** Durante a instalação são gravados dois manifestos: `~/.atlasfile/host-prereqs` (dependências do sistema — há um Docker por máquina) e `<pasta da instalação>/.atlasfile-install-manifest` (fatos daquela instalação). Cada item vale `created` ou `preexisting`; `created` nunca é rebaixado numa reinstalação, e chave ausente lê como `preexisting`. Ou seja: **na dúvida, preserva**.
+
+**O que acontece.** Antes de tocar em qualquer coisa ele imprime um plano em texto com duas seções — o que será removido e o que será preservado, com o motivo — e espera confirmação (`--yes` para modo não-interativo).
+
+| Item | Comportamento |
+|---|---|
+| Containers, rede e imagens construídas | Removidos via `docker compose down --rmi local` rodado de dentro da instalação, para o compose resolver o projeto sozinho. Nunca por nome de container (os nomes `atlasfile-*` são fixos e podem ser de outra instalação) |
+| Volume do OpenSearch (o índice) | **Sem default**: ele pergunta. `--purge-data` apaga, `--keep-data` mantém. Modo headless exige uma das duas. Seus documentos e o journal em `_ATLASFILE/` ficam em disco e não são afetados — o índice se reconstrói com Reconciliar |
+| Imagens `opensearchproject/*` | Preservadas (podem ser compartilhadas com outros stacks); o resumo mostra como liberar o espaço |
+| Pasta da instalação | Removida **só** se o manifesto disser que o instalador a criou e não houver alterações locais (`--force` para forçar). Um clone de desenvolvimento é sempre preservado |
+| Pasta de projetos | **Nunca apagada.** A única exceção é uma pasta que o instalador criou e que continua vazia |
+| Docker, git, Ollama, plugin do compose, grupo docker | Revertidos apenas com `--remove-deps` **e** apenas se o manifesto disser `created`. O Docker ainda é preservado se sobrar qualquer outro artefato AtlasFile na máquina |
+| Homebrew | **Nunca** removido automaticamente — o plano imprime o comando oficial |
+| Ollama no Linux | Listado com os passos do fornecedor, não executado (o instalador oficial não traz desinstalador) |
+
+**Instalação antiga, sem manifesto.** Quem instalou antes desta versão não tem manifesto: o stack e o volume seguem removíveis, o clone é preservado, e toda dependência de sistema aparece como *"não dá para provar que foi o instalador → preservada"*. A próxima execução do `install.sh` grava o manifesto com o que der para provar.

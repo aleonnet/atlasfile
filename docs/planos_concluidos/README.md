@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.54.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [installer_uninstall_e_banner_orbital_v0540](installer_uninstall_e_banner_orbital_v0540.plan.md) | `install.sh --uninstall` reverte só o que a instalação criou, guiado por manifesto em dois escopos (host e instalação), com plano em texto antes de agir e o volume de dados sem default; banner orbital animado (ignição, duas luas, cometa que acende o wordmark) substituindo a carinha; `--help` de verdade nos dois instaladores. Seis bugs preexistentes corrigidos com evidência medida, três deles achados numa VM Windows limpa |
+
+---
+
 ## 0.52.0 – 0.53.0
 
 | # | Plano | Escopo |

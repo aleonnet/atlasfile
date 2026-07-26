@@ -6,6 +6,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env
+# Manifesto de instalação (o que o install.sh criou nesta máquina); é lido pelo
+# install.sh --uninstall e nasce por instalação, nunca versionado.
+.atlasfile-install-manifest
 opensearch_data/
 *.code-workspace
 .cursor/

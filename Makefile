@@ -3,7 +3,7 @@
 # O smoke funcional completo do ciclo (ingestão, triagem, busca/highlight e assistente)
 # fica documentado em docs/plano_teste_e2e_v0.36.0.md.
 
-.PHONY: test test-backend test-frontend test-installer docker-build docker-up docker-update docker-smoke-init reset-index reset-chat ensure-dashboards-cookie
+.PHONY: test test-backend test-frontend test-installer docker-build docker-up docker-update docker-smoke-init reset-index reset-chat ensure-dashboards-cookie uninstall
 
 test: test-backend test-frontend test-installer
 	@echo "All tests passed."
@@ -67,3 +67,12 @@ reset-index:
 # Deleta o índice de sessões de chat.
 reset-chat:
 	@./scripts/reset-opensearch-index.sh chat
+
+# Desinstala ESTA instalação: imprime o plano e pede confirmação antes de agir.
+# Reverte só o que o install.sh criou (manifesto .atlasfile-install-manifest +
+# ~/.atlasfile/host-prereqs); um clone que não veio do instalador é preservado,
+# então rodar isto num checkout de desenvolvimento remove o stack e nada mais.
+#   make uninstall                    → pergunta o que fazer com o volume
+#   make uninstall ARGS="--purge-data --remove-deps"
+uninstall:
+	@bash install.sh --uninstall --dir "$(CURDIR)" $(ARGS)

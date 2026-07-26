@@ -22,7 +22,9 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth -WithOllama
 ```
 
-The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:5173` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md).
+The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:5173` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag.
+
+**Uninstalling** is symmetric: `install.sh --uninstall` (or `-Uninstall` on Windows) prints a plan of what it will remove and what it will preserve, then waits for your confirmation. It reverts only what the installer created — recorded in a manifest at install time — so a Docker, git or Ollama that was already on the machine is never touched, and your documents are never deleted. The search index has no default: it asks, or takes `--purge-data` / `--keep-data`.
 
 ## Overview
 

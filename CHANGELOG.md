@@ -15,6 +15,29 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.54.0] - 2026-07-26
+
+### Adicionado
+
+- **`install.sh --uninstall` — o instalador sabe se desinstalar** revertendo apenas o que ele criou. Antes de agir imprime um plano em texto com duas seções (o que será removido / o que será preservado, com o motivo) e espera confirmação; `--yes` para modo não-interativo
+- **Manifesto de instalação** em dois escopos, porque os escopos são diferentes: `~/.atlasfile/host-prereqs` (dependências do sistema — há um Docker por máquina, gravado no instante em que cada `ensure_*` decide, de modo que uma instalação que falhe depois de instalar o Docker não perca o registro) e `<instalação>/.atlasfile-install-manifest` (fatos daquela instalação). Valores `created`/`preexisting`; `created` nunca é rebaixado numa reinstalação e chave ausente lê como `preexisting` — na dúvida, preserva
+- **Volume de dados sem default**: o uninstall pergunta explicitamente antes de apagar o índice (`--purge-data` / `--keep-data`; headless exige uma das duas). Documentos e journal ficam em disco e não são afetados
+- **Guardas de segurança do uninstall**: stack removido via `docker compose down --rmi local` rodado de dentro da instalação (o compose resolve o projeto sozinho, respeitando `COMPOSE_PROJECT_NAME`) e **nunca** por nome de container, já que os nomes `atlasfile-*` são fixos e podem ser de outra instalação; a pasta só é apagada se o manifesto disser que o instalador a criou, se ela bater com o `install_dir` registrado e se não houver alteração local (`--force` para forçar) — um clone de desenvolvimento é sempre preservado; a pasta de projetos nunca é apagada (só um diretório criado pelo instalador e ainda vazio, via `rmdir`, que se recusa a agir se algo tiver aparecido); Docker é preservado se sobrar qualquer outro artefato AtlasFile na máquina; Homebrew nunca é removido automaticamente
+- **`--help` de verdade** nos dois instaladores, no estilo do mac-env-setup (Uso, opções por seção, variáveis de ambiente), e `make uninstall`
+- **Banner animado no terminal** com a identidade real do produto (`CompanionOrb`): ignição do orbe linha a linha, duas luas em órbita keplerianas opostas com profundidade (glifo menor e cor mais escura no lado de trás) e um cometa ejetado de trás do orbe que **acende o wordmark** ao passar por cima. ~1,1 s no total. A frase de chamada agora é a mesma do site: *Your documents have gravity.*
+- **Guardas do banner**: cor só com `NO_COLOR` ausente e TTY; rampa 24-bit só quando o terminal anuncia `COLORTERM`, caindo na rampa quente de 256 cores em vez disso; sem animação em CI, sem `tput` ou em terminal com menos de 60 colunas; `trap` restaura o cursor se você interromper com Ctrl-C
+
+### Corrigido
+
+- **`--help` não funcionava sob `curl | bash`** — ele fazia `grep '^#' "$0"`, e nesse caminho `$0` é `bash`: a saída era só `grep: bash: No such file or directory`. Agora é um heredoc, idêntico nos dois modos de entrega
+- **`install.ps1` não fazia parse no Windows PowerShell 5.1 quando salvo como arquivo** (o modo documentado no bloco de parâmetros): UTF-8 sem BOM é lido como ANSI e o `✔` vira uma sequência com aspa embutida que encerra a string, cascateando erros de sintaxe. Medido numa VM limpa que **adicionar BOM conserta o `-File` mas quebra o `irm | iex`** (a string passa a começar com U+FEFF e o `#` deixa de ser o primeiro caractere), então o arquivo agora é **ASCII puro** e monta os glifos por code point — a única forma que sobrevive aos dois caminhos, e também a um servidor que omita `charset=utf-8`
+- **`install.ps1` morria com stack trace numa máquina sem WSL** — justamente o cenário para o qual ele existe. `wsl.exe` acompanha o Windows mesmo sem a feature instalada, então `Get-Command wsl` sempre encontra; e `wsl --status` escreve no stderr e **sai com código 0**, o que com `ErrorActionPreference = Stop` virava `NativeCommandError` terminante. A detecção passa a olhar o conteúdo da mensagem (normalizando o UTF-16 do `wsl.exe`, cujos NULs faziam todo `-match` falhar em silêncio) e degrada com instrução acionável
+- **`install.ps1` abortava quando `$env:LOCALAPPDATA` é nulo** (acontece em sessões não interativas): `Join-Path` lançava e derrubava a instalação inteira antes de qualquer passo
+- **Shim do grupo docker no Linux estava quebrado**: `sudo command docker "$@"` depende de um executável `command`, que **não existe** no Debian/Ubuntu (verificado em `ubuntu:24.04`) — todo `docker ...` seguinte falharia com `sudo: command: command not found`. O binário real passa a ser resolvido antes do shim
+- `make test-installer` voltou a passar com shellcheck instalado (o `main` estava vermelho por duas advertências no shim acima e por uma constante órfã)
+
+---
+
 ## [0.53.0] - 2026-07-25
 
 ### Adicionado

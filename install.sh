@@ -40,9 +40,64 @@ BOOTSTRAP_ONLY=0
 OPEN_BROWSER=1
 ENABLE_AUTH=0
 API_KEY_VALUE=""
+UNINSTALL=0
+PURGE_DATA=""      # ""=undecided, 1=remove the volume, 0=keep it
+REMOVE_DEPS=0
+FORCE=0
 LOG_FILE="${TMPDIR:-/tmp}/atlasfile-install-$(date +%s).log"
 START_TS=$(date +%s)
 TTY_DEV="${TTY_DEV:-/dev/tty}"
+
+# Written as a heredoc instead of scraping the header comments with
+# `grep '^#' "$0"`: under `curl | bash` there is no script file to scrape
+# ($0 is "bash"), so the old --help printed nothing on the one-liner path.
+usage() {
+  cat <<EOF
+AtlasFile installer
+
+Usage:
+  bash install.sh [options]
+  curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- [options]
+
+With no options: installs into ~/AtlasFile, asks where your documents should
+live and starts the stack. Re-running updates the clone and restarts it — the
+installer is idempotent. Host requirements (Docker with Compose v2, git, curl)
+are detected and, with your confirmation, installed for you.
+
+Install options:
+  --dir PATH            Where to install                 (default: ~/AtlasFile)
+  --projects-root PATH  Where your documents live        (default: ~/Documents/AtlasFileProjects)
+  --repo-url URL        Repository to clone              (env ATLASFILE_REPO_URL)
+  --branch NAME         Branch to clone                  (default: main)
+  --yes, -y             Non-interactive: accept defaults. On its own it NEVER
+                        installs system dependencies — see --install-deps
+  --install-deps        Authorize installing missing prerequisites without
+                        asking (Homebrew/Docker/git; sudo on Linux)
+  --with-ollama         Also install Ollama and pull a local model (opt-in)
+  --ollama-model NAME   Model to pull with --with-ollama (default: ${OLLAMA_MODEL})
+  --enable-auth         Enable API authentication (generates a key in
+                        config/api_keys.json)
+  --no-open             Do not open the browser at the end
+
+Uninstall options:
+  --uninstall           Print a removal plan and, after your confirmation,
+                        revert what this installer created. What already
+                        existed on the machine is preserved
+  --purge-data          Uninstall: also remove the OpenSearch volume (the search
+                        index; your documents are never touched)
+  --keep-data           Uninstall: keep the OpenSearch volume
+  --remove-deps         Uninstall: also remove the system dependencies that the
+                        manifest records as installed by AtlasFile
+  --force               Uninstall: remove the clone even with local changes
+
+Other:
+  -h, --help            This help
+
+Environment: ATLASFILE_REPO_URL, ATLASFILE_OLLAMA_MODEL, NO_COLOR, CI,
+             COLORTERM, DOCKER_APP_PATH, TTY_DEV
+Log of this run: ${LOG_FILE}
+EOF
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -50,26 +105,41 @@ while [ $# -gt 0 ]; do
     --branch) BRANCH="$2"; shift 2 ;;
     --dir) INSTALL_DIR="$2"; shift 2 ;;
     --projects-root) PROJECTS_ROOT="$2"; shift 2 ;;
-    --yes) ASSUME_YES=1; shift ;;
+    --yes|-y) ASSUME_YES=1; shift ;;
     --install-deps) INSTALL_DEPS=1; shift ;;
     --with-ollama) WITH_OLLAMA=1; shift ;;
     --ollama-model) OLLAMA_MODEL="$2"; shift 2 ;;
     --bootstrap-only) BOOTSTRAP_ONLY=1; shift ;;  # hidden: prereqs only, then exit (CI/support)
     --no-open) OPEN_BROWSER=0; shift ;;
     --enable-auth) ENABLE_AUTH=1; shift ;;
-    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --uninstall) UNINSTALL=1; shift ;;
+    --purge-data) PURGE_DATA=1; shift ;;
+    --keep-data) PURGE_DATA=0; shift ;;
+    --remove-deps) REMOVE_DEPS=1; shift ;;
+    --force) FORCE=1; shift ;;
+    -h|--help) usage; exit 0 ;;
     *) echo "Unknown flag: $1 (use --help)"; exit 1 ;;
   esac
 done
 
 # ── Palette and UI primitives ───────────────────────────────────────────────
-if [ -t 1 ]; then
-  ORANGE=$'\033[38;5;202m'; CORAL=$'\033[38;5;209m'; PURPLE=$'\033[38;5;177m'
+# IS_TTY drives interactivity, COLOR_OK drives color (NO_COLOR is honoured),
+# TRUECOLOR picks the 24-bit ramp only when the terminal announces support,
+# ANIM_OK gates the animated banner (never in CI, never without tput).
+if [ -t 1 ]; then IS_TTY=1; else IS_TTY=0; fi
+COLOR_OK=0
+if [ "$IS_TTY" = "1" ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then COLOR_OK=1; fi
+TRUECOLOR=0
+if [ "$COLOR_OK" = "1" ]; then
+  case "${COLORTERM:-}" in truecolor|24bit) TRUECOLOR=1 ;; esac
+fi
+ANIM_OK=0
+if [ "$COLOR_OK" = "1" ] && [ -z "${CI:-}" ] && command -v tput >/dev/null 2>&1; then ANIM_OK=1; fi
+if [ "$COLOR_OK" = "1" ]; then
+  ORANGE=$'\033[38;5;202m'; PURPLE=$'\033[38;5;177m'
   GREEN=$'\033[32m'; RED=$'\033[31m'; DIM=$'\033[2m'; BOLD=$'\033[1m'; RESET=$'\033[0m'
-  IS_TTY=1
 else
-  ORANGE=""; CORAL=""; PURPLE=""; GREEN=""; RED=""; DIM=""; BOLD=""; RESET=""
-  IS_TTY=0
+  ORANGE=""; PURPLE=""; GREEN=""; RED=""; DIM=""; BOLD=""; RESET=""
 fi
 
 step_now() { date +%s; }
@@ -181,20 +251,23 @@ ensure_sudo() {
 ensure_homebrew() {
   if command -v brew >/dev/null 2>&1; then
     eval "$(brew shellenv)" 2>/dev/null || true
+    host_set homebrew preexisting
     return 100
   fi
   if [ -x "${BREW_PREFIX}/bin/brew" ]; then
     eval "$("${BREW_PREFIX}/bin/brew" shellenv)"
+    host_set homebrew preexisting
     return 100
   fi
   run_step "installing Homebrew" env NONINTERACTIVE=1 /bin/bash -c \
     "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || return 1
   [ -x "${BREW_PREFIX}/bin/brew" ] && eval "$("${BREW_PREFIX}/bin/brew" shellenv)"
+  host_set homebrew created
   return 0
 }
 
 ensure_git() {
-  command -v git >/dev/null 2>&1 && return 100
+  command -v git >/dev/null 2>&1 && { host_set git preexisting; return 100; }
   if [ "$OS_KIND" = "mac" ]; then
     ensure_homebrew || return 1
     run_step "installing git (Homebrew)" brew install git || return 1
@@ -208,6 +281,7 @@ ensure_git() {
       run_step "installing git (dnf)" as_root dnf install -y git || return 1
     fi
   fi
+  host_set git created
   return 0
 }
 
@@ -217,21 +291,24 @@ ensure_docker_mac() {
   if [ -d "${DOCKER_APP_PATH:-/Applications/Docker.app}" ] \
     || brew list --cask docker-desktop >/dev/null 2>&1 \
     || brew list --cask docker >/dev/null 2>&1; then
+    host_set docker preexisting
     return 100
   fi
   ensure_homebrew || return 1
   run_step "installing Docker Desktop (Homebrew cask)" brew install --cask docker-desktop || return 1
+  host_set docker created
   return 0
 }
 
 ensure_docker_linux() {
-  command -v docker >/dev/null 2>&1 && return 100
+  command -v docker >/dev/null 2>&1 && { host_set docker preexisting; return 100; }
   ensure_sudo || return 1
   run_step "installing Docker Engine (get.docker.com official script)" \
     sh -c "curl -fsSL https://get.docker.com | sh" || return 1
   # non-fatal: containers/CI have no systemd; the daemon check below decides
   as_root systemctl enable --now docker >>"$LOG_FILE" 2>&1 \
     || info "could not start the daemon via systemd (no systemd here?)"
+  host_set docker created
   return 0
 }
 
@@ -255,9 +332,16 @@ wait_docker_daemon() {
 # group membership is fixed for future logins.
 ensure_docker_group_linux() {
   docker info >/dev/null 2>&1 && return 0
+  # shellcheck disable=SC2033  # `docker` below is the real binary, not the shim
   if sudo -n docker info >/dev/null 2>&1 || { ensure_sudo && sudo docker info >/dev/null 2>&1; }; then
-    docker() { sudo command docker "$@"; }
-    sudo usermod -aG docker "$USER" 2>/dev/null || true
+    # Resolve the real binary BEFORE the shim shadows the name. The previous
+    # form was `sudo command docker "$@"`, which looks right but there is no
+    # /usr/bin/command on Debian/Ubuntu (verified in ubuntu:24.04) — every
+    # later `docker ...` would have died with "sudo: command: command not
+    # found" on exactly the platform this shim exists for.
+    AF_DOCKER_BIN="$(command -v docker)"
+    docker() { sudo "$AF_DOCKER_BIN" "$@"; }
+    if sudo usermod -aG docker "$USER" 2>/dev/null; then host_set docker_group created; fi
     info "added ${USER} to the docker group — takes effect on your next login"
     return 0
   fi
@@ -265,7 +349,7 @@ ensure_docker_group_linux() {
 }
 
 ensure_ollama() {
-  if command -v ollama >/dev/null 2>&1; then return 100; fi
+  if command -v ollama >/dev/null 2>&1; then host_set ollama preexisting; return 100; fi
   if [ "$OS_KIND" = "mac" ]; then
     ensure_homebrew || return 1
     # cask name changed over time: try the current one, then the legacy one
@@ -279,6 +363,7 @@ ensure_ollama() {
       sh -c "curl -fsSL https://ollama.com/install.sh | sh" || return 1
   fi
   wait_http http://localhost:11434/api/version 15 || warn "Ollama installed but the service did not answer yet — open the Ollama app once"
+  host_set ollama created
   return 0
 }
 
@@ -286,6 +371,7 @@ ollama_pull_model() {
   local model="$1"
   if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$model"; then
     printf '  %s✔%s model %s already pulled\n' "$GREEN" "$RESET" "$model"
+    host_set ollama_model_state preexisting
     return 0
   fi
   info "pulling model ${model} — large download (several GB), one-time"
@@ -301,6 +387,8 @@ ollama_pull_model() {
       return 0
     }
   fi
+  host_set ollama_model_state created
+  host_set ollama_model_name "$model"
   printf '  %s✔%s model %s ready\n' "$GREEN" "$RESET" "$model"
 }
 
@@ -323,18 +411,722 @@ hint_upgrades() {
   fi
 }
 
+# ── Install manifest: what THIS installer created on THIS host ──────────────
+# Two files, because the two scopes really are different:
+#   ~/.atlasfile/host-prereqs   host-wide singletons (there is one Docker per
+#                               host). Written the moment each ensure_* returns,
+#                               so a run that dies after installing Docker still
+#                               leaves the record behind — otherwise the next
+#                               run would see Docker present and record the lie
+#                               "preexisting".
+#   <install dir>/.atlasfile-install-manifest   facts of this one install.
+# Values: created | preexisting. `created` is NEVER downgraded on a re-run, and
+# a missing or unknown key always reads as preexisting — the conservative
+# answer, so --uninstall can only ever remove what it can prove it made.
+AF_STATE_DIR="${HOME}/.atlasfile"
+AF_HOST_MANIFEST="${AF_STATE_DIR}/host-prereqs"
+AF_MANIFEST_NAME=".atlasfile-install-manifest"
+
+manifest_get() { # <file> <key> -> value ("" when absent)
+  [ -f "$1" ] || return 0
+  awk -F'\t' -v k="$2" '$1 == k { print $2 }' "$1" 2>/dev/null || true
+}
+
+manifest_set() { # <file> <key> <value> — merge, never downgrading `created`
+  local file="$1" key="$2" value="$3" cur tmp
+  cur="$(manifest_get "$file" "$key")"
+  [ "$cur" = "created" ] && return 0
+  [ "$cur" = "$value" ] && return 0
+  mkdir -p "$(dirname "$file")" 2>/dev/null || return 0
+  if [ ! -f "$file" ]; then
+    { printf '# AtlasFile manifest — key<TAB>value. Consumed by install.sh --uninstall.\n'
+      printf 'schema\t1\n'
+    } > "$file" 2>/dev/null || return 0
+  fi
+  tmp="${file}.tmp.$$"
+  { awk -F'\t' -v k="$key" '$1 != k' "$file" 2>/dev/null; printf '%s\t%s\n' "$key" "$value"; } > "$tmp" 2>/dev/null \
+    && mv "$tmp" "$file" 2>/dev/null
+  rm -f "$tmp" 2>/dev/null || true
+  return 0   # state is best-effort: never fail an install over bookkeeping
+}
+
+host_get() { manifest_get "$AF_HOST_MANIFEST" "$1"; }
+host_set() { manifest_set "$AF_HOST_MANIFEST" "$1" "$2"; }
+
+# Maps the ensure_* contract (0 = installed now, 100 = already present) onto the
+# manifest vocabulary. Any other rc (a failure) records nothing.
+record_ensure() { # <key> <rc>
+  case "$2" in
+    0)   host_set "$1" created ;;
+    100) host_set "$1" preexisting ;;
+  esac
+  return 0
+}
+
+# ── Uninstall ───────────────────────────────────────────────────────────────
+# Facts first (all read-only), then a plan in text with a REMOVED and a
+# PRESERVED section, then one confirmation, then execution. Every fact below is
+# a variable so the plan builder can be unit-tested without a Docker daemon.
+UN_DIR=""; UN_PROJECT=""; UN_COMPOSE_FILE=0
+UN_CLONE_STATE="unknown"; UN_DIR_DIRTY=0; UN_ENV=0
+UN_CONTAINERS=0; UN_VOLUME=""; UN_IMAGES=""
+UN_PROJECTS_ROOT=""; UN_PROJECTS_CREATED="preexisting"; UN_PROJECTS_FILES=0
+UN_OTHER_ARTIFACTS=""
+UN_PLAN_REMOVE=""; UN_PLAN_KEEP=""; UN_ACTIONS=""
+
+# Compose derives the project name from COMPOSE_PROJECT_NAME in .env, falling
+# back to the sanitised directory name. install.sh:~420 only ever used the
+# directory rule — which is wrong for any install that sets the variable.
+un_project_name() { # <dir>
+  local dir="$1" name=""
+  if [ -f "${dir}/.env" ]; then
+    name="$(grep '^COMPOSE_PROJECT_NAME=' "${dir}/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  fi
+  [ -n "$name" ] || name="$(basename "$dir")"
+  printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g'
+}
+
+un_add_remove() { UN_PLAN_REMOVE="${UN_PLAN_REMOVE}  • $1
+"; }
+un_add_keep()   { UN_PLAN_KEEP="${UN_PLAN_KEEP}  • $1
+"; }
+un_act()        { UN_ACTIONS="${UN_ACTIONS}$1
+"; }
+
+un_collect() { # <dir>
+  local dir="$1" f
+  UN_DIR="$dir"
+  UN_PROJECT="$(un_project_name "$dir")"
+  [ -f "${dir}/docker-compose.yml" ] && UN_COMPOSE_FILE=1
+  [ -f "${dir}/.env" ] && UN_ENV=1
+
+  local mf="${dir}/${AF_MANIFEST_NAME}"
+  UN_CLONE_STATE="$(manifest_get "$mf" repo_clone)"; [ -n "$UN_CLONE_STATE" ] || UN_CLONE_STATE="unknown"
+  UN_PROJECTS_ROOT="$(manifest_get "$mf" projects_root)"
+  UN_PROJECTS_CREATED="$(manifest_get "$mf" projects_root_created)"; [ -n "$UN_PROJECTS_CREATED" ] || UN_PROJECTS_CREATED="preexisting"
+  if [ -z "$UN_PROJECTS_ROOT" ] && [ "$UN_ENV" = "1" ]; then
+    UN_PROJECTS_ROOT="$(grep '^PROJECTS_HOST_ROOT=' "${dir}/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  fi
+  if [ -n "$UN_PROJECTS_ROOT" ] && [ -d "$UN_PROJECTS_ROOT" ]; then
+    UN_PROJECTS_FILES="$(find "$UN_PROJECTS_ROOT" -mindepth 1 2>/dev/null | wc -l | tr -d ' ')"
+  fi
+
+  if [ -d "${dir}/.git" ]; then
+    UN_DIR_DIRTY=0
+    # The installer's own artifacts must never make the clone un-removable.
+    # Measured in a real install: .atlasfile-install-manifest showed up as
+    # untracked (an install whose clone predates the .gitignore entry) and the
+    # dirty guard kept the directory forever. Excluded explicitly, so the guard
+    # only ever protects work that is actually the user's.
+    if [ -n "$(git -C "$dir" status --porcelain -- . \
+        ":(exclude).env" ":(exclude)${AF_MANIFEST_NAME}" 2>/dev/null || true)" ]; then
+      UN_DIR_DIRTY=1
+    fi
+  fi
+
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    UN_CONTAINERS="$(docker ps -aq --filter "label=com.docker.compose.project=${UN_PROJECT}" 2>/dev/null | wc -l | tr -d ' ')"
+    UN_VOLUME="$(docker volume ls -q --filter "label=com.docker.compose.project=${UN_PROJECT}" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
+    # Exact service names only: a `${project}-` prefix match would also catch
+    # `atlasfile-dev-*` when uninstalling the project named `atlasfile`.
+    for f in api web mcp; do
+      if docker image inspect "${UN_PROJECT}-${f}" >/dev/null 2>&1; then
+        UN_IMAGES="${UN_IMAGES}${UN_PROJECT}-${f} "
+      fi
+    done
+    # Anything AtlasFile-shaped that does NOT belong to this project keeps the
+    # shared system dependencies (Docker above all) off the removal list.
+    UN_OTHER_ARTIFACTS="$(docker volume ls -q 2>/dev/null | grep -i atlasfile | grep -v "^${UN_PROJECT}_" | tr '\n' ' ' | sed 's/ *$//' || true)"
+  fi
+  return 0
+}
+
+# Builds UN_PLAN_REMOVE / UN_PLAN_KEEP / UN_ACTIONS from the facts above.
+# purge_data: 1 remove the volume, 0 keep it. remove_deps: 1 allowed.
+un_build_plan() { # <purge_data> <remove_deps> <force>
+  local purge="$1" deps="$2" force="$3" st model
+  UN_PLAN_REMOVE=""; UN_PLAN_KEEP=""; UN_ACTIONS=""
+
+  # ── the stack (unambiguously ours) ──
+  if [ "$UN_COMPOSE_FILE" = "1" ]; then
+    un_add_remove "stack '${UN_PROJECT}': containers, network and the images built here (${UN_CONTAINERS} container(s))"
+    un_act "compose-down"
+  else
+    un_add_keep "no docker-compose.yml in ${UN_DIR} — the stack cannot be removed from here"
+  fi
+  if [ -n "$UN_VOLUME" ]; then
+    if [ "$purge" = "1" ]; then
+      un_add_remove "data volume ${UN_VOLUME} — THE SEARCH INDEX IS ERASED (rebuildable with Reconcile: your documents and the journal on disk are the source)"
+      un_act "purge-volume"
+    else
+      un_add_keep "data volume ${UN_VOLUME} (kept: a future reinstall reuses it)"
+    fi
+  fi
+  [ -n "$UN_IMAGES" ] && un_add_keep "shared upstream images (opensearchproject/*) — remove them by hand if you want the disk back"
+
+  # ── the clone ──
+  if [ "$UN_CLONE_STATE" = "created" ]; then
+    if [ "$UN_DIR_DIRTY" = "1" ] && [ "$force" != "1" ]; then
+      un_add_keep "${UN_DIR} has local changes — NOT removed (re-run with --force to remove it anyway)"
+    else
+      un_add_remove "install directory ${UN_DIR} (clone created by this installer, with its .env)"
+      un_act "rm-clone"
+    fi
+  else
+    un_add_keep "${UN_DIR} was not created by this installer — preserved (only the stack above was touched)"
+  fi
+
+  # ── the user's documents ──
+  if [ -n "$UN_PROJECTS_ROOT" ]; then
+    if [ "$UN_PROJECTS_CREATED" = "created" ] && [ "$UN_PROJECTS_FILES" = "0" ]; then
+      un_add_remove "empty folder ${UN_PROJECTS_ROOT} (created by the installer and never used)"
+      un_act "rm-projects-root"
+    else
+      un_add_keep "your documents in ${UN_PROJECTS_ROOT} (${UN_PROJECTS_FILES} item(s)), including the _ATLASFILE state — never touched"
+    fi
+  fi
+
+  # ── system dependencies ──
+  if [ "$deps" != "1" ]; then
+    un_add_keep "system dependencies (Docker, git, Ollama) — pass --remove-deps to revert the ones this installer created"
+  else
+    if [ -n "$UN_OTHER_ARTIFACTS" ]; then
+      un_add_keep "Docker: another AtlasFile install still uses it here (${UN_OTHER_ARTIFACTS}) — preserved"
+    else
+      st="$(host_get docker)"
+      if [ "$st" = "created" ]; then
+        if [ "$OS_KIND" = "mac" ]; then
+          un_add_remove "Docker Desktop, installed by AtlasFile — brew uninstall --cask docker-desktop (THIS DELETES THE APP FROM /Applications)"
+          un_act "brew-cask:docker-desktop"
+        else
+          un_add_remove "Docker Engine, installed by AtlasFile — ${PKG} remove docker-ce docker-ce-cli containerd.io docker-compose-plugin"
+          un_act "pkg-docker"
+        fi
+      else
+        un_add_keep "Docker was already on this machine before AtlasFile — preserved"
+      fi
+    fi
+
+    st="$(host_get git)"
+    if [ "$st" = "created" ]; then
+      un_add_remove "git, installed by AtlasFile"
+      un_act "pkg-git"
+    else
+      un_add_keep "git was already here — preserved"
+    fi
+
+    st="$(host_get ollama)"
+    if [ "$st" = "created" ] && [ "$OS_KIND" = "mac" ]; then
+      un_add_remove "Ollama, installed by AtlasFile — brew uninstall --cask (THIS DELETES THE APP)"
+      un_act "rm-ollama"
+    elif [ "$st" = "created" ]; then
+      # Ollama's Linux installer ships no uninstaller; the vendor documents a
+      # sequence of sudo rm/userdel that this installer will not run blind.
+      un_add_keep "Ollama, installed by AtlasFile — remove it by hand (vendor steps): sudo systemctl disable --now ollama; sudo rm /etc/systemd/system/ollama.service; sudo rm \$(command -v ollama); sudo rm -r /usr/share/ollama; sudo userdel ollama"
+    elif [ -n "$st" ]; then
+      un_add_keep "Ollama was already here — preserved"
+    fi
+    if [ "$(host_get ollama_model_state)" = "created" ]; then
+      model="$(host_get ollama_model_name)"
+      if [ -n "$model" ]; then
+        un_add_remove "model ${model}, pulled by AtlasFile — ollama rm ${model}"
+        un_act "ollama-rm:${model}"
+      fi
+    fi
+
+    [ "$(host_get compose_plugin)" = "created" ] && { un_add_remove "docker-compose-plugin, installed by AtlasFile"; un_act "pkg-compose"; }
+    [ "$(host_get docker_group)" = "created" ] && { un_add_remove "your membership in the docker group (added by AtlasFile)"; un_act "gpasswd-d"; }
+    [ "$(host_get homebrew)" = "created" ] && un_add_keep "Homebrew was installed by AtlasFile but is NEVER removed automatically — https://github.com/Homebrew/install#uninstall-homebrew"
+  fi
+
+  [ -n "$UN_ACTIONS" ] && un_act "rm-state"
+  return 0
+}
+
+un_print_plan() {
+  printf '\n  %s%sRemoval plan%s — %s\n\n' "$BOLD" "$ORANGE" "$RESET" "$UN_DIR"
+  if [ -n "$UN_PLAN_REMOVE" ]; then
+    printf '  %sWILL BE REMOVED%s\n%s\n' "$BOLD" "$RESET" "$UN_PLAN_REMOVE"
+  else
+    printf '  %snothing to remove%s\n\n' "$DIM" "$RESET"
+  fi
+  if [ -n "$UN_PLAN_KEEP" ]; then
+    printf '  %sWILL BE PRESERVED%s\n%s\n' "$BOLD" "$RESET" "$UN_PLAN_KEEP"
+  fi
+  return 0
+}
+
+un_has_action() { printf '%s' "$UN_ACTIONS" | grep -qx "$1"; }
+
+UN_FAILED=0
+un_step() { # <label> <cmd...> — a failed step is reported, never fatal
+  local label="$1"; shift
+  if "$@" >>"$LOG_FILE" 2>&1; then
+    printf '  %s✔%s %s\n' "$GREEN" "$RESET" "$label"
+  else
+    printf '  %s✘%s %s %s(details in %s)%s\n' "$RED" "$RESET" "$label" "$DIM" "$LOG_FILE" "$RESET"
+    UN_FAILED=1
+  fi
+  return 0
+}
+
+# Guard against ever pointing rm -rf at something that is not an install.
+un_dir_is_safe() { # <dir>
+  case "$1" in
+    /|"$HOME"|"") return 1 ;;
+    /*) ;;
+    *) return 1 ;;
+  esac
+  [ -d "$1" ] || return 1
+  [ -d "$1/.git" ] || [ -f "$1/docker-compose.yml" ] || return 1
+  return 0
+}
+
+un_compose_down() {
+  local args="--remove-orphans --rmi local"
+  un_has_action "purge-volume" && args="${args} --volumes"
+  # Run from the install dir so compose resolves the project itself (it reads
+  # COMPOSE_PROJECT_NAME from .env). Never remove containers by name: the
+  # atlasfile-* names are fixed and may belong to a different install.
+  ( cd "$UN_DIR" && docker compose down $args )
+}
+
+un_execute() {
+  local act model
+  printf '\n'
+  while IFS= read -r act; do
+    [ -n "$act" ] || continue
+    case "$act" in
+      compose-down)
+        un_step "removing the stack (containers, network, local images)" un_compose_down ;;
+      purge-volume)
+        # Already covered by `compose down --volumes` when the stack was
+        # removed from the clone; this is the fallback when it was not.
+        if ! un_has_action "compose-down" && [ -n "$UN_VOLUME" ]; then
+          un_step "removing volume ${UN_VOLUME}" docker volume rm $UN_VOLUME
+        fi ;;
+      rm-clone)
+        if un_dir_is_safe "$UN_DIR"; then
+          un_step "removing ${UN_DIR}" rm -rf "$UN_DIR"
+        else
+          warn "refusing to remove ${UN_DIR}: it does not look like an AtlasFile install"
+        fi ;;
+      rm-projects-root)
+        # rmdir on purpose: it refuses on a non-empty directory, so a race that
+        # filled the folder between the plan and here cannot destroy documents.
+        un_step "removing the empty folder ${UN_PROJECTS_ROOT}" rmdir "$UN_PROJECTS_ROOT" ;;
+      brew-cask:*)
+        un_step "removing ${act#brew-cask:} (Homebrew cask)" brew uninstall --cask "${act#brew-cask:}" ;;
+      pkg-docker)
+        if [ "$PKG" = "apt" ]; then
+          un_step "removing Docker Engine (apt)" as_root env DEBIAN_FRONTEND=noninteractive apt-get remove -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+        else
+          un_step "removing Docker Engine (dnf)" as_root dnf remove -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+        fi ;;
+      pkg-git)
+        if [ "$OS_KIND" = "mac" ]; then un_step "removing git (Homebrew)" brew uninstall git
+        elif [ "$PKG" = "apt" ]; then un_step "removing git (apt)" as_root env DEBIAN_FRONTEND=noninteractive apt-get remove -y git
+        else un_step "removing git (dnf)" as_root dnf remove -y git; fi ;;
+      pkg-compose)
+        if [ "$PKG" = "apt" ]; then un_step "removing docker-compose-plugin (apt)" as_root env DEBIAN_FRONTEND=noninteractive apt-get remove -y docker-compose-plugin
+        else un_step "removing docker-compose-plugin (dnf)" as_root dnf remove -y docker-compose-plugin; fi ;;
+      rm-ollama)
+        # cask name changed over time — try the current one, then the legacy
+        if ! brew uninstall --cask ollama-app >>"$LOG_FILE" 2>&1; then
+          un_step "removing Ollama (Homebrew cask)" brew uninstall --cask ollama
+        else
+          printf '  %s✔%s removing Ollama (Homebrew cask)\n' "$GREEN" "$RESET"
+        fi ;;
+      ollama-rm:*)
+        model="${act#ollama-rm:}"
+        un_step "removing model ${model}" ollama rm "$model" ;;
+      gpasswd-d)
+        un_step "removing ${USER} from the docker group" as_root gpasswd -d "$USER" docker ;;
+      rm-state)
+        rm -f "$AF_HOST_MANIFEST" 2>/dev/null || true
+        rmdir "$AF_STATE_DIR" 2>/dev/null || true
+        printf '  %s✔%s installer bookkeeping removed\n' "$GREEN" "$RESET" ;;
+    esac
+  done <<EOF
+$UN_ACTIONS
+EOF
+  return 0
+}
+
+run_uninstall() {
+  detect_os
+  un_collect "$INSTALL_DIR"
+
+  if [ "$UN_COMPOSE_FILE" = "0" ] && [ ! -d "${INSTALL_DIR}" ]; then
+    fail "no AtlasFile install found at ${INSTALL_DIR} — point --dir at the right folder"
+  fi
+
+  # The data volume never has a default: the user decides, every time.
+  if [ -n "$UN_VOLUME" ] && [ -z "$PURGE_DATA" ]; then
+    if [ "$ASSUME_YES" = "1" ] || [ ! -r "$TTY_DEV" ]; then
+      fail "the volume ${UN_VOLUME} holds the search index — decide explicitly: --purge-data (erase it) or --keep-data (keep it)"
+    fi
+    printf '\n  %s?%s The volume %s%s%s holds the search index.\n' "$ORANGE" "$RESET" "$BOLD" "$UN_VOLUME" "$RESET"
+    printf '    Your documents and the _ATLASFILE journal live on disk and are NOT affected;\n'
+    printf '    the index is rebuilt by Reconcile after a reinstall.\n'
+    printf '  %s?%s Erase the volume? %s[y/N]%s ' "$ORANGE" "$RESET" "$DIM" "$RESET"
+    local ans=""
+    # `[ -r /dev/tty ]` is true even when the device cannot be opened (no
+    # controlling terminal), so the redirection itself has to be silenced.
+    { read -r ans < "$TTY_DEV"; } 2>/dev/null || ans=""
+    case "$ans" in y|Y|yes|YES|s|S) PURGE_DATA=1 ;; *) PURGE_DATA=0 ;; esac
+  fi
+  [ -n "$PURGE_DATA" ] || PURGE_DATA=0
+
+  un_build_plan "$PURGE_DATA" "$REMOVE_DEPS" "$FORCE"
+  un_print_plan
+
+  if [ -z "$UN_ACTIONS" ]; then
+    info "nothing to do."
+    return 0
+  fi
+  if [ "$ASSUME_YES" != "1" ]; then
+    if [ ! -r "$TTY_DEV" ]; then
+      fail "no interactive terminal — re-run with --yes to confirm the plan above"
+    fi
+    printf '  %s?%s Execute the plan above? %s[y/N]%s ' "$ORANGE" "$RESET" "$DIM" "$RESET"
+    local answer=""
+    { read -r answer < "$TTY_DEV"; } 2>/dev/null || answer=""
+    printf '\n'
+    case "$answer" in y|Y|yes|YES|s|S) ;; *) info "uninstall cancelled — nothing was touched."; return 0 ;; esac
+  fi
+
+  un_execute
+  printf '\n'
+  if [ "$UN_FAILED" = "1" ]; then
+    warn "uninstall finished with failures — see ${LOG_FILE}"
+    return 1
+  fi
+  printf '  %s✔%s AtlasFile removed. What already existed on this machine was preserved.\n\n' "$GREEN" "$RESET"
+  return 0
+}
+
+# ── Banner: the orb, its two moons and the comet it fires ───────────────────
+# Same identity as the product's CompanionOrb (frontend/src/components/
+# CompanionOrb.tsx): a lit core, two moons on opposite Keplerian orbits and the
+# comet it fires. No face.
+#
+# Canvas: 7 rows. The orb sits on rows 1..5 centred on (row 3, col 10); rows 0
+# and 6 are the orbit corridor. Bash has no floating point, so the orbit is a
+# table of 16 integer cells (an ellipse rx=9, ry=3) and none of them touches an
+# orb glyph. The wordmark starts at col 24, clear of the widest orbit cell (19).
+#
+# Colors are product tokens (frontend/src/styles.css): --accent #ff5a36,
+# --accent-light #ff8a6b, --accent-purple #c97bff, --orb-comet-head #ffffff.
+# The truecolor ramp is accent at 35% luminance, accent, accent-light, and
+# accent-light lifted 60% toward white. The 256 fallback is the xterm warm ramp
+# (monotonic on purpose: a nearest-neighbour pick banded the sphere).
+AF_RAMP="592013 ff5a36 ff8a6b ffd0c4"
+AF_RAMP_256="52 88 130 166 202 209 216 223"
+AF_MOON1="ff5a36"; AF_MOON1_FAR="b23f26"; AF_MOON1_256="203"; AF_MOON1_FAR_256="130"
+AF_MOON2="c97bff"; AF_MOON2_FAR="8d56b2"; AF_MOON2_256="177"; AF_MOON2_FAR_256="97"
+AF_COMET_HEAD_HEX="ffffff"; AF_COMET_HEAD_256="231"
+
+AF_COLS=56
+AF_ROWS=7
+AF_ORBIT="3,19 4,18 5,16 6,13 6,10 6,7 5,4 4,2 3,1 2,2 1,4 0,7 0,10 0,13 1,16 2,18"
+AF_ORBIT_N=16
+AF_ORBIT_START=10          # so the last moving frame lands one step before rest
+# The comet is ejected from the orb and climbs: by the time it reaches the
+# wordmark column (24) it is already on rows 0-1, ABOVE the text on rows 2-3.
+# Measured: a path crossing the text rows corrupted the letters ("y·ur ·ocs").
+AF_COMET="4,17 3,20 2,22 1,25 1,31 0,38 0,46 0,54"
+AF_COMET_N=8
+AF_COMET_TAIL=3
+AF_WORD="AtlasFile"
+AF_TAG="Your documents have gravity."   # same call phrase as the website hero
+AF_WORD_COL=24
+AF_WORD_ROW=2
+AF_TAG_ROW=3
+AF_IGNITE_N=5
+AF_ORBIT_FRAMES=12
+AF_COMET_FIRST=$(( AF_IGNITE_N + AF_ORBIT_FRAMES ))
+AF_LAST=$(( AF_COMET_FIRST + AF_COMET_N ))   # final frame = the still banner
+AF_FRAMES=$(( AF_LAST + 1 ))
+AF_DELAY="0.04"
+AF_GLYPH_MOON_NEAR="●"; AF_GLYPH_MOON_FAR="•"
+AF_GLYPH_COMET_HEAD="●"; AF_GLYPH_COMET_TAIL="·"
+AF_MIN_COLS=60             # narrower than this, the redraw would wrap: no anim
+
+AF_R=0; AF_G=0; AF_B=0
+af_rgb_at() { # <pos 0..1000> -> AF_R/AF_G/AF_B interpolated on the ramp
+  local pos="$1" n span scaled seg frac i h1 h2 r1 g1 b1 r2 g2 b2
+  set -- $AF_RAMP
+  n=$#; span=$(( n - 1 ))
+  scaled=$(( pos * span )); seg=$(( scaled / 1000 )); frac=$(( scaled % 1000 ))
+  if [ "$seg" -ge "$span" ]; then seg=$(( span - 1 )); frac=1000; fi
+  i=$(( seg + 1 )); h1="${!i}"; i=$(( seg + 2 )); h2="${!i}"
+  r1=$(( 16#${h1:0:2} )); g1=$(( 16#${h1:2:2} )); b1=$(( 16#${h1:4:2} ))
+  r2=$(( 16#${h2:0:2} )); g2=$(( 16#${h2:2:2} )); b2=$(( 16#${h2:4:2} ))
+  AF_R=$(( r1 + (r2 - r1) * frac / 1000 ))
+  AF_G=$(( g1 + (g2 - g1) * frac / 1000 ))
+  AF_B=$(( b1 + (b2 - b1) * frac / 1000 ))
+}
+
+AF_LUT_N=32
+af_lut_init() {
+  local i p seg n
+  if [ "$COLOR_OK" != "1" ]; then
+    for (( i = 0; i < AF_LUT_N; i++ )); do AF_LUT[$i]=""; done
+    return 0
+  fi
+  for (( i = 0; i < AF_LUT_N; i++ )); do
+    p=$(( i * 1000 / (AF_LUT_N - 1) ))
+    if [ "$TRUECOLOR" = "1" ]; then
+      af_rgb_at "$p"
+      AF_LUT[$i]=$'\033[38;2;'"${AF_R};${AF_G};${AF_B}m"
+    else
+      set -- $AF_RAMP_256
+      n=$#; seg=$(( p * (n - 1) / 1000 + 1 )); [ "$seg" -gt "$n" ] && seg=$n
+      AF_LUT[$i]=$'\033[38;5;'"${!seg}m"
+    fi
+  done
+}
+
+af_fg() { # <hex> <256 index> -> escape (empty when color is off)
+  [ "$COLOR_OK" = "1" ] || return 0
+  if [ "$TRUECOLOR" = "1" ]; then
+    printf '\033[38;2;%d;%d;%dm' "$(( 16#${1:0:2} ))" "$(( 16#${1:2:2} ))" "$(( 16#${1:4:2} ))"
+  else
+    printf '\033[38;5;%sm' "$2"
+  fi
+}
+
+# Art is declared as space-separated glyph lists, never as strings: ${#s} and
+# ${s:i:1} count BYTES under LC_ALL=C, which would wreck every column offset.
+af_put_art() { # <row> <first col> <glyphs...>
+  local row="$1" col="$2" g
+  shift 2
+  AF_ORB_C0[$row]=$col
+  for g in "$@"; do AF_ORB[$(( row * AF_COLS + col ))]="$g"; col=$(( col + 1 )); done
+  AF_ORB_C1[$row]=$(( col - 1 ))
+}
+
+AF_INIT_DONE=0
+af_banner_init() {
+  [ "$AF_INIT_DONE" = "1" ] && return 0
+  local i
+  for (( i = 0; i < AF_ROWS * AF_COLS; i++ )); do AF_ORB[$i]=""; done
+  for (( i = 0; i < AF_ROWS; i++ )); do AF_ORB_C0[$i]=-1; AF_ORB_C1[$i]=-2; done
+  af_put_art 1 8  ▄ ▄ ▄ ▄ ▄
+  af_put_art 2 6  ▄ █ █ █ █ █ █ █ ▄
+  af_put_art 3 5  ▐ █ █ █ █ █ █ █ █ █ ▌
+  af_put_art 4 6  ▀ █ █ █ █ █ █ █ ▀
+  af_put_art 5 8  ▀ ▀ ▀ ▀ ▀
+  af_lut_init
+  AF_COL_M1N="$(af_fg "$AF_MOON1" "$AF_MOON1_256")"
+  AF_COL_M1F="$(af_fg "$AF_MOON1_FAR" "$AF_MOON1_FAR_256")"
+  AF_COL_M2N="$(af_fg "$AF_MOON2" "$AF_MOON2_256")"
+  AF_COL_M2F="$(af_fg "$AF_MOON2_FAR" "$AF_MOON2_FAR_256")"
+  AF_COL_C0="${BOLD}$(af_fg "$AF_COMET_HEAD_HEX" "$AF_COMET_HEAD_256")"
+  AF_COL_C1="$(af_fg ff8a6b 209)"
+  AF_COL_C2="$(af_fg ff5a36 203)"
+  AF_COL_C3="$(af_fg b23f26 130)"
+  AF_COL_WORD="$(af_fg "$AF_MOON1" "$AF_MOON1_256")"
+  AF_INIT_DONE=1
+}
+
+af_cell() { # <table> <index> -> AF_CELL_ROW / AF_CELL_COL
+  local table="$1" idx="$2" i=0 pair
+  for pair in $table; do
+    if [ "$i" = "$idx" ]; then
+      AF_CELL_ROW="${pair%,*}"; AF_CELL_COL="${pair#*,}"; return 0
+    fi
+    i=$(( i + 1 ))
+  done
+  AF_CELL_ROW=-1; AF_CELL_COL=-1
+  return 1
+}
+
+af_frame_prepare() { # <frame> -> moon/comet cells, highlight and reveal width
+  local n="$1" k idx hr hc pr pc dcol drow t tr tc tri
+  AF_F_IGNITE_MAX=$AF_ROWS
+  AF_M1R=-1; AF_M1C=-1; AF_M2R=-1; AF_M2C=-1
+  AF_CN=0; AF_WN=0
+  # Specular highlight. A horizontal ramp across the whole canvas barely varied
+  # inside the orb's 11 columns (measured in a real terminal: the sphere came
+  # out flat and washed). The light is a point sweeping the sphere on a
+  # triangle wave, and each cell dims with its distance to it.
+  tri=$(( n % 20 )); [ "$tri" -gt 10 ] && tri=$(( 20 - tri ))
+  AF_HL_COL=$(( 5 + tri )); AF_HL_ROW=2
+
+  # ignition: the orb spans rows 1..5, so frame n reveals up to row n+1
+  if [ "$n" -lt "$AF_IGNITE_N" ]; then
+    AF_F_IGNITE_MAX=$(( n + 2 ))
+    return 0
+  fi
+
+  idx=$(( (AF_ORBIT_START + n - AF_IGNITE_N) % AF_ORBIT_N ))
+  af_cell "$AF_ORBIT" "$idx";                          AF_M1R=$AF_CELL_ROW; AF_M1C=$AF_CELL_COL
+  af_cell "$AF_ORBIT" "$(( (idx + 8) % AF_ORBIT_N ))"; AF_M2R=$AF_CELL_ROW; AF_M2C=$AF_CELL_COL
+
+  if [ "$n" -ge "$AF_COMET_FIRST" ] && [ "$n" -lt "$AF_LAST" ]; then
+    k=$(( n - AF_COMET_FIRST ))
+    af_cell "$AF_COMET" "$k"; hr=$AF_CELL_ROW; hc=$AF_CELL_COL
+    AF_CR[0]=$hr; AF_CC[0]=$hc; AF_CT[0]=0; AF_CN=1
+    # The tail is CONTIGUOUS behind the head, along the direction of travel.
+    # Sampling earlier path cells left 3-5 column gaps (measured) and read as
+    # sparks rather than a comet.
+    pr=$hr; pc=$(( hc - 1 ))
+    if [ "$k" -gt 0 ]; then af_cell "$AF_COMET" "$(( k - 1 ))"; pr=$AF_CELL_ROW; pc=$AF_CELL_COL; fi
+    dcol=$(( hc - pc )); drow=$(( hr - pr ))
+    [ "$dcol" -le 0 ] && dcol=1
+    for (( t = 1; t <= AF_COMET_TAIL; t++ )); do
+      tc=$(( hc - t ))
+      [ "$tc" -lt 0 ] && break
+      tr=$(( hr - (drow * t) / dcol ))
+      [ "$tr" -lt 0 ] && tr=0
+      [ "$tr" -ge "$AF_ROWS" ] && tr=$(( AF_ROWS - 1 ))
+      AF_CR[$AF_CN]=$tr; AF_CC[$AF_CN]=$tc; AF_CT[$AF_CN]=$t
+      AF_CN=$(( AF_CN + 1 ))
+    done
+    AF_WN=$(( hc - AF_WORD_COL )); [ "$AF_WN" -lt 0 ] && AF_WN=0
+  elif [ "$n" -ge "$AF_LAST" ]; then
+    AF_WN=99
+  fi
+  # Explicit: under `set -e` a trailing false test would abort the installer.
+  return 0
+}
+
+# Fills AF_RG (glyph) and AF_RK (class) for one row. THE WRITE ORDER IS THE
+# PRECEDENCE: comet < orb < text < moons. So the comet is ejected from behind
+# the orb, the orb glyph count is invariant across frames, and no wordmark
+# letter can ever be overwritten.
+af_row_cells() { # <row>
+  local row="$1" c i n txt
+  for (( c = 0; c < AF_COLS; c++ )); do AF_RG[$c]=" "; AF_RK[$c]=""; done
+
+  for (( i = 0; i < AF_CN; i++ )); do
+    if [ "${AF_CR[$i]}" = "$row" ]; then
+      c=${AF_CC[$i]}
+      if [ "$c" -ge 0 ] && [ "$c" -lt "$AF_COLS" ]; then
+        if [ "${AF_CT[$i]}" = "0" ]; then AF_RG[$c]="$AF_GLYPH_COMET_HEAD"; else AF_RG[$c]="$AF_GLYPH_COMET_TAIL"; fi
+        AF_RK[$c]="c${AF_CT[$i]}"
+      fi
+    fi
+  done
+
+  if [ "$row" -lt "$AF_F_IGNITE_MAX" ]; then
+    for (( c = ${AF_ORB_C0[$row]}; c <= ${AF_ORB_C1[$row]}; c++ )); do
+      [ "$c" -lt 0 ] && continue
+      AF_RG[$c]="${AF_ORB[$(( row * AF_COLS + c ))]}"; AF_RK[$c]="orb"
+    done
+  fi
+
+  if [ "$AF_WN" -gt 0 ]; then
+    txt=""
+    [ "$row" = "$AF_WORD_ROW" ] && txt="$AF_WORD"
+    [ "$row" = "$AF_TAG_ROW" ] && txt="$AF_TAG"
+    if [ -n "$txt" ]; then
+      n=${#txt}; [ "$AF_WN" -lt "$n" ] && n=$AF_WN
+      for (( i = 0; i < n; i++ )); do
+        c=$(( AF_WORD_COL + i ))
+        [ "$c" -ge "$AF_COLS" ] && break
+        AF_RG[$c]="${txt:$i:1}"
+        if [ "$row" = "$AF_WORD_ROW" ]; then AF_RK[$c]="word"; else AF_RK[$c]="tag"; fi
+      done
+    fi
+  fi
+
+  if [ "$row" = "$AF_M1R" ] && [ "$AF_M1C" -ge 0 ]; then
+    if [ "$row" -le 2 ]; then AF_RG[$AF_M1C]="$AF_GLYPH_MOON_FAR"; AF_RK[$AF_M1C]="m1f"
+    else AF_RG[$AF_M1C]="$AF_GLYPH_MOON_NEAR"; AF_RK[$AF_M1C]="m1n"; fi
+  fi
+  if [ "$row" = "$AF_M2R" ] && [ "$AF_M2C" -ge 0 ]; then
+    if [ "$row" -le 2 ]; then AF_RG[$AF_M2C]="$AF_GLYPH_MOON_FAR"; AF_RK[$AF_M2C]="m2f"
+    else AF_RG[$AF_M2C]="$AF_GLYPH_MOON_NEAR"; AF_RK[$AF_M2C]="m2n"; fi
+  fi
+  return 0
+}
+
+af_frame_plain() { # <frame> -> the frame as plain text (source of truth for tests)
+  local n="$1" row col out
+  af_banner_init
+  af_frame_prepare "$n"
+  for (( row = 0; row < AF_ROWS; row++ )); do
+    af_row_cells "$row"
+    out=""
+    for (( col = 0; col < AF_COLS; col++ )); do out="${out}${AF_RG[$col]}"; done
+    while [ "${out% }" != "$out" ]; do out="${out% }"; done
+    printf '%s\n' "$out"
+  done
+}
+
+af_frame_paint() { # <frame> -> the frame, colored
+  local n="$1" row col out esc prev p d k
+  af_banner_init
+  af_frame_prepare "$n"
+  for (( row = 0; row < AF_ROWS; row++ )); do
+    af_row_cells "$row"
+    out=""; prev="__none__"
+    for (( col = 0; col < AF_COLS; col++ )); do
+      k="${AF_RK[$col]}"
+      if [ -z "$k" ]; then out="${out} "; continue; fi
+      case "$k" in
+        orb)  p=$(( col - AF_HL_COL )); [ "$p" -lt 0 ] && p=$(( -p ))
+              d=$(( row - AF_HL_ROW )); [ "$d" -lt 0 ] && d=$(( -d ))
+              p=$(( 1000 - p * 90 - d * 180 )); [ "$p" -lt 120 ] && p=120
+              esc="${AF_LUT[$(( p * (AF_LUT_N - 1) / 1000 ))]}" ;;
+        word) esc="${BOLD}${AF_COL_WORD}" ;;
+        tag)  esc="$DIM" ;;
+        m1n)  esc="$AF_COL_M1N" ;;
+        m1f)  esc="$AF_COL_M1F" ;;
+        m2n)  esc="$AF_COL_M2N" ;;
+        m2f)  esc="$AF_COL_M2F" ;;
+        c0)   esc="$AF_COL_C0" ;;
+        c1)   esc="$AF_COL_C1" ;;
+        c2)   esc="$AF_COL_C2" ;;
+        *)    esc="$AF_COL_C3" ;;
+      esac
+      if [ "$esc" != "$prev" ]; then out="${out}${RESET}${esc}"; prev="$esc"; fi
+      out="${out}${AF_RG[$col]}"
+    done
+    printf '%s%s\n' "$out" "$RESET"
+  done
+}
+
+af_cursor_show() { [ "$IS_TTY" = "1" ] && tput cnorm 2>/dev/null || true; }
+
+print_banner() {
+  local n cols
+  printf '\n'
+  cols="$(tput cols 2>/dev/null || echo 0)"
+  case "$cols" in ''|*[!0-9]*) cols=0 ;; esac
+  if [ "$ANIM_OK" != "1" ] || [ "$cols" -lt "$AF_MIN_COLS" ]; then
+    af_frame_paint "$AF_LAST"
+    printf '\n'
+    return 0
+  fi
+  # Ctrl-C during the animation must never leave an invisible cursor behind.
+  trap 'af_cursor_show' EXIT INT TERM
+  tput civis 2>/dev/null || true
+  for (( n = 0; n < AF_FRAMES; n++ )); do
+    [ "$n" -gt 0 ] && tput cuu "$AF_ROWS"
+    af_frame_paint "$n"
+    [ "$n" -lt "$AF_LAST" ] && sleep "$AF_DELAY"
+  done
+  af_cursor_show
+  trap - EXIT INT TERM
+  printf '\n'
+}
+
 # ── Test-library guard: `ATLASFILE_INSTALL_LIB=1 source install.sh` stops here ─
 if [ -n "${ATLASFILE_INSTALL_LIB:-}" ]; then
   return 0 2>/dev/null || exit 0
 fi
 
-# ── Banner: the orb (with a face) and the wordmark ──────────────────────────
-printf '\n'
-printf '%s        ▄▄▄▄▄%s        %s●%s\n' "$ORANGE" "$RESET" "$PURPLE" "$RESET"
-printf '%s      ▄███████▄%s\n' "$ORANGE" "$RESET"
-printf '%s     ▐██%s %s●%s %s●%s %s██▌%s   %s%sAtlasFile%s\n' "$CORAL" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET" "$CORAL" "$RESET" "$BOLD" "$ORANGE" "$RESET"
-printf '%s      ▀██%s ‿ %s██▀%s    %syour documents, alive%s\n' "$ORANGE" "$RESET" "$ORANGE" "$RESET" "$DIM" "$RESET"
-printf '%s   ●%s    ▀▀▀▀▀\n' "$CORAL" "$RESET"
+print_banner
+
+if [ "$UNINSTALL" = "1" ]; then
+  uninstall_rc=0
+  run_uninstall || uninstall_rc=$?
+  exit "$uninstall_rc"
+fi
 
 # ── 1. Prerequisites ────────────────────────────────────────────────────────
 title "1/5" "Checking and preparing prerequisites"
@@ -347,6 +1139,8 @@ if ! command -v git >/dev/null 2>&1; then
   else
     fail "git not found — install it from https://git-scm.com (or re-run with --install-deps)"
   fi
+else
+  host_set git preexisting
 fi
 check "git $(git --version 2>/dev/null | awk '{print $3}')" command -v git \
   || fail "git not found — install it from https://git-scm.com"
@@ -363,6 +1157,8 @@ if ! command -v docker >/dev/null 2>&1; then
   else
     fail "Docker not found — install Docker Desktop: https://docs.docker.com/get-docker/ (or re-run with --install-deps)"
   fi
+else
+  host_set docker preexisting
 fi
 
 # daemon — start it and wait instead of failing
@@ -401,7 +1197,10 @@ if ! docker compose version >/dev/null 2>&1; then
     else
       run_step "installing docker-compose-plugin (dnf)" as_root dnf install -y docker-compose-plugin
     fi
+    host_set compose_plugin created
   fi
+else
+  host_set compose_plugin preexisting
 fi
 check "docker compose $(docker compose version --short 2>/dev/null || echo v2)" docker compose version \
   || fail "Docker Compose v2 not found — update Docker Desktop (or install docker-compose-plugin)"
@@ -448,16 +1247,22 @@ done
 # ── 2. Code ─────────────────────────────────────────────────────────────────
 title "2/5" "Getting AtlasFile"
 if [ -d "${INSTALL_DIR}/.git" ]; then
+  CLONE_STATE="preexisting"
   run_step "updating existing install (${INSTALL_DIR})" \
     git -C "${INSTALL_DIR}" pull --ff-only origin "${BRANCH}"
 else
+  CLONE_STATE="created"
   run_step "cloning ${REPO_URL} (${BRANCH})" \
     git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${INSTALL_DIR}"
 fi
 cd "${INSTALL_DIR}"
+AF_MANIFEST="${INSTALL_DIR}/${AF_MANIFEST_NAME}"
+manifest_set "$AF_MANIFEST" repo_clone "$CLONE_STATE"
+manifest_set "$AF_MANIFEST" install_dir "$INSTALL_DIR"
 
 # ── 3. Configuration (.env) ─────────────────────────────────────────────────
 title "3/5" "Configuring"
+if [ -f .env ]; then manifest_set "$AF_MANIFEST" env_file preexisting; else manifest_set "$AF_MANIFEST" env_file created; fi
 if [ ! -f .env ]; then
   cp .env.example .env
   # One OpenSearch password per install — the template ships a public
@@ -497,6 +1302,14 @@ if [ -z "${PROJECTS_ROOT}" ]; then
     PROJECTS_ROOT="${answer:-${PROJECTS_ROOT_DEFAULT}}"
   fi
 fi
+# Recorded BEFORE mkdir: only a folder this installer actually created may be
+# removed later, and only while it is still empty.
+if [ -d "${PROJECTS_ROOT}" ]; then
+  manifest_set "$AF_MANIFEST" projects_root_created preexisting
+else
+  manifest_set "$AF_MANIFEST" projects_root_created created
+fi
+manifest_set "$AF_MANIFEST" projects_root "${PROJECTS_ROOT}"
 mkdir -p "${PROJECTS_ROOT}"
 if grep -q '^PROJECTS_HOST_ROOT=' .env; then
   tmp_env="$(mktemp)"
@@ -544,6 +1357,7 @@ if [ "${ENABLE_AUTH}" = "1" ]; then
     [ -n "${key_rand}" ] || key_rand="$(openssl rand -hex 16 2>/dev/null || date +%s)"
     API_KEY_VALUE="atlas_sk_${key_rand}"
     printf '{\n  "keys": [\n    {"key": "%s", "name": "installer", "projects": ["*"]}\n  ]\n}\n' "${API_KEY_VALUE}" > "${keys_file}"
+    manifest_set "$AF_MANIFEST" api_keys_file created
     printf '  %s✔%s api_keys.json created with a generated key\n' "$GREEN" "$RESET"
   fi
   set_env API_AUTH_ENABLED true
