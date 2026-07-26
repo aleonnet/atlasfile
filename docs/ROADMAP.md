@@ -71,7 +71,7 @@ visível na UI" (label + tooltip por modo)._
 
 | Item | O que é | Registrado em |
 |---|---|---|
-| Chat Kimi (Moonshot) completo | Integração validada até o erro de saldo; falta E2E de chat com tool-call quando a conta Moonshot tiver créditos. | v0.36.0 |
+| ~~Chat Kimi (Moonshot) completo~~ | **Validado pelo usuário em 2026-07-25** com o Kimi K3 na stack de desenvolvimento ("testei com kimi k3 e tudo certo") — o gatilho era ter créditos na conta Moonshot. Sem plano próprio: a integração já existia desde a v0.36.0, o que faltava era a prova em conta real. | — |
 
 ## Website
 

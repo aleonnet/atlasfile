@@ -29,7 +29,7 @@ The installer clones the project, configures the `.env`, brings up the Docker st
 - **Automatic ingestion** via a per-project `_INBOX_DROP` folder
 - **Operational classification** via the runtime's effective mode (`bootstrap`, `sparse_logreg`, or `llm`)
 - **Classifier cycle** with benchmark + retraining, global champion, per-project override, and persisted reports
-- **Human triage** in the frontend for pending documents (`Approve`, `Correct`, `Reject`)
+- **Human triage** in the frontend for pending documents (`Approve`, `Correct`, `Reject`), stating the real reason when a file yields no text (embedded image only, OCR unavailable, unsupported format…)
 - **Early dedup** by SHA256 before the full pipeline
 - **Indexing** of content and metadata in OpenSearch with search, suggest, and highlight
 - **Per-chunk embeddings** (OpenAI text-embedding-3-small or local fastembed) in a separate vector index (`atlasfile_chunk_vectors`), the foundation of semantic/RAG search
@@ -42,6 +42,7 @@ The installer clones the project, configures the `.env`, brings up the Docker st
 - **Supervised benchmark** with 3 modes (bootstrap, sparse_logreg, llm), a unified corpus, and stratified splits
 - **Real-time status** for reconcile, INBOX, and the classifier cycle
 - **Bilingual interface (PT-BR / EN-US)** with automatic browser detection, a persisted selector in Settings → Preferences, and a switcher on the first-run screens; API errors use stable codes (`{code, params, message}`) translated by the UI; numbers, dates, and currency follow the active language
+- **Durable chats and cost events**: an append-only journal under `_ATLASFILE/journal/` keeps them on disk, so losing the OpenSearch volume no longer erases them — reconcile restores what the index is missing
 - **Full traceability**: original name → canonical name → triage → index → benchmark
 
 ## Stack

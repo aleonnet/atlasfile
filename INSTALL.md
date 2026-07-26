@@ -167,17 +167,21 @@ Depois do primeiro `make docker-update`, o AtlasFile passa a usar `PROJECTS_HOST
 ```text
 <PROJECTS_HOST_ROOT>/
 ├── _ATLASFILE/
-│   └── classifier/
-│       ├── datasets/
-│       │   ├── validation_set/
-│       │   │   ├── files/
-│       │   │   └── expected.json
-│       │   └── training_pool/
-│       │       ├── files/
-│       │       └── records.jsonl
-│       ├── models/
-│       ├── reports/
-│       └── registry.json
+│   ├── classifier/
+│   │   ├── datasets/
+│   │   │   ├── validation_set/
+│   │   │   │   ├── files/
+│   │   │   │   └── expected.json
+│   │   │   └── training_pool/
+│   │   │       ├── files/
+│   │   │       └── records.jsonl
+│   │   ├── models/
+│   │   ├── reports/
+│   │   └── registry.json
+│   ├── llm/                     ← cache do catálogo de modelos e customs
+│   └── journal/                 ← chats e eventos de custo (durabilidade)
+│       ├── chat_sessions/
+│       └── chat_usage-AAAAMM.ndjson
 └── <SEUS_PROJETOS>/
 ```
 
@@ -186,6 +190,7 @@ Estado inicial de um AtlasFile novo:
 - a ingestão já funciona com o classificador `bootstrap`, sem depender de `validation_set` ou `training_pool` previamente populados;
 - `validation_set` e `training_pool` começam vazios no root operacional;
 - benchmark e retreino supervisionado só ficam úteis depois que você alimentar o `validation_set` com arquivos reais e acumular exemplos revisados no `training_pool`.
+- `journal/` (v0.53.0) guarda em disco os chats e os eventos de custo LLM, que antes viviam só no índice: perder o volume do OpenSearch deixa de significar perder esse histórico — a reconciliação restaura o que o índice não tiver.
 
 O repo não é mais usado como seed automático desses datasets no runtime.
 
