@@ -106,6 +106,29 @@ rc=0; run_case STUB_RC_brew=1 DOCKER_APP_PATH=/nonexistent -- '
 assert_eq "$rc" "1"
 assert_contains "$CALLS" "brew list --cask docker-desktop"
 
+# Measured on a clean macOS VM: Docker Desktop installed but never opened means
+# `command -v docker` fails (no CLI link yet) while ensure_docker_mac returns
+# 100. The old `ensure_docker_mac || fail` aborted the install with a false
+# "could not install Docker Desktop".
+make_sandbox
+t "an app present but never opened is not treated as an install failure"
+out="$(run_case STUB_RC_brew=0 -- 'OS_KIND=mac; BREW_PREFIX=/nonexistent
+  docker_rc=0; ensure_docker_mac || docker_rc=$?
+  printf "rc=%s state=%s" "$docker_rc" "$(host_get docker)"')"
+assert_eq "$out" "rc=100 state=preexisting"
+
+# Achado pelo CI num runner Ubuntu: sem upgrade pendente, a última linha do ramo
+# apt/dnf é um teste falso, a função devolvia 1 e o `set -e` matava o instalador
+# logo após os pré-requisitos — antes de clonar. No macOS nunca aparecia.
+make_sandbox
+t "hint_upgrades nunca derruba o instalador quando nao ha upgrade pendente"
+rc=0; run_case -- 'OS_KIND=linux; PKG=apt; hint_upgrades' >/dev/null || rc=$?
+assert_eq "$rc" "0"
+rc=0; run_case -- 'OS_KIND=linux; PKG=dnf; hint_upgrades' >/dev/null || rc=$?
+assert_eq "$rc" "0"
+rc=0; run_case -- 'OS_KIND=mac; PKG=none; DOCKER_APP_PATH=/nonexistent; hint_upgrades' >/dev/null || rc=$?
+assert_eq "$rc" "0"
+
 # ── ensure_ollama: presence first ───────────────────────────────────────────
 make_sandbox
 t "ensure_ollama returns 100 when ollama is on PATH"
@@ -166,10 +189,14 @@ first="$(printf '%s\n' "$out" | head -1)"; last="$(printf '%s\n' "$out" | tail -
 assert_eq "$last" "$first"
 
 t "no moon or comet ever overwrites an orb glyph"
-base="$(run_case -- 'af_frame_plain 25' | tr -cd '█▄▀▐▌' | wc -c | tr -d ' ')"
+# grep -o conta OCORRENCIAS do glifo; `tr -cd` contava BYTES e o resultado
+# variava entre plataformas, porque `●` (E2 97 8F) compartilha o byte E2 com os
+# blocos e `•` (E2 80 A2) compartilha E2 e 80 — o CI Linux pegou isso.
+orb_glyphs() { grep -o -e '█' -e '▄' -e '▀' -e '▐' -e '▌' | wc -l | tr -d ' '; }
+base="$(run_case -- 'af_frame_plain 25' | orb_glyphs)"
 bad=""
 for f in 5 9 13 17 20 24; do
-  n="$(run_case -- "af_frame_plain $f" | tr -cd '█▄▀▐▌' | wc -c | tr -d ' ')"
+  n="$(run_case -- "af_frame_plain $f" | orb_glyphs)"
   [ "$n" = "$base" ] || bad="${bad}frame ${f}=${n}(want ${base}) "
 done
 [ -z "$bad" ] && ok || no "orb glyph count changed: $bad"
@@ -225,10 +252,6 @@ t "an absent key and an absent file both read empty (never created)"
 out="$(run_case -- 'manifest_get "$SANDBOX/nope" docker; manifest_get "$SANDBOX/m" ghost')"
 assert_eq "$out" ""
 
-t "record_ensure maps the 0/100 contract onto the manifest"
-out="$(run_case -- 'record_ensure docker 0; record_ensure git 100; record_ensure ollama 1
-  printf "%s|%s|%s" "$(host_get docker)" "$(host_get git)" "$(host_get ollama)"')"
-assert_eq "$out" "created|preexisting|"
 
 # ── uninstall plan ──────────────────────────────────────────────────────────
 PLAN_FACTS='OS_KIND=mac; PKG=none; UN_DIR="$SANDBOX/inst"; UN_PROJECT=testproj; UN_COMPOSE_FILE=1
@@ -322,6 +345,16 @@ out="$(run_case -- "${PLAN_FACTS}
 case "$out" in *rm-clone*) no "removed a directory it did not create" ;; *) ok ;; esac
 case "$out" in *"not created by this installer"*) ok ;; *) no "no explanation" ;; esac
 
+# The plan must not claim a stack was touched when there is no compose file
+# (seen for real on the macOS VM, where the install died before cloning).
+make_sandbox
+t "with no stack to remove, the plan does not claim one was touched"
+out="$(run_case -- "${PLAN_FACTS}
+  UN_COMPOSE_FILE=0; UN_CLONE_STATE=unknown; UN_VOLUME=\"\"
+  un_build_plan 0 0 0; printf '%s' \"\$UN_PLAN_KEEP\"")"
+case "$out" in *"only the stack above was touched"*) no "claimed a stack was touched when there is none" ;; *) ok ;; esac
+case "$out" in *"not created by this installer"*) ok ;; *) no "lost the explanation for keeping the directory" ;; esac
+
 make_sandbox
 t "the stack is never touched by container name (fixed atlasfile-* names)"
 out="$(run_case -- "${PLAN_FACTS}
@@ -362,6 +395,22 @@ assert_eq "$out" "0"
 printf 'real work\n' > "${SANDBOX}/clone/user_file.txt"
 out="$(run_case PATH=/usr/bin:/bin -- 'un_collect "$SANDBOX/clone"; printf "%s" "$UN_DIR_DIRTY"')"
 assert_eq "$out" "1"
+
+# A run that installed Docker and died before cloning leaves no directory but a
+# valid host manifest. Refusing would strand the user with a Docker they never
+# had and no way back.
+t "an install that died before cloning can still revert its system dependencies"
+make_sandbox
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash -c 'export ATLASFILE_INSTALL_LIB=1; source "'"$REPO_ROOT"'/install.sh"
+    host_set docker created
+    OS_KIND=mac; PKG=none
+    UN_DIR="'"$SANDBOX"'/gone"; UN_PROJECT=gone; UN_COMPOSE_FILE=0
+    UN_CLONE_STATE=unknown; UN_DIR_DIRTY=0; UN_PROJECTS_ROOT=""; UN_PROJECTS_FILES=0
+    UN_OTHER_ARTIFACTS=""; UN_VOLUME=""; UN_CONTAINERS=0; UN_IMAGES=""
+    un_build_plan 0 1 0; printf "%s" "$UN_ACTIONS"')"
+case "$out" in *brew-cask:docker-desktop*) ok ;; *) no "would not revert a Docker installed by a half-finished run: [$out]" ;; esac
+if [ -f "${SANDBOX}/.atlasfile/host-prereqs" ]; then ok; else no "host manifest not written outside the install dir"; fi
 
 t "headless uninstall refuses to guess what to do with the data volume"
 make_sandbox

@@ -409,6 +409,11 @@ hint_upgrades() {
     local up; up="$(dnf -q check-update docker-ce docker-compose-plugin git 2>/dev/null | awk 'NF>=3 {printf "%s ", $1}' || true)"
     [ -n "$up" ] && info "upgrades available via dnf: ${up}— run: sudo dnf upgrade ${up}"
   fi
+  # Sem isto o instalador ABORTA aqui em qualquer máquina apt/dnf que não tenha
+  # upgrade pendente: a última linha do ramo é um teste falso, a função devolve
+  # 1 e o `set -e` derruba tudo antes mesmo de clonar. Achado pelo CI num runner
+  # Ubuntu; no macOS nunca aparecia porque aquele ramo termina num `if`.
+  return 0
 }
 
 # ── Install manifest: what THIS installer created on THIS host ──────────────
@@ -453,15 +458,6 @@ manifest_set() { # <file> <key> <value> — merge, never downgrading `created`
 host_get() { manifest_get "$AF_HOST_MANIFEST" "$1"; }
 host_set() { manifest_set "$AF_HOST_MANIFEST" "$1" "$2"; }
 
-# Maps the ensure_* contract (0 = installed now, 100 = already present) onto the
-# manifest vocabulary. Any other rc (a failure) records nothing.
-record_ensure() { # <key> <rc>
-  case "$2" in
-    0)   host_set "$1" created ;;
-    100) host_set "$1" preexisting ;;
-  esac
-  return 0
-}
 
 # ── Uninstall ───────────────────────────────────────────────────────────────
 # Facts first (all read-only), then a plan in text with a REMOVED and a
@@ -572,8 +568,12 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
       un_add_remove "install directory ${UN_DIR} (clone created by this installer, with its .env)"
       un_act "rm-clone"
     fi
-  else
+  elif [ "$UN_COMPOSE_FILE" = "1" ]; then
     un_add_keep "${UN_DIR} was not created by this installer — preserved (only the stack above was touched)"
+  else
+    # No compose file means no stack was touched either: claiming otherwise
+    # would make the plan describe something that did not happen.
+    un_add_keep "${UN_DIR} was not created by this installer — preserved"
   fi
 
   # ── the user's documents ──
@@ -757,8 +757,17 @@ run_uninstall() {
   detect_os
   un_collect "$INSTALL_DIR"
 
+  # A run that installed Docker and then died BEFORE cloning leaves no install
+  # directory but a perfectly good host manifest — that half-installed state is
+  # exactly why the host manifest is written the moment each ensure_* decides.
+  # Refusing here would strand the user with a Docker they did not have before
+  # and no tool to revert it, so the deps-only plan is still offered.
   if [ "$UN_COMPOSE_FILE" = "0" ] && [ ! -d "${INSTALL_DIR}" ]; then
-    fail "no AtlasFile install found at ${INSTALL_DIR} — point --dir at the right folder"
+    if [ -f "$AF_HOST_MANIFEST" ]; then
+      info "no install at ${INSTALL_DIR}, but this host has a prerequisite manifest — planning the system dependencies only"
+    else
+      fail "no AtlasFile install found at ${INSTALL_DIR} — point --dir at the right folder"
+    fi
   fi
 
   # The data volume never has a default: the user decides, every time.
@@ -1149,10 +1158,20 @@ check "curl" command -v curl || fail "curl not found"
 # Docker — offer to install when missing
 if ! command -v docker >/dev/null 2>&1; then
   if confirm "Docker not found — install it now? (Docker Desktop on macOS / Docker Engine on Linux)"; then
+    # Only rc=1 is a failure. rc=100 means "already there" and is REACHABLE
+    # here: `command -v docker` looks for the CLI, which Docker Desktop only
+    # links after its first launch, while ensure_docker_mac looks for the app
+    # itself. Measured on a clean macOS VM with Docker Desktop installed and
+    # never opened: `ensure_docker_mac || fail` aborted the installer with
+    # "could not install Docker Desktop" while the app sat in /Applications.
+    docker_rc=0
     if [ "$OS_KIND" = "mac" ]; then
-      ensure_docker_mac || fail "could not install Docker Desktop — install it manually: https://docs.docker.com/get-docker/"
+      ensure_docker_mac || docker_rc=$?
+      [ "$docker_rc" = "1" ] && fail "could not install Docker Desktop — install it manually: https://docs.docker.com/get-docker/"
+      [ "$docker_rc" = "100" ] && info "Docker Desktop is installed but has never been opened — starting it now"
     else
-      ensure_docker_linux || fail "could not install Docker Engine — install it manually: https://docs.docker.com/get-docker/"
+      ensure_docker_linux || docker_rc=$?
+      [ "$docker_rc" = "1" ] && fail "could not install Docker Engine — install it manually: https://docs.docker.com/get-docker/"
     fi
   else
     fail "Docker not found — install Docker Desktop: https://docs.docker.com/get-docker/ (or re-run with --install-deps)"
