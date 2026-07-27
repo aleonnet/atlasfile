@@ -679,6 +679,7 @@ make_sandbox
 t "o plano diz O QUE suja o clone, nao so que esta sujo"
 out="$(run_case PATH=/usr/bin:/bin -- '
   C="$SANDBOX/c1"; mkdir -p "$C"; cd "$C"; git init -q
+  git config user.email t@t; git config user.name t
   printf "x\n" > docker-compose.yml; git add -A; git commit -qm base
   touch meu_rascunho.md
   un_collect "$C"
@@ -689,6 +690,7 @@ printf '%s' "$out" | grep -q 'meu_rascunho.md' && ok || no "nao nomeou o que suj
 t "e resume acima do teto, em vez de empurrar o plano para fora da tela"
 out="$(run_case PATH=/usr/bin:/bin -- '
   C="$SANDBOX/c2"; mkdir -p "$C"; cd "$C"; git init -q
+  git config user.email t@t; git config user.name t
   printf "x\n" > docker-compose.yml; git add -A; git commit -qm base
   for i in 1 2 3 4 5 6 7 8; do touch "arquivo_$i.md"; done
   un_collect "$C"; UN_DIR="$C"; un_dirty_lines')"
