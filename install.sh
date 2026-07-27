@@ -171,11 +171,79 @@ fi
 step_now() { date +%s; }
 fmt_secs() { local s=$1; if [ "$s" -ge 60 ]; then printf '%dm%02ds' $((s/60)) $((s%60)); else printf '%ds' "$s"; fi; }
 
+term_cols() {
+  local c
+  c="$(tput cols 2>/dev/null || echo 72)"
+  case "$c" in ''|*[!0-9]*) c=72 ;; esac
+  [ "$c" -gt 92 ] && c=92
+  [ "$c" -lt 60 ] && c=60
+  printf '%s' "$c"
+}
+
+# ── Calha vertical (│) ──────────────────────────────────────────────────────
+# Toda mensagem pendura numa trilha contínua, como no mac_env_install.sh. Antes
+# eram linhas soltas com dois espaços de recuo: a mesma informação lida como
+# lista, e não como fluxo. O install.ps1 usa exatamente o mesmo desenho — dois
+# instaladores com duas gramáticas visuais era o defeito, não o estilo.
+GUT="${DIM}│${RESET} "
+
+# ── Barra de fase, viva na última linha ─────────────────────────────────────
+# O mac-env conta ITENS porque instala N pacotes discretos; aqui o que existe de
+# discreto e conhecido são as 5 fases, e inventar um total de passos daria um
+# número arbitrário — que é pior que não ter barra. Numa instalação onde o
+# `docker compose build` sozinho leva ~15 min, saber "fase 4 de 5" é o que falta.
+BAR_TOTAL=5
+BAR_DONE=0
+BAR_VISIBLE=0
+# Placar e relatório da execução, no espírito do write_run_log do mac-env: o que
+# aconteceu, com tempo por passo, espelhado num arquivo. Tínhamos log da saída
+# das ferramentas e nenhum relatório do que o instalador fez.
+STEPS_DONE=0
+CHECKS_OK=0
+RUN_STEPS=""
+
+bar_capable() { [ "$COLOR_OK" = "1" ] && [ "$IS_TTY" = "1" ] && [ "$TRUECOLOR" = "1" ]; }
+
+bar_render() {
+  local width=24 filled i out="" pos
+  filled=$(( BAR_DONE * width / BAR_TOTAL ))
+  for (( i = 0; i < width; i++ )); do
+    if [ "$i" -lt "$filled" ]; then
+      pos=$(( i * 1000 / (width - 1) ))
+      af_rgb_at "$pos"
+      out="${out}$(printf '\033[38;2;%d;%d;%dm▰' "$AF_R" "$AF_G" "$AF_B")"
+    else
+      out="${out}$(printf '\033[38;5;240m▱')"
+    fi
+  done
+  printf '%s%s%s %sfase %s/%s%s' "$GUT" "$out" "$RESET" "$DIM" "$BAR_DONE" "$BAR_TOTAL" "$RESET"
+}
+
+bar_show() {
+  bar_capable || return 0
+  bar_render
+  BAR_VISIBLE=1
+  return 0
+}
+
+# Apagar ANTES de qualquer mensagem é o que impede a barra de virar sujeira no
+# meio do texto — e é a mesma disciplina que mantém o spinner longe da saída de
+# terceiro, que foi como o desinstalador do Docker embaralhou a tela.
+bar_clear() {
+  if [ "$BAR_VISIBLE" = "1" ]; then
+    printf '\r'
+    tput el 2>/dev/null || printf '%*s\r' 60 ''
+    BAR_VISIBLE=0
+  fi
+  return 0
+}
+
 fail_with_log() {
-  printf '\r  %s✘%s %s\n' "$RED" "$RESET" "$1"
+  bar_clear
+  printf '\r%s%s✘%s %s\n' "$GUT" "$RED" "$RESET" "$1"
   if [ -s "$LOG_FILE" ]; then
-    printf '%s── last log lines (%s) ──%s\n' "$DIM" "$LOG_FILE" "$RESET"
-    tail -12 "$LOG_FILE" | sed 's/^/  /'
+    printf '%s%s── last log lines (%s) ──%s\n' "$GUT" "$DIM" "$LOG_FILE" "$RESET"
+    tail -12 "$LOG_FILE" | sed "s/^/$(printf '%s' "  | ")/"
   fi
   exit 1
 }
@@ -184,37 +252,98 @@ fail_with_log() {
 run_step() {
   local msg="$1"; shift
   local t0; t0=$(step_now)
+  bar_clear
   if [ "$IS_TTY" = "1" ]; then
     "$@" >>"$LOG_FILE" 2>&1 &
     local pid=$!
     local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0
     while kill -0 "$pid" 2>/dev/null; do
       i=$(( (i + 1) % 10 ))
-      printf '\r  %s%s%s %s %s' "$ORANGE" "${frames:$i:1}" "$RESET" "$msg" "$DIM$(fmt_secs $(( $(step_now) - t0 )))$RESET "
+      printf '\r%s%s%s%s %s %s' "$GUT" "$ORANGE" "${frames:$i:1}" "$RESET" "$msg" "$DIM$(fmt_secs $(( $(step_now) - t0 )))$RESET "
       sleep 0.12
     done
     wait "$pid" || fail_with_log "$msg"
-    printf '\r  %s✔%s %s %s(%s)%s          \n' "$GREEN" "$RESET" "$msg" "$DIM" "$(fmt_secs $(( $(step_now) - t0 )))" "$RESET"
+    printf '\r%s%s✔%s %s %s(%s)%s          \n' "$GUT" "$GREEN" "$RESET" "$msg" "$DIM" "$(fmt_secs $(( $(step_now) - t0 )))" "$RESET"
   else
-    printf '  · %s...\n' "$msg"
+    printf '%s· %s...\n' "$GUT" "$msg"
     "$@" >>"$LOG_FILE" 2>&1 || fail_with_log "$msg"
-    printf '  ✔ %s (%s)\n' "$msg" "$(fmt_secs $(( $(step_now) - t0 )))"
+    printf '%s✔ %s (%s)\n' "$GUT" "$msg" "$(fmt_secs $(( $(step_now) - t0 )))"
   fi
+  RUN_STEPS="${RUN_STEPS}${msg}|$(( $(step_now) - t0 ))
+"
+  STEPS_DONE=$(( STEPS_DONE + 1 ))
+  bar_show
 }
 
 check() {
   local msg="$1"; shift
   if "$@" >>"$LOG_FILE" 2>&1; then
-    printf '  %s✔%s %s\n' "$GREEN" "$RESET" "$msg"
+    ok "$msg"
+    CHECKS_OK=$(( CHECKS_OK + 1 ))
   else
     return 1
   fi
 }
 
-fail() { printf '  %s✘%s %s\n' "$RED" "$RESET" "$*"; exit 1; }
-warn() { printf '  %s!%s %s\n' "$ORANGE" "$RESET" "$*"; }
-info() { printf '  %s·%s %s\n' "$PURPLE" "$RESET" "$*"; }
-title() { printf '\n%s%s[%s]%s %s%s%s\n' "$BOLD" "$ORANGE" "$1" "$RESET" "$BOLD" "$2" "$RESET"; }
+ok()    { bar_clear; printf '%s%s✔%s %s\n' "$GUT" "$GREEN" "$RESET" "$*"; bar_show; }
+fail()  { bar_clear; printf '%s%s✘%s %s\n' "$GUT" "$RED" "$RESET" "$*"; exit 1; }
+warn()  { bar_clear; printf '%s%s!%s %s\n' "$GUT" "$ORANGE" "$RESET" "$*"; bar_show; }
+info()  { bar_clear; printf '%s%s·%s %s\n' "$GUT" "$PURPLE" "$RESET" "$*"; bar_show; }
+# Pergunta: sem newline, e sem redesenhar a barra por cima do cursor de leitura.
+ask()   { bar_clear; printf '%s%s?%s %s' "$GUT" "$ORANGE" "$RESET" "$*"; }
+
+# Régua de fase que varre da esquerda para a direita, com a rampa do produto.
+# `[1/5] Título` continha a mesma informação em texto plano; a régua dá a ela o
+# peso de um cabeçalho e reusa a paleta que até aqui só o banner conhecia.
+# NADA aqui indexa string com ${s:i:1}: sob LC_ALL=C isso conta BYTES, e cada
+# ─ ocupa três. É a mesma armadilha que o banner documenta, e ela transformaria
+# a régua em lixo. O conector `├── ` tem largura FIXA e conhecida (4 colunas),
+# então entra na conta como constante, e os traços são gerados por repetição —
+# a contagem é minha, nunca do interpretador.
+AF_RULE_CONNECTOR_COLS=4
+rule_sweep() { # <cabeçalho ASCII>
+  local head="$1" w fill i j pos chunk segs=8 per feitos=0
+  w="$(term_cols)"
+  fill=$(( w - ${#head} - AF_RULE_CONNECTOR_COLS - 3 ))
+  [ "$fill" -lt 4 ] && fill=4
+  if [ "$COLOR_OK" != "1" ] || [ "$TRUECOLOR" != "1" ]; then
+    chunk=""
+    for (( i = 0; i < fill; i++ )); do chunk="${chunk}─"; done
+    printf '%s├── %s%s%s %s\n' "$GUT" "$BOLD" "$head" "$RESET" "$chunk"
+    return 0
+  fi
+  printf '%s├── %s%s%s ' "$GUT" "$BOLD" "$head" "$RESET"
+  per=$(( fill / segs )); [ "$per" -lt 1 ] && per=1
+  for (( i = 0; i < segs && feitos < fill; i++ )); do
+    pos=$(( i * 1000 / (segs - 1) ))
+    af_rgb_at "$pos"
+    chunk=""
+    for (( j = 0; j < per && feitos < fill; j++ )); do chunk="${chunk}─"; feitos=$(( feitos + 1 )); done
+    printf '\033[38;2;%d;%d;%dm%s' "$AF_R" "$AF_G" "$AF_B" "$chunk"
+  done
+  printf '%s\n' "$RESET"
+}
+
+title() {
+  bar_clear
+  printf '%s\n' "$GUT"
+  rule_sweep "[$1] $2"
+  BAR_DONE=${1%%/*}
+  bar_show
+}
+
+# Cursor de volta e barra apagada em QUALQUER saída, não só na do banner: um
+# Ctrl-C no meio de um passo deixava o terminal sem cursor. É o trap global do
+# mac-env-setup (cleanup_tmpfiles), pelo mesmo motivo.
+af_restore_terminal() {
+  [ "$BAR_VISIBLE" = "1" ] && printf '\r%*s\r' 60 ''
+  [ "$IS_TTY" = "1" ] && { tput cnorm 2>/dev/null || true; }
+  return 0
+}
+# O `trap` é REGISTRADO só depois da guarda de biblioteca, mais abaixo: instalar
+# um trap de EXIT aqui vazaria para quem faz `source` deste arquivo (a bancada),
+# e um EXIT trap num shell que já morreu por SIGPIPE vira ruído de "write error"
+# no meio dos testes. A função é da biblioteca; o trap é do instalador rodando.
 
 wait_http() {
   local url="$1" tries="$2"
@@ -239,7 +368,7 @@ confirm() {
     return 1
   fi
   [ "$INSTALL_DEPS" = "1" ] && return 0
-  printf '  %s?%s %s %s[y/N]%s ' "$ORANGE" "$RESET" "$q" "$DIM" "$RESET"
+  ask "$q ${DIM}[y/N]${RESET} "
   read -r answer < "$TTY_DEV" || answer=""
   case "$answer" in y|Y|yes|YES|s|S) return 0 ;; *) return 1 ;; esac
 }
@@ -396,7 +525,7 @@ ensure_ollama() {
 ollama_pull_model() {
   local model="$1"
   if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$model"; then
-    printf '  %s✔%s model %s already pulled\n' "$GREEN" "$RESET" "$model"
+    ok "model ${model} already pulled"
     host_set ollama_model_state preexisting
     return 0
   fi
@@ -415,7 +544,7 @@ ollama_pull_model() {
   fi
   host_set ollama_model_state created
   host_set ollama_model_name "$model"
-  printf '  %s✔%s model %s ready\n' "$GREEN" "$RESET" "$model"
+  ok "model ${model} ready"
 }
 
 # ── Ollama (opt-in): runs after the stack is up so it never delays first screen
@@ -432,16 +561,14 @@ maybe_setup_ollama() {
   [ "$NO_OLLAMA" = "1" ] && return 0
   if [ "${WITH_OLLAMA}" = "0" ] && [ "$ASSUME_YES" = "0" ] && [ -r "$TTY_DEV" ] \
     && ! command -v ollama >/dev/null 2>&1; then
-    printf '  %s?%s Also install Ollama for a 100%% local model (%s, several GB)? %s[y/N]%s ' \
-      "$ORANGE" "$RESET" "${OLLAMA_MODEL}" "$DIM" "$RESET"
+    ask "Also install Ollama for a 100% local model (${OLLAMA_MODEL}, several GB)? ${DIM}[y/N]${RESET} "
     read -r ollama_answer < "$TTY_DEV" || ollama_answer=""
     case "$ollama_answer" in y|Y|yes|YES|s|S) WITH_OLLAMA=1 ;; esac
   fi
   [ "${WITH_OLLAMA}" = "1" ] || return 0
   ensure_ollama || ollama_rc=$?
   if [ "$ollama_rc" = "100" ]; then
-    printf '  %s✔%s ollama %s (already installed — the app updates itself)\n' \
-      "$GREEN" "$RESET" "$(ollama --version 2>/dev/null | sed 's/ollama version is //' || true)"
+    ok "ollama $(ollama --version 2>/dev/null | sed 's/ollama version is //' || true) (already installed — the app updates itself)"
   fi
   if [ "$ollama_rc" != "1" ]; then
     ollama_pull_model "${OLLAMA_MODEL}"
@@ -594,9 +721,9 @@ un_project_name() { # <dir>
   printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g'
 }
 
-un_add_remove() { UN_PLAN_REMOVE="${UN_PLAN_REMOVE}  • $1
+un_add_remove() { UN_PLAN_REMOVE="${UN_PLAN_REMOVE}${GUT}  • $1
 "; }
-un_add_keep()   { UN_PLAN_KEEP="${UN_PLAN_KEEP}  • $1
+un_add_keep()   { UN_PLAN_KEEP="${UN_PLAN_KEEP}${GUT}  • $1
 "; }
 un_act()        { UN_ACTIONS="${UN_ACTIONS}$1
 "; }
@@ -792,28 +919,53 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
 }
 
 un_print_plan() {
-  printf '\n  %s%sRemoval plan%s — %s\n\n' "$BOLD" "$ORANGE" "$RESET" "$UN_DIR"
+  printf '%s\n' "$GUT"
+  rule_sweep "Removal plan — ${UN_DIR}"
+  printf '%s\n' "$GUT"
   if [ -n "$UN_PLAN_REMOVE" ]; then
-    printf '  %sWILL BE REMOVED%s\n%s\n' "$BOLD" "$RESET" "$UN_PLAN_REMOVE"
+    printf '%s%sWILL BE REMOVED%s\n%s%s\n' "$GUT" "$BOLD" "$RESET" "$UN_PLAN_REMOVE" "$GUT"
   else
-    printf '  %snothing to remove%s\n\n' "$DIM" "$RESET"
+    printf '%s%snothing to remove%s\n%s\n' "$GUT" "$DIM" "$RESET" "$GUT"
   fi
   if [ -n "$UN_PLAN_KEEP" ]; then
-    printf '  %sWILL BE PRESERVED%s\n%s\n' "$BOLD" "$RESET" "$UN_PLAN_KEEP"
+    printf '%s%sWILL BE PRESERVED%s\n%s%s\n' "$GUT" "$BOLD" "$RESET" "$UN_PLAN_KEEP" "$GUT"
   fi
+  return 0
+}
+
+# Placar do final, no padrão do print_final_report do mac_env_install.sh: o que
+# aconteceu, em números, e só os próximos passos que de fato se aplicam. O
+# veredito anterior era uma frase fixa — dizia a mesma coisa tendo removido
+# tudo ou quase nada.
+un_report() {
+  printf '%s\n' "$GUT"
+  rule_sweep "AtlasFile removed"
+  printf '%s%s✔ %s removed%s' "$GUT" "$GREEN" "$UN_OK" "$RESET"
+  [ "$UN_KO" -gt 0 ] && printf '   %s✘ %s failed%s' "$RED" "$UN_KO" "$RESET"
+  printf '   %skept: what already existed on this machine%s\n%s\n' "$DIM" "$RESET" "$GUT"
+  if [ -n "$UN_PROJECTS_ROOT" ] && [ "$UN_PROJECTS_FILES" != "0" ]; then
+    info "your documents are untouched in ${UN_PROJECTS_ROOT}"
+  fi
+  [ "$UN_KO" -gt 0 ] && info "details of what failed: ${LOG_FILE}"
+  printf '\n'
   return 0
 }
 
 un_has_action() { printf '%s' "$UN_ACTIONS" | grep -qx "$1"; }
 
 UN_FAILED=0
+UN_OK=0
+UN_KO=0
 un_step() { # <label> <cmd...> — a failed step is reported, never fatal
   local label="$1"; shift
   if "$@" >>"$LOG_FILE" 2>&1; then
-    printf '  %s✔%s %s\n' "$GREEN" "$RESET" "$label"
+    ok "$label"
+    UN_OK=$(( UN_OK + 1 ))
   else
-    printf '  %s✘%s %s %s(details in %s)%s\n' "$RED" "$RESET" "$label" "$DIM" "$LOG_FILE" "$RESET"
+    bar_clear
+    printf '%s%s✘%s %s %s(details in %s)%s\n' "$GUT" "$RED" "$RESET" "$label" "$DIM" "$LOG_FILE" "$RESET"
     UN_FAILED=1
+    UN_KO=$(( UN_KO + 1 ))
   fi
   return 0
 }
@@ -883,7 +1035,8 @@ un_execute() {
         if ! brew uninstall --cask ollama-app >>"$LOG_FILE" 2>&1; then
           un_step "removing Ollama (Homebrew cask)" brew uninstall --cask ollama
         else
-          printf '  %s✔%s removing Ollama (Homebrew cask)\n' "$GREEN" "$RESET"
+          ok "removing Ollama (Homebrew cask)"
+          UN_OK=$(( UN_OK + 1 ))
         fi ;;
       ollama-rm:*)
         model="${act#ollama-rm:}"
@@ -893,7 +1046,8 @@ un_execute() {
       rm-state)
         rm -f "$AF_HOST_MANIFEST" 2>/dev/null || true
         rmdir "$AF_STATE_DIR" 2>/dev/null || true
-        printf '  %s✔%s installer bookkeeping removed\n' "$GREEN" "$RESET" ;;
+        ok "installer bookkeeping removed"
+        UN_OK=$(( UN_OK + 1 )) ;;
     esac
   done <<EOF
 $UN_ACTIONS
@@ -942,10 +1096,11 @@ run_uninstall() {
     if [ "$ASSUME_YES" = "1" ] || [ ! -r "$TTY_DEV" ]; then
       fail "the volume ${UN_VOLUME} holds the search index — decide explicitly: --purge-data (erase it) or --keep-data (keep it)"
     fi
-    printf '\n  %s?%s The volume %s%s%s holds the search index.\n' "$ORANGE" "$RESET" "$BOLD" "$UN_VOLUME" "$RESET"
-    printf '    Your documents and the _ATLASFILE journal live on disk and are NOT affected;\n'
-    printf '    the index is rebuilt by Reconcile after a reinstall.\n'
-    printf '  %s?%s Erase the volume? %s[y/N]%s ' "$ORANGE" "$RESET" "$DIM" "$RESET"
+    printf '%s\n' "$GUT"
+    ask "The volume ${BOLD}${UN_VOLUME}${RESET} holds the search index."
+    printf '\n%s   Your documents and the _ATLASFILE journal live on disk and are NOT affected;\n' "$GUT"
+    printf '%s   the index is rebuilt by Reconcile after a reinstall.\n' "$GUT"
+    ask "Erase the volume? ${DIM}[y/N]${RESET} "
     local ans=""
     # `[ -r /dev/tty ]` is true even when the device cannot be opened (no
     # controlling terminal), so the redirection itself has to be silenced.
@@ -967,7 +1122,7 @@ run_uninstall() {
       sentinel "cancelled"
       fail "no interactive terminal — re-run with --yes to confirm the plan above"
     fi
-    printf '  %s?%s Execute the plan above? %s[y/N]%s ' "$ORANGE" "$RESET" "$DIM" "$RESET"
+    ask "Execute the plan above? ${DIM}[y/N]${RESET} "
     local answer=""
     { read -r answer < "$TTY_DEV"; } 2>/dev/null || answer=""
     printf '\n'
@@ -992,7 +1147,7 @@ run_uninstall() {
   # half of the machine (it was, and the user read a success that had not
   # happened yet).
   if [ "$DELEGATED" != "1" ]; then
-    printf '  %s✔%s AtlasFile removed. What already existed on this machine was preserved.\n\n' "$GREEN" "$RESET"
+    un_report
   fi
   sentinel "confirmed"
   return 0
@@ -1312,6 +1467,8 @@ if [ -n "${ATLASFILE_INSTALL_LIB:-}" ]; then
   return 0 2>/dev/null || exit 0
 fi
 
+trap af_restore_terminal EXIT INT TERM
+
 # One banner per run. Under --delegated the caller (install.ps1) has already
 # drawn it seconds earlier: two banners in a row read as two products, and they
 # were not even the same drawing. --plan-only is machine-facing output, so art
@@ -1585,37 +1742,74 @@ run_step "waiting for the interface" wait_http http://localhost:5173/ 30
 maybe_setup_ollama
 
 # ── 5. Done ─────────────────────────────────────────────────────────────────
-TOTAL=$(fmt_secs $(( $(step_now) - START_TS )))
+TOTAL_SECS=$(( $(step_now) - START_TS ))
+TOTAL=$(fmt_secs "$TOTAL_SECS")
 title "5/5" "Install finished in ${TOTAL} 🎉"
-printf '\n'
+bar_clear
+printf '%s\n' "$GUT"
+# Placar: o que de fato aconteceu, em números. A frase fixa de antes dizia a
+# mesma coisa numa instalação limpa e numa reexecução que não mudou nada.
+printf '%s%s✔ %s steps%s   %s✔ %s prerequisites%s   %sin %s%s\n%s\n' \
+  "$GUT" "$GREEN" "$STEPS_DONE" "$RESET" "$GREEN" "$CHECKS_OK" "$RESET" "$DIM" "$TOTAL" "$RESET" "$GUT"
 # box_row LABEL VALUE — padded to the fixed inner width; long values get a
 # leading ellipsis keeping the tail (the folder name is what matters)
 box_row() {
   local label="$1" value="$2"
   if [ ${#value} -gt 43 ]; then value="…${value:$((${#value} - 42))}"; fi
-  printf '  %s│%s  %s%-11s%s %-43s%s│%s\n' "$ORANGE" "$RESET" "$BOLD" "$label" "$RESET" "$value" "$ORANGE" "$RESET"
+  printf '%s%s│%s  %s%-11s%s %-43s%s│%s\n' "$GUT" "$ORANGE" "$RESET" "$BOLD" "$label" "$RESET" "$value" "$ORANGE" "$RESET"
 }
-printf '  %s╭─────────────────────────────────────────────────────────╮%s\n' "$ORANGE" "$RESET"
+printf '%s%s╭─────────────────────────────────────────────────────────╮%s\n' "$GUT" "$ORANGE" "$RESET"
 box_row "Interface" "http://localhost:5173"
 box_row "API" "http://localhost:8000/health"
 box_row "Dashboards" "http://localhost:5601"
 box_row "Projects" "${PROJECTS_ROOT}"
-printf '  %s╰─────────────────────────────────────────────────────────╯%s\n' "$ORANGE" "$RESET"
-printf '\n'
+printf '%s%s╰─────────────────────────────────────────────────────────╯%s\n%s\n' "$GUT" "$ORANGE" "$RESET" "$GUT"
 os_pass_now="$(grep '^OPENSEARCH_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
 if [ -n "${os_pass_now}" ]; then
-  printf '  %s📊 OpenSearch Dashboards%s (operations dashboard "AtlasFile — Operação"):\n' "$BOLD" "$RESET"
-  printf '     login %sadmin%s · password %s%s%s\n' "$BOLD" "$RESET" "$ORANGE" "${os_pass_now}" "$RESET"
-  printf '\n'
+  printf '%s%s📊 OpenSearch Dashboards%s (operations dashboard "AtlasFile — Operação"):\n' "$GUT" "$BOLD" "$RESET"
+  printf '%s   login %sadmin%s · password %s%s%s\n%s\n' "$GUT" "$BOLD" "$RESET" "$ORANGE" "${os_pass_now}" "$RESET" "$GUT"
 fi
 if [ "${ENABLE_AUTH}" = "1" ] && [ -n "${API_KEY_VALUE}" ]; then
-  printf '  %s🔑 API key%s (paste it in Settings → Access, in each browser):\n' "$BOLD" "$RESET"
-  printf '     %s%s%s\n' "$ORANGE" "${API_KEY_VALUE}" "$RESET"
-  printf '\n'
+  printf '%s%s🔑 API key%s (paste it in Settings → Access, in each browser):\n' "$GUT" "$BOLD" "$RESET"
+  printf '%s   %s%s%s\n%s\n' "$GUT" "$ORANGE" "${API_KEY_VALUE}" "$RESET" "$GUT"
 fi
-info "the onboarding wizard opens by itself in the interface"
-info "logs:  cd ${INSTALL_DIR} && docker compose logs -f"
-info "stop:  cd ${INSTALL_DIR} && docker compose down"
+
+# ── Próximos passos: só os que se aplicam ───────────────────────────────────
+# O mac-env monta esta lista a partir do que REALMENTE aconteceu (`result_ok
+# docker` → "abra o Docker.app uma vez"). Antes eram sempre as mesmas três
+# linhas, inclusive as que não valiam para aquela execução.
+printf '%s%sNext steps%s\n' "$GUT" "$BOLD" "$RESET"
+printf '%s  • the onboarding wizard opens by itself in the interface\n' "$GUT"
+if [ "$(host_get docker_group)" = "created" ]; then
+  printf '%s  • log out and back in: your docker group membership only applies to new sessions\n' "$GUT"
+fi
+if [ "${WITH_OLLAMA}" = "1" ]; then
+  printf '%s  • assistant settings: type ollama/%s in the model box\n' "$GUT" "${OLLAMA_MODEL}"
+fi
+if [ "$OS_KIND" = "mac" ] && [ "$(host_get docker)" = "created" ]; then
+  printf '%s  • Docker Desktop was installed now — keep it open for the stack to run\n' "$GUT"
+fi
+printf '%s  • logs:  cd %s && docker compose logs -f\n' "$GUT" "${INSTALL_DIR}"
+printf '%s  • stop:  cd %s && docker compose down\n' "$GUT" "${INSTALL_DIR}"
+printf '%s\n' "$GUT"
+
+# Espelho em arquivo: o log guarda a saída das ferramentas, não o que ESTE
+# instalador fez. Sem isso, diagnosticar uma instalação de ontem é adivinhação.
+write_run_log() {
+  local f="${AF_STATE_DIR}/last-run.log" linha
+  mkdir -p "$AF_STATE_DIR" 2>/dev/null || return 0
+  {
+    printf 'install.sh — %s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+    printf 'dir: %s · projects: %s · duration: %s\n\n' "$INSTALL_DIR" "$PROJECTS_ROOT" "$TOTAL"
+    printf '%s\n' "$RUN_STEPS" | while IFS='|' read -r linha secs; do
+      [ -n "$linha" ] && printf '  %-52s %ss\n' "$linha" "$secs"
+    done
+    printf '\ntool output of this run: %s\n' "$LOG_FILE"
+  } > "$f" 2>/dev/null || return 0
+  info "run report: ${f}"
+  return 0
+}
+write_run_log
 printf '\n'
 
 if [ "${OPEN_BROWSER}" = "1" ]; then

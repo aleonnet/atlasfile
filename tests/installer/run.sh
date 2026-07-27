@@ -430,6 +430,31 @@ out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/n
   bash "$REPO_ROOT/install.sh" --uninstall --dir "${SANDBOX}/inst" --yes 2>&1 || true)"
 case "$out" in *"--purge-data"*) ok ;; *) no "did not demand an explicit data decision: [$out]" ;; esac
 
+# ── UI: calha vertical, barra viva e trap que não vaza ─────────────────────
+make_sandbox
+t "toda mensagem pendura na calha vertical"
+out="$(run_case -- 'info hello; warn hello; ok hello' 2>&1)"
+bad=""
+while IFS= read -r linha; do
+  case "$linha" in "│ "*) ;; *) bad="${bad}[${linha}] " ;; esac
+done <<EOF
+$out
+EOF
+[ -z "$bad" ] && ok || no "linha fora da calha: $bad"
+
+t "a barra viva é apagada antes de qualquer mensagem"
+# Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
+# o spinner longe da saída de terceiro.
+out="$(run_case -- 'BAR_VISIBLE=1; info hello' 2>&1 | head -1)"
+case "$out" in $'\r'*) ok ;; *) no "a mensagem não apagou a barra antes: [$out]" ;; esac
+
+# Um trap de EXIT registrado no corpo da biblioteca acompanharia quem faz
+# `source` — e um EXIT trap num shell já morto por SIGPIPE vira "write error"
+# no meio dos testes. O trap é do instalador rodando, não da biblioteca.
+t "carregar como biblioteca nao instala trap de EXIT em quem carregou"
+out="$(run_case -- 'trap -p EXIT' 2>&1)"
+[ -z "$out" ] && ok || no "o source vazou um trap: [$out]"
+
 # ── Fatos do outro lado da fronteira (install.ps1 → --host-extra) ───────────
 # O plano impresso aqui descrevia SÓ a distro, enquanto o install.ps1 removia
 # pacotes do Windows logo depois: numa máquina real ele disse "Docker preserved"
