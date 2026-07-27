@@ -430,5 +430,134 @@ out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/n
   bash "$REPO_ROOT/install.sh" --uninstall --dir "${SANDBOX}/inst" --yes 2>&1 || true)"
 case "$out" in *"--purge-data"*) ok ;; *) no "did not demand an explicit data decision: [$out]" ;; esac
 
+# ── Fatos do outro lado da fronteira (install.ps1 → --host-extra) ───────────
+# O plano impresso aqui descrevia SÓ a distro, enquanto o install.ps1 removia
+# pacotes do Windows logo depois: numa máquina real ele disse "Docker preserved"
+# segundos antes de apagar o Docker Desktop, e o Ollama não apareceu em NENHUMA
+# das duas seções. Agora os fatos do outro lado entram no mesmo plano.
+make_sandbox
+t "um fato do Windows marcado created entra em REMOVED, sem gerar ação"
+out="$(run_case -- "${PLAN_FACTS}
+  HOST_EXTRA='docker=created'
+  un_build_plan 0 1 0; printf 'R:%s|A:%s' \"\$UN_PLAN_REMOVE\" \"\$UN_ACTIONS\"")"
+case "$out" in *"Docker Desktop (Windows side), installed by AtlasFile"*) ok ;; *) no "fato do Windows ausente do plano: [$out]" ;; esac
+case "$out" in *"brew-cask"*|*"pkg-docker"*) no "o lado Linux planejou ação para um pacote do Windows" ;; *) ok ;; esac
+
+t "o lado Linux não contradiz o fato do Windows sobre o mesmo Docker"
+case "$out" in *"Docker was already on this machine"*) no "duas frases sobre o mesmo Docker no mesmo plano" ;; *) ok ;; esac
+
+make_sandbox
+t "um fato do Windows marcado preexisting entra em PRESERVED"
+out="$(run_case -- "${PLAN_FACTS}
+  HOST_EXTRA='docker=preexisting,wsl=created'
+  un_build_plan 0 1 0; printf 'K:%s|A:%s' \"\$UN_PLAN_KEEP\" \"\$UN_ACTIONS\"")"
+case "$out" in *"Docker Desktop (Windows side) was already on this machine"*) ok ;; *) no "preexisting não foi preservado explicitamente: [$out]" ;; esac
+case "$out" in *"WSL2 — never removed automatically"*) ok ;; *) no "o WSL precisa aparecer como preservado, não como aviso pós-ação" ;; esac
+
+make_sandbox
+t "sem --remove-deps o fato do Windows aparece, dizendo como reverter"
+out="$(run_case -- "${PLAN_FACTS}
+  HOST_EXTRA='ollama=created'
+  un_build_plan 0 0 0; printf '%s' \"\$UN_PLAN_KEEP\"")"
+case "$out" in *"Ollama (Windows side), installed by AtlasFile"*) ok ;; *) no "sumiu do plano sem --remove-deps: [$out]" ;; esac
+case "$out" in *"--remove-deps"*) ok ;; *) no "não disse como revertê-lo" ;; esac
+
+# Era ASSIM que o Ollama sumia: chave ausente do manifesto caía fora de todos os
+# ramos e não produzia frase nenhuma, nem em REMOVED nem em PRESERVED.
+make_sandbox
+t "chave desconhecida com a ferramenta presente produz frase, nunca silêncio"
+out="$(run_case -- "${PLAN_FACTS}
+  UN_OLLAMA_PRESENT=1
+  un_build_plan 0 1 0; printf '%s' \"\$UN_PLAN_KEEP\"")"
+case "$out" in *"Ollama is on this machine but was not installed by AtlasFile"*) ok ;; *) no "chave desconhecida seguiu silenciosa: [$out]" ;; esac
+
+make_sandbox
+t "sem Ollama na máquina o plano não inventa uma linha sobre ele"
+out="$(run_case -- "${PLAN_FACTS}
+  UN_OLLAMA_PRESENT=0
+  un_build_plan 0 1 0; printf '%s' \"\$UN_PLAN_KEEP\"")"
+case "$out" in *Ollama*) no "falou de um Ollama que não existe aqui: [$out]" ;; *) ok ;; esac
+
+# ── --no-ollama: a decisão de projeto do install.ps1 vira contrato ──────────
+make_sandbox
+printf 'y\n' > "${SANDBOX}/tty_in"
+t "--no-ollama não pergunta nada e não chama o ollama"
+out="$(run_case -- 'NO_OLLAMA=1; WITH_OLLAMA=0; ASSUME_YES=0; TTY_DEV="$SANDBOX/tty_in"
+  OS_KIND=mac; IS_TTY=0; LOG_FILE="$SANDBOX/log"; maybe_setup_ollama')"
+case "$out" in *"Also install Ollama"*) no "perguntou mesmo com --no-ollama" ;; *) ok ;; esac
+assert_not_contains "$CALLS" "ollama pull"
+
+t "sem --no-ollama a oferta continua existindo (o caminho nativo não regride)"
+make_sandbox
+printf 'n\n' > "${SANDBOX}/tty_in"
+# A oferta só existe quando NÃO há ollama na máquina — que é exatamente o estado
+# de dentro da distro no Windows, e por isso a pergunta se repetia lá.
+rm -f "${SANDBOX}/bin/ollama"
+out="$(run_case -- 'NO_OLLAMA=0; WITH_OLLAMA=0; ASSUME_YES=0; TTY_DEV="$SANDBOX/tty_in"
+  OS_KIND=mac; IS_TTY=0; LOG_FILE="$SANDBOX/log"; maybe_setup_ollama' 2>&1)"
+case "$out" in *"Also install Ollama"*) ok ;; *) no "a oferta do caminho nativo sumiu: [$out]" ;; esac
+
+# ── Fluxo completo do uninstall: plan-only, cancelamento e delegação ────────
+# Monta uma instalação de mentira com volume, para o plano ter o que dizer.
+make_uninstall_sandbox() {
+  make_sandbox
+  mkdir -p "${SANDBOX}/inst"
+  printf 'services: {}\n' > "${SANDBOX}/inst/docker-compose.yml"
+  cat > "${SANDBOX}/bin/docker" <<EOF
+#!/usr/bin/env bash
+echo "docker \$*" >> "${CALLS}"
+case "\$1 \$2" in
+  "volume ls") echo "inst_opensearch_data" ;;
+  "ps -aq") echo "deadbeef" ;;
+esac
+exit 0
+EOF
+  chmod +x "${SANDBOX}/bin/docker"
+}
+
+run_uninstaller() { # <args...> — script inteiro, TTY_DEV é um arquivo de respostas
+  env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV="${SANDBOX}/tty_in" \
+    bash "$REPO_ROOT/install.sh" --uninstall --dir "${SANDBOX}/inst" "$@" 2>&1
+}
+
+make_uninstall_sandbox
+: > "${SANDBOX}/tty_in"
+t "--plan-only imprime o plano, não pergunta nada e não executa nada"
+out="$(run_uninstaller --plan-only || true)"
+case "$out" in *"Removal plan"*) ok ;; *) no "não imprimiu o plano: [$out]" ;; esac
+case "$out" in *"ATLASFILE_UNINSTALL: plan-only"*) ok ;; *) no "sem a sentinela de plan-only" ;; esac
+case "$out" in *"Execute the plan above?"*) no "perguntou no modo que existe para não perguntar" ;; *) ok ;; esac
+case "$out" in *"still your call"*) ok ;; *) no "escondeu que a decisão do volume segue aberta" ;; esac
+assert_not_contains "$CALLS" "compose down"
+
+# O defeito que motivou tudo: responder "n" devolvia 0, e o install.ps1 leu isso
+# como sucesso e apagou o Docker Desktop de uma máquina cujo dono tinha dito não.
+make_uninstall_sandbox
+printf 'n\n' > "${SANDBOX}/tty_in"
+t "cancelar devolve código próprio (10) e a sentinela de cancelado"
+rc=0; out="$(run_uninstaller)" || rc=$?
+assert_eq "$rc" "10"
+case "$out" in *"ATLASFILE_UNINSTALL: cancelled"*) ok ;; *) no "sem a sentinela de cancelamento: [$out]" ;; esac
+case "$out" in *"nothing was touched"*) ok ;; *) no "não disse que nada foi tocado" ;; esac
+assert_not_contains "$CALLS" "compose down"
+
+make_uninstall_sandbox
+: > "${SANDBOX}/tty_in"
+t "execução confirmada emite a sentinela que o orquestrador exige"
+rc=0; out="$(run_uninstaller --yes --keep-data)" || rc=$?
+assert_eq "$rc" "0"
+case "$out" in *"ATLASFILE_UNINSTALL: confirmed"*) ok ;; *) no "sem a sentinela de confirmação: [$out]" ;; esac
+assert_contains "$CALLS" "compose down"
+
+# Dois banners e dois vereditos na mesma execução: o primeiro veredito era falso,
+# porque o lado Windows ainda tinha pacotes para remover.
+make_uninstall_sandbox
+: > "${SANDBOX}/tty_in"
+t "--delegated não desenha banner nem dá o veredito final"
+out="$(run_uninstaller --yes --keep-data --delegated || true)"
+case "$out" in *"Your documents have gravity"*) no "desenhou o banner numa execução delegada" ;; *) ok ;; esac
+case "$out" in *"AtlasFile removed. What already existed"*) no "deu o veredito final que é do orquestrador" ;; *) ok ;; esac
+case "$out" in *"ATLASFILE_UNINSTALL: confirmed"*) ok ;; *) no "a sentinela some quando delegado" ;; esac
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAILED"
 [ "$FAILED" = "0" ]
