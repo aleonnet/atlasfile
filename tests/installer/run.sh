@@ -54,10 +54,41 @@ out="$(run_case -- 'detect_os; echo "$OS_KIND:$PKG:$BREW_PREFIX"')"
 case "$(uname -s)" in
   Darwin)
     exp_prefix="/usr/local"; [ "$(uname -m)" = "arm64" ] && exp_prefix="/opt/homebrew"
-    assert_eq "$out" "mac:none:${exp_prefix}" ;;
+    # `brew` do sandbox esta no PATH, entao o esperado e brew — e nao o "none"
+    # que esta asserção afirmava antes, ABENCOANDO o defeito que uma execucao
+    # real do --doctor expos. Um teste que codifica o bug e pior que teste
+    # nenhum: ele da o verde que impede a descoberta.
+    assert_eq "$out" "mac:brew:${exp_prefix}" ;;
   *)
     printf '%s' "$out" | grep -q '^linux:' && ok || no "expected linux:* got [$out]" ;;
 esac
+
+# O ramo Darwin so era exercitado pelo job do macOS. Com `uname` stubado os DOIS
+# runners entram nele, que e onde o defeito do PKG vivia.
+make_sandbox
+cat > "${SANDBOX}/bin/uname" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in -s) echo Darwin ;; -m) echo "${STUB_ARCH:-arm64}" ;; -r) echo 25.5.0 ;; *) echo Darwin ;; esac
+EOF
+chmod +x "${SANDBOX}/bin/uname"
+
+t "detect_os: macOS com Homebrew no PATH reporta brew, nao none"
+out="$(run_case -- 'detect_os; echo "$OS_KIND:$PKG"')"
+assert_eq "$out" "mac:brew"
+
+# Homebrew instalado mas FORA do PATH (shell recem-aberto): o brew sai do PATH
+# do sandbox e reaparece so no prefixo. Roda o detect_os de verdade — quem move
+# o alvo e BREW_BIN, a mesma costura de DOCKER_APP_PATH.
+mkdir -p "${SANDBOX}/prefix/bin"
+mv "${SANDBOX}/bin/brew" "${SANDBOX}/prefix/bin/brew"
+
+t "detect_os: macOS com Homebrew fora do PATH, mas no prefixo, reporta brew"
+out="$(run_case BREW_BIN="${SANDBOX}/prefix/bin/brew" -- 'detect_os; echo "$OS_KIND:$PKG"')"
+assert_eq "$out" "mac:brew"
+
+t "detect_os: macOS sem Homebrew algum continua none"
+out="$(run_case BREW_BIN="${SANDBOX}/prefix/bin/ausente" -- 'detect_os; echo "$OS_KIND:$PKG"')"
+assert_eq "$out" "mac:none"
 
 # ── confirm policy ──────────────────────────────────────────────────────────
 make_sandbox

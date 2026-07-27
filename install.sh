@@ -131,7 +131,7 @@ Other:
   -h, --help            This help
 
 Environment: ATLASFILE_REPO_URL, ATLASFILE_OLLAMA_MODEL, NO_COLOR, CI,
-             COLORTERM, DOCKER_APP_PATH, TTY_DEV
+             COLORTERM, DOCKER_APP_PATH, BREW_BIN, TTY_DEV
 Log of this run: ${LOG_FILE}
 EOF
 }
@@ -555,6 +555,22 @@ detect_os() {
   if [ "$(uname -s)" = "Darwin" ]; then
     OS_KIND="mac"
     [ "$(uname -m)" = "arm64" ] && BREW_PREFIX="/opt/homebrew"
+    # Medido numa maquina real: o --doctor dizia "package manager: none" com o
+    # Homebrew 6.0.13 em /opt/homebrew/bin/brew. O ramo Darwin nunca tocava em
+    # PKG, entao ele ficava no "none" da inicializacao — em QUALQUER Mac. E o
+    # brew e justamente quem instalaria Docker e git se faltassem, ou seja, a
+    # linha negava a capacidade que a maquina tem.
+    #
+    # A sonda e a MESMA do ensure_homebrew, na mesma ordem: PATH primeiro,
+    # depois o prefixo. Sem isso um brew instalado mas fora do PATH (shell
+    # recem-aberto) reproduziria o mesmo erro de diagnostico.
+    # BREW_BIN e sobrescrevivel so para teste, como DOCKER_APP_PATH: sem essa
+    # costura o ramo do prefixo seria intestavel (o caminho e absoluto e a
+    # bancada nao manda em /opt/homebrew), e o teste viraria uma copia da
+    # logica — verde pelo motivo errado.
+    if command -v brew >/dev/null 2>&1 || [ -x "${BREW_BIN:-${BREW_PREFIX}/bin/brew}" ]; then
+      PKG="brew"
+    fi
   else
     if command -v apt-get >/dev/null 2>&1; then PKG="apt"
     elif command -v dnf >/dev/null 2>&1; then PKG="dnf"
