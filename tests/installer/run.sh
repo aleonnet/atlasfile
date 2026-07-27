@@ -451,7 +451,15 @@ EOF
 # vezes seguidas um ponto esquecido apareceu na tela do usuario — a pergunta da
 # pasta, e depois as cinco linhas da fase 3.
 t "nenhum printf de mensagem usa o prefixo antigo de dois espacos"
-fora="$(grep -n "printf '  %s" "$REPO_ROOT/install.sh" | grep -v 'GUT' || true)"
+# So ACIMA da marca AF-FIM-DO-TRILHO: depois dela o trilho ja fechou e o
+# relatorio final sai sem calha, que e o desenho do mac-env.
+# Dois trechos sao relatorio final e saem sem calha de proposito: o corpo do
+# un_report e tudo abaixo da marca AF-FIM-DO-TRILHO.
+corte="$(grep -n 'AF-FIM-DO-TRILHO' "$REPO_ROOT/install.sh" | head -1 | cut -d: -f1)"
+[ -n "$corte" ] || corte=99999
+fora="$(head -n "$corte" "$REPO_ROOT/install.sh" \
+  | awk '/^un_report\(\) \{/{pula=1} pula&&/^\}/{pula=0; next} !pula' \
+  | grep -n "printf '  %s" | grep -v 'GUT' | grep -v '^[0-9]*:note()' || true)"
 [ -z "$fora" ] && ok || no "linha(s) fora da calha: $fora"
 
 t "a barra viva é apagada antes de qualquer mensagem"

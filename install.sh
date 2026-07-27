@@ -213,7 +213,7 @@ GUT="${DIM}│${RESET} "
 # discreto e conhecido são as 5 fases, e inventar um total de passos daria um
 # número arbitrário — que é pior que não ter barra. Numa instalação onde o
 # `docker compose build` sozinho leva ~15 min, saber "fase 4 de 5" é o que falta.
-BAR_TOTAL=5
+BAR_TOTAL=4
 BAR_DONE=0
 BAR_VISIBLE=0
 # Placar e relatório da execução, no espírito do write_run_log do mac-env: o que
@@ -335,6 +335,11 @@ info()  { bar_clear; printf '%s%s·%s %s\n' "$GUT" "$PURPLE" "$RESET" "$*"; bar_
 # Pergunta: sem newline, e sem redesenhar a barra por cima do cursor de leitura.
 # ask MONTA o prompt; nao imprime. Quem imprime e o readline, dentro do
 # af_read_line — e e isso que faz o backspace funcionar (ver la embaixo).
+# Mensagem FORA da calha: depois que o trilho FECHA (╰──) o relatorio nao pode
+# continuar pendurado nele. E o desenho do mac-env, onde o resumo final vive do
+# lado de fora.
+note()  { printf '  %s\n' "$*"; }
+
 ask()   { printf '%s%s?%s %s' "$GUT" "$ORANGE" "$RESET" "$*"; }
 
 # Lê UMA linha do terminal, sem lixo de tecla.
@@ -1136,14 +1141,15 @@ un_print_plan() {
 un_report() {
   printf '%s\n' "$GUT"
   rule_close
-  rule_sweep "AtlasFile removed"
-  printf '%s%s✔ %s removed%s' "$GUT" "$GREEN" "$UN_OK" "$RESET"
+  printf '\n'
+  note "${BOLD}AtlasFile removed${RESET}"
+  printf '  %s✔ %s removed%s' "$GREEN" "$UN_OK" "$RESET"
   [ "$UN_KO" -gt 0 ] && printf '   %s✘ %s failed%s' "$RED" "$UN_KO" "$RESET"
-  printf '   %skept: what already existed on this machine%s\n%s\n' "$DIM" "$RESET" "$GUT"
+  printf '   %skept: what already existed on this machine%s\n\n' "$DIM" "$RESET"
   if [ -n "$UN_PROJECTS_ROOT" ] && [ "$UN_PROJECTS_FILES" != "0" ]; then
-    info "your documents are untouched in ${UN_PROJECTS_ROOT}"
+    note "your documents are untouched in ${UN_PROJECTS_ROOT}"
   fi
-  [ "$UN_KO" -gt 0 ] && info "details of what failed: ${LOG_FILE}"
+  [ "$UN_KO" -gt 0 ] && note "details of what failed: ${LOG_FILE}"
   printf '\n'
   return 0
 }
@@ -1481,11 +1487,11 @@ run_dry_run() {
   detect_os
   doc_prereqs
   doc_head "Install plan"
-  printf '%s  • repository   %s (%s)\n' "$GUT" "$REPO_URL" "$BRANCH"
-  printf '%s  • install dir  %s%s\n' "$GUT" "$INSTALL_DIR" \
+  printf '    • repository   %s (%s)\n' "$REPO_URL" "$BRANCH"
+  printf '    • install dir  %s%s\n' "$INSTALL_DIR" \
     "$([ -d "${INSTALL_DIR}/.git" ] && printf ' (exists — would be UPDATED)' || printf ' (would be CLONED)')"
-  printf '%s  • documents    %s\n' "$GUT" "${PROJECTS_ROOT:-$PROJECTS_ROOT_DEFAULT}"
-  printf '%s  • options      auth=%s open-browser=%s\n' "$GUT" \
+  printf '    • documents    %s\n' "${PROJECTS_ROOT:-$PROJECTS_ROOT_DEFAULT}"
+  printf '    • options      auth=%s open-browser=%s\n' \
     "$([ "$ENABLE_AUTH" = "1" ] && printf on || printf off)" \
     "$([ "$OPEN_BROWSER" = "1" ] && printf on || printf off)"
   printf '%s\n' "$GUT"
@@ -1852,7 +1858,7 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 # ── 1. Prerequisites ────────────────────────────────────────────────────────
-title "1/5" "Checking and preparing prerequisites"
+title "1/4" "Checking and preparing prerequisites"
 detect_os
 
 # git — offer to install when missing
@@ -1978,7 +1984,7 @@ for port in 5173 8000 9200; do
 done
 
 # ── 2. Code ─────────────────────────────────────────────────────────────────
-title "2/5" "Getting AtlasFile"
+title "2/4" "Getting AtlasFile"
 if [ -d "${INSTALL_DIR}/.git" ]; then
   CLONE_STATE="preexisting"
   run_step "updating existing install (${INSTALL_DIR})" \
@@ -1994,7 +2000,7 @@ manifest_set "$AF_MANIFEST" repo_clone "$CLONE_STATE"
 manifest_set "$AF_MANIFEST" install_dir "$INSTALL_DIR"
 
 # ── 3. Configuration (.env) ─────────────────────────────────────────────────
-title "3/5" "Configuring"
+title "3/4" "Configuring"
 if [ -f .env ]; then ENV_STATE=preexisting; else ENV_STATE=created; fi
 manifest_set "$AF_MANIFEST" env_file "$ENV_STATE"
 
@@ -2118,7 +2124,7 @@ if [ "${ENABLE_AUTH}" = "1" ]; then
 fi
 
 # ── 4. Build + launch ───────────────────────────────────────────────────────
-title "4/5" "Building and starting the stack"
+title "4/4" "Building and starting the stack"
 info "first run downloads images and compiles — a good moment for a coffee ☕"
 run_step "building images (api, web, mcp)" docker compose build
 run_step "starting the 5 services" docker compose up -d
@@ -2129,61 +2135,69 @@ run_step "waiting for the interface" wait_http http://localhost:5173/ 30
 # ── 5. Done ─────────────────────────────────────────────────────────────────
 TOTAL_SECS=$(( $(step_now) - START_TS ))
 TOTAL=$(fmt_secs "$TOTAL_SECS")
-title "5/5" "Install finished in ${TOTAL} 🎉"
+# O trilho FECHA aqui, depois do ultimo trabalho — e o relatorio sai do lado de
+# fora dele. Antes o `[5/5]` abria um estagio que o `╰──` fechava na linha
+# seguinte, como se a fase nao tivesse conteudo; e o resumo seguia pendurado na
+# calha, que ja tinha acabado.
 bar_clear
-rule_close
 printf '%s\n' "$GUT"
+rule_close
+# AF-FIM-DO-TRILHO: daqui para baixo o trilho JA FECHOU e as mensagens saem sem
+# calha, de proposito. A guarda da bancada so cobra a calha ACIMA desta marca.
+
+printf '\n'
+note "${BOLD}Install finished in ${TOTAL}${RESET} 🎉"
 # Placar: o que de fato aconteceu, em números. A frase fixa de antes dizia a
 # mesma coisa numa instalação limpa e numa reexecução que não mudou nada.
-printf '%s%s✔ %s steps%s   %s✔ %s prerequisites%s   %sin %s%s\n%s\n' \
-  "$GUT" "$GREEN" "$STEPS_DONE" "$RESET" "$GREEN" "$CHECKS_OK" "$RESET" "$DIM" "$TOTAL" "$RESET" "$GUT"
+printf '  %s✔ %s steps%s   %s✔ %s prerequisites%s\n\n' \
+  "$GREEN" "$STEPS_DONE" "$RESET" "$GREEN" "$CHECKS_OK" "$RESET"
 # box_row LABEL VALUE — padded to the fixed inner width; long values get a
 # leading ellipsis keeping the tail (the folder name is what matters)
 box_row() {
   local label="$1" value="$2"
   if [ ${#value} -gt 43 ]; then value="…${value:$((${#value} - 42))}"; fi
-  printf '%s%s│%s  %s%-11s%s %-43s%s│%s\n' "$GUT" "$ORANGE" "$RESET" "$BOLD" "$label" "$RESET" "$value" "$ORANGE" "$RESET"
+  printf '  %s│%s  %s%-11s%s %-43s%s│%s\n' "$ORANGE" "$RESET" "$BOLD" "$label" "$RESET" "$value" "$ORANGE" "$RESET"
 }
-printf '%s%s╭─────────────────────────────────────────────────────────╮%s\n' "$GUT" "$ORANGE" "$RESET"
+printf '  %s╭─────────────────────────────────────────────────────────╮%s\n' "$ORANGE" "$RESET"
 box_row "Interface" "http://localhost:5173"
 box_row "API" "http://localhost:8000/health"
 box_row "Dashboards" "http://localhost:5601"
 box_row "Projects" "${PROJECTS_ROOT}"
-printf '%s%s╰─────────────────────────────────────────────────────────╯%s\n%s\n' "$GUT" "$ORANGE" "$RESET" "$GUT"
+printf '  %s╰─────────────────────────────────────────────────────────╯%s\n\n' "$ORANGE" "$RESET"
 os_pass_now="$(grep '^OPENSEARCH_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
 if [ -n "${os_pass_now}" ]; then
-  printf '%s%s📊 OpenSearch Dashboards%s (operations dashboard "AtlasFile — Operação"):\n' "$GUT" "$BOLD" "$RESET"
-  printf '%s   login %sadmin%s · password %s%s%s\n%s\n' "$GUT" "$BOLD" "$RESET" "$ORANGE" "${os_pass_now}" "$RESET" "$GUT"
+  printf '  %s📊 OpenSearch Dashboards%s (operations dashboard "AtlasFile — Operação"):\n' "$BOLD" "$RESET"
+  printf '     login %sadmin%s · password %s%s%s\n\n' "$BOLD" "$RESET" "$ORANGE" "${os_pass_now}" "$RESET"
 fi
 if [ "${ENABLE_AUTH}" = "1" ] && [ -n "${API_KEY_VALUE}" ]; then
-  printf '%s%s🔑 API key%s (paste it in Settings → Access, in each browser):\n' "$GUT" "$BOLD" "$RESET"
-  printf '%s   %s%s%s\n%s\n' "$GUT" "$ORANGE" "${API_KEY_VALUE}" "$RESET" "$GUT"
+  printf '  %s🔑 API key%s (paste it in Settings → Access, in each browser):\n' "$BOLD" "$RESET"
+  printf '     %s%s%s\n\n' "$ORANGE" "${API_KEY_VALUE}" "$RESET"
 fi
 
 # ── Próximos passos: só os que se aplicam ───────────────────────────────────
 # O mac-env monta esta lista a partir do que REALMENTE aconteceu (`result_ok
 # docker` → "abra o Docker.app uma vez"). Antes eram sempre as mesmas três
 # linhas, inclusive as que não valiam para aquela execução.
-printf '%s%sNext steps%s\n' "$GUT" "$BOLD" "$RESET"
-printf '%s  • the onboarding wizard opens by itself in the interface\n' "$GUT"
+printf '  %sNext steps%s\n' "$BOLD" "$RESET"
+printf '    • the onboarding wizard opens by itself in the interface\n'
 if [ "$(host_get docker_group)" = "created" ]; then
-  printf '%s  • log out and back in: your docker group membership only applies to new sessions\n' "$GUT"
+  printf '    • log out and back in: your docker group membership only applies to new sessions\n'
 fi
 # Modelo 100% local é um passo DEPOIS da instalação, e de propósito: o pull são
 # vários GB e tiraria qualquer previsibilidade da duração aqui.
 if command -v ollama >/dev/null 2>&1; then
-  printf '%s  • local model: %sollama pull %s%s, then type %sollama/%s%s in the assistant settings\n' \
-    "$GUT" "$BOLD" "${OLLAMA_MODEL}" "$RESET" "$BOLD" "${OLLAMA_MODEL}" "$RESET"
+  printf '    • local model: %sollama pull %s%s, then type %sollama/%s%s in the assistant settings\n' \
+    "$BOLD" "${OLLAMA_MODEL}" "$RESET" "$BOLD" "${OLLAMA_MODEL}" "$RESET"
 else
-  printf '%s  • want a 100%% local model? install Ollama (https://ollama.com), then %sollama pull %s%s\n' \
-    "$GUT" "$BOLD" "${OLLAMA_MODEL}" "$RESET"
+  printf '    • want a 100%% local model? install Ollama (https://ollama.com), then %sollama pull %s%s\n' \
+    "$BOLD" "${OLLAMA_MODEL}" "$RESET"
 fi
 if [ "$OS_KIND" = "mac" ] && [ "$(host_get docker)" = "created" ]; then
-  printf '%s  • Docker Desktop was installed now — keep it open for the stack to run\n' "$GUT"
+  printf '    • Docker Desktop was installed now — keep it open for the stack to run\n'
 fi
-printf '%s  • logs:  cd %s && docker compose logs -f\n' "$GUT" "${INSTALL_DIR}"
-printf '%s  • stop:  cd %s && docker compose down\n' "$GUT" "${INSTALL_DIR}"
-printf '%s\n' "$GUT"
+printf '    • logs:  cd %s && docker compose logs -f\n' "${INSTALL_DIR}"
+printf '    • stop:  cd %s && docker compose down\n' "${INSTALL_DIR}"
+printf '\n'
 
 # Espelho em arquivo: o log guarda a saída das ferramentas, não o que ESTE
 # instalador fez. Sem isso, diagnosticar uma instalação de ontem é adivinhação.
@@ -2198,7 +2212,7 @@ write_run_log() {
     done
     printf '\ntool output of this run: %s\n' "$LOG_FILE"
   } > "$f" 2>/dev/null || return 0
-  info "run report: ${f}"
+  note "run report: ${f}"
   return 0
 }
 write_run_log
