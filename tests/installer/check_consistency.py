@@ -167,17 +167,121 @@ def check_dead_functions(problems):
                                 % (src_rel, name))
 
 
+def pares_orbita_sh(texto, nome):
+    """AF_ORBIT="3,19 4,18 ..." -> [(3,19), (4,18), ...]"""
+    m = re.search(r'^%s="([^"]+)"' % nome, texto, re.M)
+    if not m:
+        return None
+    return [tuple(int(x) for x in par.split(",")) for par in m.group(1).split()]
+
+
+def pares_orbita_ps(texto, nome):
+    """$AF_ORBIT = @(@(3, 19), @(4, 18), ...) -> [(3,19), (4,18), ...]"""
+    i = texto.find("$%s = @(" % nome)
+    if i < 0:
+        return None
+    fim = texto.find("\n$", i + 1)
+    bloco = texto[i:fim if fim > 0 else i + 900]
+    return [(int(a), int(b)) for a, b in re.findall(r'@\(\s*(\d+)\s*,\s*(\d+)\s*\)', bloco)]
+
+
+def check_art_parity(problems):
+    """Arte do banner identica nos dois instaladores.
+
+    Os dois desenham o MESMO produto e o usuario do Windows ve os dois. Ate aqui
+    nada verificava esse vinculo, e eles divergiram de tres formas ao mesmo
+    tempo: quadro final com cauda de cometa so de um lado, luas trocadas por um
+    AF_ORBIT_START diferente e um banner estatico escrito a mao.
+    """
+    sh, ps = read(SH), read(PS)
+
+    for nome in ("AF_ORBIT", "AF_COMET"):
+        a, b = pares_orbita_sh(sh, nome), pares_orbita_ps(ps, nome)
+        if not a or not b:
+            problems.append("nao consegui ler %s dos dois instaladores" % nome)
+        elif a != b:
+            problems.append("%s difere: bash tem %d celulas, PowerShell tem %d (primeira divergencia: %s vs %s)"
+                            % (nome, len(a), len(b),
+                               next((x for x, y in zip(a, b) if x != y), "-"),
+                               next((y for x, y in zip(a, b) if x != y), "-")))
+
+    rampa_sh = re.search(r'^AF_RAMP="([^"]+)"', sh, re.M)
+    rampa_ps = re.search(r'\$AF_RAMP = @\(([^)]+)\)', ps)
+    if rampa_sh and rampa_ps:
+        a = rampa_sh.group(1).split()
+        b = re.findall(r'"([0-9a-fA-F]{6})"', rampa_ps.group(1))
+        if a != b:
+            problems.append("a rampa do banner difere: %s vs %s" % (a, b))
+
+    # Hex das luas: no bash sao variaveis, no PowerShell vivem no New-AfFrame.
+    for nome, var in (("lua 1 perto", "AF_MOON1"), ("lua 1 longe", "AF_MOON1_FAR"),
+                      ("lua 2 perto", "AF_MOON2"), ("lua 2 longe", "AF_MOON2_FAR")):
+        m = re.search(r'%s="([0-9a-fA-F]{6})"' % var, sh)
+        if m and m.group(1) not in ps:
+            problems.append("o hex da %s (%s) nao aparece no install.ps1" % (nome, m.group(1)))
+
+    for var, rotulo in (("AF_WORD", "wordmark"), ("AF_TAG", "frase de chamada")):
+        m = re.search(r'^%s="([^"]+)"' % var, sh, re.M)
+        if m and m.group(1) not in ps:
+            problems.append("o %s (%r) nao aparece no install.ps1" % (rotulo, m.group(1)))
+
+    # Indice de repouso: no bash e derivado das constantes, no PowerShell e
+    # literal. Se um dos dois mudar sozinho, as luas param em lugares diferentes.
+    def const_sh(nome):
+        m = re.search(r'^%s=(\d+)' % nome, sh, re.M)
+        return int(m.group(1)) if m else None
+
+    inicio, ignite, quadros = const_sh("AF_ORBIT_START"), const_sh("AF_IGNITE_N"), const_sh("AF_ORBIT_FRAMES")
+    n_orbita = const_sh("AF_ORBIT_N")
+    comet = pares_orbita_sh(sh, "AF_COMET")
+    if None not in (inicio, ignite, quadros, n_orbita) and comet:
+        ultimo = ignite + quadros + len(comet)
+        repouso = (inicio + ultimo - ignite) % n_orbita
+        m = re.search(r'\$AF_ORBIT_REST = (\d+)', ps)
+        if m and int(m.group(1)) != repouso:
+            problems.append("indice de repouso das luas: bash chega em %d, install.ps1 declara %d"
+                            % (repouso, int(m.group(1))))
+        m = re.search(r'\$AF_ORBIT_START = (\d+)', ps)
+        if m and int(m.group(1)) != inicio:
+            problems.append("AF_ORBIT_START difere: bash %d, install.ps1 %d (as luas trocam de lugar)"
+                            % (inicio, int(m.group(1))))
+
+
+def check_ui_parity(problems):
+    """Cada primitiva de UI existe nos DOIS instaladores.
+
+    Quem instala no Windows ve os dois na mesma tela. Uma primitiva que nasce so
+    de um lado recria a divergencia que este ciclo esta consertando.
+    """
+    sh, ps = read(SH), read(PS)
+    pares = (
+        ("calha vertical",                r'\bGUT="',        r'\$script:Gut\s*='),
+        ("barra de fase",                 r'\bbar_show\b',   r'\bShow-AfBar\b'),
+        ("limpeza da barra na mensagem",  r'\bbar_clear\b',  r'\bClear-AfBar\b'),
+        ("regua de fase",                 r'\brule_sweep\b', r'\bWrite-Rule\b'),
+        ("relatorio da execucao",         r'last-run\.log',  r'last-run\.log'),
+    )
+    for rotulo, alvo_sh, alvo_ps in pares:
+        if not re.search(alvo_sh, sh):
+            problems.append("primitiva de UI '%s' nao existe no install.sh" % rotulo)
+        if not re.search(alvo_ps, ps):
+            problems.append("primitiva de UI '%s' nao existe no install.ps1" % rotulo)
+
+
 def main():
     problems = []
     check_assertions(problems)
     check_flags(problems)
     check_dead_functions(problems)
+    check_art_parity(problems)
+    check_ui_parity(problems)
     for p in problems:
         print(p)
     if problems:
         print("\n%d divergencia(s) entre instalador, bancada e ajuda" % len(problems))
         return 1
-    print("instaladores consistentes: assertivas casam com o fonte, ajuda casa com o parser, sem funcao morta")
+    print("instaladores consistentes: assertivas casam com o fonte, ajuda casa com o parser, "
+          "sem funcao morta, mesma arte e mesmas primitivas de UI nos dois")
     return 0
 
 
