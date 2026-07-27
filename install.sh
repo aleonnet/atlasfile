@@ -323,10 +323,10 @@ check() {
   fi
 }
 
-ok()    { bar_clear; printf '%s%s✔%s %s\n' "$GUT" "$GREEN" "$RESET" "$*"; bar_show; }
-fail()  { bar_clear; printf '%s%s✘%s %s\n' "$GUT" "$RED" "$RESET" "$*"; exit 1; }
-warn()  { bar_clear; printf '%s%s!%s %s\n' "$GUT" "$ORANGE" "$RESET" "$*"; bar_show; }
-info()  { bar_clear; printf '%s%s·%s %s\n' "$GUT" "$PURPLE" "$RESET" "$*"; bar_show; }
+ok()    { bar_clear; af_wrap "${GUT}${GREEN}✔${RESET} " "${GUT}  " 4 "$*"; bar_show; }
+fail()  { bar_clear; af_wrap "${GUT}${RED}✘${RESET} " "${GUT}  " 4 "$*"; exit 1; }
+warn()  { bar_clear; af_wrap "${GUT}${ORANGE}!${RESET} " "${GUT}  " 4 "$*"; bar_show; }
+info()  { bar_clear; af_wrap "${GUT}${PURPLE}·${RESET} " "${GUT}  " 4 "$*"; bar_show; }
 # Pergunta: sem newline, e sem redesenhar a barra por cima do cursor de leitura.
 # ask MONTA o prompt; nao imprime. Quem imprime e o readline, dentro do
 # af_read_line — e e isso que faz o backspace funcionar (ver la embaixo).
@@ -433,6 +433,43 @@ af_strwidth() { # <texto>
   b=$(printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' ')
   c=$(printf '%s' "$1" | LC_ALL=C tr -dc '\200-\277' | LC_ALL=C wc -c | tr -d ' ')
   printf '%s' $(( b - c ))
+}
+
+# Quebra o texto na largura do trilho, reprefixando a CALHA em cada linha.
+#
+# Medido numa desinstalacao real: 9 das 11 linhas do plano passavam de 80
+# colunas — `/Users/.../config/api_keys.json` sozinho ja leva 107 com o texto
+# minimo. O terminal quebrava sozinho, e a continuacao saia sem `│`: o trilho
+# ficava com buracos no meio do bloco mais importante da tela.
+#
+# Encurtar frase nao resolveria, porque o que estoura sao CAMINHOS. O
+# mac_env_install.sh nao tem essa primitiva porque nomeia pacotes (`git`,
+# `iterm2`), que cabem; nos nomeamos caminhos, que nao.
+#
+# A largura vem do term_cols — a MESMA fonte que desenha as reguas, senao o
+# texto quebraria numa coluna e a regua terminaria em outra.
+af_wrap() { # <prefixo_1a_linha> <prefixo_continuacao> <colunas_do_prefixo> <texto>
+  local p1="$1" p2="$2" pw="$3" texto="$4" linha="" palavra util glob_ligado=1
+  util=$(( $(term_cols) - pw ))
+  [ "$util" -lt 20 ] && util=20
+  # O plano contem literalmente `opensearchproject/*`. Sem desligar o glob, a
+  # divisao em palavras expandiria isso contra o diretorio atual e o plano
+  # passaria a listar arquivos aleatorios de quem rodou o instalador.
+  case "$-" in *f*) glob_ligado=0 ;; esac
+  set -f
+  for palavra in $texto; do
+    if [ -z "$linha" ]; then
+      linha="$palavra"
+    elif [ "$(af_strwidth "${linha} ${palavra}")" -le "$util" ]; then
+      linha="${linha} ${palavra}"
+    else
+      # Palavra sozinha maior que a largura (um caminho longo) transborda em vez
+      # de ser partida: caminho quebrado no meio nao pode ser copiado e colado.
+      printf '%s%s\n' "$p1" "$linha"; p1="$p2"; linha="$palavra"
+    fi
+  done
+  [ "$glob_ligado" = "1" ] && set +f
+  printf '%s%s\n' "$p1" "$linha"
 }
 # O `├── ` É a calha, não vem DEPOIS dela — no mac_env_install.sh a régua não
 # leva prefixo nenhum, e era por isso que a nossa saía como `│ ├──`, com dois
@@ -912,9 +949,9 @@ un_project_name() { # <dir>
   printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g'
 }
 
-un_add_remove() { UN_PLAN_REMOVE="${UN_PLAN_REMOVE}${GUT}  • $1
+un_add_remove() { UN_PLAN_REMOVE="${UN_PLAN_REMOVE}$(af_wrap "${GUT}  • " "${GUT}    " 6 "$1")
 "; }
-un_add_keep()   { UN_PLAN_KEEP="${UN_PLAN_KEEP}${GUT}  • $1
+un_add_keep()   { UN_PLAN_KEEP="${UN_PLAN_KEEP}$(af_wrap "${GUT}  • " "${GUT}    " 6 "$1")
 "; }
 un_act()        { UN_ACTIONS="${UN_ACTIONS}$1
 "; }
@@ -1231,7 +1268,6 @@ un_compose_down() {
 
 un_execute() {
   local act model
-  printf '\n'
   while IFS= read -r act; do
     [ -n "$act" ] || continue
     case "$act" in
@@ -1370,7 +1406,7 @@ run_uninstall() {
     fi
     local answer=""
     af_read_line "$(ask "Execute the plan above? ${DIM}[y/N]${RESET} ")"; answer="$AF_LINE"
-    printf '\n'
+    printf '%s\n' "$GUT"
     # A "no" here used to return 0, which any caller reads as success — and
     # install.ps1 went on to delete Docker Desktop from a machine whose owner
     # had just said no. Cancelling is its own outcome and gets its own code.
@@ -1381,7 +1417,6 @@ run_uninstall() {
   fi
 
   un_execute
-  printf '\n'
   if [ "$UN_FAILED" = "1" ]; then
     warn "uninstall finished with failures — see ${LOG_FILE}"
     sentinel "failed"
@@ -1404,9 +1439,9 @@ run_uninstall() {
 # adivinhação. Instala nada, muda nada — só mede e conta o que achou. É o
 # run_doctor do mac_env_install.sh, com o que faz sentido aqui.
 DOC_OK=0; DOC_WARN=0; DOC_FAIL=0
-doc_ok()   { DOC_OK=$(( DOC_OK + 1 ));     printf '%s%s✔%s %s\n' "$GUT" "$GREEN" "$RESET" "$*"; }
-doc_warn() { DOC_WARN=$(( DOC_WARN + 1 )); printf '%s%s!%s %s\n' "$GUT" "$ORANGE" "$RESET" "$*"; }
-doc_fail() { DOC_FAIL=$(( DOC_FAIL + 1 )); printf '%s%s✘%s %s\n' "$GUT" "$RED" "$RESET" "$*"; }
+doc_ok()   { DOC_OK=$(( DOC_OK + 1 ));     af_wrap "${GUT}${GREEN}✔${RESET} " "${GUT}  " 4 "$*"; }
+doc_warn() { DOC_WARN=$(( DOC_WARN + 1 )); af_wrap "${GUT}${ORANGE}!${RESET} " "${GUT}  " 4 "$*"; }
+doc_fail() { DOC_FAIL=$(( DOC_FAIL + 1 )); af_wrap "${GUT}${RED}✘${RESET} " "${GUT}  " 4 "$*"; }
 doc_head() { printf '%s\n' "$GUT"; rule_sweep "$1"; }
 
 doc_version() { # <cmd> <args...> — versão em uma linha; falha se o comando falhar

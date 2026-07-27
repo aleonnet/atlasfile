@@ -786,7 +786,9 @@ function Clear-AfBar {
 
 function Write-Phase([int]$Numero, [string]$Titulo) {
     Clear-AfBar
-    Write-Host ""
+    # Uma linha de calha, nunca uma linha VAZIA: linha vazia abre um buraco no
+    # trilho. E o padrao do mac_env_install.sh (`echo -e "${GUT}"`) e o mesmo do
+    # install.sh - o Write-Host "" que ficava aqui divergia das duas telas.
     Write-Gut "" -NoNewline
     Write-Host ""
     $cabecalho = "[{0}/{1}] {2}" -f $Numero, $script:PhaseTotal, $Titulo
@@ -849,10 +851,34 @@ function Format-Elapsed {
     if ($s -ge 60) { return (" ({0}m{1:d2}s)" -f [int]($s / 60), ($s % 60)) }
     return " (${s}s)"
 }
-function Write-Ok([string]$Texto)   { Clear-AfBar; Write-Gut ("{0} {1}{2}" -f $OK, $Texto, (Format-Elapsed)) Green; Write-Host ""; Show-AfBar }
-function Write-Info([string]$Texto) { Clear-AfBar; Write-Gut ("{0} {1}" -f $DOT, $Texto) DarkGray; Write-Host ""; Show-AfBar }
-function Write-Warn([string]$Texto) { Clear-AfBar; Write-Gut ("! {0}" -f $Texto) DarkYellow; Write-Host ""; Show-AfBar }
-function Write-Fail([string]$Texto) { Clear-AfBar; Write-Gut ("{0} {1}" -f $BAD, $Texto) Red; Write-Host "" }
+# Quebra na largura do trilho, reprefixando a CALHA - espelho do af_wrap do
+# install.sh, ate na fonte de largura (Get-AfRuleWidth, a mesma que desenha as
+# reguas). Sem isto a continuacao de uma mensagem longa saia sem `|` e o trilho
+# ficava furado, que foi o defeito visto numa desinstalacao real no macOS.
+function Split-AfWrap([string]$Texto, [int]$Util) {
+    $linhas = @(); $linha = ""
+    foreach ($palavra in ($Texto -split '\s+')) {
+        if ($palavra -eq "") { continue }
+        if ($linha -eq "") { $linha = $palavra }
+        elseif (($linha.Length + 1 + $palavra.Length) -le $Util) { $linha = "$linha $palavra" }
+        else { $linhas += $linha; $linha = $palavra }
+    }
+    $linhas += $linha
+    return ,$linhas
+}
+function Write-Wrapped([string]$Glifo, [string]$Texto, [string]$Cor) {
+    $util = [Math]::Max(20, (Get-AfRuleWidth) - 4)
+    $linhas = Split-AfWrap $Texto $util
+    for ($i = 0; $i -lt $linhas.Count; $i++) {
+        Write-Host $script:Gut -ForegroundColor DarkGray -NoNewline
+        if ($i -eq 0) { Write-Host ("{0} {1}" -f $Glifo, $linhas[$i]) -ForegroundColor $Cor }
+        else          { Write-Host ("  " + $linhas[$i]) -ForegroundColor $Cor }
+    }
+}
+function Write-Ok([string]$Texto)   { Clear-AfBar; Write-Wrapped $OK ("{0}{1}" -f $Texto, (Format-Elapsed)) Green; Show-AfBar }
+function Write-Info([string]$Texto) { Clear-AfBar; Write-Wrapped $DOT $Texto DarkGray; Show-AfBar }
+function Write-Warn([string]$Texto) { Clear-AfBar; Write-Wrapped "!" $Texto DarkYellow; Show-AfBar }
+function Write-Fail([string]$Texto) { Clear-AfBar; Write-Wrapped $BAD $Texto Red }
 function Write-Panel([string[]]$Linhas) {
     Write-Host ""
     Write-Host ("  " + [char]0x256D + ([string][char]0x2500) * 57 + [char]0x256E) -ForegroundColor DarkYellow

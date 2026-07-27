@@ -262,6 +262,7 @@ def check_ui_parity(problems):
         ("relatorio da execucao",         r'last-run\.log',  r'last-run\.log'),
         ("fechamento do trilho",          r'\brule_close\b', r'\bWrite-RuleClose\b'),
         ("mensagem fora do trilho",       r'\bnote\(\)',     r'\bWrite-Note\b'),
+        ("quebra de linha com calha",     r'\baf_wrap\b',    r'\bWrite-Wrapped\b'),
     )
     for rotulo, alvo_sh, alvo_ps in pares:
         if not re.search(alvo_sh, sh):
@@ -371,6 +372,35 @@ def check_call_before_declaration(problems):
                                 % (PS, linha_uso + 1, f, via, onde + 1))
 
 
+def check_gutter_holes(problems):
+    """Nenhuma linha VAZIA dentro do trilho, dos dois lados.
+
+    Numa desinstalacao real no macOS o usuario viu tres buracos na calha: dois
+    depois do `[y/N]` e um antes do fechamento. A causa era `printf '\\n'` puro
+    onde deveria sair a calha — no mac_env_install.sh a linha em branco do trilho
+    e `echo -e "${GUT}"`, nunca "".
+
+    O lado bash tem a varredura mecanica na propria bancada (que roda o fonte).
+    Aqui fica o lado PowerShell, onde `Write-Host ""` e legitimo como terminador
+    de linha depois de -NoNewline: a guarda mira o unico ponto onde ele abria
+    buraco, o cabecalho de fase.
+    """
+    ps = read(PS)
+    corpo = re.search(r"function Write-Phase\([^)]*\)\s*\{(.*?)\n\}", ps, re.S)
+    if not corpo:
+        problems.append("Write-Phase nao encontrado no install.ps1")
+        return
+    # Comentario nao e codigo: a primeira versao desta guarda casou com o
+    # proprio comentario que explica o defeito e reprovou o codigo ja corrigido.
+    texto = "\n".join(l for l in corpo.group(1).split("\n")
+                      if not l.lstrip().startswith("#"))
+    antes = texto.split("Write-Gut")[0]
+    if 'Write-Host ""' in antes:
+        problems.append(
+            "Write-Phase emite linha VAZIA antes da calha: abre buraco no trilho "
+            "e diverge do install.sh")
+
+
 def main():
     problems = []
     check_assertions(problems)
@@ -378,6 +408,7 @@ def main():
     check_dead_functions(problems)
     check_art_parity(problems)
     check_ui_parity(problems)
+    check_gutter_holes(problems)
     check_call_before_declaration(problems)
     check_manifest_keys(problems)
     for p in problems:

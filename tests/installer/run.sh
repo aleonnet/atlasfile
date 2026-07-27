@@ -15,6 +15,12 @@ t() { # t "name" — followed by asserts that call ok/no
 ok() { PASS=$((PASS+1)); }
 no() { FAILED=$((FAILED+1)); printf 'FAIL: %s — %s\n' "$CURRENT" "$1"; }
 assert_eq() { if [ "$1" = "$2" ]; then ok; else no "expected [$2] got [$1]"; fi; }
+
+# O plano quebra linha para caber no trilho, entao uma frase pode chegar partida
+# em duas linhas, cada uma com a sua calha. As assercoes abaixo testam o SENTIDO
+# do plano, nao o layout: `achata` desfaz a quebra antes de comparar. Sem isto
+# uma mudanca de largura reprovaria testes que continuam corretos.
+achata() { printf '%s' "$1" | tr '\n' ' ' | sed -e 's/│//g' -e 's/  */ /g'; }
 assert_contains() { if grep -q "$2" "$1" 2>/dev/null; then ok; else no "calls log missing [$2]"; fi; }
 assert_not_contains() { if grep -q "$2" "$1" 2>/dev/null; then no "calls log has forbidden [$2]"; else ok; fi; }
 
@@ -332,7 +338,7 @@ out="$(run_case -- "${PLAN_FACTS}
   host_set homebrew created
   un_build_plan 0 1 0; printf 'A:%s|K:%s' \"\$UN_ACTIONS\" \"\$UN_PLAN_KEEP\"")"
 case "$out" in *homebrew*"|"*) no "Homebrew ended up in the actions" ;; *) ok ;; esac
-case "$out" in *"NEVER removed automatically"*) ok ;; *) no "no note about Homebrew" ;; esac
+case "$(achata "$out")" in *"NEVER removed automatically"*) ok ;; *) no "no note about Homebrew" ;; esac
 
 make_sandbox
 t "a projects root with files is never in the removal list"
@@ -514,6 +520,58 @@ fora="$(head -n "$corte" "$REPO_ROOT/install.sh" \
   | awk '/^un_report\(\) \{/{pula=1} pula&&/^\}/{pula=0; next} !pula' \
   | grep -n "printf '  %s" | grep -v 'GUT' | grep -v '^[0-9]*:note()' || true)"
 [ -z "$fora" ] && ok || no "linha(s) fora da calha: $fora"
+
+# Linha VAZIA dentro do trilho e um buraco na calha — foi o que o usuario viu em
+# tres pontos de uma desinstalacao real (depois do [y/N], e antes do ╰──). No
+# mac_env_install.sh a linha em branco do trilho e `echo -e "${GUT}"`, nunca "".
+t "nenhuma linha em branco crua dentro do trilho"
+corte="$(grep -n 'AF-FIM-DO-TRILHO' "$REPO_ROOT/install.sh" | head -1 | cut -d: -f1)"
+[ -n "$corte" ] || corte=99999
+# un_report e print_banner vivem FORA do trilho de proposito: um e o relatorio
+# depois do fechamento, o outro e o banner antes da abertura.
+cru="$(head -n "$corte" "$REPO_ROOT/install.sh" \
+  | awk '/^(un_report|print_banner)\(\) \{/{pula=1} pula&&/^\}/{pula=0; next} !pula' \
+  | grep -n "printf '\\\\n'" || true)"
+[ -z "$cru" ] && ok || no "linha em branco sem calha dentro do trilho: $cru"
+
+# Sem TERM (env -i) o tput falha e o term_cols cai no fallback de 72 colunas —
+# valor deterministico, e a funcao real, sem stub por cima.
+t "af_wrap: bullet de 156 colunas nao estoura a largura nem perde a calha"
+out="$(run_case -- '
+  UN_DIR=/tmp/x
+  un_add_remove "data volume atlasfile_opensearch_data — THE SEARCH INDEX IS ERASED (rebuildable with Reconcile: your documents and the journal on disk are the source)"
+  un_add_keep "your documents in /Users/alessandro/Documents/AtlasFileProjectsTest (133 item(s)), including the _ATLASFILE state — never touched"
+  un_print_plan' 2>&1)"
+ruim="$(printf '%s\n' "$out" | python3 -c "
+import sys, re
+ruim = []
+for l in sys.stdin.read().split('\n'):
+    t = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', l)
+    if not t.strip():
+        continue
+    if len(t) > 72:
+        ruim.append('largura %d: %s' % (len(t), t[:40]))
+    if not t.startswith(('│', '├', '╰')):
+        ruim.append('sem calha: %s' % t[:40])
+print('; '.join(ruim))")"
+[ -z "$ruim" ] && ok || no "$ruim"
+
+# O plano contem literalmente `opensearchproject/*`. A quebra divide o texto em
+# palavras; sem `set -f` o glob expandiria isso contra o diretorio corrente e o
+# plano listaria arquivos da maquina de quem rodou.
+t "af_wrap nao expande glob do texto que recebe"
+# A quebra divide o texto em palavras, e sem `set -f` a divisao tambem faz
+# expansao de caminho. O caminho de instalacao e a pasta de documentos vem de
+# --dir e --projects-root, ou seja, sao TEXTO DO USUARIO: um `*` ali entraria no
+# plano e viraria uma lista de arquivos da maquina.
+#
+# O padrao precisa CASAR com algo, senao o bash o devolve intacto por conta
+# propria e o teste passa sem provar nada. (Foi o que aconteceu na primeira
+# versao deste caso: usei o texto real do plano, `(opensearchproject/*)`, cujos
+# parenteses impedem qualquer casamento — verde pelo motivo errado.)
+mkdir -p "${SANDBOX}/docs" && touch "${SANDBOX}/docs/a.pdf" "${SANDBOX}/docs/b.pdf"
+out="$(run_case -- 'cd "$SANDBOX"; af_wrap "│   • " "│     " 6 "your documents in docs/* are never touched"' 2>&1)"
+printf '%s' "$out" | grep -q 'docs/\*' && ok || no "glob expandido: $out"
 
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
@@ -780,7 +838,7 @@ out="$(run_case -- "${PLAN_FACTS}
   UN_DIR_RECORDED=/outro/lugar
   un_build_plan 0 0 0; printf 'A:%s|K:%s' \"\$UN_ACTIONS\" \"\$UN_PLAN_KEEP\"")"
 case "$out" in *rm-clone*) no "removeu uma pasta que o manifesto nao aponta" ;; *) ok ;; esac
-case "$out" in *"records the install at /outro/lugar"*) ok ;; *) no "nao explicou por que preservou: [$out]" ;; esac
+case "$(achata "$out")" in *"records the install at /outro/lugar"*) ok ;; *) no "nao explicou por que preservou: [$out]" ;; esac
 
 t "quando bate, a remocao segue normal"
 out="$(run_case -- "${PLAN_FACTS}
