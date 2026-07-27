@@ -44,6 +44,21 @@ UNINSTALL=0
 PURGE_DATA=""      # ""=undecided, 1=remove the volume, 0=keep it
 REMOVE_DEPS=0
 FORCE=0
+PLAN_ONLY=0
+NO_OLLAMA=0
+DELEGATED=0
+HOST_EXTRA=""      # facts from the OTHER side of an OS boundary (install.ps1)
+
+# Exit codes. 0 = done, 1 = failed, 10 = the user said no. `exit` in bash is
+# truncated to 8 bits, so the Windows-world MSI codes (1602 = user cancelled,
+# 3010 = reboot pending) live in install.ps1, which translates this one.
+RC_CANCELLED=10
+
+# Machine-readable last word of an uninstall. install.ps1 requires BOTH this
+# line AND a zero exit code before it touches a single Windows package: there is
+# no official documentation that wsl.exe propagates the Linux exit code, and a
+# swallowed code must never be read as "the user confirmed".
+sentinel() { printf 'ATLASFILE_UNINSTALL: %s\n' "$1"; }
 LOG_FILE="${TMPDIR:-/tmp}/atlasfile-install-$(date +%s).log"
 START_TS=$(date +%s)
 TTY_DEV="${TTY_DEV:-/dev/tty}"
@@ -74,6 +89,11 @@ Install options:
   --install-deps        Authorize installing missing prerequisites without
                         asking (Homebrew/Docker/git; sudo on Linux)
   --with-ollama         Also install Ollama and pull a local model (opt-in)
+  --no-ollama           Never offer nor install Ollama in this run. The Windows
+                        installer always passes it: there, Ollama belongs to the
+                        Windows side and the containers reach it through
+                        host.docker.internal — a second copy inside WSL would be
+                        several GB of duplicate
   --ollama-model NAME   Model to pull with --with-ollama (default: ${OLLAMA_MODEL})
   --enable-auth         Enable API authentication (generates a key in
                         config/api_keys.json)
@@ -89,6 +109,8 @@ Uninstall options:
   --remove-deps         Uninstall: also remove the system dependencies that the
                         manifest records as installed by AtlasFile
   --force               Uninstall: remove the clone even with local changes
+  --plan-only           Uninstall: print the removal plan and exit. Asks nothing,
+                        changes nothing — the dry run of the uninstall
 
 Other:
   -h, --help            This help
@@ -117,6 +139,10 @@ while [ $# -gt 0 ]; do
     --keep-data) PURGE_DATA=0; shift ;;
     --remove-deps) REMOVE_DEPS=1; shift ;;
     --force) FORCE=1; shift ;;
+    --plan-only) PLAN_ONLY=1; shift ;;
+    --no-ollama) NO_OLLAMA=1; shift ;;
+    --delegated) DELEGATED=1; shift ;;             # hidden: called by install.ps1 — no banner, no closing verdict
+    --host-extra) HOST_EXTRA="$2"; shift 2 ;;      # hidden: k=v,… facts from the Windows side, rendered in the plan
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown flag: $1 (use --help)"; exit 1 ;;
   esac
@@ -392,6 +418,40 @@ ollama_pull_model() {
   printf '  %s✔%s model %s ready\n' "$GREEN" "$RESET" "$model"
 }
 
+# ── Ollama (opt-in): runs after the stack is up so it never delays first screen
+# --no-ollama silences BOTH the offer and the install. install.ps1 always passes
+# it: on Windows the Ollama belongs to the Windows side and the containers reach
+# it through host.docker.internal. Without the flag this question came back a
+# SECOND time inside the distro — where `command -v ollama` naturally fails,
+# because the binary lives on the other operating system — and a "y" pulled
+# several GB of duplicate. That intent used to live only in a comment in
+# install.ps1; it is a contract now, and this function exists so the contract is
+# reachable by the bench instead of being buried in the script's main flow.
+maybe_setup_ollama() {
+  local ollama_answer="" ollama_rc=0
+  [ "$NO_OLLAMA" = "1" ] && return 0
+  if [ "${WITH_OLLAMA}" = "0" ] && [ "$ASSUME_YES" = "0" ] && [ -r "$TTY_DEV" ] \
+    && ! command -v ollama >/dev/null 2>&1; then
+    printf '  %s?%s Also install Ollama for a 100%% local model (%s, several GB)? %s[y/N]%s ' \
+      "$ORANGE" "$RESET" "${OLLAMA_MODEL}" "$DIM" "$RESET"
+    read -r ollama_answer < "$TTY_DEV" || ollama_answer=""
+    case "$ollama_answer" in y|Y|yes|YES|s|S) WITH_OLLAMA=1 ;; esac
+  fi
+  [ "${WITH_OLLAMA}" = "1" ] || return 0
+  ensure_ollama || ollama_rc=$?
+  if [ "$ollama_rc" = "100" ]; then
+    printf '  %s✔%s ollama %s (already installed — the app updates itself)\n' \
+      "$GREEN" "$RESET" "$(ollama --version 2>/dev/null | sed 's/ollama version is //' || true)"
+  fi
+  if [ "$ollama_rc" != "1" ]; then
+    ollama_pull_model "${OLLAMA_MODEL}"
+    info "in the assistant settings, type ollama/${OLLAMA_MODEL} in the model box to use it"
+  else
+    warn "Ollama setup failed — the stack is up; install manually later (https://ollama.com)"
+  fi
+  return 0
+}
+
 # Non-blocking upgrade hints for already-installed prerequisites. Docker Desktop
 # and Ollama self-update through their own apps — brew receipts lag behind and
 # would give false positives (mac-env-setup lesson), so they are excluded.
@@ -467,8 +527,60 @@ UN_DIR=""; UN_PROJECT=""; UN_COMPOSE_FILE=0
 UN_CLONE_STATE="unknown"; UN_DIR_DIRTY=0; UN_ENV=0
 UN_CONTAINERS=0; UN_VOLUME=""; UN_IMAGES=""
 UN_PROJECTS_ROOT=""; UN_PROJECTS_CREATED="preexisting"; UN_PROJECTS_FILES=0
-UN_OTHER_ARTIFACTS=""
+UN_OTHER_ARTIFACTS=""; UN_OLLAMA_PRESENT=0
 UN_PLAN_REMOVE=""; UN_PLAN_KEEP=""; UN_ACTIONS=""
+
+# ── Facts from the other side of an OS boundary ─────────────────────────────
+# On Windows the machine has TWO scopes with two manifests: this script owns the
+# distro, install.ps1 owns Windows. Until this existed, the plan printed here
+# described the distro ONLY, while install.ps1 removed Windows packages right
+# after — so the plan said "Docker preserved" seconds before Docker was deleted,
+# and Ollama appeared in NEITHER section. The caller now hands its facts over as
+# data (`--host-extra docker=created,ollama=created,wsl=created`) and they are
+# rendered in the single plan the user confirms. No action is emitted for them:
+# the side that owns the package is the side that removes it.
+host_extra_has() { # <key>
+  case ",${HOST_EXTRA}," in
+    *",$1="*) return 0 ;;
+  esac
+  return 1
+}
+
+host_extra_label() { # <key>
+  case "$1" in
+    docker) printf 'Docker Desktop (Windows side)' ;;
+    ollama) printf 'Ollama (Windows side)' ;;
+    wsl)    printf 'WSL2' ;;
+    *)      printf '%s (Windows side)' "$1" ;;
+  esac
+}
+
+un_render_host_extra() { # <deps>
+  local deps="$1" pair key val label old_ifs
+  [ -n "$HOST_EXTRA" ] || return 0
+  old_ifs="$IFS"; IFS=','
+  # shellcheck disable=SC2086  # deliberate word split on the comma-separated list
+  set -- $HOST_EXTRA
+  IFS="$old_ifs"
+  for pair in "$@"; do
+    key="${pair%%=*}"; val="${pair#*=}"
+    [ -n "$key" ] && [ "$key" != "$pair" ] || continue
+    label="$(host_extra_label "$key")"
+    if [ "$key" = "wsl" ]; then
+      # A Windows feature other tools depend on. Never removed, whoever created it.
+      un_add_keep "${label} — never removed automatically (other tools may depend on it)"
+      continue
+    fi
+    if [ "$val" != "created" ]; then
+      un_add_keep "${label} was already on this machine before AtlasFile — preserved"
+    elif [ "$deps" = "1" ]; then
+      un_add_remove "${label}, installed by AtlasFile — removed by the Windows installer once you confirm this plan"
+    else
+      un_add_keep "${label}, installed by AtlasFile — pass --remove-deps to revert it too"
+    fi
+  done
+  return 0
+}
 
 # Compose derives the project name from COMPOSE_PROJECT_NAME in .env, falling
 # back to the sanitised directory name. install.sh:~420 only ever used the
@@ -514,11 +626,24 @@ un_collect() { # <dir>
     # untracked (an install whose clone predates the .gitignore entry) and the
     # dirty guard kept the directory forever. Excluded explicitly, so the guard
     # only ever protects work that is actually the user's.
+    #
+    # config/api_keys.json is the same trap and it BIT ON A REAL WINDOWS 11:
+    # --enable-auth (part of the recommended one-liner) writes that file, and a
+    # broken .gitignore line left it untracked, so EVERY such install reported
+    # "has local changes — NOT removed" and kept the clone forever. The ignore
+    # rule is fixed, but a clone created before the fix still carries the file,
+    # so the exclusion has to live here too.
     if [ -n "$(git -C "$dir" status --porcelain -- . \
-        ":(exclude).env" ":(exclude)${AF_MANIFEST_NAME}" 2>/dev/null || true)" ]; then
+        ":(exclude).env" ":(exclude)${AF_MANIFEST_NAME}" \
+        ":(exclude)config/api_keys.json" 2>/dev/null || true)" ]; then
       UN_DIR_DIRTY=1
     fi
   fi
+
+  # Measured, not assumed: the plan may only speak about an Ollama that is
+  # actually here. Same rule the mac-env-setup uninstaller follows — it asks
+  # `brew list --cask X` before promising to remove anything.
+  command -v ollama >/dev/null 2>&1 && UN_OLLAMA_PRESENT=1
 
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     UN_CONTAINERS="$(docker ps -aq --filter "label=com.docker.compose.project=${UN_PROJECT}" 2>/dev/null | wc -l | tr -d ' ')"
@@ -554,6 +679,10 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
     if [ "$purge" = "1" ]; then
       un_add_remove "data volume ${UN_VOLUME} — THE SEARCH INDEX IS ERASED (rebuildable with Reconcile: your documents and the journal on disk are the source)"
       un_act "purge-volume"
+    elif [ "$purge" = "ask" ]; then
+      # --plan-only runs BEFORE anyone is asked anything: the honest rendering
+      # is "still open", never a default dressed up as a decision.
+      un_add_keep "data volume ${UN_VOLUME} — still your call (--purge-data erases the index, --keep-data keeps it)"
     else
       un_add_keep "data volume ${UN_VOLUME} (kept: a future reinstall reuses it)"
     fi
@@ -587,10 +716,20 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
   fi
 
   # ── system dependencies ──
+  # Facts from the other side of the boundary go FIRST: on Windows they are the
+  # ones the user recognises (Docker Desktop, Ollama), and they must be visible
+  # in the same list, before the same confirmation.
+  un_render_host_extra "$deps"
+
   if [ "$deps" != "1" ]; then
     un_add_keep "system dependencies (Docker, git, Ollama) — pass --remove-deps to revert the ones this installer created"
   else
-    if [ -n "$UN_OTHER_ARTIFACTS" ]; then
+    if host_extra_has docker; then
+      # The docker CLI inside the distro is injected by Docker Desktop's WSL
+      # integration; it is not a package this script installed. Saying anything
+      # else here would contradict the Windows line printed just above.
+      :
+    elif [ -n "$UN_OTHER_ARTIFACTS" ]; then
       un_add_keep "Docker: another AtlasFile install still uses it here (${UN_OTHER_ARTIFACTS}) — preserved"
     else
       st="$(host_get docker)"
@@ -625,6 +764,15 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
       un_add_keep "Ollama, installed by AtlasFile — remove it by hand (vendor steps): sudo systemctl disable --now ollama; sudo rm /etc/systemd/system/ollama.service; sudo rm \$(command -v ollama); sudo rm -r /usr/share/ollama; sudo userdel ollama"
     elif [ -n "$st" ]; then
       un_add_keep "Ollama was already here — preserved"
+    elif host_extra_has ollama; then
+      # Already stated, with the right scope, by un_render_host_extra above.
+      :
+    elif [ "$UN_OLLAMA_PRESENT" = "1" ]; then
+      # The key is absent from the manifest and an ollama IS on this machine.
+      # Silence here is how Ollama vanished from BOTH sections of a real plan
+      # while the Windows side went ahead and tried to remove it: an unknown key
+      # must produce a sentence, never nothing.
+      un_add_keep "Ollama is on this machine but was not installed by AtlasFile — preserved"
     fi
     if [ "$(host_get ollama_model_state)" = "created" ]; then
       model="$(host_get ollama_model_name)"
@@ -770,6 +918,16 @@ run_uninstall() {
     fi
   fi
 
+  # Facts first, and nobody has been asked anything yet: --plan-only short-
+  # circuits here so an orchestrator can read the plan of THIS side before
+  # putting a single question to the user.
+  if [ "$PLAN_ONLY" = "1" ]; then
+    un_build_plan "${PURGE_DATA:-ask}" "$REMOVE_DEPS" "$FORCE"
+    un_print_plan
+    sentinel "plan-only"
+    return 0
+  fi
+
   # The data volume never has a default: the user decides, every time.
   if [ -n "$UN_VOLUME" ] && [ -z "$PURGE_DATA" ]; then
     if [ "$ASSUME_YES" = "1" ] || [ ! -r "$TTY_DEV" ]; then
@@ -792,26 +950,42 @@ run_uninstall() {
 
   if [ -z "$UN_ACTIONS" ]; then
     info "nothing to do."
+    sentinel "nothing-to-do"
     return 0
   fi
   if [ "$ASSUME_YES" != "1" ]; then
     if [ ! -r "$TTY_DEV" ]; then
+      sentinel "cancelled"
       fail "no interactive terminal — re-run with --yes to confirm the plan above"
     fi
     printf '  %s?%s Execute the plan above? %s[y/N]%s ' "$ORANGE" "$RESET" "$DIM" "$RESET"
     local answer=""
     { read -r answer < "$TTY_DEV"; } 2>/dev/null || answer=""
     printf '\n'
-    case "$answer" in y|Y|yes|YES|s|S) ;; *) info "uninstall cancelled — nothing was touched."; return 0 ;; esac
+    # A "no" here used to return 0, which any caller reads as success — and
+    # install.ps1 went on to delete Docker Desktop from a machine whose owner
+    # had just said no. Cancelling is its own outcome and gets its own code.
+    case "$answer" in
+      y|Y|yes|YES|s|S) ;;
+      *) info "uninstall cancelled — nothing was touched."; sentinel "cancelled"; return "$RC_CANCELLED" ;;
+    esac
   fi
 
   un_execute
   printf '\n'
   if [ "$UN_FAILED" = "1" ]; then
     warn "uninstall finished with failures — see ${LOG_FILE}"
+    sentinel "failed"
     return 1
   fi
-  printf '  %s✔%s AtlasFile removed. What already existed on this machine was preserved.\n\n' "$GREEN" "$RESET"
+  # Under --delegated the last word belongs to the caller: it still has Windows
+  # packages to remove, and a verdict printed here would be true only of this
+  # half of the machine (it was, and the user read a success that had not
+  # happened yet).
+  if [ "$DELEGATED" != "1" ]; then
+    printf '  %s✔%s AtlasFile removed. What already existed on this machine was preserved.\n\n' "$GREEN" "$RESET"
+  fi
+  sentinel "confirmed"
   return 0
 }
 
@@ -1129,7 +1303,13 @@ if [ -n "${ATLASFILE_INSTALL_LIB:-}" ]; then
   return 0 2>/dev/null || exit 0
 fi
 
-print_banner
+# One banner per run. Under --delegated the caller (install.ps1) has already
+# drawn it seconds earlier: two banners in a row read as two products, and they
+# were not even the same drawing. --plan-only is machine-facing output, so art
+# would be noise in whatever is parsing it.
+if [ "$DELEGATED" != "1" ] && [ "$PLAN_ONLY" != "1" ]; then
+  print_banner
+fi
 
 if [ "$UNINSTALL" = "1" ]; then
   uninstall_rc=0
@@ -1393,28 +1573,7 @@ run_step "starting the 5 services" docker compose up -d
 run_step "waiting for the API to become healthy" wait_http http://localhost:8000/health 90
 run_step "waiting for the interface" wait_http http://localhost:5173/ 30
 
-# ── Ollama (opt-in): after the stack is up so it never delays first screen ──
-if [ "${WITH_OLLAMA}" = "0" ] && [ "$ASSUME_YES" = "0" ] && [ -r "$TTY_DEV" ] \
-  && ! command -v ollama >/dev/null 2>&1; then
-  printf '  %s?%s Also install Ollama for a 100%% local model (%s, several GB)? %s[y/N]%s ' \
-    "$ORANGE" "$RESET" "${OLLAMA_MODEL}" "$DIM" "$RESET"
-  ollama_answer=""
-  read -r ollama_answer < "$TTY_DEV" || ollama_answer=""
-  case "$ollama_answer" in y|Y|yes|YES|s|S) WITH_OLLAMA=1 ;; esac
-fi
-if [ "${WITH_OLLAMA}" = "1" ]; then
-  ollama_rc=0; ensure_ollama || ollama_rc=$?
-  if [ "$ollama_rc" = "100" ]; then
-    printf '  %s✔%s ollama %s (already installed — the app updates itself)\n' \
-      "$GREEN" "$RESET" "$(ollama --version 2>/dev/null | sed 's/ollama version is //' || true)"
-  fi
-  if [ "$ollama_rc" != "1" ]; then
-    ollama_pull_model "${OLLAMA_MODEL}"
-    info "in the assistant settings, type ollama/${OLLAMA_MODEL} in the model box to use it"
-  else
-    warn "Ollama setup failed — the stack is up; install manually later (https://ollama.com)"
-  fi
-fi
+maybe_setup_ollama
 
 # ── 5. Done ─────────────────────────────────────────────────────────────────
 TOTAL=$(fmt_secs $(( $(step_now) - START_TS )))

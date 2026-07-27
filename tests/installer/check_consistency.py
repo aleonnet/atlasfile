@@ -43,6 +43,35 @@ def read(rel):
         return fh.read()
 
 
+def usage_block_sh(text):
+    """Bloco de ajuda do install.sh, delimitado pelo FIM do heredoc.
+
+    Antes isto era uma fatia de 3000 caracteres a partir de `usage()`. Numero
+    magico envelhece: bastou a ajuda crescer para a janela invadir o parser e
+    cortar `--projects-root` ao meio, acusando uma flag `--pr` inexistente.
+    """
+    i = text.find("usage()")
+    if i < 0:
+        return ""
+    j = text.find("\nEOF\n", i)
+    return text[i:j] if j > 0 else text[i:]
+
+
+def usage_block_ps(text):
+    """Bloco de ajuda do install.ps1, delimitado pelo fim da here-string."""
+    i = text.find("function Show-Usage")
+    if i < 0:
+        return ""
+    j = text.find('"@', i)
+    return text[i:j] if j > 0 else text[i:]
+
+
+def header_block_ps(text):
+    """Comentario de cabecalho do install.ps1: termina onde comeca o param()."""
+    j = text.find("param(")
+    return text[:j] if j > 0 else text[:1400]
+
+
 def option_flags(text):
     """Flags de um bloco de ajuda: so o token que ABRE a linha de opcao.
 
@@ -85,8 +114,7 @@ def check_assertions(problems):
 def check_flags(problems):
     """2. ajuda x argumentos aceitos, nos dois instaladores."""
     sh = read(SH)
-    i = sh.find("usage()")
-    documented = option_flags(sh[i:i + 3000])
+    documented = option_flags(usage_block_sh(sh))
     arms = sh[sh.find('case "$1" in'):]
     arms = arms[:arms.find("esac")]
     parsed = {}
@@ -107,9 +135,8 @@ def check_flags(problems):
     block = ps[ps.find("param("):]
     block = block[:block.find(")\n")]
     params = set(re.findall(r'\$([A-Za-z]+)', block))
-    j = ps.find("function Show-Usage")
-    shown = option_flags(ps[j:j + 2500])
-    header = option_flags(ps[:1400])
+    shown = option_flags(usage_block_ps(ps))
+    header = option_flags(header_block_ps(ps))
     for flag in sorted(f for f in shown | header if f.lstrip("-") not in params):
         problems.append("%s  ajuda cita %s, que nao existe no param()" % (PS, flag))
     for name in sorted(p for p in params if "-" + p not in shown):
