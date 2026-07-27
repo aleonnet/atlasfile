@@ -157,6 +157,25 @@ jobs:
       - name: Consistência instalador × bancada × ajuda
         run: python3 tests/installer/check_consistency.py
 
+      # O que o instalador ESCREVE dentro do clone tem de ser ignorado pelo git,
+      # senão o guard de "local changes" do --uninstall dispara e a pasta de
+      # instalação nunca é removida. Aconteceu de verdade: a linha do .gitignore
+      # era "backend/runs/config/api_keys.json", duas entradas fundidas numa só,
+      # que não ignorava NENHUMA das duas — e o one-liner recomendado usa
+      # --enable-auth, que grava exatamente config/api_keys.json.
+      - name: O git ignora o que o instalador gera
+        run: |
+          falhou=0
+          for alvo in config/api_keys.json backend/runs/x .atlasfile-install-manifest; do
+            if git check-ignore -q "$alvo"; then
+              echo "  ok   $alvo"
+            else
+              echo "  FALHOU  $alvo não é ignorado pelo git"
+              falhou=1
+            fi
+          done
+          exit $falhou
+
       - name: Pipe-safety (curl | bash simulado)
         run: cat install.sh | bash -s -- --help | grep -q 'AtlasFile installer'
 
@@ -197,7 +216,10 @@ jobs:
           # O que NAO pode e argumento solto comecando com '-': esse vira
           # parametro da funcao. A regra anterior exigia literalmente '@(' e
           # reprovava `Invoke-Native wsl $argsSh`, que e igualmente seguro.
-          foreach ($m in [regex]::Matches($src, 'Invoke-Native\s+(\w+)\s+(\S+)')) {
+          # Invoke-NativeCapture tem o MESMO contrato de argumentos e precisa da
+          # mesma guarda: sem o (?:Capture)? o regex passava reto por ela, e a
+          # funcao mais nova ficava sem protecao nenhuma.
+          foreach ($m in [regex]::Matches($src, 'Invoke-Native(?:Capture)?\s+(\w+)\s+(\S+)')) {
             $primeiro = $m.Groups[2].Value
             if ($primeiro -like '-*') { $bad += $m.Value.Trim() }
           }

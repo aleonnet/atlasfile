@@ -924,6 +924,15 @@ run_uninstall() {
   if [ "$PLAN_ONLY" = "1" ]; then
     un_build_plan "${PURGE_DATA:-ask}" "$REMOVE_DEPS" "$FORCE"
     un_print_plan
+    # Fatos em forma legível por máquina, para o orquestrador não ter de
+    # adivinhar lendo a prosa do plano: se há volume, ele sabe que precisa
+    # perguntar; se não há ação alguma, sabe que não há o que confirmar.
+    printf 'ATLASFILE_FACT: volume=%s\n' "$UN_VOLUME"
+    if [ -n "$UN_ACTIONS" ]; then
+      printf 'ATLASFILE_FACT: actions=1\n'
+    else
+      printf 'ATLASFILE_FACT: actions=0\n'
+    fi
     sentinel "plan-only"
     return 0
   fi
