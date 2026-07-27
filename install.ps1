@@ -459,29 +459,20 @@ $AfPlain = [bool]$env:NO_COLOR
 $script:AfAnim = ($env:ATLASFILE_FORCE_ANIM -eq "1") -or
                  ((-not [Console]::IsOutputRedirected) -and (-not $env:CI))
 
-function Write-AfLine([string]$Text, [string]$Hex, [string]$Fallback, [switch]$NoNewline) {
-    if ($AfPlain) { Write-Host $Text -NoNewline:$NoNewline; return }
-    if ($AfTrueColor) {
-        $r = [Convert]::ToInt32($Hex.Substring(0, 2), 16)
-        $g = [Convert]::ToInt32($Hex.Substring(2, 2), 16)
-        $b = [Convert]::ToInt32($Hex.Substring(4, 2), 16)
-        Write-Host "$([char]27)[38;2;$r;$g;$b`m$Text$([char]27)[0m" -NoNewline:$NoNewline
-    } else {
-        Write-Host $Text -ForegroundColor $Fallback -NoNewline:$NoNewline
-    }
-}
+# Write-AfLine saiu daqui: ela existia para o banner estatico escrito a mao, e o
+# banner estatico agora e o quadro final da animacao. A degradacao de cor que ela
+# fazia (truecolor / cor de console / sem cor) vive no Write-AfGrid, que e por
+# onde os dois caminhos passam.
 
+# O banner estatico E o quadro final da propria animacao, exatamente como no
+# install.sh (que usa `af_frame_paint "$AF_LAST"` nos dois caminhos). Antes isto
+# era arte escrita a mao: luas em posicoes que a animacao nunca produz e uma
+# terceira linha de texto que o outro instalador nao tem. Duas artes para o
+# mesmo produto e o defeito; uma funcao de composicao so e a correcao.
 function Show-BannerStatic {
     Write-Host ""
-    Write-AfLine ("        " + ($BLK_LO * 5) + "   ") "ff8a6b" DarkYellow -NoNewline; Write-AfLine $MOON_FAR "c97bff" Magenta
-    Write-AfLine ("      " + $BLK_LO + ($BLK_FU * 7) + $BLK_LO) "ff5a36" DarkYellow -NoNewline
-    Write-AfLine "         AtlasFile" "ff5a36" Yellow
-    Write-AfLine ("     " + $BLK_RT + ($BLK_FU * 9) + $BLK_LF) "ff8a6b" Yellow -NoNewline
-    Write-AfLine "        Your documents have gravity." "8a8a8a" DarkGray
-    Write-AfLine ("      " + $BLK_UP + ($BLK_FU * 7) + $BLK_UP) "ff5a36" DarkYellow -NoNewline
-    Write-AfLine "        (Windows / WSL2)" "8a8a8a" DarkGray
-    Write-AfLine "    " "592013" DarkYellow -NoNewline
-    Write-AfLine $MOON_NEAR "ff5a36" Yellow -NoNewline; Write-AfLine ("   " + ($BLK_UP * 5)) "592013" DarkYellow
+    $total = $AF_IGNITE + $AF_ORBIT_FRAMES + $AF_COMET.Count + 1
+    Write-AfGrid (New-AfFrame ($total - 1) $total)
     Write-Host ""
 }
 
@@ -503,7 +494,11 @@ $AF_COMET = @(@(4, 17), @(3, 20), @(2, 22), @(1, 25), @(1, 31), @(0, 38), @(0, 4
 $AF_RAMP = @("592013", "ff5a36", "ff8a6b", "ffd0c4")
 $AF_IGNITE = 5
 $AF_ORBIT_FRAMES = 12
-$AF_ORBIT_START = 2      # o ultimo quadro movel cai em 13, um passo antes do repouso (14)
+# 10, o MESMO do install.sh (AF_ORBIT_START). Com 2 as duas luas trocavam de
+# lugar em relacao ao bash - as posicoes eram as mesmas, mas a laranja aparecia
+# onde a roxa devia estar. Medido: (10 + AF_LAST - AF_IGNITE) % 16 = 14, que e
+# exatamente o indice de repouso abaixo.
+$AF_ORBIT_START = 10
 $AF_ORBIT_REST = 14
 $AF_DELAY_MS = 45
 
@@ -541,6 +536,9 @@ function Set-AfText($Grid, [int]$Row, [int]$Col, [string]$Texto, [string]$Hex, [
     }
 }
 
+# Degrada em TRES niveis, porque este mesmo desenho serve ao caminho animado E
+# ao banner estatico - e o estatico existe justamente para quem NAO tem
+# truecolor. Emitir escape de 24 bits ali encheria a tela de lixo.
 function Write-AfGrid($Grid) {
     $esc = [char]27
     for ($r = 0; $r -lt $AF_ROWS; $r++) {
@@ -548,6 +546,11 @@ function Write-AfGrid($Grid) {
         $corAtual = $null
         $ultimo = 0
         for ($c = 0; $c -lt $AF_COLS; $c++) { if ($Grid.G[$r, $c] -ne " ") { $ultimo = $c } }
+        if (-not $AfTrueColor) {
+            for ($c = 0; $c -le $ultimo; $c++) { $linha += $Grid.G[$r, $c] }
+            if ($AfPlain) { Write-Host $linha } else { Write-Host $linha -ForegroundColor DarkYellow }
+            continue
+        }
         for ($c = 0; $c -le $ultimo; $c++) {
             $cor = $Grid.C[$r, $c]
             if ($cor -ne $corAtual) {
@@ -599,15 +602,25 @@ function New-AfFrame([int]$N, [int]$Total) {
         $idx = ($AF_ORBIT_START + ($N - $AF_IGNITE)) % 16
     }
     if ($N -ge $AF_IGNITE) {
+        # Glifo pela LINHA (a lua do lado de tras e menor e mais escura) e cor
+        # POR LUA - a regra do install.sh (af_row_cells). Antes o glifo e a cor
+        # eram fixos por indice de lua, o que dava profundidade invertida em
+        # metade da orbita.
         $m1 = $AF_ORBIT[$idx]
         $m2 = $AF_ORBIT[($idx + 8) % 16]
-        $grid.G[$m1[0], $m1[1]] = $MOON_FAR;  $grid.C[$m1[0], $m1[1]] = "c97bff"
-        $grid.G[$m2[0], $m2[1]] = $MOON_NEAR; $grid.C[$m2[0], $m2[1]] = "ff5a36"
+        if ($m1[0] -le 2) { $g1 = $MOON_FAR;  $c1 = "b23f26" } else { $g1 = $MOON_NEAR; $c1 = "ff5a36" }
+        if ($m2[0] -le 2) { $g2 = $MOON_FAR;  $c2 = "8d56b2" } else { $g2 = $MOON_NEAR; $c2 = "c97bff" }
+        $grid.G[$m1[0], $m1[1]] = $g1; $grid.C[$m1[0], $m1[1]] = $c1
+        $grid.G[$m2[0], $m2[1]] = $g2; $grid.C[$m2[0], $m2[1]] = $c2
     }
     # cometa e o texto que ele revela
     $primeiroCometa = $AF_IGNITE + $AF_ORBIT_FRAMES
     $revelaCol = -1
-    if ($N -ge $primeiroCometa) {
+    # O QUADRO FINAL NAO TEM COMETA. No install.sh isso e regra
+    # (af_frame_prepare so emite cometa enquanto n < AF_LAST) e ha teste para
+    # isso; aqui o laco continuava pintando tres celulas de cauda na linha 0, e
+    # eram exatamente as tres reticencias que sobravam no topo do banner.
+    if ($N -ge $primeiroCometa -and $N -lt ($primeiroCometa + $AF_COMET.Count)) {
         $j = $N - $primeiroCometa
         $caudaHex = @("ffd0c4", "ff8a6b", "ff5a36", "b23f26")
         for ($t = 0; $t -lt 4; $t++) {
@@ -654,17 +667,88 @@ if ($script:AfAnim -and $AfTrueColor) {
 
 
 # --- UI: mesma gramatica visual do install.sh (fases, passos, painel) -------
+# A calha vertical, a regua de fase, a barra viva e o placar sao os MESMOS do
+# install.sh, que por sua vez os tomou do mac_env_install.sh. Dois instaladores
+# com duas gramaticas visuais foi um dos defeitos deste ciclo, nao uma escolha.
 $script:PhaseTotal = 4
 $script:StepStart = $null
+$BOX_V   = [string][char]0x2502   # |
+$BOX_H   = [string][char]0x2500   # -
+$BOX_T   = [string][char]0x251C   # |-
+$BAR_ON  = [string][char]0x25B0   # bloco cheio
+$BAR_OFF = [string][char]0x25B1   # bloco vazio
+$script:Gut = $BOX_V + " "
+
+function Write-Gut([string]$Texto, [string]$Cor = "Gray", [switch]$NoNewline) {
+    Write-Host $script:Gut -ForegroundColor DarkGray -NoNewline
+    Write-Host $Texto -ForegroundColor $Cor -NoNewline:$NoNewline
+}
+
+# --- Barra de fase, viva na ultima linha ------------------------------------
+# Espelha a do install.sh: contagem por FASE (o que e discreto e conhecido dos
+# dois lados), apagada ANTES de qualquer mensagem. Esse `bar_clear` e tambem a
+# unica coisa que impede o spinner de escrever por cima da saida de um
+# desinstalador de terceiro - foi assim que o do Docker embaralhou a tela.
+$script:BarDone = 0
+$script:BarVisible = $false
+
+function Show-AfBar {
+    if (-not $script:AfAnim -or -not $AfTrueColor) { return }
+    $largura = 24
+    $cheio = [int]($script:BarDone * $largura / $script:PhaseTotal)
+    $esc = [char]27
+    $linha = ""
+    for ($i = 0; $i -lt $largura; $i++) {
+        if ($i -lt $cheio) {
+            $hex = Get-AfRampHex ([double]$i / [Math]::Max(1, $largura - 1))
+            $r = [Convert]::ToInt32($hex.Substring(0, 2), 16)
+            $g = [Convert]::ToInt32($hex.Substring(2, 2), 16)
+            $b = [Convert]::ToInt32($hex.Substring(4, 2), 16)
+            $linha += "$esc[38;2;$r;$g;${b}m$BAR_ON"
+        } else {
+            $linha += "$esc[38;5;240m$BAR_OFF"
+        }
+    }
+    Write-Host ("  " + $linha + "$esc[0m " + "fase $($script:BarDone)/$($script:PhaseTotal)") -NoNewline
+    $script:BarVisible = $true
+}
+
+function Clear-AfBar {
+    if ($script:BarVisible) {
+        Write-Host ("`r" + (" " * 78) + "`r") -NoNewline
+        $script:BarVisible = $false
+    }
+}
 
 function Write-Phase([int]$Numero, [string]$Titulo) {
+    Clear-AfBar
     Write-Host ""
-    Write-Host ("[{0}/{1}] " -f $Numero, $script:PhaseTotal) -ForegroundColor DarkYellow -NoNewline
-    Write-Host $Titulo -ForegroundColor White
+    Write-Gut "" -NoNewline
+    Write-Host ""
+    $cabecalho = "[{0}/{1}] {2}" -f $Numero, $script:PhaseTotal, $Titulo
+    Write-Rule $cabecalho
+    $script:BarDone = $Numero
+    Show-AfBar
 }
+
+# Regua que varre da esquerda para a direita com a rampa do produto. O conector
+# tem largura FIXA e conhecida, entao entra na conta como constante - a mesma
+# disciplina do install.sh, onde indexar string multibyte contaria bytes.
+function Write-Rule([string]$Cabecalho) {
+    $largura = 76
+    try { if ($Host.UI.RawUI.WindowSize.Width -gt 40) { $largura = [Math]::Min(92, $Host.UI.RawUI.WindowSize.Width - 4) } } catch { }
+    $tracos = $largura - $Cabecalho.Length - 8
+    if ($tracos -lt 4) { $tracos = 4 }
+    Write-Host ($script:Gut + $BOX_T + ($BOX_H * 2) + " ") -ForegroundColor DarkGray -NoNewline
+    Write-Host $Cabecalho -ForegroundColor White -NoNewline
+    Write-Host (" " + ($BOX_H * $tracos)) -ForegroundColor DarkYellow
+}
+
 function Start-Step([string]$Texto) {
     $script:StepStart = Get-Date
-    Write-Host ("  {0} {1}..." -f $DOT, $Texto) -ForegroundColor DarkGray
+    Clear-AfBar
+    Write-Gut ("{0} {1}..." -f $DOT, $Texto) DarkGray
+    Write-Host ""
 }
 function Format-Elapsed {
     if (-not $script:StepStart) { return "" }
@@ -673,10 +757,10 @@ function Format-Elapsed {
     if ($s -ge 60) { return (" ({0}m{1:d2}s)" -f [int]($s / 60), ($s % 60)) }
     return " (${s}s)"
 }
-function Write-Ok([string]$Texto)   { Write-Host ("  {0} {1}{2}" -f $OK, $Texto, (Format-Elapsed)) -ForegroundColor Green }
-function Write-Info([string]$Texto) { Write-Host ("  {0} {1}" -f $DOT, $Texto) -ForegroundColor DarkGray }
-function Write-Warn([string]$Texto) { Write-Host ("  ! {0}" -f $Texto) -ForegroundColor DarkYellow }
-function Write-Fail([string]$Texto) { Write-Host ("  {0} {1}" -f $BAD, $Texto) -ForegroundColor Red }
+function Write-Ok([string]$Texto)   { Clear-AfBar; Write-Gut ("{0} {1}{2}" -f $OK, $Texto, (Format-Elapsed)) Green; Write-Host ""; Show-AfBar }
+function Write-Info([string]$Texto) { Clear-AfBar; Write-Gut ("{0} {1}" -f $DOT, $Texto) DarkGray; Write-Host ""; Show-AfBar }
+function Write-Warn([string]$Texto) { Clear-AfBar; Write-Gut ("! {0}" -f $Texto) DarkYellow; Write-Host ""; Show-AfBar }
+function Write-Fail([string]$Texto) { Clear-AfBar; Write-Gut ("{0} {1}" -f $BAD, $Texto) Red; Write-Host "" }
 function Write-Panel([string[]]$Linhas) {
     Write-Host ""
     Write-Host ("  " + [char]0x256D + ([string][char]0x2500) * 57 + [char]0x256E) -ForegroundColor DarkYellow
@@ -701,6 +785,12 @@ function Write-Panel([string[]]$Linhas) {
 # para suporte, quando o TEMP do usuario nao e o lugar mais pratico.
 $script:AfLog = if ($env:ATLASFILE_LOG) { $env:ATLASFILE_LOG }
                 else { Join-Path ([IO.Path]::GetTempPath()) "atlasfile-install.log" }
+# Placar e relatorio da execucao, como no install.sh: o log guarda a saida das
+# FERRAMENTAS, e o que o instalador fez nao ficava em lugar nenhum.
+$script:StepsDone = 0
+$script:StepsFailed = 0
+$script:RunSteps = @()
+$script:RunStart = Get-Date
 # Mesmos quadros braille do install.sh, por code point (o arquivo e ASCII puro).
 $AF_SPIN = @(0x280B, 0x2819, 0x2839, 0x2838, 0x283C, 0x2834, 0x2826, 0x2827, 0x2807, 0x280F) |
     ForEach-Object { [string][char]$_ }
@@ -775,7 +865,8 @@ function Invoke-Step {
         $i = 0
         while (-not $proc.HasExited) {
             if ($script:AfAnim) {
-                Write-Host ("`r  " + $AF_SPIN[$i % $AF_SPIN.Count]) -ForegroundColor DarkYellow -NoNewline
+                Write-Host ("`r" + $script:Gut) -ForegroundColor DarkGray -NoNewline
+                Write-Host ($AF_SPIN[$i % $AF_SPIN.Count]) -ForegroundColor DarkYellow -NoNewline
                 Write-Host (" {0} {1}   " -f $Label, (Format-Since $t0)) -ForegroundColor DarkGray -NoNewline
                 $i++
             }
@@ -798,10 +889,15 @@ function Invoke-Step {
     Remove-Item $fOut, $fErr -Force -ErrorAction SilentlyContinue
     if ($script:AfAnim) { Write-Host ("`r" + (" " * 78) + "`r") -NoNewline }
     if ($script:NativeExitCode -eq 0) {
-        Write-Host ("  {0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) -ForegroundColor Green
+        Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) Green
+        $script:StepsDone++
     } else {
-        Write-Host ("  {0} {1} (exit {2})" -f $BAD, $Label, $script:NativeExitCode) -ForegroundColor Red
+        Write-Gut ("{0} {1} (exit {2})" -f $BAD, $Label, $script:NativeExitCode) Red
+        $script:StepsFailed++
     }
+    Write-Host ""
+    $script:RunSteps += ("{0}|{1}|{2}" -f $Label, [int]((Get-Date) - $t0).TotalSeconds, $script:NativeExitCode)
+    Show-AfBar
 }
 
 # Espera com spinner: o usuario ve que esta vivo e ha quanto tempo. Sem isto, os
@@ -827,7 +923,7 @@ function Wait-Spinner {
         if (& $Test) { $ok = $true; break }
     }
     if ($script:AfAnim) { Write-Host ("`r" + (" " * 78) + "`r") -NoNewline }
-    if ($ok) { Write-Host ("  {0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) -ForegroundColor Green }
+    if ($ok) { Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) Green; Write-Host ""; Show-AfBar }
     return $ok
 }
 
@@ -1332,15 +1428,42 @@ if ($script:NativeExitCode -ne 0) {
 try { Start-Process "http://localhost:5173" -ErrorAction Stop }
 catch { Write-Info "open http://localhost:5173 in your browser" }
 
+# O install.sh JA imprimiu o painel com Interface/API/Dashboards, a senha do
+# OpenSearch e a chave de API. Repetir metade disso aqui era o mesmo defeito do
+# veredito duplicado do uninstall: duas conclusoes para um trabalho so. Este
+# painel diz apenas o que e do lado Windows.
+$dirWsl = if ($Dir) { $Dir } else { "~/AtlasFile" }
 Write-Panel @(
-    "Interface    http://localhost:5173",
-    "API          http://localhost:8000/health",
-    "Dashboards   http://localhost:5601",
-    "",
-    "logs   wsl -e bash -c 'cd ~/AtlasFile && docker compose logs -f'",
-    "stop   wsl -e bash -c 'cd ~/AtlasFile && docker compose down'"
+    "logs   wsl -e bash -c 'cd $dirWsl && docker compose logs -f'",
+    "stop   wsl -e bash -c 'cd $dirWsl && docker compose down'"
 )
-Write-Ok "AtlasFile is up."
+
+# Placar: o que aconteceu, em numeros.
+Clear-AfBar
+$dur = [int]((Get-Date) - $script:RunStart).TotalSeconds
+$durTexto = if ($dur -ge 60) { "{0}m{1:d2}s" -f [int]($dur / 60), ($dur % 60) } else { "${dur}s" }
+Write-Rule "AtlasFile is up"
+Write-Gut ("{0} {1} steps" -f $OK, $script:StepsDone) Green
+if ($script:StepsFailed -gt 0) { Write-Host ("   {0} {1} failed" -f $BAD, $script:StepsFailed) -ForegroundColor Red -NoNewline }
+Write-Host ("   in {0}" -f $durTexto) -ForegroundColor DarkGray
+
+# Espelho em arquivo, ao lado do manifesto: diagnosticar uma instalacao de ontem
+# sem isso e adivinhacao.
+try {
+    $relatorio = Join-Path $AfStateDir "last-run.log"
+    $linhas = @("install.ps1 - " + (Get-Date -Format "yyyy-MM-dd HH:mm:ss"),
+                "dir: $dirWsl - duration: $durTexto", "")
+    foreach ($s in $script:RunSteps) {
+        $p = $s -split '\|'
+        $linhas += ("  {0,-52} {1}s  rc={2}" -f $p[0], $p[1], $p[2])
+    }
+    $linhas += @("", "tool output of this run: $script:AfLog")
+    if (-not (Test-Path $AfStateDir)) { New-Item -ItemType Directory -Path $AfStateDir -Force | Out-Null }
+    $linhas | Set-Content -Path $relatorio -Encoding UTF8
+    Write-Info "run report: $relatorio"
+} catch {
+    Write-Verbose "run report not written: $($_.Exception.Message)"
+}
 # A saida das ferramentas nao apareceu na tela por design; dizer ONDE ela esta e
 # o que separa "limpo" de "escondido".
 if (Test-Path $script:AfLog) { Write-Info "tool output for this run: $script:AfLog" }
