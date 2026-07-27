@@ -798,17 +798,42 @@ function Write-Phase([int]$Numero, [string]$Titulo) {
 # Regua que varre da esquerda para a direita com a rampa do produto. O conector
 # tem largura FIXA e conhecida, entao entra na conta como constante - a mesma
 # disciplina do install.sh, onde indexar string multibyte contaria bytes.
-function Write-Rule([string]$Cabecalho) {
-    $largura = 76
+# Largura da regua, identica a do install.sh: o conector ocupa 4 colunas, o
+# cabecalho as dele, mais um espaco, e os tracos completam ate a largura. Toda
+# regua termina na MESMA coluna, independente do tamanho do texto - que era o
+# zelo do mac_env_install.sh que faltava nos dois lados.
+$AF_RULE_COLS = 4
+function Get-AfRuleWidth {
+    $largura = 80
     # Host sem RawUI (sessao redirecionada, ISE, runspace) nao tem largura para
     # dar: a regua cai na largura padrao e a instalacao segue.
-    try { if ($Host.UI.RawUI.WindowSize.Width -gt 40) { $largura = [Math]::Min(92, $Host.UI.RawUI.WindowSize.Width - 4) } }
-    catch { Write-Verbose "console width unavailable: $($_.Exception.Message)" }
-    $tracos = $largura - $Cabecalho.Length - 8
+    try {
+        $w = $Host.UI.RawUI.WindowSize.Width
+        if ($w -gt 40) { $largura = [Math]::Max(60, [Math]::Min(92, $w - 1)) }
+    } catch { Write-Verbose "console width unavailable: $($_.Exception.Message)" }
+    return $largura
+}
+
+# O conector E a calha, nao vem depois dela - no install.sh vale o mesmo.
+function Write-Rule([string]$Cabecalho) {
+    $largura = Get-AfRuleWidth
+    $tracos = $largura - $Cabecalho.Length - $AF_RULE_COLS - 1
     if ($tracos -lt 4) { $tracos = 4 }
-    Write-Host ($script:Gut + $BOX_T + ($BOX_H * 2) + " ") -ForegroundColor DarkGray -NoNewline
+    Write-Host ($BOX_T + ($BOX_H * 2) + " ") -ForegroundColor DarkGray -NoNewline
     Write-Host $Cabecalho -ForegroundColor White -NoNewline
     Write-Host (" " + ($BOX_H * $tracos)) -ForegroundColor DarkYellow
+}
+
+# Fecha o bloco, como o fechamento do install.sh e do mac-env.
+function Write-RuleClose {
+    $largura = Get-AfRuleWidth
+    Write-Host ([string][char]0x2570 + ($BOX_H * ($largura - 1))) -ForegroundColor DarkYellow
+}
+
+# Mensagem FORA da calha: depois que o trilho fecha, o relatorio final nao pode
+# continuar pendurado nele.
+function Write-Note([string]$Texto, [string]$Cor = "Gray") {
+    Write-Host ("  " + $Texto) -ForegroundColor $Cor
 }
 
 function Start-Step([string]$Texto) {
@@ -1629,10 +1654,13 @@ Write-Panel @(
 Clear-AfBar
 $dur = [int]((Get-Date) - $script:RunStart).TotalSeconds
 $durTexto = if ($dur -ge 60) { "{0}m{1:d2}s" -f [int]($dur / 60), ($dur % 60) } else { "${dur}s" }
-Write-Rule "AtlasFile is up"
-Write-Gut ("{0} {1} steps" -f $OK, $script:StepsDone) Green
+Write-Host ($script:Gut) -ForegroundColor DarkGray
+Write-RuleClose
+Write-Host ""
+Write-Note ("AtlasFile is up in {0}" -f $durTexto)
+Write-Host ("  {0} {1} steps" -f $OK, $script:StepsDone) -ForegroundColor Green -NoNewline
 if ($script:StepsFailed -gt 0) { Write-Host ("   {0} {1} failed" -f $BAD, $script:StepsFailed) -ForegroundColor Red -NoNewline }
-Write-Host ("   in {0}" -f $durTexto) -ForegroundColor DarkGray
+Write-Host ""
 
 # Espelho em arquivo, ao lado do manifesto: diagnosticar uma instalacao de ontem
 # sem isso e adivinhacao.
@@ -1647,11 +1675,11 @@ try {
     $linhas += @("", "tool output of this run: $script:AfLog")
     if (-not (Test-Path $AfStateDir)) { New-Item -ItemType Directory -Path $AfStateDir -Force | Out-Null }
     $linhas | Set-Content -Path $relatorio -Encoding UTF8
-    Write-Info "run report: $relatorio"
+    Write-Note "run report: $relatorio"
 } catch {
     Write-Verbose "run report not written: $($_.Exception.Message)"
 }
 # A saida das ferramentas nao apareceu na tela por design; dizer ONDE ela esta e
 # o que separa "limpo" de "escondido".
-if (Test-Path $script:AfLog) { Write-Info "tool output for this run: $script:AfLog" }
+if (Test-Path $script:AfLog) { Write-Note "tool output for this run: $script:AfLog" }
 Write-Host ""

@@ -429,17 +429,28 @@ af_read_line() {
 # então entra na conta como constante, e os traços são gerados por repetição —
 # a contagem é minha, nunca do interpretador.
 AF_RULE_CONNECTOR_COLS=4
+# Largura em COLUNAS, independente de locale. `${#s}` conta bytes sob LC_ALL=C e
+# caracteres sob UTF-8: com o cabeçalho do plano trazendo um `—` (3 bytes), a
+# régua encolhia 2 colunas em quem roda sem locale UTF-8. Aqui é sempre bytes
+# menos os bytes de continuação (10xxxxxx), que dá caracteres nos dois casos.
+af_strwidth() { # <texto>
+  local b c
+  b=$(printf '%s' "$1" | LC_ALL=C wc -c | tr -d ' ')
+  c=$(printf '%s' "$1" | LC_ALL=C tr -dc '\200-\277' | LC_ALL=C wc -c | tr -d ' ')
+  printf '%s' $(( b - c ))
+}
 # O `├── ` É a calha, não vem DEPOIS dela — no mac_env_install.sh a régua não
 # leva prefixo nenhum, e era por isso que a nossa saía como `│ ├──`, com dois
 # trilhos desenhados um ao lado do outro. E o gradiente cobre a linha INTEIRA,
 # cabeçalho incluído (o `reveal_sweep` de lá pinta a string toda), em vez de só
 # os traços.
 rule_sweep() { # <cabeçalho ASCII>
-  local head="$1" w fill i j pos chunk segs=8 per feitos=0 total ch
+  local head="$1" w fill i j pos chunk segs=8 per feitos=0 total ch largura
   w="$(term_cols)"
-  fill=$(( w - ${#head} - AF_RULE_CONNECTOR_COLS - 1 ))
+  largura="$(af_strwidth "$head")"
+  fill=$(( w - largura - AF_RULE_CONNECTOR_COLS - 1 ))
   [ "$fill" -lt 4 ] && fill=4
-  total=$(( ${#head} + fill ))
+  total=$(( largura + fill ))
   [ "$total" -lt 2 ] && total=2
   if [ "$COLOR_OK" != "1" ] || [ "$TRUECOLOR" != "1" ]; then
     chunk=""
@@ -458,7 +469,11 @@ rule_sweep() { # <cabeçalho ASCII>
     printf '\033[38;2;%d;%d;%dm%s' "$AF_R" "$AF_G" "$AF_B" "$ch"
   done
   printf ' '
-  per=$(( fill / segs )); [ "$per" -lt 1 ] && per=1
+  # Teto, e não divisão inteira: com `fill / segs` cada régua perdia até 7
+  # traços (o resto da divisão), e como o resto depende do tamanho do cabeçalho,
+  # cada fase terminava numa coluna diferente. O `feitos < fill` do laço já
+  # corta no ponto exato, então arredondar para cima nunca passa do fim.
+  per=$(( (fill + segs - 1) / segs )); [ "$per" -lt 1 ] && per=1
   for (( i = 0; i < segs && feitos < fill; i++ )); do
     pos=$(( (${#head} + feitos) * 1000 / (total - 1) ))
     af_rgb_at "$pos"

@@ -260,6 +260,8 @@ def check_ui_parity(problems):
         ("limpeza da barra na mensagem",  r'\bbar_clear\b',  r'\bClear-AfBar\b'),
         ("regua de fase",                 r'\brule_sweep\b', r'\bWrite-Rule\b'),
         ("relatorio da execucao",         r'last-run\.log',  r'last-run\.log'),
+        ("fechamento do trilho",          r'\brule_close\b', r'\bWrite-RuleClose\b'),
+        ("mensagem fora do trilho",       r'\bnote\(\)',     r'\bWrite-Note\b'),
     )
     for rotulo, alvo_sh, alvo_ps in pares:
         if not re.search(alvo_sh, sh):

@@ -569,6 +569,17 @@ $out = Run-Installer @("-Yes", "-Uninstall", "-KeepData")
 Assert-Match "diz que nao ha o que remover" $out "nothing to remove"
 Assert-NoMatch "e nao chama o winget" (Calls) "winget uninstall"
 
+Write-Host "== T. o relatorio final sai FORA do trilho, como no install.sh =="
+# O `[N/N]` nao e um estagio de trabalho e o resumo nao pode ficar pendurado na
+# calha depois que o trilho fecha. Mesmo desenho dos dois lados.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-EnableAuth")
+Assert-Match "o trilho fecha antes do resumo" $out ([string][char]0x2570)
+Assert-Match "e o resumo aparece" $out "AtlasFile is up in"
+# a calha nao pode preceder o resumo: o trilho ja fechou
+Assert-True "o resumo sai sem a calha" ($out -match ("(?m)^  AtlasFile is up in")) "o resumo veio com a calha na frente"
+Assert-NoMatch "nada de resumo pendurado na calha" $out ("(?m)^" + [string][char]0x2502 + " .*AtlasFile is up")
+
 Write-Host "== R. -Doctor diagnostica os DOIS lados e nao muda nada =="
 $sb = New-UninstallSandbox @("docker`tcreated", "wsl`tcreated")
 $out = Run-Installer @("-Doctor")
