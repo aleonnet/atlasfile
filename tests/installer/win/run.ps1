@@ -391,7 +391,14 @@ $calls = Calls
 Assert-NoMatch "nao puxa modelo nenhum" $calls "ollama pull"
 Assert-NoMatch "nem pergunta sobre Ollama" $out "Also install Ollama"
 Assert-NoMatch "e nao passa a flag que nao existe mais" $calls "--no-ollama"
-Assert-NoMatch "-WithOllama nao e mais aceito" $out "WithOllama"
+
+# O site publica -WithOllama ha meses. PowerShell recusa parametro desconhecido
+# com erro TERMINANTE: quem colasse o comando do site nao veria nem o banner.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-InstallDeps", "-WithOllama", "-OllamaModel", "gemma3:1b")
+Assert-Match "a flag antiga do site nao quebra a instalacao" $out "no longer used"
+Assert-NoMatch "e nao faz nada de Ollama acontecer" (Calls) "ollama pull"
+Assert-NoMatch "sem erro de parametro desconhecido" $out "ParameterBindingException|A parameter cannot be found"
 
 Write-Host "== H. o script entregue ao WSL chega INTEIRO, nao partido em palavras =="
 # Medido na maquina do usuario: o -ArgumentList do Start-Process junta o array
