@@ -1467,7 +1467,7 @@ run_uninstall() {
       sentinel "plan-only"
     else
       info "--dry-run: nothing was touched."
-      rail_end
+      [ "$DELEGATED" = "1" ] || rail_end
     fi
     return 0
   fi
@@ -1646,7 +1646,10 @@ run_doctor() {
   rule_sweep "Diagnosis"
   printf '%s%s✔ %s ok%s   %s! %s to watch%s   %s✘ %s broken%s\n' \
     "$GUT" "$GREEN" "$DOC_OK" "$RESET" "$ORANGE" "$DOC_WARN" "$RESET" "$RED" "$DOC_FAIL" "$RESET"
-  rail_end
+  # Quem fecha o trilho e quem o ABRIU: delegado, o trilho e do install.ps1 e
+  # este diagnostico roda dentro de uma regua dele. Um `╰──` aqui fecharia a
+  # tela do orquestrador no meio. Mesma regra do banner e do veredito final.
+  [ "$DELEGATED" = "1" ] || rail_end
   [ "$DOC_FAIL" = "0" ]
 }
 
@@ -1673,7 +1676,7 @@ run_dry_run() {
   [ "$falta" = "0" ] && doc_ok "none — everything needed is already here"
   printf '%s\n' "$GUT"
   info "--dry-run: nothing was installed."
-  rail_end
+  [ "$DELEGATED" = "1" ] || rail_end
   return 0
 }
 

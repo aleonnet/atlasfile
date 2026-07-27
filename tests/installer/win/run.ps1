@@ -600,6 +600,35 @@ Assert-Match "e delega o plano do outro lado" $calls "--dry-run"
 Assert-NoMatch "sem instalar coisa alguma" $calls "winget install"
 Assert-Match "declara que nada foi instalado" $out "nothing was installed"
 
+Write-Host "== U. todo fluxo que abre o trilho tambem o fecha, e o veredito sai fora =="
+# O -DryRun e o -Uninstall abriam o trilho com a regua e nunca fechavam, e o
+# veredito da desinstalacao ficava pendurado na calha. Delegado, o install.sh
+# PULA o un_report de proposito (para nao dar veredito antes de o lado Windows
+# terminar), entao o fechamento e responsabilidade daqui.
+$fecha = [string][char]0x2570
+$calha = [string][char]0x2502
+
+$sb = New-UninstallSandbox @("docker`tcreated", "wsl`tcreated")
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+Assert-Match "o uninstall fecha o trilho" $out $fecha
+Assert-True "e o veredito sai FORA da calha" ($out -match "(?m)^  AtlasFile removed") "veredito veio com a calha na frente"
+Assert-NoMatch "nada de veredito pendurado na calha" $out ("(?m)^" + $calha + " .*AtlasFile removed")
+
+$sb = New-Sandbox
+Remove-Stub docker
+$out = Run-Installer @("-Yes", "-DryRun")
+Assert-Match "o -DryRun fecha o trilho" $out $fecha
+
+# O caminho de RECUSA tambem fecha: a tela nao pode ficar com o trilho aberto so
+# porque a remocao nao aconteceu. Mesmo mecanismo do cenario M.
+$sb = New-UninstallSandbox @("docker`tcreated")
+$env:AF_SH_SENTINEL = "cancelled"
+$env:AF_SH_RC = "10"
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+Remove-Item Env:AF_SH_SENTINEL, Env:AF_SH_RC -ErrorAction SilentlyContinue
+Assert-Match "o caminho de recusa tambem fecha o trilho" $out $fecha
+Assert-Match "e a explicacao pendura na calha, sem furo" $out ("(?m)^" + $calha + "\s+Nothing was removed")
+
 Write-Host ""
 Write-Host "$script:Pass passaram, $script:Fail falharam"
 if ($script:Fail -gt 0) { exit 1 }

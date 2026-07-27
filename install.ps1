@@ -1213,6 +1213,7 @@ if ($DryRun -and -not $Uninstall) {
         Write-Host $linha
     }
     Write-Info "-DryRun: nothing was installed."
+    Close-AfRail
     Stop-Installer 0; return
 }
 
@@ -1295,6 +1296,7 @@ if ($Uninstall) {
     Write-Host ""
     if (-not (Confirm-Plan "Execute the plan above?")) {
         Write-Info "uninstall cancelled - nothing was touched."
+        Close-AfRail
         # 1602 e o codigo que o mundo Windows ja usa para "o usuario cancelou".
         Stop-Installer 1602; return
     }
@@ -1314,8 +1316,9 @@ if ($Uninstall) {
     # tocado.
     if ($script:NativeExitCode -ne 0 -or $saidaExec -notmatch "ATLASFILE_UNINSTALL: confirmed") {
         Write-Fail "the WSL side did not confirm the removal (exit $($script:NativeExitCode))"
-        Write-Host "    Nothing was removed on the Windows side."
+        Write-Wrapped " " "Nothing was removed on the Windows side." Red
         Show-LogTail
+        Close-AfRail
         Stop-Installer 1; return
     }
 
@@ -1364,10 +1367,14 @@ if ($Uninstall) {
     }
 
     # --- 7. UM veredito, agora que os dois lados terminaram -------------------
-    Write-Host ""
-    Write-Ok "AtlasFile removed. What already existed on this machine was preserved."
+    # FORA do trilho, como o un_report do install.sh: depois que o `+--` fecha, o
+    # relatorio nao pode continuar pendurado na calha. E o fechamento e daqui
+    # porque, delegado, o install.sh pula o un_report justamente para nao dar o
+    # veredito antes de o lado Windows terminar.
+    Close-AfRail
+    Write-Note "AtlasFile removed. What already existed on this machine was preserved."
     if ($reinicioPendente) {
-        Write-Info "some files were scheduled for deletion on the next restart"
+        Write-Note "some files were scheduled for deletion on the next restart"
         Stop-Installer 3010; return
     }
     Stop-Installer 0; return

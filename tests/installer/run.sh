@@ -722,6 +722,21 @@ out="$(run_case -- '
   un_execute' 2>&1)"
 printf '%s' "$out" | grep -q 'backup' && no "inventou linha de backup: $out" || ok
 
+# Quem fecha o trilho e quem o ABRIU. Delegado, o trilho e do install.ps1 e o
+# diagnostico roda dentro de uma regua dele — um `╰──` aqui fecharia a tela do
+# orquestrador no meio. Foi uma REGRESSAO introduzida ao fazer o --doctor fechar
+# o trilho, e so apareceu auditando o ps1 antes do teste no Windows.
+t "delegado, o lado WSL nunca fecha o trilho do orquestrador"
+for modo in "--doctor" "--dry-run"; do
+  saida="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TERM=dumb \
+      TTY_DEV=/dev/null bash "$REPO_ROOT/install.sh" $modo --delegated --dir "$SANDBOX" 2>&1 || true)"
+  if printf '%s' "$saida" | grep -q '╰──'; then
+    no "modo ${modo} --delegated fechou o trilho que nao e dele"
+  else
+    ok
+  fi
+done
+
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
 # o spinner longe da saída de terceiro.
