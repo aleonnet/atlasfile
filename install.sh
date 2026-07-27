@@ -865,7 +865,7 @@ backup_env_once() {
 # PRESERVED section, then one confirmation, then execution. Every fact below is
 # a variable so the plan builder can be unit-tested without a Docker daemon.
 UN_DIR=""; UN_PROJECT=""; UN_COMPOSE_FILE=0
-UN_CLONE_STATE="unknown"; UN_DIR_DIRTY=0; UN_ENV=0
+UN_CLONE_STATE="unknown"; UN_DIR_DIRTY=0; UN_DIRTY_LIST=""; UN_ENV=0
 # O que a instalação registrou sobre si mesma. `install_dir` era gravado e nunca
 # lido — a garantia documentada ("a pasta só some se bater com o install_dir
 # registrado") não existia no código. `env_file`/`api_keys_file` idem, e o
@@ -1023,11 +1023,18 @@ un_collect() { # <dir>
     for bkp_nome in $(printf '%s' "$UN_ENV_BACKUP" | tr ',' ' '); do
       [ -n "$bkp_nome" ] && excl_bkp="${excl_bkp} :(exclude)${bkp_nome}"
     done
+    # Guarda O QUE suja, nao so o sim/nao: "has local changes" sozinho nao e
+    # acionavel. Numa maquina real o que travava a pasta era um backup do
+    # PROPRIO instalador, e nao havia como o usuario descobrir isso pela tela.
+    local sujo
     # shellcheck disable=SC2086  # o split de excl_bkp e o objetivo aqui
-    if [ -n "$(git -C "$dir" status --porcelain -- . \
+    sujo="$(git -C "$dir" status --porcelain -- . \
         ":(exclude).env" ":(exclude)${AF_MANIFEST_NAME}" \
-        ":(exclude)config/api_keys.json" $excl_bkp 2>/dev/null || true)" ]; then
+        ":(exclude)config/api_keys.json" $excl_bkp 2>/dev/null || true)"
+    if [ -n "$sujo" ]; then
       UN_DIR_DIRTY=1
+      # o porcelain traz duas colunas de estado antes do caminho
+      UN_DIRTY_LIST="$(printf '%s\n' "$sujo" | LC_ALL=C sed 's/^...//')"
     fi
   fi
 
@@ -1090,6 +1097,8 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
   elif [ "$UN_CLONE_STATE" = "created" ]; then
     if [ "$UN_DIR_DIRTY" = "1" ] && [ "$force" != "1" ]; then
       un_add_keep "${UN_DIR} has local changes — NOT removed (re-run with --force to remove it anyway)"
+      UN_PLAN_KEEP="${UN_PLAN_KEEP}$(un_dirty_lines)
+"
     else
       un_add_remove "install directory ${UN_DIR} (clone created by this installer, with its .env)"
       un_act "rm-clone"
@@ -1266,6 +1275,25 @@ un_has_action() { printf '%s' "$UN_ACTIONS" | grep -qx "$1"; }
 # Todos os backups de .env que existem na pasta, nao so o do manifesto.
 # O manifesto guarda UMA chave `env_backup`, sobrescrita a cada instalacao:
 # o plano citava o mais novo e os anteriores ficavam sem dono na tela.
+# Quantos caminhos mostrar antes de resumir. Teto explicito: um clone com 200
+# arquivos mexidos nao pode empurrar o resto do plano para fora da tela.
+UN_DIRTY_SHOW=5
+
+# Emite as linhas que dizem O QUE suja o clone. Um so renderizador para o plano
+# e o --doctor: dois textos para o mesmo fato divergem na primeira alteracao.
+un_dirty_lines() {
+  local n=0 caminho
+  while IFS= read -r caminho; do
+    [ -n "$caminho" ] || continue
+    n=$(( n + 1 ))
+    [ "$n" -le "$UN_DIRTY_SHOW" ] && af_wrap "${GUT}    - " "${GUT}      " 8 "$caminho"
+  done <<EOF
+$UN_DIRTY_LIST
+EOF
+  [ "$n" -gt "$UN_DIRTY_SHOW" ] && af_wrap "${GUT}    - " "${GUT}      " 8 "and $(( n - UN_DIRTY_SHOW )) more"
+  return 0
+}
+
 un_env_backups() {
   local n
   [ -d "$UN_DIR" ] || return 0
@@ -1314,7 +1342,7 @@ un_compose_down() {
 }
 
 un_execute() {
-  local act model
+  local act model bkps_n
   while IFS= read -r act; do
     [ -n "$act" ] || continue
     case "$act" in
@@ -1340,7 +1368,15 @@ un_execute() {
         fi ;;
       rm-clone)
         if un_dir_is_safe "$UN_DIR"; then
+          # contado ANTES de remover: depois nao ha o que contar. Mesma regra do
+          # volume — item que o plano prometeu em separado se confirma em
+          # separado, mesmo quando some junto com outra coisa.
+          bkps_n="$(un_env_backups | wc -l | tr -d ' ')"
           un_step "removing ${UN_DIR}" rm -rf "$UN_DIR"
+          if [ "${bkps_n:-0}" -gt 0 ] && [ ! -d "$UN_DIR" ]; then
+            ok "${bkps_n} .env backup(s) removed with the folder"
+            UN_OK=$(( UN_OK + 1 ))
+          fi
         else
           warn "refusing to remove ${UN_DIR}: it does not look like an AtlasFile install"
         fi ;;
@@ -1572,6 +1608,7 @@ run_doctor() {
     esac
     if [ "$UN_DIR_DIRTY" = "1" ]; then
       doc_warn "there are local changes — --uninstall keeps the folder (use --force to remove it anyway)"
+      un_dirty_lines
     else
       doc_ok "no local changes"
     fi

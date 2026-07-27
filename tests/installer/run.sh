@@ -672,6 +672,54 @@ for modo in "--doctor" "--dry-run" "--uninstall --dry-run"; do
   fi
 done
 
+# "has local changes" sozinho nao e acionavel: numa maquina real o que travava a
+# pasta era um backup do PROPRIO instalador, e nao havia como o usuario saber
+# disso pela tela — ele precisou de ajuda para descobrir.
+make_sandbox
+t "o plano diz O QUE suja o clone, nao so que esta sujo"
+out="$(run_case PATH=/usr/bin:/bin -- '
+  C="$SANDBOX/c1"; mkdir -p "$C"; cd "$C"; git init -q
+  printf "x\n" > docker-compose.yml; git add -A; git commit -qm base
+  touch meu_rascunho.md
+  un_collect "$C"
+  UN_DIR="$C"; UN_CLONE_STATE=created; UN_DIR_RECORDED="$C"; UN_COMPOSE_FILE=1
+  un_build_plan 0 0 0; printf "%s" "$UN_PLAN_KEEP"')"
+printf '%s' "$out" | grep -q 'meu_rascunho.md' && ok || no "nao nomeou o que suja: $out"
+
+t "e resume acima do teto, em vez de empurrar o plano para fora da tela"
+out="$(run_case PATH=/usr/bin:/bin -- '
+  C="$SANDBOX/c2"; mkdir -p "$C"; cd "$C"; git init -q
+  printf "x\n" > docker-compose.yml; git add -A; git commit -qm base
+  for i in 1 2 3 4 5 6 7 8; do touch "arquivo_$i.md"; done
+  un_collect "$C"; UN_DIR="$C"; un_dirty_lines')"
+n="$(printf '%s\n' "$out" | grep -c ' - arquivo_' || true)"
+[ "$n" = "5" ] && ok || no "mostrou $n caminho(s), esperava o teto de 5"
+printf '%s' "$out" | grep -q 'and 3 more' && ok || no "nao resumiu o resto: $out"
+
+# Item que o plano promete em SEPARADO se confirma em separado, mesmo sumindo
+# junto com outra coisa. Mesma regra ja aplicada ao volume.
+t "backups removidos com a pasta sao confirmados na execucao"
+out="$(run_case -- '
+  C="$SANDBOX/c3"; mkdir -p "$C/.git"; printf "x\n" > "$C/docker-compose.yml"
+  touch "$C/.env.backup.20260101000000" "$C/.env.backup.20260202000000"
+  UN_DIR="$C"; LOG_FILE="$SANDBOX/log"
+  UN_ENV_BACKUP=".env.backup.20260101000000,.env.backup.20260202000000"
+  UN_ACTIONS="rm-clone"
+  un_execute; printf "CONTAGEM:%s" "$UN_OK"' 2>&1)"
+printf '%s' "$out" | grep -q '2 .env backup(s) removed with the folder' \
+  && ok || no "nao confirmou os backups: $out"
+case "$out" in *CONTAGEM:2*) ok ;; *) no "esperava 2 no placar (pasta + backups): $out" ;; esac
+
+# Sem backup nenhum a linha nao pode aparecer: confirmar o que nao aconteceu e
+# tao ruim quanto calar o que aconteceu.
+t "sem backups, nenhuma linha de backup e inventada"
+out="$(run_case -- '
+  C="$SANDBOX/c4"; mkdir -p "$C/.git"; printf "x\n" > "$C/docker-compose.yml"
+  UN_DIR="$C"; LOG_FILE="$SANDBOX/log"; UN_ENV_BACKUP=""
+  UN_ACTIONS="rm-clone"
+  un_execute' 2>&1)"
+printf '%s' "$out" | grep -q 'backup' && no "inventou linha de backup: $out" || ok
+
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
 # o spinner longe da saída de terceiro.
