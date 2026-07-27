@@ -643,6 +643,33 @@ Assert-Match "a grade apaga ate o fim da linha (sem rastro)" $fonte ([regex]::Es
 $dobradas = ([regex]::Matches($fonte, 'Write-Gut(?![^\r\n]*-NoNewline)[^\r\n]*Write-Host ""')).Count
 Assert-True "nenhum Write-Gut seguido de Write-Host vazio" ($dobradas -eq 0) "$dobradas par(es) ainda dobram a linha"
 
+# A guarda ACIMA olha o FONTE e nao bastou: o caso que sobreviveu no Windows
+# real estava depois de um `}`, no fim do Invoke-Step, e nenhuma regex de uma
+# linha o alcancava. Esta olha a TELA, que e o que o usuario ve: nenhuma linha
+# VAZIA pode aparecer ENTRE duas linhas de calha.
+$calhaV = [string][char]0x2502
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-EnableAuth")
+$linhas = $out -split "`r?`n"
+$buracos = @()
+for ($i = 1; $i -lt $linhas.Count - 1; $i++) {
+    if ($linhas[$i].Trim() -eq "" -and
+        $linhas[$i-1].TrimStart().StartsWith($calhaV) -and
+        $linhas[$i+1].TrimStart().StartsWith($calhaV)) {
+        $buracos += $linhas[$i-1].Trim()
+    }
+}
+Assert-True "nenhuma linha vazia ENTRE duas linhas de calha" ($buracos.Count -eq 0) ("depois de: " + ($buracos -join " | "))
+
+# A pergunta era a unica linha do trilho que nao pendurava nele.
+Assert-Match "a pergunta sai na calha" $fonte '(?s)function Confirm-Step.{0,600}?Write-Host \$script:Gut'
+# E o rabo do log saia como um bloco inteiro fora do trilho.
+Assert-Match "o rabo do log sai na calha" $fonte '(?s)function Show-LogTail.{0,400}?Write-Gut'
+
+# Sem --silent o winget roda o instalador do Docker com INTERFACE e ele espera
+# um clique em "Close": o Docker instala e o winget devolve falha assim mesmo.
+Assert-Match "a instalacao do Docker e silenciosa" $fonte '(?s)"install", "-e", "--id", "Docker.DockerDesktop".{0,300}?--silent'
+
 # A barra viva ocupa a ultima linha: sem apaga-la a pergunta sai grudada nela.
 Assert-Match "Confirm-Step limpa a barra antes de perguntar" $fonte '(?s)function Confirm-Step.{0,400}?Clear-AfBar'
 Assert-Match "Confirm-Plan limpa a barra antes de perguntar" $fonte '(?s)function Confirm-Plan.{0,400}?Clear-AfBar'

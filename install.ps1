@@ -157,7 +157,10 @@ function Confirm-Step([string]$Question) {
     if ($InstallDeps) { return $true }
     if ($Yes) { return $false }  # conservative: -Yes alone never installs system deps
     if (-not [Environment]::UserInteractive) { return $false }
-    $answer = Read-Host "  ? $Question [y/N]"
+    # Com a calha, como o ask() do install.sh. Sem ela a pergunta era a unica
+    # linha do trilho que nao pendurava nele.
+    Write-Host $script:Gut -ForegroundColor DarkGray -NoNewline
+    $answer = Read-Host "? $Question [y/N]"
     return $answer -match '^(y|yes|s)$'
 }
 
@@ -1008,9 +1011,9 @@ function Write-LogSection([string]$Titulo, [string[]]$Arquivos) {
 # transformaria uma falha em misterio. E o fail_with_log do install.sh.
 function Show-LogTail([int]$Linhas = 15) {
     if (-not (Test-Path $script:AfLog)) { return }
-    Write-Host "    last lines of $script:AfLog" -ForegroundColor DarkGray
+    Write-Gut ("  last lines of $script:AfLog") DarkGray
     foreach ($l in (Get-Content $script:AfLog -Tail $Linhas -ErrorAction SilentlyContinue)) {
-        Write-Host ("    | " + $l) -ForegroundColor DarkGray
+        Write-Gut ("  | " + $l) DarkGray
     }
 }
 
@@ -1096,7 +1099,6 @@ function Invoke-Step {
         Write-Gut ("{0} {1} (exit {2})" -f $BAD, $Label, $script:NativeExitCode) Red
         $script:StepsFailed++
     }
-    Write-Host ""
     $script:RunSteps += ("{0}|{1}|{2}" -f $Label, [int]((Get-Date) - $t0).TotalSeconds, $script:NativeExitCode)
     Show-AfBar
 }
@@ -1628,14 +1630,30 @@ if (-not $docker) {
         # source. Without it winget also queries msstore, which fails on region,
         # on a signed-out account or on unaccepted terms - exactly the
         # "Failed when searching source: msstore" seen on a real Windows 11.
+        # --silent: sem ele o winget roda o instalador do Docker com INTERFACE, e
+        # ele fica esperando um clique em "Close". Medido num Windows 11 real: o
+        # Docker FOI instalado e mesmo assim winget devolveu 0x8A150006
+        # (ShellExecute install failed), porque o instalador saiu com 0xFFFFFFFA.
+        # --disable-interactivity desliga os prompts DO WINGET, nao a UI do
+        # instalador - a chamada de REMOCAO ja passava --silent, a de instalacao
+        # nao, e a assimetria era o defeito.
         Invoke-Step "downloading and installing Docker Desktop (~600 MB)" winget @(
             "install", "-e", "--id", "Docker.DockerDesktop",
             "--source", "winget", "--accept-package-agreements", "--accept-source-agreements",
-            "--disable-interactivity")
-        if ($script:NativeExitCode -ne 0) {
-            Write-Fail "winget could not install Docker Desktop - install manually: https://docs.docker.com/desktop/install/windows-install/"
-            Show-LogTail
-            Stop-Installer 1; return
+            "--silent", "--disable-interactivity")
+        # 3010 e sucesso COM reinicio pendente (convencao MSI), nao falha.
+        $codigoInstall = $script:NativeExitCode
+        if ($codigoInstall -ne 0 -and $codigoInstall -ne 3010) {
+            # Perguntar antes de declarar: a mesma disciplina que a remocao ja
+            # segue (winget list antes de prometer). Um codigo feio nao prova
+            # que nada foi instalado - na maquina real o Docker estava la.
+            $null = Invoke-NativeCapture winget @("list", "-e", "--id", "Docker.DockerDesktop", "--source", "winget")
+            if ($script:NativeExitCode -ne 0) {
+                Write-Fail "winget could not install Docker Desktop - install manually: https://docs.docker.com/desktop/install/windows-install/"
+                Show-LogTail
+                Stop-Installer 1; return
+            }
+            Write-Warn "winget reported exit $codigoInstall but Docker Desktop is installed - continuing"
         }
         Set-AfState "docker" "created"
         Write-Ok "Docker Desktop installed"
