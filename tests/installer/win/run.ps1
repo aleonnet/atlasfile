@@ -631,4 +631,11 @@ Assert-Match "e a explicacao pendura na calha, sem furo" $out ("(?m)^" + $calha 
 
 Write-Host ""
 Write-Host "$script:Pass passaram, $script:Fail falharam"
+# exit EXPLICITO tambem no sucesso. Sem ele a bancada nao define codigo de saida
+# e o $LASTEXITCODE que o CI le e o do ULTIMO comando nativo executado — ou seja,
+# o do instalador do cenario final. Bastou o ultimo cenario passar a exercitar um
+# caminho de RECUSA (onde sair com 1 e o comportamento correto) para o CI
+# reprovar uma bancada de 123 assertivas e 0 falhas. O contrato da bancada nao
+# pode vazar o codigo de saida do que ela testa.
 if ($script:Fail -gt 0) { exit 1 }
+exit 0
