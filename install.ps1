@@ -33,6 +33,7 @@ param(
     [switch]$Verbose,
     [switch]$Help,
     [string]$Dir = "",
+    [string]$ProjectsRoot = "",
     [string]$Branch = "",
     # Depreciadas: aceitas e IGNORADAS. O site publica -WithOllama ha meses e
     # PowerShell recusa parametro desconhecido com erro terminante - quem colar
@@ -84,6 +85,10 @@ real installer inside WSL.
 Install options:
   -Dir PATH       Where AtlasFile lives inside WSL (default: ~/AtlasFile).
                   Forwarded to install.sh as --dir, install and uninstall alike
+  -ProjectsRoot PATH
+                  Where YOUR DOCUMENTS live (default: your Windows Documents
+                  folder, so they show up in Explorer). Give it a Windows path
+                  or a WSL one; forwarded to install.sh as --projects-root
   -Branch NAME    Branch to clone (default: main). Forwarded as --branch
   -Yes            Non-interactive. On its own it NEVER installs system
                   dependencies - see -InstallDeps
@@ -519,6 +524,46 @@ function Restart-AfDockerDesktop {
     Start-Sleep -Seconds 3
     $exe = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
     if (Test-Path $exe) { Start-Process $exe }
+}
+
+# Os documentos do usuario, em caminho que a DISTRO entende.
+#
+# Sem isto o install.sh usava o default dele ($HOME/Documents/AtlasFileProjects)
+# e, como a distro nao inicializada nos faz rodar como root, os documentos
+# nasciam em /root/Documents/AtlasFileProjects - dentro da distro. Fora de
+# qualquer pasta normal do Explorer, e some junto se alguem fizer
+# `wsl --unregister`, que o nosso --uninstall nao controla.
+#
+# GetFolderPath e nao "$env:USERPROFILE\Documents": num Windows em portugues a
+# pasta chama Documentos, e com OneDrive ela e redirecionada. So a API sabe.
+#
+# wslpath faz a conversao (C:\Users\x -> /mnt/c/Users/x). Se ele falhar, a
+# traducao manual cobre o caso comum; se as duas falharem, devolve vazio e o
+# instalador segue com o default do install.sh, sem quebrar por causa disto.
+# Caminho do Windows -> caminho que a DISTRO entende. wslpath e a ferramenta
+# canonica; se ela falhar, a traducao manual cobre o caso comum (C:\x -> /mnt/c/x)
+# e, se as duas falharem, devolve vazio para o chamador seguir com o default.
+function ConvertTo-AfWslPath([string]$Caminho) {
+    if (-not $Caminho) { return "" }
+    if ($Caminho.StartsWith("/")) { return $Caminho }   # ja e caminho da distro
+    $convertido = ""
+    try {
+        $argsPath = @($script:WslUser) + @("-e", "wslpath", "-a", $Caminho)
+        $convertido = ((& (Resolve-ToolPath wsl) @argsPath 2>$null) | Out-String).Trim()
+    } catch { Write-Verbose "wslpath failed: $($_.Exception.Message)" }
+    if ($convertido -and $convertido.StartsWith("/")) { return $convertido }
+    if ($Caminho -match '^([A-Za-z]):\\(.*)$') {
+        return ("/mnt/" + $Matches[1].ToLower() + "/" + ($Matches[2] -replace '\\', '/'))
+    }
+    return ""
+}
+
+function Get-AfProjectsRoot {
+    $doc = ""
+    try { $doc = [Environment]::GetFolderPath('MyDocuments') } catch { $doc = "" }
+    if (-not $doc) { $doc = Join-Path $env:USERPROFILE "Documents" }
+    if (-not $doc) { return "" }
+    return (ConvertTo-AfWslPath (Join-Path $doc "AtlasFileProjects"))
 }
 
 # -- Banner: the orb, its two moons and the comet it fires (no face) ---------
@@ -1776,6 +1821,10 @@ if ($InstallDeps) { $shFlags += " --install-deps" }
 if ($EnableAuth) { $shFlags += " --enable-auth" }
 if ($Dir) { $shFlags += " --dir $Dir" }
 if ($Branch) { $shFlags += " --branch $Branch" }
+# Aspas simples: "C:\Users\Joao Silva\Documents" vira um caminho com ESPACO, e
+# a linha inteira viaja como argumento unico de `bash -c`.
+$raizProjetos = if ($ProjectsRoot) { ConvertTo-AfWslPath $ProjectsRoot } else { Get-AfProjectsRoot }
+if ($raizProjetos) { $shFlags += " --projects-root '$raizProjetos'" }
 $argsSh = @($script:WslUser) + @("-e", "bash", "-c", "$AF_CURL $AF_SH_URL | bash -s -- $shFlags")
 Invoke-Native wsl $argsSh
 if ($script:NativeExitCode -ne 0) {

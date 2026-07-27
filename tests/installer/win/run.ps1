@@ -124,11 +124,15 @@ if "%AF_WSL_HANG%"=="1" ping -n 30 127.0.0.1 >nul
 if "%AF_WSL_NO_DISTRO%"=="1" exit /b 1
 if "%AF_WSL_DEAD_DISTRO%"=="1" exit /b 1
 if "%AF_WSL_UNINIT%"=="1" exit /b 1
+if "%2"=="wslpath" goto wslpath
 if "%2"=="echo" echo atlasfile_wsl_ok
 echo %*|findstr /c:"--plan-only" >nul
 if not errorlevel 1 goto planonly
 echo %*|findstr /c:"--uninstall" >nul
 if not errorlevel 1 goto unexec
+exit /b 0
+:wslpath
+echo /mnt/c/Users/tester/Documents/AtlasFileProjects
 exit /b 0
 :planonly
 echo.
@@ -713,6 +717,26 @@ Assert-True "o trilho fecha ANTES da caixa" ($fim.Length -gt 0) "a caixa ainda v
 # vizinhos tem parenteses e encerravam a captura antes dos argumentos. Ja
 # aconteceu duas vezes nesta bancada.
 Assert-Match "o contrato do Docker e aceito na instalacao" $fonte ([regex]::Escape('"--custom", "--accept-license --backend=wsl-2 --always-run-service"'))
+
+Write-Host "== X. os documentos ficam no disco do WINDOWS, nao dentro da distro =="
+# Sem --projects-root o install.sh usava o default dele e, como a distro nao
+# inicializada nos faz rodar como root, os documentos nasciam em
+# /root/Documents/AtlasFileProjects: fora de qualquer pasta do Explorer e
+# refens de um `wsl --unregister` que o nosso --uninstall nao controla.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-EnableAuth")
+$calls = Calls
+Assert-Match "a delegacao carrega a raiz de projetos" $calls "--projects-root"
+Assert-Match "e ela aponta para um disco do Windows" $calls "--projects-root '/mnt/"
+Assert-NoMatch "nunca para dentro da distro" $calls "--projects-root '/root"
+
+# Caminho do Windows dado a mao tambem e convertido - o help promete os dois.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-ProjectsRoot", "D:\Meus Documentos\Atlas")
+$calls = Calls
+Assert-Match "converte o caminho que o usuario deu" $calls "--projects-root '/mnt/"
+# O espaco no caminho tem de sobreviver: a linha viaja dentro de um bash -c.
+Assert-NoMatch "sem quebrar no espaco do caminho" $calls "--projects-root '/mnt/d/Meus\s*$"
 
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
