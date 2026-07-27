@@ -219,8 +219,6 @@ BAR_VISIBLE=0
 # Placar e relatório da execução, no espírito do write_run_log do mac-env: o que
 # aconteceu, com tempo por passo, espelhado num arquivo. Tínhamos log da saída
 # das ferramentas e nenhum relatório do que o instalador fez.
-STEPS_DONE=0
-CHECKS_OK=0
 RUN_STEPS=""
 
 bar_capable() { [ "$COLOR_OK" = "1" ] && [ "$IS_TTY" = "1" ] && [ "$TRUECOLOR" = "1" ]; }
@@ -293,7 +291,6 @@ run_step() {
     printf '%s%s✔%s %s %s(%s)%s\n' "$GUT" "$GREEN" "$RESET" "$msg" "$DIM" "$(fmt_secs $(( $(step_now) - t0 )))" "$RESET"
     RUN_STEPS="${RUN_STEPS}${msg}|$(( $(step_now) - t0 ))
 "
-    STEPS_DONE=$(( STEPS_DONE + 1 ))
     return 0
   fi
   if [ "$IS_TTY" = "1" ]; then
@@ -314,7 +311,6 @@ run_step() {
   fi
   RUN_STEPS="${RUN_STEPS}${msg}|$(( $(step_now) - t0 ))
 "
-  STEPS_DONE=$(( STEPS_DONE + 1 ))
   bar_show
 }
 
@@ -322,7 +318,6 @@ check() {
   local msg="$1"; shift
   if "$@" >>"$LOG_FILE" 2>&1; then
     ok "$msg"
-    CHECKS_OK=$(( CHECKS_OK + 1 ))
   else
     return 1
   fi
@@ -2173,12 +2168,11 @@ printf '\n'
 note "${BOLD}Install finished in ${TOTAL}${RESET} 🎉"
 # Placar: o que de fato aconteceu, em números. A frase fixa de antes dizia a
 # mesma coisa numa instalação limpa e numa reexecução que não mudou nada.
-# "steps" ficava logo abaixo de `[4/4]` e lia como contradicao — e ainda por
-# cima nao contava o .env, a chave do cookie, o api_keys.json nem a
-# autenticacao, que aparecem com ✔ na tela. O que ele conta sao as operacoes
-# CRONOMETRADAS, que sao exatamente as listadas no relatorio da execucao.
-printf '  %s✔ %s prerequisites%s   %s✔ %s timed operations%s\n\n' \
-  "$GREEN" "$CHECKS_OK" "$RESET" "$GREEN" "$STEPS_DONE" "$RESET"
+# Sem contador aqui, de proposito. A tela ACIMA ja mostra as quatro fases, cada
+# uma com seus ✔ e seus tempos; qualquer numero novo no resumo compete com ela e
+# vira pergunta ("4 fases mas 5 passos?"). Quem quiser o detalhe por operacao tem
+# o relatorio da execucao, logo abaixo. O mac-env conta ITENS porque o usuario
+# escolheu quais instalar — aqui as fases sao fixas e ja estao na tela.
 # box_row LABEL VALUE — padded to the fixed inner width; long values get a
 # leading ellipsis keeping the tail (the folder name is what matters)
 box_row() {

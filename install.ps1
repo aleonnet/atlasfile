@@ -879,7 +879,6 @@ $script:AfLog = if ($env:ATLASFILE_LOG) { $env:ATLASFILE_LOG }
                 else { Join-Path ([IO.Path]::GetTempPath()) "atlasfile-install.log" }
 # Placar e relatorio da execucao, como no install.sh: o log guarda a saida das
 # FERRAMENTAS, e o que o instalador fez nao ficava em lugar nenhum.
-$script:StepsDone = 0
 $script:StepsFailed = 0
 $script:RunSteps = @()
 $script:RunStart = Get-Date
@@ -950,8 +949,7 @@ function Invoke-Step {
         Invoke-Native $File $Arguments
         if ($script:NativeExitCode -eq 0) {
             Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $tv)) Green
-            $script:StepsDone++
-        } else {
+            } else {
             Write-Gut ("{0} {1} (exit {2})" -f $BAD, $Label, $script:NativeExitCode) Red
             $script:StepsFailed++
         }
@@ -999,7 +997,6 @@ function Invoke-Step {
     if ($script:AfAnim) { Write-Host ("`r" + (" " * 78) + "`r") -NoNewline }
     if ($script:NativeExitCode -eq 0) {
         Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) Green
-        $script:StepsDone++
     } else {
         Write-Gut ("{0} {1} (exit {2})" -f $BAD, $Label, $script:NativeExitCode) Red
         $script:StepsFailed++
@@ -1658,11 +1655,12 @@ Write-Host ($script:Gut) -ForegroundColor DarkGray
 Write-RuleClose
 Write-Host ""
 Write-Note ("AtlasFile is up in {0}" -f $durTexto)
-# Mesmo rotulo do install.sh: o que se conta aqui sao as operacoes
-# CRONOMETRADAS, e nao "passos" - que colidia com a numeracao das fases.
-Write-Host ("  {0} {1} timed operations" -f $OK, $script:StepsDone) -ForegroundColor Green -NoNewline
-if ($script:StepsFailed -gt 0) { Write-Host ("   {0} {1} failed" -f $BAD, $script:StepsFailed) -ForegroundColor Red -NoNewline }
-Write-Host ""
+# Sem contador, como no install.sh: a tela acima ja mostra as fases com seus
+# tempos, e um numero novo aqui so compete com ela. Falha continua aparecendo,
+# porque isso o usuario PRECISA ver.
+if ($script:StepsFailed -gt 0) {
+    Write-Host ("  {0} {1} failed - see the run report" -f $BAD, $script:StepsFailed) -ForegroundColor Red
+}
 
 # Espelho em arquivo, ao lado do manifesto: diagnosticar uma instalacao de ontem
 # sem isso e adivinhacao.
