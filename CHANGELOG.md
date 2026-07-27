@@ -51,6 +51,27 @@ Ciclo aberto por um `-Uninstall -RemoveDeps` rodado numa máquina Windows 11 rea
 - `check_consistency.py` ganhou **paridade de arte** (órbita, cometa, rampa, hex das quatro luas, wordmark, frase, índice de repouso) e **paridade de UI** (cada primitiva existe nos dois arquivos) — as duas provadas numa cópia isolada, injetando as divergências e conferindo que reprovam
 - CI: guarda de `Invoke-Native` estendida ao `Invoke-NativeCapture`; a do `Stop-Installer` aceitava só código de um dígito e reprovava `1602`; e um passo novo cobra que o git ignore o que o instalador gera — teria pego o `config/api_keys.json` na origem
 
+### Removido
+
+- **O Ollama saiu da instalação** (`--with-ollama`, `-WithOllama`, `--ollama-model`, `--no-ollama`). Puxar um modelo são vários GB dentro de uma instalação que precisa ter duração previsível — não dá para prometer minutos e entregar um download indeterminado. De quebra, o defeito de o Ollama viver em **dois sistemas operacionais ao mesmo tempo** deixa de existir por construção. O painel final ensina a habilitá-lo depois, em um comando, e a mensagem muda conforme ele já esteja ou não na máquina. **A reversão continua inteira**: um Ollama instalado por versões anteriores segue registrado no manifesto daquelas instalações e segue sendo revertido por `--uninstall --remove-deps`
+
+### Corrigido — auditoria dos registros de ida e volta
+
+Sete lacunas encontradas ao auditar os manifestos, todas verificadas no código:
+
+- **CRÍTICA — o uninstall no Windows podia olhar para o `$HOME` errado.** `$script:WslUser` só era decidido na fase 1, que roda **depois** dos blocos `-Uninstall`, `-Doctor` e `-DryRun`: neles ele estava sempre vazio e o `wsl -e` rodava como usuário **padrão** da distro. Uma instalação feita como root — exatamente o que acontece quando o próprio AtlasFile instala o WSL com `--no-launch` — morava em `/root/AtlasFile` e `/root/.atlasfile`, e a desinstalação não achava nem instalação nem manifesto: **nada era revertido**. Funcionava por sorte em distro cujo usuário padrão ainda é root. O manifesto do Windows passa a gravar `wsl_user` e `install_dir`, e os três blocos recuperam a identidade antes de falar com o outro lado
+- **A garantia do `install_dir` não existia.** O CHANGELOG da v0.54.0 prometia que a pasta só seria apagada "se ela bater com o `install_dir` registrado"; a chave era gravada e **nunca lida**. Agora é lida, e uma pasta que não bate é preservada com o motivo na tela
+- **Chave de API viva ficava em disco.** `api_keys_file` e `env_file` eram gravadas e nunca consultadas: num clone preexistente — sempre preservado — o `config/api_keys.json` criado por `--enable-auth` sobrevivia à desinstalação
+- **O `.env` do usuário era reescrito sem backup.** Passa a haver cópia datada antes da primeira alteração, registrada no manifesto e citada no plano. É o único mecanismo do nosso `mac_env_install.sh` que faltava aqui
+- **Artefato órfão quando o instalador morre no meio.** Cada `ensure_*` grava `pending` **antes** de tentar. `pending` nunca autoriza remover — não dá para provar que criamos —, mas vira uma frase no plano: *"o instalador foi interrompido instalando isto; preservado, remova à mão se não for seu"*. Antes o artefato ficava sem digital nenhuma e a execução seguinte o registrava como `preexisting`
+- **A distro baixada por nós não era registrada.** `wsl --install --no-launch` traz ~500 MB de Ubuntu e só gravava `wsl created`; o plano falava do **recurso** e ficava calado sobre a distro
+- **Nada garantia que chave gravada virasse decisão.** O `check_consistency.py` passa a cobrar que toda chave do manifesto seja lida, nos dois instaladores — a guarda que teria pego as três chaves mortas acima
+
+### Mudado — `--dry-run` unificado
+
+- **`--dry-run` é o nome público e compõe**: sozinho mostra o **retrato** da máquina (o que ele vê) e o plano de instalação; com `--uninstall`, o plano de remoção — nos dois casos sem tocar em nada. `--plan-only` continua existindo como flag de **protocolo** entre os dois instaladores e saiu da ajuda
+- No Windows, `-Uninstall -DryRun` caía no plano de **instalação** porque o bloco do `-DryRun` vinha antes do `-Uninstall` (achado pelo CI, no cenário escrito para essa propriedade)
+
 ### Pendente de prova real
 
 O E2E na máquina Windows: instalar pelo one-liner, conferir que o plano cita Docker/Ollama/WSL nas seções certas, **responder "n"** e verificar que nada foi removido, repetir com "y". Nenhuma VM aqui roda Docker, então essa continua sendo a única prova que falta.
