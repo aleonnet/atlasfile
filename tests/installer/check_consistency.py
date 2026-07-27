@@ -268,6 +268,37 @@ def check_ui_parity(problems):
             problems.append("primitiva de UI '%s' nao existe no install.ps1" % rotulo)
 
 
+def check_manifest_keys(problems):
+    """Chave gravada no manifesto tem de ser LIDA por alguem.
+
+    O manifesto e o unico registro da ida que sustenta a volta: chave escrita e
+    nunca consultada e trabalho que nao vira decisao nenhuma. Tres viviam assim:
+    `install_dir` (que sustentava uma garantia anunciada no CHANGELOG e ausente
+    do codigo), `env_file` e `api_keys_file` -- esta ultima deixando uma chave de
+    API viva em disco depois da desinstalacao. Nada verificava esse vinculo.
+    """
+    sh, ps = read(SH), read(PS)
+
+    escritas = set(re.findall(r'\bhost_set\s+([a-z_]+)\s', sh))
+    escritas |= set(re.findall(r'manifest_set\s+"\$\w+"\s+([a-z_]+)\s', sh))
+    lidas = set(re.findall(r'\bhost_get\s+([a-z_]+)', sh))
+    lidas |= set(re.findall(r'manifest_get\s+"\$\w+"\s+([a-z_]+)', sh))
+    for chave in sorted(escritas - lidas):
+        problems.append("%s  o manifesto grava '%s' e ninguem le essa chave — registro que nao vira decisao"
+                        % (SH, chave))
+
+    escritas_ps = set(re.findall(r'Set-AfState\s+"([A-Za-z_]+)"', ps))
+    lidas_ps = set(re.findall(r'Get-AfState\s+"([A-Za-z_]+)"', ps))
+    # Get-AfHostExtra le por lista literal, nao uma chave por chamada.
+    for bloco in re.findall(r'foreach\s*\(\$chave in @\(([^)]*)\)\)', ps):
+        lidas_ps |= set(re.findall(r'"([A-Za-z_]+)"', bloco))
+    # o laco de remocao le pela propriedade Key das entradas da tabela
+    lidas_ps |= set(re.findall(r'Key\s*=\s*"([A-Za-z_]+)"', ps))
+    for chave in sorted(escritas_ps - lidas_ps):
+        problems.append("%s  o manifesto grava '%s' e ninguem le essa chave — registro que nao vira decisao"
+                        % (PS, chave))
+
+
 def check_call_before_declaration(problems):
     """Funcao chamada pelo fluxo principal ANTES de ser declarada.
 
@@ -346,6 +377,7 @@ def main():
     check_art_parity(problems)
     check_ui_parity(problems)
     check_call_before_declaration(problems)
+    check_manifest_keys(problems)
     for p in problems:
         print(p)
     if problems:

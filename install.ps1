@@ -96,7 +96,9 @@ Diagnostics:
   -Doctor         Read-only report of BOTH sides of this machine: Windows
                   prerequisites and manifest, then the Linux side inside WSL.
                   Installs nothing, changes nothing
-  -DryRun         Print what an install would do here and exit
+  -DryRun         Show, do not do. On its own: what an install would find and do
+                  on this machine. With -Uninstall: the removal plan for BOTH
+                  sides, and nothing is touched
   -Verbose        Show the output of every tool as it runs, instead of hiding
                   it in the log
 
@@ -264,11 +266,33 @@ $AF_CURL = "curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 --re
 # instalou - mas que ele removia logo depois.
 function Get-AfHostExtra {
     $pares = @()
-    foreach ($chave in @("docker", "ollama", "wsl")) {
+    foreach ($chave in @("docker", "ollama", "wsl", "wsl_distro")) {
         $valor = Get-AfState $chave
-        if ($valor) { $pares += "$chave=$valor" }
+        if (-not $valor) { continue }
+        # wsl_distro guarda o NOME da distro (para o -Doctor); no plano o que
+        # importa e a procedencia, e o vocabulario la e created/preexisting.
+        if ($chave -eq "wsl_distro") { $pares += "wsl_distro=created"; continue }
+        $pares += "$chave=$valor"
     }
     return ($pares -join ",")
+}
+
+# QUEM e o dono da instalacao do outro lado da fronteira.
+#
+# $script:WslUser so era decidido na FASE 1, que roda DEPOIS dos blocos
+# -Uninstall/-Doctor/-DryRun. Nesses caminhos ele estava sempre vazio, entao o
+# `wsl -e` rodava como usuario PADRAO da distro. Quando a instalacao tinha sido
+# feita como root - que e exatamente o que acontece quando o proprio AtlasFile
+# instala o WSL com --no-launch - tudo morava em /root/AtlasFile e
+# /root/.atlasfile, e a desinstalacao olhava para outro $HOME: nao achava
+# instalacao, nao achava manifesto, e NADA era revertido. Funcionava por sorte
+# em distro cujo usuario padrao ainda e root; bastava completar o assistente de
+# conta do Ubuntu para quebrar.
+$script:AfDir = ""
+function Restore-AfInstallIdentity {
+    if ((Get-AfState "wsl_user") -eq "root") { $script:WslUser = @("-u", "root") }
+    $script:AfDir = $Dir
+    if (-not $script:AfDir) { $script:AfDir = Get-AfState "install_dir" }
 }
 
 # Comando nativo com a saida CAPTURADA, e nao apenas escondida no log: o
@@ -1052,7 +1076,7 @@ function Test-AfDoctor {
     Write-Host ""
     Write-Rule "Inside WSL"
     $cmdDoc = "$AF_CURL $AF_SH_URL | bash -s -- --doctor --delegated"
-    if ($Dir) { $cmdDoc += " --dir $Dir" }
+    if ($script:AfDir) { $cmdDoc += " --dir $script:AfDir" }
     $saidaDoc = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdDoc))
     if ($saidaDoc.Trim()) {
         foreach ($linha in ($saidaDoc -split "`r?`n")) {
@@ -1071,6 +1095,11 @@ function Test-AfDoctor {
     Write-Host ""
     return ($nRuim -eq 0)
 }
+
+# A identidade da instalacao (usuario do WSL e diretorio) tem de ser recuperada
+# ANTES de qualquer bloco que fale com o outro lado - os tres rodam antes da
+# fase 1, que e onde ela seria descoberta.
+Restore-AfInstallIdentity
 
 if ($Doctor) {
     if (Test-AfDoctor) { Stop-Installer 0; return }
@@ -1095,7 +1124,7 @@ if ($DryRun) {
     Write-Host ""
     Write-Rule "Install plan (inside WSL)"
     $cmdSeco = "$AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
-    if ($Dir) { $cmdSeco += " --dir $Dir" }
+    if ($script:AfDir) { $cmdSeco += " --dir $script:AfDir" }
     $saidaSeca = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdSeco))
     foreach ($linha in ($saidaSeca -split "`r?`n")) {
         if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
@@ -1123,7 +1152,7 @@ if ($Uninstall) {
     if ($RemoveDeps) { $flagsComuns += " --remove-deps" }
     if ($Force)      { $flagsComuns += " --force" }
     if ($extraHost)  { $flagsComuns += " --host-extra $extraHost" }
-    if ($Dir)        { $flagsComuns += " --dir $Dir" }
+    if ($script:AfDir) { $flagsComuns += " --dir $script:AfDir" }
 
     # --- 1. FATOS: nao pergunta, nao age ------------------------------------
     Start-Step "reading the removal plan from inside WSL"
@@ -1149,6 +1178,12 @@ if ($Uninstall) {
     $temAcoes = ($plano -match 'ATLASFILE_FACT: actions=1')
     if (-not $temAcoes) {
         Write-Info "nothing to remove."
+        Stop-Installer 0; return
+    }
+    # -Uninstall -DryRun: o plano ja esta na tela, e ele cobre os dois lados.
+    # Parar aqui e o "mostre, nao faca" do uninstall.
+    if ($DryRun) {
+        Write-Info "-DryRun: nothing was touched."
         Stop-Installer 0; return
     }
 
@@ -1377,6 +1412,16 @@ if (-not $wslReady) {
             Stop-Installer 1; return
         }
         Set-AfState "wsl" "created"
+        # A distro tambem e artefato nosso (~500 MB) e ate aqui nao era
+        # registrada em lugar nenhum: o plano falava do RECURSO WSL e ficava
+        # calado sobre o Ubuntu que este instalador baixou.
+        $prevDistro = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        try {
+            $nomeDistro = ((& (Resolve-ToolPath wsl) -l -q 2>&1 | Out-String) -replace "`0", "").Trim() -split "`r?`n" |
+                Where-Object { $_ } | Select-Object -First 1
+            if ($nomeDistro) { Set-AfState "wsl_distro" $nomeDistro.Trim() }
+        } catch { Write-Verbose "distro name unavailable: $($_.Exception.Message)" }
+        $ErrorActionPreference = $prevDistro
         # Reiniciar nem sempre e necessario. Quando as features JA estavam
         # ligadas e faltava so a distro - que e o estado da SEGUNDA volta - o
         # `wsl --install` termina o servico ali mesmo. Mandar reiniciar nesse
@@ -1420,6 +1465,10 @@ if (-not $wslReady) {
     Stop-Installer 1; return
 }
 Set-AfState "wsl" "preexisting"
+# A identidade da instalacao e gravada AQUI, assim que se sabe qual usuario
+# consegue rodar dentro da distro - e nao no fim, porque uma instalacao que
+# falhe depois disto ainda precisa poder ser desinstalada.
+Set-AfState "wsl_user" $(if ($script:WslUser.Count -gt 0) { "root" } else { "default" })
 Write-Ok "WSL2 available"
 
 Write-Phase 2 "Docker Desktop"
@@ -1519,6 +1568,9 @@ Write-Host ""
 # instaladores, e uma flag desconhecida faz o install.sh sair com "Unknown flag".
 # O defeito que ela existia para conter (a pergunta reaparecendo dentro da
 # distro) deixou de existir por construcao.
+# Gravado ANTES de delegar: uma instalacao que morra no meio ainda precisa deixar
+# para tras onde ela estava sendo feita, senao o uninstall nao sabe onde olhar.
+Set-AfState "install_dir" $(if ($Dir) { $Dir } else { "~/AtlasFile" })
 $shFlags = "--no-open --delegated"
 if ($Yes) { $shFlags += " --yes" }
 if ($InstallDeps) { $shFlags += " --install-deps" }
@@ -1541,7 +1593,7 @@ catch { Write-Info "open http://localhost:5173 in your browser" }
 # OpenSearch e a chave de API. Repetir metade disso aqui era o mesmo defeito do
 # veredito duplicado do uninstall: duas conclusoes para um trabalho so. Este
 # painel diz apenas o que e do lado Windows.
-$dirWsl = if ($Dir) { $Dir } else { "~/AtlasFile" }
+$dirWsl = if ($script:AfDir) { $script:AfDir } else { "~/AtlasFile" }
 Write-Panel @(
     "logs   wsl -e bash -c 'cd $dirWsl && docker compose logs -f'",
     "stop   wsl -e bash -c 'cd $dirWsl && docker compose down'"

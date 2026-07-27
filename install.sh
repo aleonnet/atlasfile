@@ -104,14 +104,14 @@ Uninstall options:
   --remove-deps         Uninstall: also remove the system dependencies that the
                         manifest records as installed by AtlasFile
   --force               Uninstall: remove the clone even with local changes
-  --plan-only           Uninstall: print the removal plan and exit. Asks nothing,
-                        changes nothing — the dry run of the uninstall
 
 Diagnostics:
   --doctor              Read-only report of this machine: prerequisites, the
                         install manifest, the stack and the folders. Installs
                         nothing, changes nothing
-  --dry-run             Print what an install would do here and exit
+  --dry-run             Show, do not do. On its own: what an install would find
+                        and do on this machine. With --uninstall: the removal
+                        plan, and nothing is touched
   --verbose             Show the output of every tool as it runs, instead of
                         hiding it in the log
 
@@ -140,7 +140,7 @@ while [ $# -gt 0 ]; do
     --keep-data) PURGE_DATA=0; shift ;;
     --remove-deps) REMOVE_DEPS=1; shift ;;
     --force) FORCE=1; shift ;;
-    --plan-only) PLAN_ONLY=1; shift ;;
+    --plan-only) PLAN_ONLY=1; shift ;;              # hidden: nome de protocolo usado pelo install.ps1; --uninstall --dry-run e o publico
     --doctor) DOCTOR=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
@@ -432,6 +432,12 @@ ensure_homebrew() {
     host_set homebrew preexisting
     return 100
   fi
+  # `pending` ANTES de tentar: se o processo morrer entre o comando e o registro
+  # (ou se o run_step abortar o script), fica a prova de que ESTE instalador
+  # mexeu aqui. Sem isso o artefato ficava orfao para sempre — a execucao
+  # seguinte o veria presente e gravaria `preexisting`, apagando a nossa
+  # digital. `pending` nunca autoriza remover nada: ele vira uma FRASE no plano.
+  host_set homebrew pending
   run_step "installing Homebrew" env NONINTERACTIVE=1 /bin/bash -c \
     "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || return 1
   [ -x "${BREW_PREFIX}/bin/brew" ] && eval "$("${BREW_PREFIX}/bin/brew" shellenv)"
@@ -441,6 +447,12 @@ ensure_homebrew() {
 
 ensure_git() {
   command -v git >/dev/null 2>&1 && { host_set git preexisting; return 100; }
+  # `pending` ANTES de tentar: se o processo morrer entre o comando e o registro
+  # (ou se o run_step abortar o script), fica a prova de que ESTE instalador
+  # mexeu aqui. Sem isso o artefato ficava orfao para sempre — a execucao
+  # seguinte o veria presente e gravaria `preexisting`, apagando a nossa
+  # digital. `pending` nunca autoriza remover nada: ele vira uma FRASE no plano.
+  host_set git pending
   if [ "$OS_KIND" = "mac" ]; then
     ensure_homebrew || return 1
     run_step "installing git (Homebrew)" brew install git || return 1
@@ -467,6 +479,12 @@ ensure_docker_mac() {
     host_set docker preexisting
     return 100
   fi
+  # `pending` ANTES de tentar: se o processo morrer entre o comando e o registro
+  # (ou se o run_step abortar o script), fica a prova de que ESTE instalador
+  # mexeu aqui. Sem isso o artefato ficava orfao para sempre — a execucao
+  # seguinte o veria presente e gravaria `preexisting`, apagando a nossa
+  # digital. `pending` nunca autoriza remover nada: ele vira uma FRASE no plano.
+  host_set docker pending
   ensure_homebrew || return 1
   run_step "installing Docker Desktop (Homebrew cask)" brew install --cask docker-desktop || return 1
   host_set docker created
@@ -475,6 +493,12 @@ ensure_docker_mac() {
 
 ensure_docker_linux() {
   command -v docker >/dev/null 2>&1 && { host_set docker preexisting; return 100; }
+  # `pending` ANTES de tentar: se o processo morrer entre o comando e o registro
+  # (ou se o run_step abortar o script), fica a prova de que ESTE instalador
+  # mexeu aqui. Sem isso o artefato ficava orfao para sempre — a execucao
+  # seguinte o veria presente e gravaria `preexisting`, apagando a nossa
+  # digital. `pending` nunca autoriza remover nada: ele vira uma FRASE no plano.
+  host_set docker pending
   ensure_sudo || return 1
   run_step "installing Docker Engine (get.docker.com official script)" \
     sh -c "curl -fsSL https://get.docker.com | sh" || return 1
@@ -566,6 +590,11 @@ hint_upgrades() {
 AF_STATE_DIR="${HOME}/.atlasfile"
 AF_HOST_MANIFEST="${AF_STATE_DIR}/host-prereqs"
 AF_MANIFEST_NAME=".atlasfile-install-manifest"
+# Declarados aqui porque a BIBLIOTECA os referencia: só ganham valor na fase 2
+# (o caminho da instalação) e na fase 3 (se o .env já existia). Sem isto, sob
+# `set -u`, a bancada quebra ao carregar o arquivo como biblioteca.
+AF_MANIFEST=""
+ENV_STATE=""
 
 manifest_get() { # <file> <key> -> value ("" when absent)
   [ -f "$1" ] || return 0
@@ -593,6 +622,25 @@ manifest_set() { # <file> <key> <value> — merge, never downgrading `created`
 host_get() { manifest_get "$AF_HOST_MANIFEST" "$1"; }
 host_set() { manifest_set "$AF_HOST_MANIFEST" "$1" "$2"; }
 
+# Backup datado antes de mexer num .env que JÁ EXISTIA — a mesma disciplina do
+# backup_and_install_file do mac_env_install.sh, que é a única coisa do modelo
+# dele que faltava aqui. Sem isto, reinstalar sobre uma instalação existente
+# reescrevia PROJECTS_HOST_ROOT, a chave do cookie do Dashboards e as variáveis
+# de autenticação sem nenhum caminho de volta. Uma vez por execução.
+AF_ENV_BACKED_UP=0
+backup_env_once() {
+  [ "$AF_ENV_BACKED_UP" = "1" ] && return 0
+  [ "$ENV_STATE" = "created" ] && return 0   # nasceu agora: não há o que preservar
+  [ -f .env ] || return 0
+  local nome
+  nome=".env.backup.$(date +%Y%m%d%H%M%S)"
+  cp .env "$nome" 2>/dev/null || return 0
+  manifest_set "$AF_MANIFEST" env_backup "$nome"
+  AF_ENV_BACKED_UP=1
+  info "your previous .env was copied to ${nome}"
+  return 0
+}
+
 
 # ── Uninstall ───────────────────────────────────────────────────────────────
 # Facts first (all read-only), then a plan in text with a REMOVED and a
@@ -600,6 +648,11 @@ host_set() { manifest_set "$AF_HOST_MANIFEST" "$1" "$2"; }
 # a variable so the plan builder can be unit-tested without a Docker daemon.
 UN_DIR=""; UN_PROJECT=""; UN_COMPOSE_FILE=0
 UN_CLONE_STATE="unknown"; UN_DIR_DIRTY=0; UN_ENV=0
+# O que a instalação registrou sobre si mesma. `install_dir` era gravado e nunca
+# lido — a garantia documentada ("a pasta só some se bater com o install_dir
+# registrado") não existia no código. `env_file`/`api_keys_file` idem, e o
+# segundo guarda uma CHAVE DE API viva.
+UN_DIR_RECORDED=""; UN_ENV_CREATED=""; UN_APIKEYS_CREATED=""; UN_ENV_BACKUP=""
 UN_CONTAINERS=0; UN_VOLUME=""; UN_IMAGES=""
 UN_PROJECTS_ROOT=""; UN_PROJECTS_CREATED="preexisting"; UN_PROJECTS_FILES=0
 UN_OTHER_ARTIFACTS=""; UN_OLLAMA_PRESENT=0
@@ -623,11 +676,23 @@ host_extra_has() { # <key>
 
 host_extra_label() { # <key>
   case "$1" in
-    docker) printf 'Docker Desktop (Windows side)' ;;
-    ollama) printf 'Ollama (Windows side)' ;;
-    wsl)    printf 'WSL2' ;;
-    *)      printf '%s (Windows side)' "$1" ;;
+    docker)     printf 'Docker Desktop (Windows side)' ;;
+    ollama)     printf 'Ollama (Windows side)' ;;
+    wsl)        printf 'WSL2' ;;
+    wsl_distro) printf 'the WSL distro this installer downloaded' ;;
+    *)          printf '%s (Windows side)' "$1" ;;
   esac
+}
+
+# `pending` é o estado de uma instalação que começou e não se sabe se terminou:
+# o processo pode ter morrido entre o comando e o registro, ou o próprio comando
+# ter falhado (o run_step aborta o script). Nos dois casos NÃO dá para provar que
+# criamos — então o plano PRESERVA e diz por quê, em vez de deixar o usuário sem
+# nenhuma pista de que o instalador mexeu ali.
+un_pending_note() { # <chave> <rótulo>
+  [ "$(host_get "$1")" = "pending" ] || return 1
+  un_add_keep "${2}: this installer was interrupted while installing it and cannot prove it created it — preserved. Remove it by hand if it is not yours"
+  return 0
 }
 
 un_render_host_extra() { # <deps>
@@ -641,8 +706,11 @@ un_render_host_extra() { # <deps>
     key="${pair%%=*}"; val="${pair#*=}"
     [ -n "$key" ] && [ "$key" != "$pair" ] || continue
     label="$(host_extra_label "$key")"
-    if [ "$key" = "wsl" ]; then
-      # A Windows feature other tools depend on. Never removed, whoever created it.
+    if [ "$key" = "wsl" ] || [ "$key" = "wsl_distro" ]; then
+      # Recurso do Windows do qual outras ferramentas dependem — e a distro, que
+      # pode ter virado o ambiente de trabalho da pessoa. Nunca removidos, quem
+      # quer que os tenha criado. O que muda é que agora eles APARECEM: antes o
+      # plano falava do recurso e ficava calado sobre a distro baixada por nós.
       un_add_keep "${label} — never removed automatically (other tools may depend on it)"
       continue
     fi
@@ -685,6 +753,10 @@ un_collect() { # <dir>
 
   local mf="${dir}/${AF_MANIFEST_NAME}"
   UN_CLONE_STATE="$(manifest_get "$mf" repo_clone)"; [ -n "$UN_CLONE_STATE" ] || UN_CLONE_STATE="unknown"
+  UN_DIR_RECORDED="$(manifest_get "$mf" install_dir)"
+  UN_ENV_CREATED="$(manifest_get "$mf" env_file)"
+  UN_APIKEYS_CREATED="$(manifest_get "$mf" api_keys_file)"
+  UN_ENV_BACKUP="$(manifest_get "$mf" env_backup)"
   UN_PROJECTS_ROOT="$(manifest_get "$mf" projects_root)"
   UN_PROJECTS_CREATED="$(manifest_get "$mf" projects_root_created)"; [ -n "$UN_PROJECTS_CREATED" ] || UN_PROJECTS_CREATED="preexisting"
   if [ -z "$UN_PROJECTS_ROOT" ] && [ "$UN_ENV" = "1" ]; then
@@ -765,7 +837,13 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
   [ -n "$UN_IMAGES" ] && un_add_keep "shared upstream images (opensearchproject/*) — remove them by hand if you want the disk back"
 
   # ── the clone ──
-  if [ "$UN_CLONE_STATE" = "created" ]; then
+  if [ "$UN_CLONE_STATE" = "created" ] && [ -n "$UN_DIR_RECORDED" ] && [ "$UN_DIR_RECORDED" != "$UN_DIR" ]; then
+    # A garantia que o CHANGELOG anunciava desde a v0.54.0 e que o código não
+    # tinha: a pasta só é apagada se ela for a MESMA que o manifesto registrou.
+    # Um manifesto copiado, um --dir apontado para o lugar errado ou uma pasta
+    # renomeada deixavam de ser detectáveis.
+    un_add_keep "${UN_DIR} — NOT removed: the manifest here records the install at ${UN_DIR_RECORDED}, not this folder"
+  elif [ "$UN_CLONE_STATE" = "created" ]; then
     if [ "$UN_DIR_DIRTY" = "1" ] && [ "$force" != "1" ]; then
       un_add_keep "${UN_DIR} has local changes — NOT removed (re-run with --force to remove it anyway)"
     else
@@ -778,6 +856,25 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
     # No compose file means no stack was touched either: claiming otherwise
     # would make the plan describe something that did not happen.
     un_add_keep "${UN_DIR} was not created by this installer — preserved"
+  fi
+
+  # ── artefatos nossos dentro de uma pasta que vai SOBREVIVER ──
+  # `config/api_keys.json` guarda uma CHAVE DE API VIVA. Como um clone que não
+  # foi criado por nós é sempre preservado, a chave ficava em disco depois da
+  # desinstalação — e as duas chaves do manifesto que provariam isso eram
+  # gravadas e nunca lidas.
+  if ! un_has_action "rm-clone"; then
+    if [ "$UN_APIKEYS_CREATED" = "created" ] && [ -f "${UN_DIR}/config/api_keys.json" ]; then
+      un_add_remove "${UN_DIR}/config/api_keys.json — created by this installer and holds a live API key"
+      un_act "rm-apikeys"
+    fi
+    if [ "$UN_ENV_CREATED" = "created" ] && [ -f "${UN_DIR}/.env" ]; then
+      un_add_remove "${UN_DIR}/.env — created by this installer (the folder itself is preserved)"
+      un_act "rm-env"
+    fi
+    if [ -n "$UN_ENV_BACKUP" ] && [ -f "${UN_DIR}/${UN_ENV_BACKUP}" ]; then
+      un_add_keep "${UN_ENV_BACKUP} — the .env you had before this install, kept so you can restore it"
+    fi
   fi
 
   # ── the user's documents ──
@@ -808,7 +905,9 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
       un_add_keep "Docker: another AtlasFile install still uses it here (${UN_OTHER_ARTIFACTS}) — preserved"
     else
       st="$(host_get docker)"
-      if [ "$st" = "created" ]; then
+      if un_pending_note docker "Docker"; then
+        :
+      elif [ "$st" = "created" ]; then
         if [ "$OS_KIND" = "mac" ]; then
           un_add_remove "Docker Desktop, installed by AtlasFile — brew uninstall --cask docker-desktop (THIS DELETES THE APP FROM /Applications)"
           un_act "brew-cask:docker-desktop"
@@ -822,7 +921,9 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
     fi
 
     st="$(host_get git)"
-    if [ "$st" = "created" ]; then
+    if un_pending_note git "git"; then
+      :
+    elif [ "$st" = "created" ]; then
       un_add_remove "git, installed by AtlasFile"
       un_act "pkg-git"
     else
@@ -859,6 +960,7 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
 
     [ "$(host_get compose_plugin)" = "created" ] && { un_add_remove "docker-compose-plugin, installed by AtlasFile"; un_act "pkg-compose"; }
     [ "$(host_get docker_group)" = "created" ] && { un_add_remove "your membership in the docker group (added by AtlasFile)"; un_act "gpasswd-d"; }
+    un_pending_note homebrew "Homebrew" || true
     [ "$(host_get homebrew)" = "created" ] && un_add_keep "Homebrew was installed by AtlasFile but is NEVER removed automatically — https://github.com/Homebrew/install#uninstall-homebrew"
   fi
 
@@ -959,6 +1061,10 @@ un_execute() {
         else
           warn "refusing to remove ${UN_DIR}: it does not look like an AtlasFile install"
         fi ;;
+      rm-apikeys)
+        un_step "removing ${UN_DIR}/config/api_keys.json" rm -f "${UN_DIR}/config/api_keys.json" ;;
+      rm-env)
+        un_step "removing ${UN_DIR}/.env" rm -f "${UN_DIR}/.env" ;;
       rm-projects-root)
         # rmdir on purpose: it refuses on a non-empty directory, so a race that
         # filled the folder between the plan and here cannot destroy documents.
@@ -1023,19 +1129,26 @@ run_uninstall() {
   # Facts first, and nobody has been asked anything yet: --plan-only short-
   # circuits here so an orchestrator can read the plan of THIS side before
   # putting a single question to the user.
-  if [ "$PLAN_ONLY" = "1" ]; then
+  if [ "$PLAN_ONLY" = "1" ] || [ "$DRY_RUN" = "1" ]; then
     un_build_plan "${PURGE_DATA:-ask}" "$REMOVE_DEPS" "$FORCE"
     un_print_plan
     # Fatos em forma legível por máquina, para o orquestrador não ter de
     # adivinhar lendo a prosa do plano: se há volume, ele sabe que precisa
     # perguntar; se não há ação alguma, sabe que não há o que confirmar.
-    printf 'ATLASFILE_FACT: volume=%s\n' "$UN_VOLUME"
-    if [ -n "$UN_ACTIONS" ]; then
-      printf 'ATLASFILE_FACT: actions=1\n'
+    #
+    # Só no modo de PROTOCOLO. Quem digitou `--uninstall --dry-run` é uma pessoa,
+    # e essas linhas são ruído na tela dela.
+    if [ "$PLAN_ONLY" = "1" ]; then
+      printf 'ATLASFILE_FACT: volume=%s\n' "$UN_VOLUME"
+      if [ -n "$UN_ACTIONS" ]; then
+        printf 'ATLASFILE_FACT: actions=1\n'
+      else
+        printf 'ATLASFILE_FACT: actions=0\n'
+      fi
+      sentinel "plan-only"
     else
-      printf 'ATLASFILE_FACT: actions=0\n'
+      info "--dry-run: nothing was touched."
     fi
-    sentinel "plan-only"
     return 0
   fi
 
@@ -1122,11 +1235,9 @@ doc_version() { # <cmd> <args...> — versão em uma linha; falha se o comando f
   printf '%s' "$saida" | head -1
 }
 
-run_doctor() {
-  detect_os
-  doc_head "System"
-  doc_ok "$(uname -s) $(uname -r) ($(uname -m)) · package manager: ${PKG}"
-
+# O retrato dos pre-requisitos serve ao --doctor E ao --dry-run: o dry run dizia
+# so o que FALTA, e "o que ele ve" e metade da pergunta que ele responde.
+doc_prereqs() {
   doc_head "Prerequisites"
   local v
   if v="$(doc_version git --version)"; then doc_ok "$v"; else doc_fail "git not found"; fi
@@ -1147,6 +1258,16 @@ run_doctor() {
     doc_fail "docker not found"
   fi
   if v="$(doc_version ollama --version)"; then doc_ok "$v"; else doc_warn "ollama not installed (optional, only for a 100% local model)"; fi
+
+  return 0
+}
+
+run_doctor() {
+  detect_os
+  doc_head "System"
+  doc_ok "$(uname -s) $(uname -r) ($(uname -m)) · package manager: ${PKG}"
+
+  doc_prereqs
 
   doc_head "Install manifest (what this installer created here)"
   if [ -f "$AF_HOST_MANIFEST" ]; then
@@ -1215,6 +1336,7 @@ run_doctor() {
 # ── --dry-run: o que uma instalação faria aqui ──────────────────────────────
 run_dry_run() {
   detect_os
+  doc_prereqs
   doc_head "Install plan"
   printf '%s  • repository   %s (%s)\n' "$GUT" "$REPO_URL" "$BRANCH"
   printf '%s  • install dir  %s%s\n' "$GUT" "$INSTALL_DIR" \
@@ -1722,7 +1844,9 @@ manifest_set "$AF_MANIFEST" install_dir "$INSTALL_DIR"
 
 # ── 3. Configuration (.env) ─────────────────────────────────────────────────
 title "3/5" "Configuring"
-if [ -f .env ]; then manifest_set "$AF_MANIFEST" env_file preexisting; else manifest_set "$AF_MANIFEST" env_file created; fi
+if [ -f .env ]; then ENV_STATE=preexisting; else ENV_STATE=created; fi
+manifest_set "$AF_MANIFEST" env_file "$ENV_STATE"
+
 if [ ! -f .env ]; then
   cp .env.example .env
   # One OpenSearch password per install — the template ships a public
@@ -1772,6 +1896,7 @@ fi
 manifest_set "$AF_MANIFEST" projects_root "${PROJECTS_ROOT}"
 mkdir -p "${PROJECTS_ROOT}"
 if grep -q '^PROJECTS_HOST_ROOT=' .env; then
+  backup_env_once
   tmp_env="$(mktemp)"
   sed "s|^PROJECTS_HOST_ROOT=.*|PROJECTS_HOST_ROOT=${PROJECTS_ROOT}|" .env > "${tmp_env}" && mv "${tmp_env}" .env
 else
@@ -1781,6 +1906,7 @@ printf '  %s✔%s projects at: %s%s%s\n' "$GREEN" "$RESET" "$BOLD" "${PROJECTS_R
 
 # set_env VAR VALUE — replace or append in .env
 set_env() {
+  backup_env_once
   if grep -q "^$1=" .env; then
     tmp_env="$(mktemp)"
     sed "s|^$1=.*|$1=$2|" .env > "${tmp_env}" && mv "${tmp_env}" .env
