@@ -334,6 +334,33 @@ ask()   { bar_clear; printf '%s%s?%s %s' "$GUT" "$ORANGE" "$RESET" "$*"; }
 # entrarem nela. O `tr` é cinto e suspensórios: mesmo com readline, um terminal
 # exótico pode entregar controle, e nenhum byte de controle pode sobreviver numa
 # resposta que vai virar caminho de diretório.
+# UM portão para o caminho da pasta de projetos, qualquer que seja a origem:
+# --projects-root, o .env de uma instalação anterior, a resposta da pergunta ou
+# o default. Validar só a resposta não bastou e derrubou duas instalações
+# seguidas: na primeira o lixo entrou no .env, e na segunda ele foi LIDO DE
+# VOLTA do próprio .env, sem passar por pergunta nenhuma.
+#
+# Devolve o caminho utilizável, ou falha. Faz três coisas, nesta ordem:
+#   1. tira sequência CSI e byte de controle (tecla de seta, colagem suja);
+#   2. expande `~`, que NÃO expande dentro de variável — `mkdir -p "~/x"` cria
+#      uma pasta chamada literalmente `~` dentro do diretório atual;
+#   3. exige caminho absoluto: relativo aqui vira montagem errada no compose.
+af_sane_path() { # <caminho>
+  local p="$1"
+  p="$(printf '%s' "$p" | LC_ALL=C sed $'s/\033\\[[0-9;?]*[A-Za-z~]//g' | LC_ALL=C tr -d '\000-\037\177')"
+  # shellcheck disable=SC2088  # o til aqui é LITERAL de propósito: é o texto que
+  # o usuário digitou, e é justamente o que precisa ser expandido à mão.
+  case "$p" in
+    "~")   p="$HOME" ;;
+    "~/"*) p="${HOME}/${p#\~/}" ;;
+  esac
+  case "$p" in
+    /*) ;;
+    *)  return 1 ;;
+  esac
+  printf '%s' "$p"
+}
+
 af_read_line() {
   local resposta=""
   if ! read -e -r resposta < "$TTY_DEV" 2>/dev/null; then
@@ -829,6 +856,12 @@ un_collect() { # <dir>
   UN_PROJECTS_CREATED="$(manifest_get "$mf" projects_root_created)"; [ -n "$UN_PROJECTS_CREATED" ] || UN_PROJECTS_CREATED="preexisting"
   if [ -z "$UN_PROJECTS_ROOT" ] && [ "$UN_ENV" = "1" ]; then
     UN_PROJECTS_ROOT="$(grep '^PROJECTS_HOST_ROOT=' "${dir}/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  fi
+  # Mesmo portão do lado da instalação: um .env corrompido não pode fazer o
+  # plano de remoção falar de um caminho que não existe — nem, pior, tentar
+  # apagá-lo.
+  if [ -n "$UN_PROJECTS_ROOT" ]; then
+    UN_PROJECTS_ROOT="$(af_sane_path "$UN_PROJECTS_ROOT" || true)"
   fi
   if [ -n "$UN_PROJECTS_ROOT" ] && [ -d "$UN_PROJECTS_ROOT" ]; then
     UN_PROJECTS_FILES="$(find "$UN_PROJECTS_ROOT" -mindepth 1 2>/dev/null | wc -l | tr -d ' ')"
@@ -1964,6 +1997,16 @@ if [ -z "${PROJECTS_ROOT}" ]; then
     PROJECTS_ROOT="${answer:-${PROJECTS_ROOT_DEFAULT}}"
   fi
 fi
+
+# O PORTÃO: aqui passam as quatro origens possíveis do caminho, e nenhuma escapa.
+# Um valor inválido vindo de um .env anterior é o que derrubou a segunda
+# instalação — o `.env already exists — preserved` releu o lixo da primeira e
+# nem chegou a perguntar.
+if ! PROJECTS_ROOT="$(af_sane_path "$PROJECTS_ROOT")"; then
+  warn "the projects folder is not a usable absolute path — falling back to ${PROJECTS_ROOT_DEFAULT}"
+  PROJECTS_ROOT="$PROJECTS_ROOT_DEFAULT"
+fi
+
 # Recorded BEFORE mkdir: only a folder this installer actually created may be
 # removed later, and only while it is still empty.
 if [ -d "${PROJECTS_ROOT}" ]; then
@@ -1972,7 +2015,9 @@ else
   manifest_set "$AF_MANIFEST" projects_root_created created
 fi
 manifest_set "$AF_MANIFEST" projects_root "${PROJECTS_ROOT}"
-mkdir -p "${PROJECTS_ROOT}"
+# Falha aqui não pode virar compose quebrado três passos adiante: sem a pasta,
+# o `${PROJECTS_HOST_ROOT}:/projects` não tem o que montar.
+mkdir -p "${PROJECTS_ROOT}" || fail "could not create the projects folder ${PROJECTS_ROOT} — check permissions and re-run"
 if grep -q '^PROJECTS_HOST_ROOT=' .env; then
   backup_env_once
   tmp_env="$(mktemp)"

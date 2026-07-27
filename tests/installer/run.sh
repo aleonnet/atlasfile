@@ -602,6 +602,39 @@ printf '~/Desktop/Teste\n' > "${SANDBOX}/tty_in"
 out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line')"
 assert_eq "$out" "~/Desktop/Teste"
 
+# ── O portao do caminho: TODA origem passa por ele ─────────────────────────
+# Duas instalacoes seguidas morreram em "service api refers to undefined volume"
+# porque so a RESPOSTA da pergunta era validada. Na primeira o lixo entrou no
+# .env; na segunda o `.env already exists - preserved` releu esse lixo e nem
+# chegou a perguntar. Sao QUATRO origens (--projects-root, .env anterior, default
+# e resposta) e o portao e um so.
+make_sandbox
+t "sequencia de tecla de seta e recusada, venha de onde vier"
+run_case -- 'af_sane_path "$(printf "\033[C\033[D\033[C")"' >/dev/null 2>&1 \
+  && no "aceitou um caminho feito so de escape" || ok
+
+t "til e expandido a mao (nao expande dentro de variavel)"
+out="$(run_case -- 'HOME=/tmp/casa af_sane_path "~/Docs"')"
+assert_eq "$out" "/tmp/casa/Docs"
+
+t "caminho relativo e recusado (viraria montagem errada no compose)"
+run_case -- 'af_sane_path "Desktop/relativo"' >/dev/null 2>&1 \
+  && no "aceitou caminho relativo" || ok
+
+t "caminho absoluto normal passa intacto"
+out="$(run_case -- 'af_sane_path "/Users/eu/Documentos"')"
+assert_eq "$out" "/Users/eu/Documentos"
+
+# O plano de remocao tambem le esse valor do .env: um .env corrompido nao pode
+# fazer o plano falar de um caminho que nao existe.
+t "un_collect nao propaga caminho corrompido vindo do .env"
+make_sandbox
+mkdir -p "${SANDBOX}/inst"
+printf 'services: {}\n' > "${SANDBOX}/inst/docker-compose.yml"
+printf 'PROJECTS_HOST_ROOT=\033[C\033[D\n' > "${SANDBOX}/inst/.env"
+out="$(run_case -- 'un_collect "$SANDBOX/inst"; printf "[%s]" "$UN_PROJECTS_ROOT"')"
+assert_eq "$out" "[]"
+
 # ── Registros da ida e da volta: chave gravada tem de virar decisão ─────────
 # `install_dir` era gravado e NUNCA lido — a garantia que o CHANGELOG anunciava
 # ("a pasta só some se bater com o install_dir registrado") não existia.
