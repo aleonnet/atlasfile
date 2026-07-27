@@ -413,6 +413,14 @@ Assert-Match "a delegacao silencia o banner do outro lado" $calls "--delegated"
 # flag desconhecida faz o install.sh sair com "Unknown flag".
 Assert-NoMatch "nao passa flag que o outro lado nao conhece mais" $calls "--no-ollama"
 Assert-Match "-Dir viaja para o outro lado" $calls "--dir /root/Outro"
+# Sem a URL sobrescrivivel e o -Branch, uma branch NAO pode ser testada de ponta
+# a ponta no Windows: o .ps1 da branch buscaria o .sh do main.
+$sb = New-Sandbox
+$env:ATLASFILE_SH_URL = "https://exemplo.invalido/branch/install.sh"
+$out = Run-Installer @("-Yes", "-Branch", "minha-branch")
+$calls = Calls
+Assert-Match "a URL do install.sh vem do ambiente" $calls "exemplo.invalido/branch/install.sh"
+Assert-Match "e o -Branch viaja junto" $calls "--branch minha-branch"
 # O curl endurecido (mesma dureza do mac-env-setup): um solucao de rede nao pode
 # virar instalacao pela metade.
 Assert-Match "download com retry e protocolo pinado" $calls "--proto '=https' --tlsv1.2 --retry 3"

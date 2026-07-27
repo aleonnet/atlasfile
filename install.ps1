@@ -32,7 +32,8 @@ param(
     [switch]$DryRun,
     [switch]$Verbose,
     [switch]$Help,
-    [string]$Dir = ""
+    [string]$Dir = "",
+    [string]$Branch = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,6 +79,7 @@ real installer inside WSL.
 Install options:
   -Dir PATH       Where AtlasFile lives inside WSL (default: ~/AtlasFile).
                   Forwarded to install.sh as --dir, install and uninstall alike
+  -Branch NAME    Branch to clone (default: main). Forwarded as --branch
   -Yes            Non-interactive. On its own it NEVER installs system
                   dependencies - see -InstallDeps
   -InstallDeps    Authorize installing WSL2 and Docker Desktop
@@ -105,6 +107,7 @@ Diagnostics:
 Other:
   -Help           This help
 
+Environment: ATLASFILE_SH_URL (override the install.sh URL, for testing a branch)
 Manifest: %LOCALAPPDATA%\AtlasFile\host-prereqs
 "@
 }
@@ -255,7 +258,11 @@ function Invoke-Native {
 
 # A mesma URL em tres lugares (plano, execucao e instalacao) vira uma constante:
 # tres literais divergem no dia em que um deles for editado sozinho.
-$AF_SH_URL = "https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh"
+# Sobrescrevivel por ambiente, espelhando o ATLASFILE_REPO_URL do install.sh.
+# Sem isto NAO DA para testar uma branch de ponta a ponta no Windows: o .ps1 da
+# branch buscaria o .sh do main, e o teste validaria a combinacao errada.
+$AF_SH_URL = if ($env:ATLASFILE_SH_URL) { $env:ATLASFILE_SH_URL }
+             else { "https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh" }
 # --proto '=https' --tlsv1.2 e retry: mesma dureza do mac-env-setup. Um curl sem
 # retry transforma um soluco de rede em instalacao pela metade.
 $AF_CURL = "curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 --retry-connrefused"
@@ -1579,6 +1586,7 @@ if ($Yes) { $shFlags += " --yes" }
 if ($InstallDeps) { $shFlags += " --install-deps" }
 if ($EnableAuth) { $shFlags += " --enable-auth" }
 if ($Dir) { $shFlags += " --dir $Dir" }
+if ($Branch) { $shFlags += " --branch $Branch" }
 $argsSh = @($script:WslUser) + @("-e", "bash", "-c", "$AF_CURL $AF_SH_URL | bash -s -- $shFlags")
 Invoke-Native wsl $argsSh
 if ($script:NativeExitCode -ne 0) {
