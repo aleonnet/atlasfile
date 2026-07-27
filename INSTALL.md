@@ -18,6 +18,21 @@ O instalador verifica pré-requisitos, clona em `~/AtlasFile`, cria o `.env` (pe
 - `--install-deps` — instala pré-requisitos que faltarem (Docker, git) sem perguntar
 - `--with-ollama` — instala também o Ollama + modelo local (`--ollama-model NOME`, default `gemma4:12b`)
 
+**Antes de instalar, ou quando algo der errado**, os dois instaladores têm modos que não mudam nada:
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --doctor
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --dry-run
+```
+
+```powershell
+# Windows — diagnostica os DOIS lados: o Windows e, dentro do WSL, o Linux
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -Doctor
+```
+
+`--doctor` relata pré-requisitos com versão, o manifesto do que o instalador criou nesta máquina, o estado da instalação e da stack, as portas e a pasta de documentos — e sai com código diferente de zero se algo estiver quebrado. `--dry-run` diz o que uma instalação faria aqui. `--verbose` mostra a saída das ferramentas em vez de escondê-la no log.
+
 O restante deste guia cobre a **instalação manual** e a operação completa.
 
 ---
@@ -503,7 +518,9 @@ make uninstall
 
 **Como ele sabe o que é dele.** Durante a instalação são gravados dois manifestos: `~/.atlasfile/host-prereqs` (dependências do sistema — há um Docker por máquina) e `<pasta da instalação>/.atlasfile-install-manifest` (fatos daquela instalação). Cada item vale `created` ou `preexisting`; `created` nunca é rebaixado numa reinstalação, e chave ausente lê como `preexisting`. Ou seja: **na dúvida, preserva**.
 
-**O que acontece.** Antes de tocar em qualquer coisa ele imprime um plano em texto com duas seções — o que será removido e o que será preservado, com o motivo — e espera confirmação (`--yes` para modo não-interativo).
+**O que acontece.** Antes de tocar em qualquer coisa ele imprime um plano em texto com duas seções — o que será removido e o que será preservado, com o motivo — e espera confirmação (`--yes` para modo não-interativo). Para só ver o plano, sem confirmar nada: `--plan-only`.
+
+**No Windows, o plano cobre a máquina inteira.** São dois escopos com dois manifestos — a distro e o Windows —, e quem instalou o Docker Desktop e o Ollama foi o `install.ps1`. Ele pede os fatos ao `install.sh` dentro do WSL, imprime **um** plano com os dois lados e faz **uma** pergunta; só depois de o lado Linux confirmar a execução é que qualquer pacote do Windows é tocado. Se você responder "não", nada é removido dos dois lados — e o instalador sai com `1602`, o código que o mundo Windows usa para "o usuário cancelou". Quando o desinstalador do Docker agenda arquivos em uso para exclusão no próximo boot, a saída é `3010`: sucesso com reinício pendente.
 
 | Item | Comportamento |
 |---|---|

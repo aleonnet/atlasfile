@@ -15,6 +15,48 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.55.0] - 2026-07-27
+
+Ciclo aberto por um `-Uninstall -RemoveDeps` rodado numa máquina Windows 11 real. O log mostrou que **o plano que o usuário confirma descrevia apenas o lado WSL**, enquanto o lado Windows agia depois, sem plano e sem confirmação. Ao ler os dois instaladores por inteiro apareceu um defeito pior, que ninguém tinha visto.
+
+### Corrigido
+
+- **CRÍTICO — cancelar o plano não impedia a remoção do Docker.** O `install.sh` devolvia `0` ao responder "n" (`return 0` no caminho de cancelamento) e o `install.ps1` **nunca lia o código de saída** da delegação. Resultado: quem cancelava tinha o Docker Desktop e o Ollama removidos assim mesmo. Agora o lado Windows exige **as duas provas** — código de saída 0 **e** a linha-sentinela `ATLASFILE_UNINSTALL: confirmed` — antes de encostar em qualquer pacote. Não existe documentação oficial de que o `wsl.exe` propague o código de saída do comando Linux; com a sentinela, um código engolido faz o instalador **falhar fechado** em vez de ler silêncio como confirmação
+- **O plano dizia "Docker preserved" segundos antes de apagar o Docker.** As duas frases eram verdadeiras no próprio escopo: dentro do WSL a CLI vem da integração do Docker Desktop, então o manifesto da distro diz `preexisting`, enquanto o do Windows dizia `created`. Os fatos do outro lado da fronteira agora viajam como dado (`--host-extra docker=created,…`) e são renderizados no **mesmo plano, antes da mesma confirmação**
+- **O Ollama não aparecia em nenhuma das duas seções do plano** e ainda assim era removido. Com a chave ausente do manifesto, os três ramos da decisão falhavam e o resultado era silêncio. Chave desconhecida passa a produzir uma frase — e só quando a ferramenta está de fato na máquina, medido antes de afirmar
+- **A pasta de instalação nunca era removida.** `.gitignore` tinha `backend/runs/config/api_keys.json` numa linha só, aparentemente duas entradas fundidas, que **não ignorava nenhuma das duas** (medido com `git check-ignore`). Como o one-liner recomendado usa `--enable-auth`, o instalador gravava `config/api_keys.json` não rastreado dentro do clone, o guard de "local changes" disparava e a remoção era recusada em **toda** instalação feita pelo caminho documentado
+- **No Windows, a pergunta do Ollama aparecia duas vezes.** A decisão de projeto — Ollama vive do lado Windows, os containers o alcançam por `host.docker.internal` — existia só num comentário. Sem `--no-ollama` o `install.sh` reencontrava as condições de oferecer dentro da distro (onde `command -v ollama` naturalmente falha, porque o binário está no outro sistema operacional) e um "sim" puxava vários GB de duplicado
+- **Dois vereditos finais, o primeiro falso**: o `install.sh` anunciava "AtlasFile removed" enquanto o lado Windows ainda tinha pacotes para remover. Agora quem delega tem a última palavra (`--delegated`)
+- **Dois banners diferentes na mesma tela.** O estático do `install.ps1` era arte escrita à mão — luas em posições que a animação nunca produz e uma linha de texto a mais; o quadro final ainda pintava cauda de cometa (proibido e testado do lado bash); e `AF_ORBIT_START` era 2 contra 10, o que trocava as duas luas de lugar. O banner estático passa a **ser** o quadro final da própria animação, e o `install.sh` não desenha quando é chamado por delegação
+- **Falha do Ollama sem diagnóstico**: o `winget` saía com `-1978335107` e a única orientação era "remove it from Settings > Apps". Agora o pacote é **verificado antes** (`winget list -e --id`) e, na falha, saem o código e as últimas linhas do log
+
+### Adicionado
+
+- **`--doctor` / `-Doctor`** — diagnóstico read-only, que não existia e era exatamente o que faltou na máquina real. No Linux: sistema, pré-requisitos com versão, o manifesto chave a chave, o estado da instalação, a stack, as portas e a pasta de documentos. No Windows: elevação, WSL com **prova de execução**, daemon do Docker, integração com o WSL, Ollama, manifesto — e então **delega o lado Linux ao mesmo `install.sh`**. Um comando para a máquina inteira, terminando num placar e saindo `!= 0` quando algo está quebrado
+- **`--plan-only`** (o dry run do uninstall) e **`--dry-run` / `-DryRun`** (o que uma instalação faria aqui). Nenhum dos dois instala coisa alguma — nem do lado Windows
+- **`--verbose` / `-Verbose`** devolve a saída das ferramentas para a tela
+- **`-Dir` e `-Force` no `install.ps1`**, que só existiam do lado bash
+- **Códigos de saída do mundo Windows**: `1602` quando o usuário cancela e `3010` quando o desinstalador do Docker agenda arquivos em uso para exclusão no próximo boot — sucesso com reinício pendente, não falha
+- **Relatório da execução** em `~/.atlasfile/last-run.log` e `%LOCALAPPDATA%\AtlasFile\last-run.log`, com tempo por passo: o log guardava a saída das **ferramentas**, e o que o instalador fez não ficava em lugar nenhum
+
+### Mudado
+
+- **UX dos dois instaladores no padrão do nosso `mac_env_install.sh`**, em ANSI puro dos dois lados: calha vertical (`│`) que transforma uma lista de linhas soltas em fluxo, régua de fase varrida com a rampa do produto, barra de fase viva apagada antes de cada mensagem, placar no fim e "próximos passos" **condicionais ao que de fato aconteceu** (grupo docker, Ollama, Docker Desktop recém-instalado) — antes eram sempre as mesmas três linhas. O `gum` ficou de fora de propósito: baixa binário de terceiro a cada execução e não tem equivalente no PowerShell, o que recriaria a divergência que este ciclo está consertando
+- **`curl` endurecido** (`--proto '=https' --tlsv1.2 --retry 3`) e `trap` global restaurando o cursor em qualquer saída
+
+### Testes
+
+- Bancada bash: **79 → 119** asserções. Bancada PowerShell: **73 → 100+**, com o stub do `wsl` agora **atravessando a fronteira** (devolve plano, fatos e sentinela). Sem isso o `install.sh` nunca rodava na bancada e o plano não existia em asserção nenhuma — a razão estrutural de o defeito ter passado
+- Cenários novos que travam o defeito crítico: lado WSL cancelou → **nenhum** `winget uninstall`; código de saída engolido → falha fechada; plano ilegível → para antes de tocar em qualquer coisa
+- `check_consistency.py` ganhou **paridade de arte** (órbita, cometa, rampa, hex das quatro luas, wordmark, frase, índice de repouso) e **paridade de UI** (cada primitiva existe nos dois arquivos) — as duas provadas numa cópia isolada, injetando as divergências e conferindo que reprovam
+- CI: guarda de `Invoke-Native` estendida ao `Invoke-NativeCapture`; a do `Stop-Installer` aceitava só código de um dígito e reprovava `1602`; e um passo novo cobra que o git ignore o que o instalador gera — teria pego o `config/api_keys.json` na origem
+
+### Pendente de prova real
+
+O E2E na máquina Windows: instalar pelo one-liner, conferir que o plano cita Docker/Ollama/WSL nas seções certas, **responder "n"** e verificar que nada foi removido, repetir com "y". Nenhuma VM aqui roda Docker, então essa continua sendo a única prova que falta.
+
+---
+
 ## [0.54.0] - 2026-07-26
 
 ### Adicionado

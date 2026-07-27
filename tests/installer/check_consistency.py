@@ -268,6 +268,76 @@ def check_ui_parity(problems):
             problems.append("primitiva de UI '%s' nao existe no install.ps1" % rotulo)
 
 
+def check_call_before_declaration(problems):
+    """Funcao chamada pelo fluxo principal ANTES de ser declarada.
+
+    No PowerShell uma funcao so existe depois que a linha que a declara RODA, e
+    o script corre de cima para baixo. Chamar do fluxo principal algo declarado
+    mais abaixo nao e erro de sintaxe: o parse passa, o PSScriptAnalyzer passa, e
+    o instalador morre calado na maquina do usuario. Aconteceu com Test-DockerInWsl,
+    que o -Doctor chamava e que estava declarada 500 linhas depois.
+
+    O corpo das funcoes e ignorado de proposito: la a ordem nao importa, porque a
+    chamada so acontece quando alguem invoca a funcao.
+    """
+    linhas = read(PS).splitlines()
+    declarada = {}
+    for i, linha in enumerate(linhas):
+        m = re.match(r'function\s+([A-Za-z][A-Za-z-]*)', linha)
+        if m:
+            declarada[m.group(1).lower()] = i
+
+    def locais_em(texto):
+        return {n.lower() for n in re.findall(r'\b([A-Za-z][A-Za-z-]*-[A-Za-z][A-Za-z]*)\b', texto)
+                if n.lower() in declarada}
+
+    # "Fluxo principal" NAO e profundidade zero: um `if ($Doctor) { ... }` esta em
+    # profundidade 1 e roda na hora. O que isenta e estar no CORPO DE UMA FUNCAO.
+    # E a checagem tem de ser TRANSITIVA: o defeito real era o -Doctor chamar
+    # Test-AfDoctor (declarada antes, tudo certo) que por dentro chamava
+    # Test-DockerInWsl, declarada 500 linhas depois. So a cadeia inteira revela.
+    corpo = {}
+    chamadas_do_fluxo = []
+    profundidade = 0
+    atual = None
+    prof_da_funcao = None
+    for i, linha in enumerate(linhas):
+        sem_texto = re.sub(r'"[^"]*"|\'[^\']*\'|#.*$', '', linha)
+        m = re.match(r'\s*function\s+([A-Za-z][A-Za-z-]*)', linha)
+        if prof_da_funcao is None:
+            if m:
+                atual = m.group(1).lower()
+                corpo.setdefault(atual, set())
+                prof_da_funcao = profundidade
+            else:
+                for nome in locais_em(sem_texto):
+                    chamadas_do_fluxo.append((i, nome))
+        elif atual:
+            corpo[atual] |= locais_em(sem_texto)
+        profundidade += sem_texto.count("{") - sem_texto.count("}")
+        if profundidade < 0:
+            profundidade = 0
+        if prof_da_funcao is not None and profundidade <= prof_da_funcao:
+            prof_da_funcao = None
+            atual = None
+
+    for linha_uso, nome in chamadas_do_fluxo:
+        vistos, fila = set(), [nome]
+        while fila:
+            f = fila.pop()
+            if f in vistos:
+                continue
+            vistos.add(f)
+            fila.extend(corpo.get(f, ()))
+        for f in sorted(vistos):
+            onde = declarada.get(f)
+            if onde is not None and onde > linha_uso:
+                via = "" if f == nome else " (alcancada por %s)" % nome
+                problems.append("%s:%d  %s%s so e declarada na linha %d — no PowerShell ela ainda "
+                                "nao existe quando o fluxo principal chega aqui"
+                                % (PS, linha_uso + 1, f, via, onde + 1))
+
+
 def main():
     problems = []
     check_assertions(problems)
@@ -275,6 +345,7 @@ def main():
     check_dead_functions(problems)
     check_art_parity(problems)
     check_ui_parity(problems)
+    check_call_before_declaration(problems)
     for p in problems:
         print(p)
     if problems:
