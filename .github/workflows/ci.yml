@@ -236,7 +236,11 @@ jobs:
         run: |
           $bad = @()
           foreach ($linha in (Get-Content ./install.ps1)) {
-            if ($linha -match 'Stop-Installer\s+\d' -and $linha -notmatch 'Stop-Installer\s+\d\s*;\s*return' -and $linha -notmatch '^\s*function') {
+            # \d+ e nao \d: a guarda nasceu quando os unicos codigos eram 0 e 1,
+            # e reprovava `Stop-Installer 1602; return` porque casava so o "1" e
+            # depois nao encontrava o ";". Os codigos do mundo Windows (1602 =
+            # cancelado, 3010 = reinicio pendente) tem quatro digitos.
+            if ($linha -match 'Stop-Installer\s+\d+' -and $linha -notmatch 'Stop-Installer\s+\d+\s*;\s*return' -and $linha -notmatch '^\s*function') {
               $bad += $linha.Trim()
             }
           }
