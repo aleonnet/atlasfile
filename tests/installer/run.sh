@@ -447,6 +447,28 @@ $out
 EOF
 [ -z "$bad" ] && ok || no "linha fora da calha: $bad"
 
+# O comprimento da regua e uma PROPRIEDADE, nao um detalhe: no mac_env_install.sh
+# todos os estagios fecham na mesma coluna, e era isso que faltava aqui. A
+# primeira versao distribuia os tracos com divisao inteira e descartava o resto,
+# entao cada fase parava num lugar diferente.
+t "toda regua fecha na MESMA coluna, em qualquer locale"
+for loc in en_US.UTF-8 C; do
+  larguras="$(env -i HOME="$SANDBOX" TERM=xterm-256color COLORTERM=truecolor LC_ALL=$loc \
+      PATH=/usr/bin:/bin REPO_ROOT="$REPO_ROOT" bash -c '
+    export ATLASFILE_INSTALL_LIB=1; source "$REPO_ROOT/install.sh"
+    COLOR_OK=1; TRUECOLOR=1; IS_TTY=0
+    rule_sweep "[1/4] Checking and preparing prerequisites"
+    rule_sweep "[3/4] Configuring"
+    rule_sweep "Removal plan — /tmp/x"
+    rule_close' | python3 -c "
+import sys,re
+for l in re.sub(rb'\x1b\[[0-9;]*m',b'',sys.stdin.buffer.read()).split(b'\n'):
+    if l.strip(): print(len(l.decode('utf-8','replace')))" | sort -u | tr '\n' ' ')"
+  n="$(printf '%s' "$larguras" | wc -w | tr -d ' ')"
+  if [ "$n" = "1" ]; then ok
+  else no "sob locale ${loc} as reguas tem comprimentos diferentes: ${larguras}"; fi
+done
+
 # Varredura mecanica: NENHUMA linha de mensagem pode escapar da calha. Tres
 # vezes seguidas um ponto esquecido apareceu na tela do usuario — a pergunta da
 # pasta, e depois as cinco linhas da fase 3.

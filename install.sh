@@ -445,41 +445,49 @@ af_strwidth() { # <texto>
 # cabeçalho incluído (o `reveal_sweep` de lá pinta a string toda), em vez de só
 # os traços.
 rule_sweep() { # <cabeçalho ASCII>
-  local head="$1" w fill i j pos chunk segs=8 per feitos=0 total ch largura
+  local head="$1" w fill pad i segs=8 ini fim n bloco pos ch largura
   w="$(term_cols)"
   largura="$(af_strwidth "$head")"
   fill=$(( w - largura - AF_RULE_CONNECTOR_COLS - 1 ))
   [ "$fill" -lt 4 ] && fill=4
-  total=$(( largura + fill ))
-  [ "$total" -lt 2 ] && total=2
+
+  # O preenchimento é gerado como no mac_env_install.sh: um printf faz N espaços
+  # e uma substituição troca todos por traço. Eu tinha inventado uma
+  # distribuição em blocos com `fill / segs`, e o resto da divisão inteira (até
+  # 7 traços, variando com o tamanho do cabeçalho) era descartado — era por isso
+  # que cada régua terminava numa coluna diferente.
+  printf -v pad '%*s' "$fill" ''
+  pad=${pad// /─}
+
   if [ "$COLOR_OK" != "1" ] || [ "$TRUECOLOR" != "1" ]; then
-    chunk=""
-    for (( i = 0; i < fill; i++ )); do chunk="${chunk}─"; done
-    printf '├── %s%s%s %s\n' "$BOLD" "$head" "$RESET" "$chunk"
+    printf '├── %s%s%s %s\n' "$BOLD" "$head" "$RESET" "$pad"
     return 0
   fi
+
   af_rgb_at 0
   printf '\033[38;2;%d;%d;%dm├── ' "$AF_R" "$AF_G" "$AF_B"
-  # Cabeçalho é ASCII (`[1/5] Título`), então indexar caractere a caractere aqui
-  # é seguro — o que não se pode indexar são os traços, que ocupam 3 bytes.
+  # Cabeçalho é ASCII, então indexar caractere a caractere aqui é seguro.
   for (( i = 0; i < ${#head}; i++ )); do
     ch="${head:$i:1}"
-    pos=$(( i * 1000 / (total - 1) ))
+    pos=$(( i * 1000 / (largura + fill - 1) ))
     af_rgb_at "$pos"
     printf '\033[38;2;%d;%d;%dm%s' "$AF_R" "$AF_G" "$AF_B" "$ch"
   done
   printf ' '
-  # Teto, e não divisão inteira: com `fill / segs` cada régua perdia até 7
-  # traços (o resto da divisão), e como o resto depende do tamanho do cabeçalho,
-  # cada fase terminava numa coluna diferente. O `feitos < fill` do laço já
-  # corta no ponto exato, então arredondar para cima nunca passa do fim.
-  per=$(( (fill + segs - 1) / segs )); [ "$per" -lt 1 ] && per=1
-  for (( i = 0; i < segs && feitos < fill; i++ )); do
-    pos=$(( (${#head} + feitos) * 1000 / (total - 1) ))
+  # A rampa nos traços é aplicada por SEGMENTOS, e cada segmento é gerado pelo
+  # mesmo printf: os limites saem de i*fill/segs, cujas diferenças somam fill
+  # exatamente — nada se perde. Traço é multibyte e não pode ser fatiado por
+  # índice, que é o motivo de não colorir caractere a caractere aqui.
+  for (( i = 0; i < segs; i++ )); do
+    ini=$(( i * fill / segs ))
+    fim=$(( (i + 1) * fill / segs ))
+    n=$(( fim - ini ))
+    [ "$n" -gt 0 ] || continue
+    printf -v bloco '%*s' "$n" ''
+    bloco=${bloco// /─}
+    pos=$(( (largura + ini) * 1000 / (largura + fill - 1) ))
     af_rgb_at "$pos"
-    chunk=""
-    for (( j = 0; j < per && feitos < fill; j++ )); do chunk="${chunk}─"; feitos=$(( feitos + 1 )); done
-    printf '\033[38;2;%d;%d;%dm%s' "$AF_R" "$AF_G" "$AF_B" "$chunk"
+    printf '\033[38;2;%d;%d;%dm%s' "$AF_R" "$AF_G" "$AF_B" "$bloco"
   done
   printf '%s\n' "$RESET"
 }
@@ -487,9 +495,10 @@ rule_sweep() { # <cabeçalho ASCII>
 # Fecha o bloco, como o `╰──` do mac-env: sem isso a última fase fica aberta e a
 # calha some no meio do nada.
 rule_close() {
-  local w i linha=""
+  local w linha
   w="$(term_cols)"
-  for (( i = 0; i < w - 3; i++ )); do linha="${linha}─"; done
+  printf -v linha '%*s' "$(( w - 3 ))" ''
+  linha=${linha// /─}
   if [ "$COLOR_OK" = "1" ] && [ "$TRUECOLOR" = "1" ]; then
     af_rgb_at 1000
     printf '\033[38;2;%d;%d;%dm╰──%s%s\n' "$AF_R" "$AF_G" "$AF_B" "$linha" "$RESET"
