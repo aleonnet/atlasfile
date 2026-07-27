@@ -632,48 +632,49 @@ assert_eq "$out" "meu/caminho"
 
 # A prova de verdade: sob um terminal real, o que se digita TEM de aparecer.
 # Sem pty este caminho e intestavel — e foi exatamente ele que quebrou.
-t "sob pty, a digitacao aparece na tela"
+t "sob pty: a digitacao aparece, e o backspace nao come o prompt"
+# Quatro defeitos seguidos moraram nesta unica pergunta, e nenhum deles e
+# alcancavel sem um terminal de verdade. O ultimo: com o prompt impresso por
+# fora, o readline achava que a linha comecava na coluna 0 e, ao apagar,
+# redesenhava por cima do proprio prompt — a linha inteira sumia.
 if command -v python3 >/dev/null 2>&1; then
-  eco="$(python3 - "$REPO_ROOT" <<'PYEOF'
-import os, pty, select, sys, time
+  res="$(python3 - "$REPO_ROOT" <<'PYEOF'
+import os, pty, select, time, sys, re
 repo = sys.argv[1]
 pid, fd = pty.fork()
 if pid == 0:
     os.environ["ATLASFILE_INSTALL_LIB"] = "1"
     os.execv("/bin/bash", ["/bin/bash", "-c",
-        'source "%s/install.sh"; TTY_DEV=/dev/tty; ask "pasta: "; af_read_line; printf "\\nRECEBI[%%s]" "$AF_LINE"' % repo])
-buf = b""
-enviado = False
-fim = time.time() + 10
+        'source "%s/install.sh"; TTY_DEV=/dev/tty; af_read_line "$(ask "pasta: ")"; printf "\\nFIM[%%s]" "$AF_LINE"' % repo])
+buf = b""; passo = 0; fim = time.time() + 12
 while time.time() < fim:
     r, _, _ = select.select([fd], [], [], 0.2)
     if r:
-        try:
-            d = os.read(fd, 4096)
-        except OSError:
-            break
-        if not d:
-            break
+        try: d = os.read(fd, 4096)
+        except OSError: break
+        if not d: break
         buf += d
-        if not enviado and b"pasta:" in buf:
-            time.sleep(0.3)
-            os.write(fd, b"AtlasFileTeste\n")
-            enviado = True
-    elif enviado and b"RECEBI[" in buf:
-        break            # drena o que sobrou antes de sair
-try:
-    os.waitpid(pid, os.WNOHANG)
-except ChildProcessError:
-    pass
-sys.stdout.write(buf.decode("utf-8", "replace"))
+        if passo == 0 and b"pasta:" in buf:
+            time.sleep(0.3); os.write(fd, b"/tmp/errado"); passo = 1
+            time.sleep(0.4); os.write(fd, b"\x7f" * 6)
+            time.sleep(0.4); os.write(fd, b"certo\n"); passo = 2
+    elif passo == 2 and b"FIM" in buf:
+        break
+try: os.waitpid(pid, os.WNOHANG)
+except ChildProcessError: pass
+t = buf.decode("utf-8", "replace")
+limpo = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", t)
+m = re.search(r"FIM\[(.*?)\]", limpo, re.S)
+valor = m.group(1) if m else ""
+# o prompt so pode ter sido desenhado UMA vez: redesenhar significa ter apagado
+print("valor=%s|promptvezes=%d|ecoou=%s" % (valor, limpo.count("pasta:"), "sim" if "/tmp/errado" in limpo else "nao"))
 PYEOF
 )"
-  # O texto digitado tem de aparecer ANTES do resultado — e nao so dentro dele.
-  visivel="$(printf '%s' "$eco" | sed 's/RECEBI\[.*//' | grep -c 'AtlasFileTeste' || true)"
-  if [ "$visivel" -ge 1 ]; then ok
-  else no "o que foi digitado nao ecoou na tela: [$(printf '%s' "$eco" | tr -d '\r' | tr '\n' '|')]"; fi
+  case "$res" in *"valor=/tmp/certo|"*) ok ;; *) no "backspace nao editou direito: [$res]" ;; esac
+  case "$res" in *"|promptvezes=1|"*) ok ;; *) no "o prompt foi redesenhado (readline nao sabia a largura dele): [$res]" ;; esac
+  case "$res" in *"ecoou=sim"*) ok ;; *) no "a digitacao nao apareceu na tela: [$res]" ;; esac
 else
-  ok  # sem python3 nao da para abrir pty; o contrato de stdout acima ja cobre
+  ok; ok; ok   # sem python3 nao da para abrir pty; o contrato de stdout acima ja cobre
 fi
 
 # ── O portao do caminho: TODA origem passa por ele ─────────────────────────

@@ -330,7 +330,9 @@ fail()  { bar_clear; printf '%s%s✘%s %s\n' "$GUT" "$RED" "$RESET" "$*"; exit 1
 warn()  { bar_clear; printf '%s%s!%s %s\n' "$GUT" "$ORANGE" "$RESET" "$*"; bar_show; }
 info()  { bar_clear; printf '%s%s·%s %s\n' "$GUT" "$PURPLE" "$RESET" "$*"; bar_show; }
 # Pergunta: sem newline, e sem redesenhar a barra por cima do cursor de leitura.
-ask()   { bar_clear; printf '%s%s?%s %s' "$GUT" "$ORANGE" "$RESET" "$*"; }
+# ask MONTA o prompt; nao imprime. Quem imprime e o readline, dentro do
+# af_read_line — e e isso que faz o backspace funcionar (ver la embaixo).
+ask()   { printf '%s%s?%s %s' "$GUT" "$ORANGE" "$RESET" "$*"; }
 
 # Lê UMA linha do terminal, sem lixo de tecla.
 #
@@ -377,15 +379,28 @@ af_sane_path() { # <caminho>
 # digitação simplesmente não aparece na tela. Foi o que aconteceu na terceira
 # tentativa: o cursor ficava parado depois dos dois-pontos.
 AF_LINE=""
+
+# O readline precisa saber a LARGURA VISIVEL do prompt para redesenhar a linha.
+# Sequencia de cor nao ocupa coluna: sem marcar isso, ele conta os bytes do
+# escape como caracteres e o apagar sai torto. \001..\002 sao os marcadores
+# de "nao imprimivel" que o readline entende.
+af_rl_prompt() {
+  printf '%s' "$1" | LC_ALL=C sed $'s/\033\\[[0-9;?]*[A-Za-z]/\001&\002/g'
+}
+
+# <prompt ja montado, pode ter cor>. O resultado sai em $AF_LINE.
 af_read_line() {
   AF_LINE=""
-  local resposta=""
-  # SEM `2>/dev/null` no `read -e`: o readline do bash escreve o ECO do que se
-  # digita no STDERR (é assim que ele evita sujar o stdout). Silenciar o stderr
-  # aqui apagava exatamente a digitação da tela — o cursor ficava parado depois
-  # dos dois-pontos e não havia como conferir o caminho antes do Enter.
-  # Isolado sob pty: `read -e < /dev/tty` ecoa; o mesmo com `2>/dev/null`, não.
-  if ! read -e -r resposta < "$TTY_DEV"; then
+  local resposta="" prompt="${1:-}"
+  bar_clear
+  # O prompt vai PARA o readline (-p), e nao impresso antes por um printf solto.
+  # Impresso por fora, o readline acha que a linha comeca na coluna 0 e, ao
+  # apagar, redesenha por cima do proprio prompt — a linha inteira sumia.
+  #
+  # E SEM `2>/dev/null`: o readline escreve o eco no STDERR (e assim que ele
+  # evita sujar o stdout). Silenciar apagava a digitacao da tela.
+  if ! read -e -r -p "$(af_rl_prompt "$prompt")" resposta < "$TTY_DEV"; then
+    printf '%s' "$prompt"
     read -r resposta < "$TTY_DEV" || resposta=""
   fi
   # Tirar só os bytes de controle NÃO basta: numa seta o ESC é de controle, mas
@@ -504,8 +519,7 @@ confirm() {
     return 1
   fi
   [ "$INSTALL_DEPS" = "1" ] && return 0
-  ask "$q ${DIM}[y/N]${RESET} "
-  af_read_line; answer="$AF_LINE"
+  af_read_line "$(ask "$q ${DIM}[y/N]${RESET} ")"; answer="$AF_LINE"
   case "$answer" in y|Y|yes|YES|s|S) return 0 ;; *) return 1 ;; esac
 }
 
@@ -1288,12 +1302,11 @@ run_uninstall() {
       fail "the volume ${UN_VOLUME} holds the search index — decide explicitly: --purge-data (erase it) or --keep-data (keep it)"
     fi
     printf '%s\n' "$GUT"
-    ask "The volume ${BOLD}${UN_VOLUME}${RESET} holds the search index."
+    printf '%s' "$(ask "The volume ${BOLD}${UN_VOLUME}${RESET} holds the search index.")"
     printf '\n%s   Your documents and the _ATLASFILE journal live on disk and are NOT affected;\n' "$GUT"
     printf '%s   the index is rebuilt by Reconcile after a reinstall.\n' "$GUT"
-    ask "Erase the volume? ${DIM}[y/N]${RESET} "
     local ans=""
-    af_read_line; ans="$AF_LINE"
+    af_read_line "$(ask "Erase the volume? ${DIM}[y/N]${RESET} ")"; ans="$AF_LINE"
     case "$ans" in y|Y|yes|YES|s|S) PURGE_DATA=1 ;; *) PURGE_DATA=0 ;; esac
   fi
   [ -n "$PURGE_DATA" ] || PURGE_DATA=0
@@ -1311,9 +1324,8 @@ run_uninstall() {
       sentinel "cancelled"
       fail "no interactive terminal — re-run with --yes to confirm the plan above"
     fi
-    ask "Execute the plan above? ${DIM}[y/N]${RESET} "
     local answer=""
-    af_read_line; answer="$AF_LINE"
+    af_read_line "$(ask "Execute the plan above? ${DIM}[y/N]${RESET} ")"; answer="$AF_LINE"
     printf '\n'
     # A "no" here used to return 0, which any caller reads as success — and
     # install.ps1 went on to delete Docker Desktop from a machine whose owner
@@ -2017,8 +2029,8 @@ if [ -z "${PROJECTS_ROOT}" ]; then
     # em vez de numa linha limpa.
     answer=""
     if [ -r "$TTY_DEV" ]; then
-      ask "Folder where your projects/documents will live ${DIM}[${PROJECTS_ROOT_DEFAULT}]${RESET}: "
-      af_read_line; answer="$AF_LINE"
+      af_read_line "$(ask "Folder where your projects/documents will live ${DIM}[${PROJECTS_ROOT_DEFAULT}]${RESET}: ")"
+      answer="$AF_LINE"
     else
       info "no interactive terminal — using the default folder"
     fi
