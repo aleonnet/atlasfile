@@ -417,6 +417,24 @@ function Test-OllamaReady {
     return $ok
 }
 
+# Docker alcancavel de DENTRO da distro. Definida aqui, junto das outras sondas,
+# e nao la embaixo perto de quem a usa na instalacao: o -Doctor tambem a chama, e
+# no PowerShell uma funcao so existe depois que a linha que a declara ROda. O CI
+# mostrou o resultado - o diagnostico morria calado no meio da secao do Docker.
+function Test-DockerInWsl {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $alcancavel = $false
+    # Splat de array (@nome) e nao expressao (@(...)): a expressao com array
+    # vazio chega ao comando como ARGUMENTO VAZIO, e o wsl passa a receber "" no
+    # lugar de nada.
+    $argsWslDocker = @($script:WslUser) + @("-e", "sh", "-c", "docker info")
+    $caminhoWsl = Resolve-ToolPath wsl
+    try { & $caminhoWsl @argsWslDocker *> $null; $alcancavel = ($LASTEXITCODE -eq 0) } catch { $alcancavel = $false }
+    $ErrorActionPreference = $prev
+    return $alcancavel
+}
+
 # -- Banner: the orb, its two moons and the comet it fires (no face) ---------
 # Same art, palette and moon rest positions as install.sh. Truecolor is used
 # only when the host announces it (Windows Terminal sets WT_SESSION and
@@ -970,13 +988,17 @@ if ($Verbose) { $VerbosePreference = "Continue"; $script:AfVerbose = $true }
 # ele mede o lado Windows e DELEGA o lado Linux ao mesmo install.sh - um comando
 # para diagnosticar a maquina inteira.
 function Test-AfDoctor {
-    $ok = 0; $aviso = 0; $ruim = 0
+    # $nOk e nao $ok: o PowerShell NAO diferencia maiusculas em nome de
+    # variavel, entao um contador chamado $ok e literalmente o mesmo $OK do
+    # glifo de check. O CI mostrou o resultado: a tela saiu com "0 Microsoft
+    # Windows", "1 elevated session", "2 distro(s)" no lugar dos vistos.
+    $nOk = 0; $nAviso = 0; $nRuim = 0
     Write-Host ""
     Write-Rule "Windows"
-    Write-Gut ("{0} {1}" -f $OK, [Environment]::OSVersion.VersionString) Green; Write-Host ""; $ok++
+    Write-Gut ("{0} {1}" -f $OK, [Environment]::OSVersion.VersionString) Green; Write-Host ""; $nOk++
     $elevado = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if ($elevado) { Write-Gut ("{0} elevated session" -f $OK) Green; $ok++ }
-    else { Write-Gut "! not elevated - installing WSL or Docker from here would fail" DarkYellow; $aviso++ }
+    if ($elevado) { Write-Gut ("{0} elevated session" -f $OK) Green; $nOk++ }
+    else { Write-Gut "! not elevated - installing WSL or Docker from here would fail" DarkYellow; $nAviso++ }
     Write-Host ""
 
     Write-Rule "WSL2"
@@ -988,40 +1010,40 @@ function Test-AfDoctor {
         try { $distros = (& (Resolve-ToolPath wsl) -l -q 2>&1 | Out-String) -replace "`0", "" } catch { $distros = "" }
         $ErrorActionPreference = $prev
         if (-not $st.Trim() -or $st -match "is not installed") {
-            Write-Gut ("{0} the WSL feature is not installed" -f $BAD) Red; $ruim++
+            Write-Gut ("{0} the WSL feature is not installed" -f $BAD) Red; $nRuim++
         } elseif (-not $distros.Trim()) {
-            Write-Gut ("{0} WSL is present but there is NO DISTRO" -f $BAD) Red; $ruim++
+            Write-Gut ("{0} WSL is present but there is NO DISTRO" -f $BAD) Red; $nRuim++
         } else {
-            Write-Gut ("{0} distro(s): {1}" -f $OK, ($distros.Trim() -replace "\s+", ", ")) Green; $ok++
-            if ((Invoke-WslProbe @()) -eq "ok") { Write-Gut ("{0} the distro runs" -f $OK) Green; $ok++ }
-            else { Write-Gut ("{0} the distro does not answer in time" -f $BAD) Red; $ruim++ }
+            Write-Gut ("{0} distro(s): {1}" -f $OK, ($distros.Trim() -replace "\s+", ", ")) Green; $nOk++
+            if ((Invoke-WslProbe @()) -eq "ok") { Write-Gut ("{0} the distro runs" -f $OK) Green; $nOk++ }
+            else { Write-Gut ("{0} the distro does not answer in time" -f $BAD) Red; $nRuim++ }
         }
     } else {
-        Write-Gut ("{0} wsl.exe not found" -f $BAD) Red; $ruim++
+        Write-Gut ("{0} wsl.exe not found" -f $BAD) Red; $nRuim++
     }
     Write-Host ""
 
     Write-Rule "Docker Desktop and Ollama"
     if (Get-Tool docker) {
-        Write-Gut ("{0} the docker CLI is on PATH" -f $OK) Green; $ok++
-        if (Test-DockerDaemon) { Write-Gut ("{0} the daemon answers" -f $OK) Green; $ok++ }
-        else { Write-Gut ("{0} the daemon does not answer - open Docker Desktop" -f $BAD) Red; $ruim++ }
-        if (Test-DockerInWsl) { Write-Gut ("{0} WSL integration is on" -f $OK) Green; $ok++ }
-        else { Write-Gut "! Docker is not reachable inside WSL - Settings > Resources > WSL Integration" DarkYellow; $aviso++ }
+        Write-Gut ("{0} the docker CLI is on PATH" -f $OK) Green; $nOk++
+        if (Test-DockerDaemon) { Write-Gut ("{0} the daemon answers" -f $OK) Green; $nOk++ }
+        else { Write-Gut ("{0} the daemon does not answer - open Docker Desktop" -f $BAD) Red; $nRuim++ }
+        if (Test-DockerInWsl) { Write-Gut ("{0} WSL integration is on" -f $OK) Green; $nOk++ }
+        else { Write-Gut "! Docker is not reachable inside WSL - Settings > Resources > WSL Integration" DarkYellow; $nAviso++ }
     } else {
-        Write-Gut ("{0} the docker CLI is not on PATH" -f $BAD) Red; $ruim++
+        Write-Gut ("{0} the docker CLI is not on PATH" -f $BAD) Red; $nRuim++
     }
     if (Get-Tool ollama) {
-        if (Test-OllamaReady) { Write-Gut ("{0} the Ollama service answers" -f $OK) Green; $ok++ }
-        else { Write-Gut "! Ollama is installed but the service does not answer" DarkYellow; $aviso++ }
+        if (Test-OllamaReady) { Write-Gut ("{0} the Ollama service answers" -f $OK) Green; $nOk++ }
+        else { Write-Gut "! Ollama is installed but the service does not answer" DarkYellow; $nAviso++ }
     } else {
-        Write-Gut "! Ollama is not installed (optional, only for a 100% local model)" DarkYellow; $aviso++
+        Write-Gut "! Ollama is not installed (optional, only for a 100% local model)" DarkYellow; $nAviso++
     }
     Write-Host ""
 
     Write-Rule "Install manifest (Windows side)"
     if (Test-Path $AfManifest) {
-        Write-Gut ("{0} {1}" -f $OK, $AfManifest) Green; Write-Host ""; $ok++
+        Write-Gut ("{0} {1}" -f $OK, $AfManifest) Green; Write-Host ""; $nOk++
         foreach ($linha in (Get-Content $AfManifest -ErrorAction SilentlyContinue)) {
             $p = $linha -split "`t", 2
             if ($p.Count -eq 2 -and $p[0] -ne "schema" -and $p[0] -notlike "#*") {
@@ -1029,7 +1051,7 @@ function Test-AfDoctor {
             }
         }
     } else {
-        Write-Gut "! no Windows manifest - nothing here was installed by AtlasFile" DarkYellow; Write-Host ""; $aviso++
+        Write-Gut "! no Windows manifest - nothing here was installed by AtlasFile" DarkYellow; Write-Host ""; $nAviso++
     }
 
     # O lado Linux responde por si: mesmo diagnostico, mesmo vocabulario.
@@ -1044,16 +1066,16 @@ function Test-AfDoctor {
             Write-Host $linha
         }
     } else {
-        Write-Gut ("{0} could not run the diagnosis inside WSL" -f $BAD) Red; Write-Host ""; $ruim++
+        Write-Gut ("{0} could not run the diagnosis inside WSL" -f $BAD) Red; Write-Host ""; $nRuim++
     }
 
     Write-Host ""
     Write-Rule "Diagnosis (Windows side)"
-    Write-Gut ("{0} {1} ok" -f $OK, $ok) Green
-    Write-Host ("   ! {0} to watch" -f $aviso) -ForegroundColor DarkYellow -NoNewline
-    Write-Host ("   {0} {1} broken" -f $BAD, $ruim) -ForegroundColor Red
+    Write-Gut ("{0} {1} ok" -f $OK, $nOk) Green
+    Write-Host ("   ! {0} to watch" -f $nAviso) -ForegroundColor DarkYellow -NoNewline
+    Write-Host ("   {0} {1} broken" -f $BAD, $nRuim) -ForegroundColor Red
     Write-Host ""
-    return ($ruim -eq 0)
+    return ($nRuim -eq 0)
 }
 
 if ($Doctor) {
@@ -1468,20 +1490,6 @@ if (-not (Test-DockerDaemon)) {
     }
 }
 Write-Ok "Docker Desktop running"
-
-function Test-DockerInWsl {
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    $ok = $false
-    # Splat de array (@nome) e nao expressao (@(...)): a expressao com array
-    # vazio chega ao comando como ARGUMENTO VAZIO, e o wsl passa a receber "" no
-    # lugar de nada.
-    $argsWslDocker = @($script:WslUser) + @("-e", "sh", "-c", "docker info")
-    $caminhoWsl = Resolve-ToolPath wsl
-    try { & $caminhoWsl @argsWslDocker *> $null; $ok = ($LASTEXITCODE -eq 0) } catch { $ok = $false }
-    $ErrorActionPreference = $prev
-    return $ok
-}
 
 # O Docker Desktop so injeta o CLI dentro da distro DEPOIS que o motor sobe, e
 # isso leva alguns segundos. Verificar uma unica vez, no instante seguinte,

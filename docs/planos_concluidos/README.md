@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.55.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [installer_orquestracao_dois_lados_e_ux_unificada_v0550](installer_orquestracao_dois_lados_e_ux_unificada_v0550.plan.md) | O plano de remoção passa a cobrir os **dois** escopos da máquina Windows, com uma confirmação só; o lado Windows só age com duas provas (código de saída **e** linha-sentinela), porque cancelar antes removia o Docker assim mesmo. `.gitignore` quebrado impedia a remoção da pasta em toda instalação feita pelo one-liner. UX unificada nos dois instaladores no padrão do `mac_env_install.sh` (calha, régua, barra, placar), banner com a mesma arte, e `--doctor`/`--dry-run`/`--verbose`. Bancadas 79→119 e 73→100+, com guarda de paridade de arte e de UI |
+
+---
+
 ## 0.54.0
 
 | # | Plano | Escopo |
