@@ -91,12 +91,21 @@ def check_assertions(problems):
     """1. assertiva de bancada x fonte."""
     specs = (
         # Assert-Match "rotulo" $out "padrao" | Assert-Match "rotulo" (Calls) "padrao"
-        (PS_BENCH, PS, r'Assert-Match\s+"[^"]*"\s+(?P<target>\$\w+|\(Calls\))\s+"(?P<needle>[^"]+)"', r'[Cc]alls'),
+        #
+        # O install.ps1 e um ORQUESTRADOR: ele imprime o plano que recebeu do
+        # install.sh rodando dentro do WSL. Entao uma assertiva sobre a saida
+        # dele pode legitimamente cobrar texto do OUTRO fonte, e as duas fontes
+        # entram na checagem. Isentar seria mais simples e deixaria a assertiva
+        # sem guarda nenhuma -- que e exatamente o buraco por onde quatro
+        # assertivas ficaram para tras numa traducao.
+        (PS_BENCH, (PS, SH), r'Assert-Match\s+"[^"]*"\s+(?P<target>\$\w+|\(Calls\))\s+"(?P<needle>[^"]+)"', r'[Cc]alls'),
         # assert_contains "rotulo" "padrao" -- no bash a saida e o unico alvo
-        (SH_BENCH, SH, r'assert_contains\s+"[^"]*"\s+"(?P<target>)(?P<needle>[^"]+)"', r'^\x00$'),
+        (SH_BENCH, (SH,), r'assert_contains\s+"[^"]*"\s+"(?P<target>)(?P<needle>[^"]+)"', r'^\x00$'),
     )
-    for bench_rel, src_rel, pattern, exempt in specs:
-        bench, src = read(bench_rel), read(src_rel)
+    for bench_rel, src_rels, pattern, exempt in specs:
+        bench = read(bench_rel)
+        src = "\n".join(read(r) for r in src_rels)
+        src_rel = " ou ".join(src_rels)
         for lineno, line in enumerate(bench.splitlines(), 1):
             m = re.search(pattern, line)
             if not m or re.search(exempt, m.group("target")):

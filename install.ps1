@@ -30,7 +30,9 @@ param(
     [switch]$PurgeData,
     [switch]$KeepData,
     [switch]$RemoveDeps,
+    [switch]$Force,
     [switch]$Help,
+    [string]$Dir = "",
     [string]$OllamaModel = "gemma4:12b"
 )
 
@@ -75,6 +77,8 @@ WSL2 + Docker Desktop. This script prepares the Windows side and then runs the
 real installer inside WSL.
 
 Install options:
+  -Dir PATH       Where AtlasFile lives inside WSL (default: ~/AtlasFile).
+                  Forwarded to install.sh as --dir, install and uninstall alike
   -Yes            Non-interactive. On its own it NEVER installs system
                   dependencies - see -InstallDeps
   -InstallDeps    Authorize installing WSL2 / Docker Desktop / Ollama
@@ -89,6 +93,7 @@ Uninstall options:
   -KeepData       Uninstall: keep the OpenSearch volume
   -RemoveDeps     Uninstall: also remove the Windows-side dependencies that the
                   manifest records as installed by AtlasFile
+  -Force          Uninstall: remove the clone inside WSL even with local changes
 
 Other:
   -Help           This help
@@ -239,6 +244,77 @@ function Invoke-Native {
         Write-Warn "$File : $($_.Exception.Message)"
         $script:NativeExitCode = 1
     }
+}
+
+# A mesma URL em tres lugares (plano, execucao e instalacao) vira uma constante:
+# tres literais divergem no dia em que um deles for editado sozinho.
+$AF_SH_URL = "https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh"
+# --proto '=https' --tlsv1.2 e retry: mesma dureza do mac-env-setup. Um curl sem
+# retry transforma um soluco de rede em instalacao pela metade.
+$AF_CURL = "curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 1 --retry-connrefused"
+
+# O manifesto do Windows traduzido para o vocabulario do plano do outro lado.
+# Sem isto o install.sh so conhecia a distro, e o plano que o usuario confirmava
+# nao dizia uma palavra sobre o Docker Desktop e o Ollama que este script
+# instalou - mas que ele removia logo depois.
+function Get-AfHostExtra {
+    $pares = @()
+    foreach ($chave in @("docker", "ollama", "wsl")) {
+        $valor = Get-AfState $chave
+        if ($valor) { $pares += "$chave=$valor" }
+    }
+    return ($pares -join ",")
+}
+
+# Comando nativo com a saida CAPTURADA, e nao apenas escondida no log: o
+# orquestrador precisa LER o plano do outro lado e a linha-sentinela antes de
+# encostar em qualquer pacote do Windows. Mesmo contrato do Invoke-Native
+# (nunca lanca, codigo em $script:NativeExitCode) e as aspas continuam sendo
+# nossas. So para comando NAO interativo.
+function Invoke-NativeCapture {
+    param(
+        [Parameter(Mandatory, Position = 0)][string]$File,
+        [Parameter(Position = 1)][string[]]$Arguments = @()
+    )
+    $caminho = Resolve-ToolPath $File
+    if (-not $caminho) { $script:NativeExitCode = 9009; return "" }
+    $citados = @($Arguments | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+    })
+    $fOut = [IO.Path]::GetTempFileName()
+    $fErr = [IO.Path]::GetTempFileName()
+    $texto = ""
+    try {
+        $proc = Start-Process -FilePath $caminho -ArgumentList $citados -NoNewWindow -PassThru `
+            -RedirectStandardOutput $fOut -RedirectStandardError $fErr
+        # Tocar no Handle ANTES de o processo morrer, senao o ExitCode se perde.
+        $null = $proc.Handle
+        $proc.WaitForExit()
+        $script:NativeExitCode = $proc.ExitCode
+        if ($null -eq $script:NativeExitCode) { $script:NativeExitCode = 1 }
+    } catch {
+        $script:NativeExitCode = 1
+        Write-Verbose "$File : $($_.Exception.Message)"
+    }
+    foreach ($f in @($fOut, $fErr)) {
+        if (Test-Path $f) {
+            # wsl.exe emite UTF-16: sem tirar os NULs todo -match falha calado.
+            $texto += (((Get-Content $f -Raw -ErrorAction SilentlyContinue) -replace "`0", "") + "`n")
+        }
+    }
+    Write-LogSection ("$File " + ($Arguments -join " ")) @($fOut, $fErr)
+    Remove-Item $fOut, $fErr -Force -ErrorAction SilentlyContinue
+    return $texto
+}
+
+# Confirmacao de um plano DESTRUTIVO. Diferente do Confirm-Step: ali -Yes
+# significa "nao instale software de sistema por conta propria"; aqui -Yes e a
+# resposta do usuario a uma pergunta que ele mesmo pediu ao passar -Uninstall.
+function Confirm-Plan([string]$Pergunta) {
+    if ($Yes) { return $true }
+    if (-not [Environment]::UserInteractive) { return $false }
+    $resposta = Read-Host "  ? $Pergunta [y/N]"
+    return $resposta -match '^(y|yes|s)$'
 }
 
 # Sondagem do WSL com TETO DE TEMPO. Provar que a distro executa exige inicia-la,
@@ -756,50 +832,153 @@ function Wait-Spinner {
 }
 
 if ($Uninstall) {
-    # The Linux side owns the plan, the confirmation and the whole stack: it is
-    # the same code path a native install uses, so there is no second
-    # implementation to drift. Only the Windows-side packages are handled here.
-    # Esta delegacao fica VISIVEL de proposito: quem fala e o nosso install.sh,
-    # que imprime o plano de remocao e PERGUNTA. Escondida atras de um spinner, a
-    # pergunta nunca apareceria e o instalador ficaria pendurado.
-    Write-Info "running the uninstaller inside WSL"
-    $unFlags = "--uninstall"
-    if ($Yes) { $unFlags += " --yes" }
-    if ($PurgeData) { $unFlags += " --purge-data" }
-    if ($KeepData) { $unFlags += " --keep-data" }
-    if ($RemoveDeps) { $unFlags += " --remove-deps" }
-    $argsUn = @($script:WslUser) + @("-e", "bash", "-c", "curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- $unFlags")
-    Invoke-Native wsl $argsUn
+    # ORQUESTRACAO. Esta maquina tem DOIS escopos - a distro e o Windows - com
+    # dois manifestos, e ate aqui so um deles imprimia plano: o usuario
+    # confirmava uma lista que falava da distro, e o lado Windows agia depois,
+    # sem plano e sem confirmacao. Numa maquina real isso produziu "Docker was
+    # already on this machine before AtlasFile - preserved" segundos antes de o
+    # Docker Desktop ser apagado, e um Ollama que nao aparecia em secao nenhuma
+    # mas era removido assim mesmo.
+    #
+    # O contrato de um bootstrapper (a forma do bootstrap.ps1 do Claude Code) e:
+    # preparar, delegar NAO-INTERATIVAMENTE e propagar o codigo de saida. E o que
+    # este bloco passa a fazer: pede os FATOS ao install.sh, imprime UM plano
+    # cobrindo os dois lados, faz UMA pergunta e so entao age.
+    $extraHost = Get-AfHostExtra
+    $flagsComuns = "--uninstall --delegated"
+    if ($RemoveDeps) { $flagsComuns += " --remove-deps" }
+    if ($Force)      { $flagsComuns += " --force" }
+    if ($extraHost)  { $flagsComuns += " --host-extra $extraHost" }
+    if ($Dir)        { $flagsComuns += " --dir $Dir" }
 
+    # --- 1. FATOS: nao pergunta, nao age ------------------------------------
+    Start-Step "reading the removal plan from inside WSL"
+    $cmdPlano = "$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --plan-only"
+    $plano = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdPlano))
+    if ($script:NativeExitCode -ne 0 -or $plano -notmatch "ATLASFILE_UNINSTALL: plan-only") {
+        Write-Fail "could not read the removal plan from WSL (exit $($script:NativeExitCode))"
+        Show-LogTail
+        Write-Host "    Nothing was removed."
+        Stop-Installer 1; return
+    }
+    Write-Ok "removal plan read"
+
+    # --- 2. UM plano, cobrindo os dois lados --------------------------------
     Write-Host ""
+    foreach ($linha in ($plano -split "`r?`n")) {
+        # As linhas de maquina existem para ESTE script, nao para o usuario.
+        if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
+        Write-Host $linha
+    }
+    $volume = ""
+    if ($plano -match 'ATLASFILE_FACT: volume=(\S+)') { $volume = $Matches[1] }
+    $temAcoes = ($plano -match 'ATLASFILE_FACT: actions=1')
+    if (-not $temAcoes) {
+        Write-Info "nothing to remove."
+        Stop-Installer 0; return
+    }
+
+    # --- 3. A decisao sobre os dados, uma vez -------------------------------
+    $decisaoDados = ""
+    if ($PurgeData)      { $decisaoDados = "--purge-data" }
+    elseif ($KeepData)   { $decisaoDados = "--keep-data" }
+    elseif ($volume) {
+        if ($Yes) {
+            Write-Fail "the volume $volume holds the search index - decide explicitly: -PurgeData or -KeepData"
+            Stop-Installer 1; return
+        }
+        Write-Host ""
+        Write-Host "  ? The volume $volume holds the search index." -ForegroundColor Yellow
+        Write-Host "    Your documents and the _ATLASFILE journal live on disk and are NOT affected;"
+        Write-Host "    the index is rebuilt by Reconcile after a reinstall."
+        if (Confirm-Plan "Erase the volume?") {
+            $decisaoDados = "--purge-data"
+            Write-Info "the search index WILL be erased"
+        } else {
+            $decisaoDados = "--keep-data"
+            Write-Info "the search index will be kept"
+        }
+    }
+
+    # --- 4. UMA confirmacao ---------------------------------------------------
+    Write-Host ""
+    if (-not (Confirm-Plan "Execute the plan above?")) {
+        Write-Info "uninstall cancelled - nothing was touched."
+        # 1602 e o codigo que o mundo Windows ja usa para "o usuario cancelou".
+        Stop-Installer 1602; return
+    }
+
+    # --- 5. Execucao do lado WSL, nao-interativa ------------------------------
+    Write-Host ""
+    $cmdExec = "$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --yes $decisaoDados"
+    $saidaExec = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdExec))
+    foreach ($linha in ($saidaExec -split "`r?`n")) {
+        if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
+        Write-Host $linha
+    }
+    # AS DUAS PROVAS. Nao ha documentacao oficial de que o wsl.exe propague o
+    # codigo de saida do comando Linux, e um codigo engolido JAMAIS pode ser
+    # lido como "o usuario confirmou" - foi assim que um "nao" virou um Docker
+    # Desktop apagado. Faltando qualquer uma das provas, o lado Windows nao e
+    # tocado.
+    if ($script:NativeExitCode -ne 0 -or $saidaExec -notmatch "ATLASFILE_UNINSTALL: confirmed") {
+        Write-Fail "the WSL side did not confirm the removal (exit $($script:NativeExitCode))"
+        Write-Host "    Nothing was removed on the Windows side."
+        Show-LogTail
+        Stop-Installer 1; return
+    }
+
+    # --- 6. Lado Windows: so o que o plano confirmado mostrou -----------------
+    $reinicioPendente = $false
     if (-not $RemoveDeps) {
         Write-Info "Windows-side dependencies preserved - pass -RemoveDeps to revert the ones AtlasFile installed"
     } else {
         foreach ($item in @(
-            @{ Key = "docker"; Id = "Docker.DockerDesktop"; Label = "Docker Desktop" },
-            @{ Key = "ollama"; Id = "Ollama.Ollama";        Label = "Ollama" }
+            @{ Key = "docker"; Id = "Docker.DockerDesktop"; Label = "Docker Desktop"; Path = (Join-Path $env:ProgramFiles "Docker\Docker") },
+            @{ Key = "ollama"; Id = "Ollama.Ollama";        Label = "Ollama";         Path = "" }
         )) {
-            if ((Get-AfState $item.Key) -eq "created") {
-                Write-Info "removing $($item.Label) (installed by AtlasFile)"
-                # --source winget tambem AQUI: a documentacao do comando
-                # uninstall diz, com todas as letras, que sem isso o winget pode
-                # esbarrar no contrato da Microsoft Store, porque consulta as
-                # duas fontes. E o mesmo "Failed when searching source: msstore"
-                # que ja tinha derrubado a instalacao numa maquina real - o
-                # caminho de remocao tinha ficado de fora da correcao.
-                Invoke-Step "removing $($item.Label)" winget @("uninstall", "-e", "--id", $item.Id,
-                    "--source", "winget", "--silent", "--disable-interactivity")
-                if ($script:NativeExitCode -ne 0) { Write-Warn "could not remove $($item.Label) - remove it from Settings > Apps" }
-            } else {
+            if ((Get-AfState $item.Key) -ne "created") {
                 Write-Info "$($item.Label) was already on this machine before AtlasFile - preserved"
+                continue
+            }
+            # Perguntar ANTES de prometer, como faz o desinstalador do
+            # mac-env-setup (`brew list --cask X` antes de planejar a remocao).
+            # Sem isso o Ollama falhou com "exit -1978335107" e a unica saida
+            # oferecida era "remove it from Settings > Apps", sem dizer por que.
+            $null = Invoke-NativeCapture winget @("list", "-e", "--id", $item.Id, "--source", "winget")
+            if ($script:NativeExitCode -ne 0) {
+                Write-Warn "$($item.Label) is not registered with winget under $($item.Id) - remove it from Settings > Apps"
+                continue
+            }
+            # --source winget tambem AQUI: a documentacao do comando uninstall
+            # diz, com todas as letras, que sem isso o winget pode esbarrar no
+            # contrato da Microsoft Store, porque consulta as duas fontes. E o
+            # mesmo "Failed when searching source: msstore" que ja tinha
+            # derrubado a instalacao numa maquina real.
+            Invoke-Step "removing $($item.Label)" winget @("uninstall", "-e", "--id", $item.Id,
+                "--source", "winget", "--silent", "--disable-interactivity")
+            if ($script:NativeExitCode -ne 0) {
+                Write-Warn "could not remove $($item.Label) (exit $($script:NativeExitCode)) - remove it from Settings > Apps"
+                Show-LogTail 8
+            } elseif ($item.Path -and (Test-Path $item.Path)) {
+                # Medido no Windows real: o desinstalador do Docker agenda
+                # arquivos em uso para exclusao no proximo boot e a pasta
+                # sobrevive. Isso e 3010 - sucesso com reinicio pendente -, nao
+                # uma falha, e nao dizer isso deixaria o usuario achando que a
+                # remocao nao funcionou.
+                $reinicioPendente = $true
             }
         }
-        # WSL itself is never removed: it is a Windows feature other tools use.
-        Write-Info "WSL is never removed automatically (other tools may depend on it)"
         Remove-Item $AfManifest -ErrorAction SilentlyContinue
     }
+
+    # --- 7. UM veredito, agora que os dois lados terminaram -------------------
     Write-Host ""
-    Write-Ok "Done. What already existed on this machine was preserved."
+    Write-Ok "AtlasFile removed. What already existed on this machine was preserved."
+    if ($reinicioPendente) {
+        Write-Info "some files were scheduled for deletion on the next restart"
+        Stop-Installer 3010; return
+    }
     Stop-Installer 0; return
 }
 
@@ -1129,11 +1308,18 @@ if ($WithOllama) {
 Write-Phase 4 "Installing AtlasFile inside WSL"
 Write-Info "the Linux installer takes over from here - first run builds images (~15 min)"
 Write-Host ""
-$shFlags = "--no-open"
+# --delegated: o banner ja foi desenhado por este script segundos atras. Dois
+# banners seguidos leem como dois produtos - e eles nem eram o mesmo desenho.
+# --no-ollama: a decisao de projeto acima vira contrato. Sem ela o install.sh
+# reencontrava as condicoes de oferecer o Ollama DENTRO da distro (onde
+# `command -v ollama` falha, porque o binario mora do lado Windows) e um "y"
+# puxava varios GB de duplicado.
+$shFlags = "--no-open --delegated --no-ollama"
 if ($Yes) { $shFlags += " --yes" }
 if ($InstallDeps) { $shFlags += " --install-deps" }
 if ($EnableAuth) { $shFlags += " --enable-auth" }
-$argsSh = @($script:WslUser) + @("-e", "bash", "-c", "curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- $shFlags")
+if ($Dir) { $shFlags += " --dir $Dir" }
+$argsSh = @($script:WslUser) + @("-e", "bash", "-c", "$AF_CURL $AF_SH_URL | bash -s -- $shFlags")
 Invoke-Native wsl $argsSh
 if ($script:NativeExitCode -ne 0) {
     Write-Fail "Install failed inside WSL (see the messages above)."

@@ -67,6 +67,8 @@ function New-Sandbox {
 @echo off
 >>"%AF_CALLS%" echo winget %*
 if "%AF_WINGET_PRESENT%"=="0" exit /b 9009
+echo %*|findstr /c:"list" >nul
+if not errorlevel 1 exit /b %AF_WINGET_LIST_RC%
 if defined AF_WINGET_STDERR echo Failed when searching source: msstore 1>&2
 <nul set /p "=Downloading  10%%"
 <nul set /p "=Downloading  55%%"
@@ -123,7 +125,29 @@ if "%AF_WSL_NO_DISTRO%"=="1" exit /b 1
 if "%AF_WSL_DEAD_DISTRO%"=="1" exit /b 1
 if "%AF_WSL_UNINIT%"=="1" exit /b 1
 if "%2"=="echo" echo atlasfile_wsl_ok
+echo %*|findstr /c:"--plan-only" >nul
+if not errorlevel 1 goto planonly
+echo %*|findstr /c:"--uninstall" >nul
+if not errorlevel 1 goto unexec
 exit /b 0
+:planonly
+echo.
+echo   Removal plan - /root/AtlasFile
+echo.
+echo   WILL BE REMOVED
+echo   * stack 'atlasfile': containers, network and the images built here
+echo.
+echo   WILL BE PRESERVED
+echo   * %AF_SH_PLAN_KEEP%
+echo.
+echo ATLASFILE_FACT: volume=%AF_SH_VOLUME%
+echo ATLASFILE_FACT: actions=%AF_SH_ACTIONS%
+echo ATLASFILE_UNINSTALL: plan-only
+exit /b 0
+:unexec
+echo   removing the stack (containers, network, local images)
+echo ATLASFILE_UNINSTALL: %AF_SH_SENTINEL%
+exit /b %AF_SH_RC%
 '@ | Set-Content (Join-Path $sb "bin\wsl.cmd") -Encoding ASCII
 
     @'
@@ -156,6 +180,16 @@ exit /b 0
     $env:Path = (Join-Path $sb "bin") + ";" + "$env:SystemRoot\System32;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
     # defaults
     $env:AF_WINGET_PRESENT = "1"; $env:AF_WINGET_RC = "0"; $env:AF_WINGET_STDERR = "1"
+    # `winget list` responde 0 por padrao: o pacote ESTA registrado. O caminho
+    # em que ele nao esta e o do Ollama que falhou na maquina real.
+    $env:AF_WINGET_LIST_RC = "0"
+    # O lado de dentro do WSL, simulado: plano, fatos e a linha-sentinela que o
+    # orquestrador exige antes de encostar em qualquer pacote do Windows.
+    $env:AF_SH_VOLUME = "atlasfile_opensearch_data"
+    $env:AF_SH_ACTIONS = "1"
+    $env:AF_SH_SENTINEL = "confirmed"
+    $env:AF_SH_RC = "0"
+    $env:AF_SH_PLAN_KEEP = "your documents in /root/Documents/AtlasFileProjects - never touched"
     $env:AF_WSL_INSTALLED = "1"; $env:AF_WSL_RC = "0"; $env:AF_WSL_INSTALL_RC = "0"; $env:AF_WSL_INSTALL_FIXES = "0"; $env:AF_WSL_NO_DOCKER = "0"
     $env:AF_WSL_NO_DISTRO = "0"; $env:AF_WSL_DEAD_DISTRO = "0"; $env:AF_WSL_UNINIT = "0"; $env:AF_WSL_HANG = "0"
     $env:ATLASFILE_WSL_PROBE_MS = "2000"   # teto curto na bancada
@@ -361,11 +395,22 @@ Write-Host "== H. o script entregue ao WSL chega INTEIRO, nao partido em palavra
 # nao pegava porque o stub registrava a chamada e devolvia 0 sem NUNCA conferir
 # se o argumento tinha chegado inteiro.
 $sb = New-Sandbox
-$out = Run-Installer @("-Yes", "-EnableAuth")
+$out = Run-Installer @("-Yes", "-EnableAuth", "-Dir", "/root/Outro")
 $calls = Calls
 Assert-Match "o -c chega como UM argumento citado" $calls '-c "curl -fsSL'
-Assert-Match "as flags do install.sh viajam no mesmo argumento" $calls 'bash -s -- --no-open --yes --enable-auth"'
+Assert-Match "as flags do install.sh viajam no mesmo argumento" $calls 'bash -s -- --no-open --delegated --no-ollama --yes --enable-auth'
 Assert-NoMatch "o curl nao roda pelado" $out "curl: try"
+# Um banner por execucao: o do install.sh nao pode ser desenhado logo depois do
+# nosso - eram dois desenhos diferentes na mesma tela.
+Assert-Match "a delegacao silencia o banner do outro lado" $calls "--delegated"
+# A decisao de projeto (Ollama vive do lado Windows, o container o alcanca por
+# host.docker.internal) vira contrato: sem isto a pergunta reaparecia DENTRO da
+# distro e um "y" puxava varios GB de duplicado.
+Assert-Match "o Ollama nao e oferecido de novo dentro do WSL" $calls "--no-ollama"
+Assert-Match "-Dir viaja para o outro lado" $calls "--dir /root/Outro"
+# O curl endurecido (mesma dureza do mac-env-setup): um solucao de rede nao pode
+# virar instalacao pela metade.
+Assert-Match "download com retry e protocolo pinado" $calls "--proto '=https' --tlsv1.2 --retry 3"
 
 Write-Host "== I. Ollama instalado, servico ainda de pe atras: espera e segue =="
 # Medido na maquina do usuario, logo apos "Successfully installed":
@@ -419,21 +464,81 @@ Assert-NoMatch "o texto do winget NAO chega na tela" $out "Successfully installe
 Assert-Match "no lugar dele, o nosso rotulo" $out "downloading and installing Docker Desktop"
 Assert-Match "e o texto do winget esta no log" $log "Successfully installed"
 
-Write-Host "== F. -Uninstall -RemoveDeps remove so o que o manifesto marca =="
-$sb = New-Sandbox
-$mf = Join-Path $env:LOCALAPPDATA "AtlasFile\host-prereqs"
-New-Item -ItemType Directory -Path (Split-Path $mf) -Force | Out-Null
-@("schema`t1", "docker`tcreated", "ollama`tpreexisting") | Set-Content $mf
+function New-UninstallSandbox([string[]]$Manifesto) {
+    $sb = New-Sandbox
+    $mf = Join-Path $env:LOCALAPPDATA "AtlasFile\host-prereqs"
+    New-Item -ItemType Directory -Path (Split-Path $mf) -Force | Out-Null
+    (@("schema`t1") + $Manifesto) | Set-Content $mf
+    return $sb
+}
+
+Write-Host "== F. -Uninstall -RemoveDeps: UM plano cobrindo os dois lados =="
+# O defeito de origem: o plano descrevia so a distro, e o lado Windows agia
+# depois sem plano e sem confirmacao. Aqui o stub do wsl DEVOLVE um plano, e a
+# bancada cobra que ele chegue a tela ANTES de qualquer remocao.
+$sb = New-UninstallSandbox @("docker`tcreated", "ollama`tpreexisting", "wsl`tcreated")
 $out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
 $calls = Calls
+Assert-Match "pediu os FATOS antes de agir" $calls "--plan-only"
+Assert-Match "os fatos do Windows viajam para o plano" $calls "--host-extra docker=created,ollama=preexisting,wsl=created"
+Assert-Match "a delegacao silencia o banner do outro lado" $calls "--delegated"
+Assert-Match "o plano do outro lado chega a tela" $out "Removal plan"
+Assert-Match "com as duas secoes" $out "WILL BE PRESERVED"
+Assert-NoMatch "as linhas de maquina nao vazam para o usuario" $out "ATLASFILE_FACT"
 Assert-Match "removeu o Docker, que o manifesto marca created" $calls "winget uninstall.*Docker.DockerDesktop"
 Assert-Match "remocao tambem evita a msstore" $calls "winget uninstall.*--source winget"
+Assert-Match "conferiu no winget ANTES de remover" $calls "winget list.*Docker.DockerDesktop"
 Assert-NoMatch "NAO removeu o Ollama, que era preexisting" $calls "winget uninstall.*Ollama"
-Assert-Match "avisa que o WSL nunca e removido" $out "WSL is never removed"
+Assert-Match "e disse por que o preservou" $out "was already on this machine before AtlasFile - preserved"
 Assert-NoMatch "sem erro de binding na desinstalacao" $out "AmbiguousParameter|ParameterBindingException"
-# stderr de comando nativo vira ErrorRecord NAO-terminante por design; o criterio
-# e a desinstalacao CONCLUIR, nao a ausencia do texto na tela.
-Assert-Match "a desinstalacao chegou ao fim" $out "What already existed on this machine was preserved"
+Assert-Match "um unico veredito, no fim" $out "AtlasFile removed. What already existed on this machine was preserved"
+
+Write-Host "== M. o lado WSL CANCELOU: nada pode ser removido no Windows =="
+# Este e o teste que faltava. Responder "n" ao plano devolvia 0, o install.ps1
+# lia sucesso e apagava o Docker Desktop de uma maquina cujo dono tinha acabado
+# de dizer nao.
+$sb = New-UninstallSandbox @("docker`tcreated", "ollama`tcreated")
+$env:AF_SH_SENTINEL = "cancelled"
+$env:AF_SH_RC = "10"
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+$calls = Calls
+Assert-NoMatch "NENHUM pacote do Windows foi removido" $calls "winget uninstall"
+Assert-Match "e o instalador diz isso com todas as letras" $out "Nothing was removed on the Windows side"
+Assert-NoMatch "sem veredito de sucesso" $out "AtlasFile removed. What already existed"
+
+Write-Host "== N. codigo de saida engolido: falha fechada, nao remocao =="
+# Nao ha documentacao oficial de que o wsl.exe propague o codigo de saida do
+# comando Linux. Se ele for engolido, o instalador NAO pode ler isso como
+# confirmacao - a sentinela e a segunda prova, e sem ela nada acontece.
+$sb = New-UninstallSandbox @("docker`tcreated")
+$env:AF_SH_SENTINEL = "nada"
+$env:AF_SH_RC = "0"
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+Assert-NoMatch "sem a sentinela, nada e removido" (Calls) "winget uninstall"
+Assert-Match "e a falha e explicita" $out "did not confirm the removal"
+
+Write-Host "== O. plano ilegivel: para antes de tocar em qualquer coisa =="
+$sb = New-UninstallSandbox @("docker`tcreated")
+$env:AF_WSL_DEAD_DISTRO = "1"
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+Assert-NoMatch "nao removeu nada sem ter lido o plano" (Calls) "winget uninstall"
+Assert-Match "diz que nao conseguiu ler o plano" $out "could not read the removal plan"
+
+Write-Host "== P. pacote ausente do winget: mensagem util, nao falha crua =="
+# Na maquina real o Ollama saiu com -1978335107 e a unica orientacao era
+# "remove it from Settings > Apps", sem dizer por que.
+$sb = New-UninstallSandbox @("ollama`tcreated")
+$env:AF_WINGET_LIST_RC = "1"
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+Assert-NoMatch "nem tentou remover o que o winget nao conhece" (Calls) "winget uninstall"
+Assert-Match "explica o motivo" $out "is not registered with winget under"
+
+Write-Host "== Q. nada a remover: o instalador para sem inventar acao =="
+$sb = New-UninstallSandbox @("docker`tpreexisting")
+$env:AF_SH_ACTIONS = "0"
+$out = Run-Installer @("-Yes", "-Uninstall", "-KeepData")
+Assert-Match "diz que nao ha o que remover" $out "nothing to remove"
+Assert-NoMatch "e nao chama o winget" (Calls) "winget uninstall"
 
 Write-Host ""
 Write-Host "$script:Pass passaram, $script:Fail falharam"
