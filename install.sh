@@ -323,6 +323,30 @@ info()  { bar_clear; printf '%s%s·%s %s\n' "$GUT" "$PURPLE" "$RESET" "$*"; bar_
 # Pergunta: sem newline, e sem redesenhar a barra por cima do cursor de leitura.
 ask()   { bar_clear; printf '%s%s?%s %s' "$GUT" "$ORANGE" "$RESET" "$*"; }
 
+# Lê UMA linha do terminal, sem lixo de tecla.
+#
+# Medido na máquina do usuário: com `read -r` puro, as setas do teclado viram
+# bytes de escape DENTRO da resposta. A pasta de projetos foi gravada no .env
+# como `PROJECTS_HOST_ROOT=\033[C\033[D\033[C…` e o `${PROJECTS_HOST_ROOT}:/projects`
+# do compose derrubou a instalação com "service api refers to undefined volume :".
+#
+# `-e` liga o readline, e aí seta, backspace e Home/End EDITAM a linha em vez de
+# entrarem nela. O `tr` é cinto e suspensórios: mesmo com readline, um terminal
+# exótico pode entregar controle, e nenhum byte de controle pode sobreviver numa
+# resposta que vai virar caminho de diretório.
+af_read_line() {
+  local resposta=""
+  if ! read -e -r resposta < "$TTY_DEV" 2>/dev/null; then
+    read -r resposta < "$TTY_DEV" 2>/dev/null || resposta=""
+  fi
+  # Tirar só os bytes de controle NÃO basta: numa seta o ESC é de controle, mas
+  # o `[C` que vem atrás é ASCII imprimível e sobreviveria. A sequência CSI
+  # inteira sai primeiro; o `tr` limpa o que restar.
+  printf '%s' "$resposta" \
+    | LC_ALL=C sed $'s/\033\\[[0-9;?]*[A-Za-z~]//g' \
+    | LC_ALL=C tr -d '\000-\037\177'
+}
+
 # Régua de fase que varre da esquerda para a direita, com a rampa do produto.
 # `[1/5] Título` continha a mesma informação em texto plano; a régua dá a ela o
 # peso de um cabeçalho e reusa a paleta que até aqui só o banner conhecia.
@@ -332,27 +356,58 @@ ask()   { bar_clear; printf '%s%s?%s %s' "$GUT" "$ORANGE" "$RESET" "$*"; }
 # então entra na conta como constante, e os traços são gerados por repetição —
 # a contagem é minha, nunca do interpretador.
 AF_RULE_CONNECTOR_COLS=4
+# O `├── ` É a calha, não vem DEPOIS dela — no mac_env_install.sh a régua não
+# leva prefixo nenhum, e era por isso que a nossa saía como `│ ├──`, com dois
+# trilhos desenhados um ao lado do outro. E o gradiente cobre a linha INTEIRA,
+# cabeçalho incluído (o `reveal_sweep` de lá pinta a string toda), em vez de só
+# os traços.
 rule_sweep() { # <cabeçalho ASCII>
-  local head="$1" w fill i j pos chunk segs=8 per feitos=0
+  local head="$1" w fill i j pos chunk segs=8 per feitos=0 total ch
   w="$(term_cols)"
-  fill=$(( w - ${#head} - AF_RULE_CONNECTOR_COLS - 3 ))
+  fill=$(( w - ${#head} - AF_RULE_CONNECTOR_COLS - 1 ))
   [ "$fill" -lt 4 ] && fill=4
+  total=$(( ${#head} + fill ))
+  [ "$total" -lt 2 ] && total=2
   if [ "$COLOR_OK" != "1" ] || [ "$TRUECOLOR" != "1" ]; then
     chunk=""
     for (( i = 0; i < fill; i++ )); do chunk="${chunk}─"; done
-    printf '%s├── %s%s%s %s\n' "$GUT" "$BOLD" "$head" "$RESET" "$chunk"
+    printf '├── %s%s%s %s\n' "$BOLD" "$head" "$RESET" "$chunk"
     return 0
   fi
-  printf '%s├── %s%s%s ' "$GUT" "$BOLD" "$head" "$RESET"
+  af_rgb_at 0
+  printf '\033[38;2;%d;%d;%dm├── ' "$AF_R" "$AF_G" "$AF_B"
+  # Cabeçalho é ASCII (`[1/5] Título`), então indexar caractere a caractere aqui
+  # é seguro — o que não se pode indexar são os traços, que ocupam 3 bytes.
+  for (( i = 0; i < ${#head}; i++ )); do
+    ch="${head:$i:1}"
+    pos=$(( i * 1000 / (total - 1) ))
+    af_rgb_at "$pos"
+    printf '\033[38;2;%d;%d;%dm%s' "$AF_R" "$AF_G" "$AF_B" "$ch"
+  done
+  printf ' '
   per=$(( fill / segs )); [ "$per" -lt 1 ] && per=1
   for (( i = 0; i < segs && feitos < fill; i++ )); do
-    pos=$(( i * 1000 / (segs - 1) ))
+    pos=$(( (${#head} + feitos) * 1000 / (total - 1) ))
     af_rgb_at "$pos"
     chunk=""
     for (( j = 0; j < per && feitos < fill; j++ )); do chunk="${chunk}─"; feitos=$(( feitos + 1 )); done
     printf '\033[38;2;%d;%d;%dm%s' "$AF_R" "$AF_G" "$AF_B" "$chunk"
   done
   printf '%s\n' "$RESET"
+}
+
+# Fecha o bloco, como o `╰──` do mac-env: sem isso a última fase fica aberta e a
+# calha some no meio do nada.
+rule_close() {
+  local w i linha=""
+  w="$(term_cols)"
+  for (( i = 0; i < w - 3; i++ )); do linha="${linha}─"; done
+  if [ "$COLOR_OK" = "1" ] && [ "$TRUECOLOR" = "1" ]; then
+    af_rgb_at 1000
+    printf '\033[38;2;%d;%d;%dm╰──%s%s\n' "$AF_R" "$AF_G" "$AF_B" "$linha" "$RESET"
+  else
+    printf '╰──%s\n' "$linha"
+  fi
 }
 
 title() {
@@ -400,7 +455,7 @@ confirm() {
   fi
   [ "$INSTALL_DEPS" = "1" ] && return 0
   ask "$q ${DIM}[y/N]${RESET} "
-  read -r answer < "$TTY_DEV" || answer=""
+  answer="$(af_read_line)"
   case "$answer" in y|Y|yes|YES|s|S) return 0 ;; *) return 1 ;; esac
 }
 
@@ -1002,6 +1057,7 @@ un_print_plan() {
 # tudo ou quase nada.
 un_report() {
   printf '%s\n' "$GUT"
+  rule_close
   rule_sweep "AtlasFile removed"
   printf '%s%s✔ %s removed%s' "$GUT" "$GREEN" "$UN_OK" "$RESET"
   [ "$UN_KO" -gt 0 ] && printf '   %s✘ %s failed%s' "$RED" "$UN_KO" "$RESET"
@@ -1176,9 +1232,7 @@ run_uninstall() {
     printf '%s   the index is rebuilt by Reconcile after a reinstall.\n' "$GUT"
     ask "Erase the volume? ${DIM}[y/N]${RESET} "
     local ans=""
-    # `[ -r /dev/tty ]` is true even when the device cannot be opened (no
-    # controlling terminal), so the redirection itself has to be silenced.
-    { read -r ans < "$TTY_DEV"; } 2>/dev/null || ans=""
+    ans="$(af_read_line)"
     case "$ans" in y|Y|yes|YES|s|S) PURGE_DATA=1 ;; *) PURGE_DATA=0 ;; esac
   fi
   [ -n "$PURGE_DATA" ] || PURGE_DATA=0
@@ -1198,7 +1252,7 @@ run_uninstall() {
     fi
     ask "Execute the plan above? ${DIM}[y/N]${RESET} "
     local answer=""
-    { read -r answer < "$TTY_DEV"; } 2>/dev/null || answer=""
+    answer="$(af_read_line)"
     printf '\n'
     # A "no" here used to return 0, which any caller reads as success — and
     # install.ps1 went on to delete Docker Desktop from a machine whose owner
@@ -1896,13 +1950,16 @@ if [ -z "${PROJECTS_ROOT}" ]; then
   elif [ "${ASSUME_YES}" = "1" ]; then
     PROJECTS_ROOT="${PROJECTS_ROOT_DEFAULT}"
   else
-    # Under `curl | bash` stdin is the script itself — the prompt must read the terminal
-    printf '  %s?%s Folder where your projects/documents will live %s[%s]%s: ' "$ORANGE" "$RESET" "$DIM" "${PROJECTS_ROOT_DEFAULT}" "$RESET"
+    # Under `curl | bash` stdin is the script itself — the prompt must read the
+    # terminal. E é `ask`, não um printf solto: era a ÚNICA pergunta que não
+    # passava pela calha, e por isso ela aparecia colada na barra de progresso
+    # em vez de numa linha limpa.
     answer=""
     if [ -r "$TTY_DEV" ]; then
-      read -r answer < "$TTY_DEV" || answer=""
+      ask "Folder where your projects/documents will live ${DIM}[${PROJECTS_ROOT_DEFAULT}]${RESET}: "
+      answer="$(af_read_line)"
     else
-      printf '(no interactive terminal — using the default)\n'
+      info "no interactive terminal — using the default folder"
     fi
     PROJECTS_ROOT="${answer:-${PROJECTS_ROOT_DEFAULT}}"
   fi
@@ -1986,6 +2043,7 @@ TOTAL_SECS=$(( $(step_now) - START_TS ))
 TOTAL=$(fmt_secs "$TOTAL_SECS")
 title "5/5" "Install finished in ${TOTAL} 🎉"
 bar_clear
+rule_close
 printf '%s\n' "$GUT"
 # Placar: o que de fato aconteceu, em números. A frase fixa de antes dizia a
 # mesma coisa numa instalação limpa e numa reexecução que não mudou nada.

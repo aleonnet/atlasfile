@@ -581,6 +581,27 @@ case "$out" in *"Your documents have gravity"*) no "desenhou o banner numa execu
 case "$out" in *"AtlasFile removed. What already existed"*) no "deu o veredito final que é do orquestrador" ;; *) ok ;; esac
 case "$out" in *"ATLASFILE_UNINSTALL: confirmed"*) ok ;; *) no "a sentinela some quando delegado" ;; esac
 
+# ── Leitura de linha: tecla de seta nao pode entrar na resposta ────────────
+# Medido na maquina do usuario: com `read -r` puro as setas viraram bytes de
+# escape DENTRO da resposta, o .env recebeu
+# `PROJECTS_HOST_ROOT=\033[C\033[D\033[C...` e o compose derrubou a instalacao
+# com "service api refers to undefined volume :".
+make_sandbox
+t "byte de controle nunca sobrevive a uma resposta"
+printf '\033[C\033[D/Users/eu/Docs\033[D\n' > "${SANDBOX}/tty_in"
+out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line')"
+assert_eq "$out" "/Users/eu/Docs"
+
+t "resposta feita SO de tecla de seta vira vazio, e o default assume"
+printf '\033[C\033[D\033[C\n' > "${SANDBOX}/tty_in"
+out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; resposta="$(af_read_line)"; printf "[%s]" "${resposta:-DEFAULT}"')"
+assert_eq "$out" "[DEFAULT]"
+
+t "resposta normal passa intacta"
+printf '~/Desktop/Teste\n' > "${SANDBOX}/tty_in"
+out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line')"
+assert_eq "$out" "~/Desktop/Teste"
+
 # ── Registros da ida e da volta: chave gravada tem de virar decisão ─────────
 # `install_dir` era gravado e NUNCA lido — a garantia que o CHANGELOG anunciava
 # ("a pasta só some se bater com o install_dir registrado") não existia.
