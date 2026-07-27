@@ -361,17 +361,31 @@ af_sane_path() { # <caminho>
   printf '%s' "$p"
 }
 
+# O resultado sai em $AF_LINE, NÃO em stdout, e isso é o ponto.
+#
+# Com `read -e` o readline escreve o eco do que você digita no STDOUT. Chamando
+# a função dentro de `$( )`, esse stdout é capturado pela substituição — e a
+# digitação simplesmente não aparece na tela. Foi o que aconteceu na terceira
+# tentativa: o cursor ficava parado depois dos dois-pontos.
+AF_LINE=""
 af_read_line() {
+  AF_LINE=""
   local resposta=""
-  if ! read -e -r resposta < "$TTY_DEV" 2>/dev/null; then
-    read -r resposta < "$TTY_DEV" 2>/dev/null || resposta=""
+  # SEM `2>/dev/null` no `read -e`: o readline do bash escreve o ECO do que se
+  # digita no STDERR (é assim que ele evita sujar o stdout). Silenciar o stderr
+  # aqui apagava exatamente a digitação da tela — o cursor ficava parado depois
+  # dos dois-pontos e não havia como conferir o caminho antes do Enter.
+  # Isolado sob pty: `read -e < /dev/tty` ecoa; o mesmo com `2>/dev/null`, não.
+  if ! read -e -r resposta < "$TTY_DEV"; then
+    read -r resposta < "$TTY_DEV" || resposta=""
   fi
   # Tirar só os bytes de controle NÃO basta: numa seta o ESC é de controle, mas
   # o `[C` que vem atrás é ASCII imprimível e sobreviveria. A sequência CSI
   # inteira sai primeiro; o `tr` limpa o que restar.
-  printf '%s' "$resposta" \
+  AF_LINE="$(printf '%s' "$resposta" \
     | LC_ALL=C sed $'s/\033\\[[0-9;?]*[A-Za-z~]//g' \
-    | LC_ALL=C tr -d '\000-\037\177'
+    | LC_ALL=C tr -d '\000-\037\177')"
+  return 0
 }
 
 # Régua de fase que varre da esquerda para a direita, com a rampa do produto.
@@ -482,7 +496,7 @@ confirm() {
   fi
   [ "$INSTALL_DEPS" = "1" ] && return 0
   ask "$q ${DIM}[y/N]${RESET} "
-  answer="$(af_read_line)"
+  af_read_line; answer="$AF_LINE"
   case "$answer" in y|Y|yes|YES|s|S) return 0 ;; *) return 1 ;; esac
 }
 
@@ -1265,7 +1279,7 @@ run_uninstall() {
     printf '%s   the index is rebuilt by Reconcile after a reinstall.\n' "$GUT"
     ask "Erase the volume? ${DIM}[y/N]${RESET} "
     local ans=""
-    ans="$(af_read_line)"
+    af_read_line; ans="$AF_LINE"
     case "$ans" in y|Y|yes|YES|s|S) PURGE_DATA=1 ;; *) PURGE_DATA=0 ;; esac
   fi
   [ -n "$PURGE_DATA" ] || PURGE_DATA=0
@@ -1285,7 +1299,7 @@ run_uninstall() {
     fi
     ask "Execute the plan above? ${DIM}[y/N]${RESET} "
     local answer=""
-    answer="$(af_read_line)"
+    af_read_line; answer="$AF_LINE"
     printf '\n'
     # A "no" here used to return 0, which any caller reads as success — and
     # install.ps1 went on to delete Docker Desktop from a machine whose owner
@@ -1990,7 +2004,7 @@ if [ -z "${PROJECTS_ROOT}" ]; then
     answer=""
     if [ -r "$TTY_DEV" ]; then
       ask "Folder where your projects/documents will live ${DIM}[${PROJECTS_ROOT_DEFAULT}]${RESET}: "
-      answer="$(af_read_line)"
+      af_read_line; answer="$AF_LINE"
     else
       info "no interactive terminal — using the default folder"
     fi

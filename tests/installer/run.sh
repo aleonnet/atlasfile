@@ -589,18 +589,74 @@ case "$out" in *"ATLASFILE_UNINSTALL: confirmed"*) ok ;; *) no "a sentinela some
 make_sandbox
 t "byte de controle nunca sobrevive a uma resposta"
 printf '\033[C\033[D/Users/eu/Docs\033[D\n' > "${SANDBOX}/tty_in"
-out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line')"
+out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line; printf "%s" "$AF_LINE"')"
 assert_eq "$out" "/Users/eu/Docs"
 
 t "resposta feita SO de tecla de seta vira vazio, e o default assume"
 printf '\033[C\033[D\033[C\n' > "${SANDBOX}/tty_in"
-out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; resposta="$(af_read_line)"; printf "[%s]" "${resposta:-DEFAULT}"')"
+out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line; printf "[%s]" "${AF_LINE:-DEFAULT}"')"
 assert_eq "$out" "[DEFAULT]"
 
 t "resposta normal passa intacta"
 printf '~/Desktop/Teste\n' > "${SANDBOX}/tty_in"
-out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line')"
+out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line; printf "%s" "$AF_LINE"')"
 assert_eq "$out" "~/Desktop/Teste"
+
+# A funcao NAO pode escrever o valor no stdout: chamada dentro de $( ), o eco do
+# readline ia para a substituicao e a digitacao do usuario sumia da tela.
+make_sandbox
+t "af_read_line nao imprime nada no stdout (o valor sai por AF_LINE)"
+printf 'meu/caminho\n' > "${SANDBOX}/tty_in"
+out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line')"
+assert_eq "$out" ""
+out="$(run_case -- 'TTY_DEV="$SANDBOX/tty_in"; af_read_line; printf "%s" "$AF_LINE"')"
+assert_eq "$out" "meu/caminho"
+
+# A prova de verdade: sob um terminal real, o que se digita TEM de aparecer.
+# Sem pty este caminho e intestavel — e foi exatamente ele que quebrou.
+t "sob pty, a digitacao aparece na tela"
+if command -v python3 >/dev/null 2>&1; then
+  eco="$(python3 - "$REPO_ROOT" <<'PYEOF'
+import os, pty, select, sys, time
+repo = sys.argv[1]
+pid, fd = pty.fork()
+if pid == 0:
+    os.environ["ATLASFILE_INSTALL_LIB"] = "1"
+    os.execv("/bin/bash", ["/bin/bash", "-c",
+        'source "%s/install.sh"; TTY_DEV=/dev/tty; ask "pasta: "; af_read_line; printf "\\nRECEBI[%%s]" "$AF_LINE"' % repo])
+buf = b""
+enviado = False
+fim = time.time() + 10
+while time.time() < fim:
+    r, _, _ = select.select([fd], [], [], 0.2)
+    if r:
+        try:
+            d = os.read(fd, 4096)
+        except OSError:
+            break
+        if not d:
+            break
+        buf += d
+        if not enviado and b"pasta:" in buf:
+            time.sleep(0.3)
+            os.write(fd, b"AtlasFileTeste\n")
+            enviado = True
+    elif enviado and b"RECEBI[" in buf:
+        break            # drena o que sobrou antes de sair
+try:
+    os.waitpid(pid, os.WNOHANG)
+except ChildProcessError:
+    pass
+sys.stdout.write(buf.decode("utf-8", "replace"))
+PYEOF
+)"
+  # O texto digitado tem de aparecer ANTES do resultado — e nao so dentro dele.
+  visivel="$(printf '%s' "$eco" | sed 's/RECEBI\[.*//' | grep -c 'AtlasFileTeste' || true)"
+  if [ "$visivel" -ge 1 ]; then ok
+  else no "o que foi digitado nao ecoou na tela: [$(printf '%s' "$eco" | tr -d '\r' | tr '\n' '|')]"; fi
+else
+  ok  # sem python3 nao da para abrir pty; o contrato de stdout acima ja cobre
+fi
 
 # ── O portao do caminho: TODA origem passa por ele ─────────────────────────
 # Duas instalacoes seguidas morreram em "service api refers to undefined volume"
