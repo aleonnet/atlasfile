@@ -444,9 +444,9 @@ function Test-DockerDaemon {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     $caminho = Resolve-ToolPath docker
-    try { & $caminho info *> $null; $ok = ($LASTEXITCODE -eq 0) } catch { $ok = $false }
+    try { & $caminho info *> $null; $respondeu = ($LASTEXITCODE -eq 0) } catch { $respondeu = $false }
     $ErrorActionPreference = $prev
-    return $ok
+    return $respondeu
 }
 
 # Pronto = o servico responde; ter o binario nao prova nada. O `ollama list`
@@ -457,9 +457,9 @@ function Test-OllamaReady {
     if (-not $caminho) { return $false }
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    try { & $caminho list *> $null; $ok = ($LASTEXITCODE -eq 0) } catch { $ok = $false }
+    try { & $caminho list *> $null; $respondeu = ($LASTEXITCODE -eq 0) } catch { $respondeu = $false }
     $ErrorActionPreference = $prev
-    return $ok
+    return $respondeu
 }
 
 # Docker alcancavel de DENTRO da distro. Definida aqui, junto das outras sondas,
@@ -951,15 +951,22 @@ function Write-Ok([string]$Texto)   { Clear-AfBar; Write-Wrapped $OK ("{0}{1}" -
 function Write-Info([string]$Texto) { Clear-AfBar; Write-Wrapped $DOT $Texto DarkGray; Show-AfBar }
 function Write-Warn([string]$Texto) { Clear-AfBar; Write-Wrapped "!" $Texto DarkYellow; Show-AfBar }
 function Write-Fail([string]$Texto) { Clear-AfBar; Write-Wrapped $BAD $Texto Red }
+# A caixa CRESCE com o conteudo. Antes tinha largura fixa de 57 e o comando do
+# WSL vazava por fora dela, num Windows 11 real. O install.sh nao vaza porque
+# TRUNCA o valor com reticencias, mas truncar um comando o tornaria incopiavel -
+# e comando existe para ser copiado. Piso de 57 para casar com a caixa do outro
+# instalador quando o conteudo e curto.
 function Write-Panel([string[]]$Linhas) {
+    $largura = 55
+    foreach ($l in $Linhas) { if ($l.Length -gt $largura) { $largura = $l.Length } }
     Write-Host ""
-    Write-Host ("  " + [char]0x256D + ([string][char]0x2500) * 57 + [char]0x256E) -ForegroundColor DarkYellow
+    Write-Host ("  " + [char]0x256D + ([string][char]0x2500) * ($largura + 2) + [char]0x256E) -ForegroundColor DarkYellow
     foreach ($l in $Linhas) {
         Write-Host ("  " + [char]0x2502) -ForegroundColor DarkYellow -NoNewline
-        Write-Host ("  " + $l.PadRight(55)) -NoNewline
+        Write-Host ("  " + $l.PadRight($largura)) -NoNewline
         Write-Host ([char]0x2502) -ForegroundColor DarkYellow
     }
-    Write-Host ("  " + [char]0x2570 + ([string][char]0x2500) * 57 + [char]0x256F) -ForegroundColor DarkYellow
+    Write-Host ("  " + [char]0x2570 + ([string][char]0x2500) * ($largura + 2) + [char]0x256F) -ForegroundColor DarkYellow
     Write-Host ""
 }
 
@@ -1115,7 +1122,11 @@ function Wait-Spinner {
     $t0 = Get-Date
     $i = 0
     if (-not $script:AfAnim) { Write-Host ("  {0} {1}..." -f $DOT, $Label) -ForegroundColor DarkGray }
-    $ok = $false
+    # $pronto e nao $ok: nomes de variavel do PowerShell NAO diferenciam
+    # maiusculas, entao um local chamado $ok sombreia o glifo global $OK e a
+    # linha de sucesso saia "True waiting for..." - medido num Windows 11
+    # real. Mesma colisao que ja tinha mordido no --doctor.
+    $pronto = $false
     while (((Get-Date) - $t0).TotalSeconds -lt $TimeoutSeconds) {
         if ($script:AfAnim) {
             Write-Host ("`r  " + $AF_SPIN[$i % $AF_SPIN.Count]) -ForegroundColor DarkYellow -NoNewline
@@ -1123,11 +1134,11 @@ function Wait-Spinner {
             $i++
         }
         Start-Sleep -Milliseconds 700
-        if (& $Test) { $ok = $true; break }
+        if (& $Test) { $pronto = $true; break }
     }
     if ($script:AfAnim) { Write-Host ("`r" + (" " * 78) + "`r") -NoNewline }
-    if ($ok) { Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) Green; Show-AfBar }
-    return $ok
+    if ($pronto) { Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) Green; Show-AfBar }
+    return $pronto
 }
 
 # -Verbose: a saida das ferramentas volta para a tela. Esconde-la e a regra (e o
@@ -1640,7 +1651,19 @@ if (-not $docker) {
         Invoke-Step "downloading and installing Docker Desktop (~600 MB)" winget @(
             "install", "-e", "--id", "Docker.DockerDesktop",
             "--source", "winget", "--accept-package-agreements", "--accept-source-agreements",
-            "--silent", "--disable-interactivity")
+            "--silent", "--disable-interactivity",
+            # --custom ACRESCENTA aos switches do manifesto (--override os
+            # substituiria). Documentado pela Docker:
+            #   --accept-license  "aceita o Docker Subscription Service Agreement
+            #                      AGORA, em vez de exigir aceite no primeiro uso"
+            #   --backend=wsl-2   escolhe o WSL2 como backend, que e o que este
+            #                      instalador precisa
+            #   --always-run-service  sobe o com.docker.service e o deixa em
+            #                      Automatico, para o daemon nao depender de
+            #                      alguem abrir a janela
+            # Sem isto o --silent calava o INSTALADOR mas a janela de aceite
+            # aparecia no primeiro uso, e o usuario tinha de clicar.
+            "--custom", "--accept-license --backend=wsl-2 --always-run-service")
         # 3010 e sucesso COM reinicio pendente (convencao MSI), nao falha.
         $codigoInstall = $script:NativeExitCode
         if ($codigoInstall -ne 0 -and $codigoInstall -ne 3010) {
@@ -1733,7 +1756,10 @@ Write-Ok "Docker and WSL are talking to each other"
 
 Write-Phase 3 "Installing AtlasFile inside WSL"
 Write-Info "the Linux installer takes over from here - first run builds images (~15 min)"
-Write-Host ""
+# A barra vive pinada na ultima linha, e daqui em diante quem escreve e o outro
+# instalador: sem apaga-la, a linha dela fica encalhada no meio da saida dele,
+# sem calha. Medido num Windows 11 real.
+Clear-AfBar
 # --delegated: o banner ja foi desenhado por este script segundos atras. Dois
 # banners seguidos leem como dois produtos - e eles nem eram o mesmo desenho.
 #
@@ -1768,17 +1794,20 @@ catch { Write-Info "open http://localhost:5173 in your browser" }
 # veredito duplicado do uninstall: duas conclusoes para um trabalho so. Este
 # painel diz apenas o que e do lado Windows.
 $dirWsl = if ($script:AfDir) { $script:AfDir } else { "~/AtlasFile" }
-Write-Panel @(
-    "logs   wsl -e bash -c 'cd $dirWsl && docker compose logs -f'",
-    "stop   wsl -e bash -c 'cd $dirWsl && docker compose down'"
-)
 
-# Placar: o que aconteceu, em numeros.
+# FECHAR o trilho antes de qualquer coisa do relatorio. A caixa saia com o
+# trilho ainda aberto e o `+--` vinha DEPOIS dela, deixando uma calha solta no
+# fim da tela - medido num Windows 11 real. O install.sh fecha primeiro e so
+# entao imprime o que e do lado de fora.
 Clear-AfBar
 $dur = [int]((Get-Date) - $script:RunStart).TotalSeconds
 $durTexto = if ($dur -ge 60) { "{0}m{1:d2}s" -f [int]($dur / 60), ($dur % 60) } else { "${dur}s" }
 Close-AfRail
 Write-Note ("AtlasFile is up in {0}" -f $durTexto)
+Write-Panel @(
+    "logs   wsl -e bash -c 'cd $dirWsl && docker compose logs -f'",
+    "stop   wsl -e bash -c 'cd $dirWsl && docker compose down'"
+)
 # Sem contador, como no install.sh: a tela acima ja mostra as fases com seus
 # tempos, e um numero novo aqui so compete com ela. Falha continua aparecendo,
 # porque isso o usuario PRECISA ver.

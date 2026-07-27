@@ -402,6 +402,37 @@ def check_gutter_holes(problems):
             "e diverge do install.sh")
 
 
+def check_glyph_shadowing(problems):
+    """Nenhuma variavel local pode sombrear um GLIFO global.
+
+    Nomes de variavel do PowerShell NAO diferenciam maiusculas: um `$ok = $false`
+    dentro de uma funcao sombreia o glifo `$OK` e a linha de sucesso sai
+    "True waiting for..." em vez de "checkmark waiting for...".
+
+    Mordeu duas vezes em maquina real — primeiro no --doctor (o contador $ok
+    sobrescrevendo o glifo, imprimindo "0 Microsoft Windows") e depois no
+    Wait-Spinner. Duas ocorrencias da mesma classe sem nenhuma guarda.
+    """
+    ps = read(PS)
+    glifos = set(re.findall(r"^\$(OK|BAD|DOT)\s*=", ps, re.M))
+    if not glifos:
+        problems.append("%s  nao achei os glifos globais para checar sombreamento" % PS)
+        return
+    vistos = set()
+    for nome in sorted(glifos):
+        # atribuicao a uma variavel com o MESMO nome em outra caixa
+        for m in re.finditer(r"\$([A-Za-z]+)\s*=", ps):
+            achado = m.group(1)
+            if achado != nome and achado.upper() == nome.upper():
+                linha = ps[:m.start()].count("\n") + 1
+                if (linha, achado) in vistos:
+                    continue   # duas atribuicoes na MESMA linha (try/catch)
+                vistos.add((linha, achado))
+                problems.append(
+                    "%s:%d  $%s sombreia o glifo global $%s (PowerShell ignora "
+                    "maiusculas em nomes de variavel)" % (PS, linha, achado, nome))
+
+
 def main():
     problems = []
     check_assertions(problems)
@@ -410,6 +441,7 @@ def main():
     check_art_parity(problems)
     check_ui_parity(problems)
     check_gutter_holes(problems)
+    check_glyph_shadowing(problems)
     check_call_before_declaration(problems)
     check_manifest_keys(problems)
     for p in problems:

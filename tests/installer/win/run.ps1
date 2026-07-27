@@ -667,9 +667,6 @@ Assert-True "nenhuma linha vazia ENTRE duas linhas de calha" ($buracos.Count -eq
 # guarda so avisa que alguem escreveu um comentario.
 $corpoConfirm = [regex]::Match($fonte, '(?s)function Confirm-Step.*?\n\}').Value
 $corpoLogTail = [regex]::Match($fonte, '(?s)function Show-LogTail.*?\n\}').Value
-# Ancorado na LISTA de argumentos, e nao no rotulo: o rotulo tem "(~600 MB)" e
-# o fecha-parenteses dele encerrava a captura antes dos argumentos.
-$blocoDocker  = [regex]::Match($fonte, '(?s)"install", "-e", "--id", "Docker\.DockerDesktop".*?\)').Value
 
 # A pergunta era a unica linha do trilho que nao pendurava nele.
 Assert-Match "a pergunta sai na calha" $corpoConfirm 'Write-Host \$script:Gut'
@@ -677,7 +674,7 @@ Assert-Match "a pergunta sai na calha" $corpoConfirm 'Write-Host \$script:Gut'
 Assert-Match "o rabo do log sai na calha" $corpoLogTail 'Write-Gut'
 # Sem --silent o winget roda o instalador do Docker com INTERFACE e ele espera
 # um clique em "Close": o Docker instala e o winget devolve falha assim mesmo.
-Assert-Match "a instalacao do Docker e silenciosa" $blocoDocker '--silent'
+Assert-Match "a instalacao do Docker e silenciosa" $fonte ([regex]::Escape('"--silent", "--disable-interactivity"'))
 
 # A barra viva ocupa a ultima linha: sem apaga-la a pergunta sai grudada nela.
 Assert-Match "Confirm-Step limpa a barra antes de perguntar" $fonte '(?s)function Confirm-Step.{0,400}?Clear-AfBar'
@@ -687,6 +684,35 @@ Assert-Match "Confirm-Plan limpa a barra antes de perguntar" $fonte '(?s)functio
 # Divergencia deliberada: no mac/Linux o par original renderiza e fica melhor.
 Assert-Match "a barra usa Block Elements" $fonte '0x2588'
 Assert-NoMatch "e nao os paralelogramos" $fonte '0x25B0'
+
+Write-Host "== V2. defeitos da segunda rodada no Windows 11 real =="
+$corpoSpinner = [regex]::Match($fonte, '(?s)function Wait-Spinner.*?\n\}').Value
+$corpoPanel   = [regex]::Match($fonte, '(?s)function Write-Panel.*?\n\}').Value
+
+# Saia "True waiting for Docker's WSL integration": o local $ok sombreava o
+# glifo global $OK, porque o PowerShell ignora maiusculas em nomes de variavel.
+# `\$ok\s*=` e nao `\$ok\b`: o comentario que explica o defeito CITA $ok, e a
+# segunda forma casaria com a prosa. Guarda tem de olhar atribuicao, nao texto.
+Assert-NoMatch "o spinner nao usa um local que sombreia o glifo" $corpoSpinner '\$ok\s*='
+
+# A caixa tinha largura fixa e o comando do WSL vazava por fora dela.
+Assert-NoMatch "a caixa nao tem largura fixa" $corpoPanel 'PadRight\(55\)'
+Assert-Match "a caixa cresce com o conteudo" $corpoPanel '\$l\.Length -gt \$largura'
+
+# A barra ficava encalhada no meio da saida do outro instalador.
+Assert-Match "a barra e apagada antes de delegar ao WSL" $fonte '(?s)takes over from here.{0,400}?Clear-AfBar'
+
+# O trilho fechava DEPOIS da caixa, deixando uma calha solta no fim.
+$fim = [regex]::Match($fonte, '(?s)Close-AfRail\s*\r?\n\s*Write-Note \("AtlasFile is up.*?Write-Panel').Value
+Assert-True "o trilho fecha ANTES da caixa" ($fim.Length -gt 0) "a caixa ainda vem antes do fechamento"
+
+# Sem --accept-license o contrato do Docker e pedido no PRIMEIRO USO, e e ali
+# que o usuario precisa clicar - o --silent so cala o instalador.
+#
+# Literal inteiro, e nao um bloco delimitado por parenteses: os comentarios
+# vizinhos tem parenteses e encerravam a captura antes dos argumentos. Ja
+# aconteceu duas vezes nesta bancada.
+Assert-Match "o contrato do Docker e aceito na instalacao" $fonte ([regex]::Escape('"--custom", "--accept-license --backend=wsl-2 --always-run-service"'))
 
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
