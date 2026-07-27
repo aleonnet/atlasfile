@@ -573,6 +573,33 @@ mkdir -p "${SANDBOX}/docs" && touch "${SANDBOX}/docs/a.pdf" "${SANDBOX}/docs/b.p
 out="$(run_case -- 'cd "$SANDBOX"; af_wrap "│   • " "│     " 6 "your documents in docs/* are never touched"' 2>&1)"
 printf '%s' "$out" | grep -q 'docs/\*' && ok || no "glob expandido: $out"
 
+# O plano lista o volume em destaque ("THE SEARCH INDEX IS ERASED") e a execucao
+# nao o citava: o `compose down --volumes` o levava junto e o unico rotulo na
+# tela falava de "containers, network, local images". Confirmar destruicao de
+# dado nao pode depender do usuario deduzir.
+make_sandbox
+t "volume apagado junto com a stack e confirmado PELO NOME na execucao"
+out="$(run_case -- '
+  UN_VOLUME=atlasfile_opensearch_data
+  UN_DIR="$SANDBOX"; LOG_FILE="$SANDBOX/log"
+  UN_ACTIONS="compose-down
+purge-volume"
+  un_execute
+  printf "CONTAGEM:%s" "$UN_OK"' 2>&1)"
+printf '%s' "$out" | grep -q 'volume atlasfile_opensearch_data erased' \
+  && ok || no "a execucao nao citou o volume: $out"
+t "e o placar conta o volume, para bater com o que o plano prometeu"
+case "$out" in *CONTAGEM:2*) ok ;; *) no "esperava 2 removidos (stack + volume): $out" ;; esac
+
+t "quando a stack NAO sai, o volume e removido de verdade, nao so anunciado"
+out="$(run_case -- '
+  UN_VOLUME=atlasfile_opensearch_data
+  UN_DIR="$SANDBOX"; LOG_FILE="$SANDBOX/log"
+  UN_ACTIONS="purge-volume"
+  un_execute' 2>&1)"
+printf '%s' "$(cat "$CALLS")" | grep -q 'docker volume rm atlasfile_opensearch_data' \
+  && ok || no "nao chamou docker volume rm: $(cat "$CALLS")"
+
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
 # o spinner longe da saída de terceiro.

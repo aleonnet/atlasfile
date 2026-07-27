@@ -1274,10 +1274,22 @@ un_execute() {
       compose-down)
         un_step "removing the stack (containers, network, local images)" un_compose_down ;;
       purge-volume)
-        # Already covered by `compose down --volumes` when the stack was
-        # removed from the clone; this is the fallback when it was not.
-        if ! un_has_action "compose-down" && [ -n "$UN_VOLUME" ]; then
-          un_step "removing volume ${UN_VOLUME}" docker volume rm $UN_VOLUME
+        # `compose down --volumes` ja leva o volume junto quando a stack sai do
+        # clone, entao aqui nao ha trabalho a fazer — mas HA conta a prestar.
+        #
+        # Medido numa desinstalacao real: o plano listava o volume em destaque
+        # ("THE SEARCH INDEX IS ERASED"), o usuario confirmou, o volume sumiu e
+        # NENHUMA das quatro linhas da execucao o citava. O unico passo que o
+        # apagava tinha rotulo "containers, network, local images", que nao fala
+        # de volume. Destruir o indice em silencio e a mesma classe do veredito
+        # prematuro que o lado Windows tinha: a acao acontece e a tela nao conta.
+        if [ -n "$UN_VOLUME" ]; then
+          if un_has_action "compose-down"; then
+            ok "volume ${UN_VOLUME} erased with the stack"
+            UN_OK=$(( UN_OK + 1 ))
+          else
+            un_step "removing volume ${UN_VOLUME}" docker volume rm $UN_VOLUME
+          fi
         fi ;;
       rm-clone)
         if un_dir_is_safe "$UN_DIR"; then
