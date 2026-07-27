@@ -540,6 +540,26 @@ $out = Run-Installer @("-Yes", "-Uninstall", "-KeepData")
 Assert-Match "diz que nao ha o que remover" $out "nothing to remove"
 Assert-NoMatch "e nao chama o winget" (Calls) "winget uninstall"
 
+Write-Host "== R. -Doctor diagnostica os DOIS lados e nao muda nada =="
+$sb = New-UninstallSandbox @("docker`tcreated", "wsl`tcreated")
+$out = Run-Installer @("-Doctor")
+$calls = Calls
+Assert-Match "relata o lado Windows" $out "Install manifest .Windows side."
+Assert-Match "e delega o diagnostico do outro lado" $calls "--doctor"
+Assert-Match "com o placar no fim" $out "Diagnosis .Windows side."
+Assert-NoMatch "nao instalou nada" $calls "winget install"
+Assert-NoMatch "nem removeu nada" $calls "winget uninstall"
+
+Write-Host "== S. -DryRun nao instala nada, nem do lado Windows =="
+$sb = New-Sandbox
+Remove-Stub docker
+$out = Run-Installer @("-Yes", "-DryRun")
+$calls = Calls
+Assert-Match "diz o que faria no Windows" $out "WOULD BE INSTALLED"
+Assert-Match "e delega o plano do outro lado" $calls "--dry-run"
+Assert-NoMatch "sem instalar coisa alguma" $calls "winget install"
+Assert-Match "declara que nada foi instalado" $out "nothing was installed"
+
 Write-Host ""
 Write-Host "$script:Pass passaram, $script:Fail falharam"
 if ($script:Fail -gt 0) { exit 1 }
