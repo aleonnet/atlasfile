@@ -1109,7 +1109,10 @@ if ($Doctor) {
 # --- -DryRun: o que uma instalacao faria, dos dois lados ---------------------
 # Nao instala NADA, nem do lado Windows: um dry run que instalasse o WSL para
 # depois dizer "nada foi instalado" seria uma mentira cara.
-if ($DryRun) {
+# `-and -not $Uninstall`: com as duas flags juntas quem responde e o bloco do
+# uninstall, que imprime o plano de REMOCAO. Sem esta guarda o -DryRun capturava
+# a combinacao e devolvia o plano de INSTALACAO — o oposto do que foi pedido.
+if ($DryRun -and -not $Uninstall) {
     Write-Host ""
     Write-Rule "Install plan (Windows side)"
     foreach ($item in @(
