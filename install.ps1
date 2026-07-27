@@ -331,6 +331,31 @@ function Restore-AfInstallIdentity {
 # encostar em qualquer pacote do Windows. Mesmo contrato do Invoke-Native
 # (nunca lanca, codigo em $script:NativeExitCode) e as aspas continuam sendo
 # nossas. So para comando NAO interativo.
+# Texto de arquivo, decidindo a codificacao pelos BYTES.
+#
+# Get-Content -Raw no Windows PowerShell 5.1 decodifica com a code page ANSI: os
+# bytes UTF-8 que o WSL devolve viravam mojibake, e a tela inteira do uninstall
+# saiu com lixo no lugar da calha. Ler como UTF-8 sempre tambem nao serve,
+# porque a saida do PROPRIO wsl.exe (--status, -l) e UTF-16LE - dai a decisao
+# pelos bytes, e nao por um palpite fixo.
+function Get-AfText([string]$Arquivo) {
+    if (-not (Test-Path $Arquivo)) { return "" }
+    try { $bytes = [IO.File]::ReadAllBytes($Arquivo) } catch { return "" }
+    if ($bytes.Length -eq 0) { return "" }
+    $utf16 = $false
+    if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) { $utf16 = $true }
+    else {
+        # ASCII em UTF-16LE poe um NUL em toda posicao impar. Um quarto ja basta
+        # para distinguir de UTF-8, que praticamente nunca tem NUL.
+        $limite = [Math]::Min(512, $bytes.Length)
+        $nulos = 0
+        for ($i = 1; $i -lt $limite; $i += 2) { if ($bytes[$i] -eq 0) { $nulos++ } }
+        if ($limite -gt 8 -and $nulos -gt ($limite / 4)) { $utf16 = $true }
+    }
+    if ($utf16) { return [Text.Encoding]::Unicode.GetString($bytes) }
+    return (New-Object Text.UTF8Encoding $false).GetString($bytes)
+}
+
 function Invoke-NativeCapture {
     param(
         [Parameter(Mandatory, Position = 0)][string]$File,
@@ -358,8 +383,7 @@ function Invoke-NativeCapture {
     }
     foreach ($f in @($fOut, $fErr)) {
         if (Test-Path $f) {
-            # wsl.exe emite UTF-16: sem tirar os NULs todo -match falha calado.
-            $texto += (((Get-Content $f -Raw -ErrorAction SilentlyContinue) -replace "`0", "") + "`n")
+            $texto += ((Get-AfText $f) + "`n")
         }
     }
     Write-LogSection ("$File " + ($Arguments -join " ")) @($fOut, $fErr)
@@ -374,7 +398,8 @@ function Confirm-Plan([string]$Pergunta) {
     Clear-AfBar
     if ($Yes) { return $true }
     if (-not [Environment]::UserInteractive) { return $false }
-    $resposta = Read-Host "  ? $Pergunta [y/N]"
+    Write-Host $script:Gut -ForegroundColor DarkGray -NoNewline
+    $resposta = Read-Host "? $Pergunta [y/N]"
     return $resposta -match '^(y|yes|s)$'
 }
 
@@ -401,7 +426,7 @@ function Invoke-WslProbe([string[]]$Prefixo) {
             catch { Write-Verbose "kill falhou: $($_.Exception.Message)" }
             return "lento"
         }
-        $texto = (Get-Content $saida -Raw -ErrorAction SilentlyContinue) -replace "`0", ""
+        $texto = Get-AfText $saida
         if ($texto -match "atlasfile_wsl_ok") { return "ok" }
         return "falhou"
     } catch {
@@ -867,6 +892,9 @@ $script:BarVisible = $false
 
 function Show-AfBar {
     if (-not $script:AfAnim -or -not $AfTrueColor) { return }
+    # Sem fase nao ha barra. No uninstall, no doctor e no dry-run ela aparecia
+    # como "fase 0/3" - ruido puro. Mesma guarda do bar_show do install.sh.
+    if ($script:BarDone -le 0) { return }
     $largura = 24
     $cheio = [int]($script:BarDone * $largura / $script:PhaseTotal)
     $esc = [char]27
@@ -1050,7 +1078,7 @@ function Write-LogSection([string]$Titulo, [string[]]$Arquivos) {
         Add-Content -Path $script:AfLog -Value ("=== " + $Titulo + " ===") -ErrorAction Stop
         foreach ($f in $Arquivos) {
             if (Test-Path $f) {
-                $texto = (Get-Content $f -Raw -ErrorAction SilentlyContinue) -replace "`0", ""
+                $texto = Get-AfText $f
                 if ($texto) { Add-Content -Path $script:AfLog -Value $texto }
             }
         }
@@ -1111,7 +1139,19 @@ function Invoke-Step {
     $t0 = Get-Date
     if (-not $script:AfAnim) { Write-Host ("  {0} {1}..." -f $DOT, $Label) -ForegroundColor DarkGray }
     try {
-        $proc = Start-Process -FilePath $caminho -ArgumentList $citados -NoNewWindow -PassThru `
+        # CONSOLE PROPRIO (escondido) em vez de -NoNewWindow. Redirecionar
+        # stdout/stderr so alcanca o FILHO: o desinstalador do Docker Desktop se
+        # relanca do TEMP (--remove-self --relaunch-from-temp) e o NETO escreve
+        # direto em CONOUT$, que nenhum redirecionamento do pai captura.
+        #
+        # Isso estava previsto como inferencia no diagnostico deste ciclo e foi
+        # MEDIDO agora: o log inteiro do desinstalador do Docker vazou por cima
+        # do spinner, com o spinner desenhando \r no meio das linhas dele. Com um
+        # console proprio o neto escreve LA, e a nossa tela fica intacta.
+        #
+        # A saida do filho continua indo para os arquivos, entao o log da
+        # execucao nao perde nada.
+        $proc = Start-Process -FilePath $caminho -ArgumentList $citados -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput $fOut -RedirectStandardError $fErr
         # Tocar no Handle ANTES de o processo terminar. Sem isto o Start-Process
         # -PassThru sem -Wait devolve ExitCode NULO: o handle e fechado quando o
@@ -1396,9 +1436,9 @@ if ($Uninstall) {
             Stop-Installer 1; return
         }
         Write-Host ""
-        Write-Host "  ? The volume $volume holds the search index." -ForegroundColor Yellow
-        Write-Host "    Your documents and the _ATLASFILE journal live on disk and are NOT affected;"
-        Write-Host "    the index is rebuilt by Reconcile after a reinstall."
+        Write-Gut ("? The volume $volume holds the search index.") Yellow
+        Write-Gut ("  Your documents and the _ATLASFILE journal live on disk and are NOT") Yellow
+        Write-Gut ("  affected; the index is rebuilt by Reconcile after a reinstall.") Yellow
         if (Confirm-Plan "Erase the volume?") {
             $decisaoDados = "--purge-data"
             Write-Info "the search index WILL be erased"

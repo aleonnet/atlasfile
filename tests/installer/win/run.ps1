@@ -738,6 +738,25 @@ Assert-Match "converte o caminho que o usuario deu" $calls "--projects-root '/mn
 # O espaco no caminho tem de sobreviver: a linha viaja dentro de um bash -c.
 Assert-NoMatch "sem quebrar no espaco do caminho" $calls "--projects-root '/mnt/d/Meus\s*$"
 
+Write-Host "== V3. o que a desinstalacao no Windows 11 real mostrou =="
+$corpoBar  = [regex]::Match($fonte, '(?s)function Show-AfBar.*?\n\}').Value
+$corpoConfP= [regex]::Match($fonte, '(?s)function Confirm-Plan.*?\n\}').Value
+
+# A tela inteira saiu com mojibake: Get-Content -Raw decodifica com a code page
+# ANSI no PowerShell 5.1, e os bytes UTF-8 do WSL viravam lixo.
+Assert-Match "a captura decide a codificacao pelos bytes" $fonte 'function Get-AfText'
+Assert-NoMatch "e ninguem mais le com a code page ANSI" $fonte 'Get-Content \$f -Raw'
+
+# A barra conta FASES; no uninstall ela aparecia como "fase 0/3".
+Assert-Match "sem fase, sem barra" $corpoBar '\$script:BarDone -le 0'
+
+# A pergunta do plano era a unica linha sem calha.
+Assert-Match "a confirmacao do plano sai na calha" $corpoConfP 'Write-Host \$script:Gut'
+
+# O desinstalador do Docker se relanca do TEMP e o NETO escreve em CONOUT$, que
+# nenhum redirecionamento do pai captura: o log dele vazou por cima do spinner.
+Assert-Match "o passo com spinner roda em console proprio" $fonte ([regex]::Escape('-WindowStyle Hidden -PassThru'))
+
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
 # e exatamente o estado da maquina real, e o instalador tem de ligar a chave em

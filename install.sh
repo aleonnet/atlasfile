@@ -1496,7 +1496,13 @@ run_uninstall() {
   [ -n "$PURGE_DATA" ] || PURGE_DATA=0
 
   un_build_plan "$PURGE_DATA" "$REMOVE_DEPS" "$FORCE"
-  un_print_plan
+  # Delegado E ja autorizado: o orquestrador MOSTROU este plano (via --plan-only)
+  # e o usuario ja o confirmou. Reimprimi-lo aqui faz a mesma lista aparecer duas
+  # vezes na tela, com a pergunta no meio — foi o que o Windows real mostrou.
+  # Quem nao delega continua vendo o plano, porque ele e a base da confirmacao.
+  if [ "$DELEGATED" != "1" ] || [ "$ASSUME_YES" != "1" ]; then
+    un_print_plan
+  fi
 
   if [ -z "$UN_ACTIONS" ]; then
     info "nothing to do."

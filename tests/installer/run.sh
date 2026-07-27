@@ -790,6 +790,23 @@ out="$(run_case PATH=/usr/bin:/bin -- '
   printf "%s" "$(cat "$SANDBOX/c_nosso/f.txt")"')"
 assert_eq "$out" "v2"
 
+# O orquestrador ja MOSTROU o plano (via --plan-only) e o usuario ja confirmou.
+# Reimprimi-lo na execucao fazia a mesma lista aparecer duas vezes na tela do
+# Windows, com a pergunta no meio.
+make_sandbox
+t "delegado e ja autorizado, o plano nao e reimpresso"
+out="$(run_case -- "${PLAN_FACTS}
+  DELEGATED=1; ASSUME_YES=1; PURGE_DATA=--keep-data; TTY_DEV=/dev/null
+  run_uninstall" 2>&1 || true)"
+n="$(printf '%s\n' "$out" | grep -c 'WILL BE REMOVED' || true)"
+[ "$n" = "0" ] && ok || no "reimprimiu o plano ${n}x na execucao ja confirmada"
+
+t "mas quem NAO delega continua vendo o plano antes de confirmar"
+out="$(run_case -- "${PLAN_FACTS}
+  DELEGATED=0; ASSUME_YES=1; PURGE_DATA=--keep-data; TTY_DEV=/dev/null
+  run_uninstall" 2>&1 || true)"
+printf '%s' "$out" | grep -q 'WILL BE REMOVED' && ok || no "sumiu o plano de quem confirma na tela"
+
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
 # o spinner longe da saída de terceiro.
