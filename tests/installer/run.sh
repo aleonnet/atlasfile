@@ -597,13 +597,16 @@ assert_not_contains "$CALLS" "compose down"
 assert_not_contains "$CALLS" "clone"
 
 t "--doctor devolve != 0 quando algo esta quebrado"
-# Sem docker no PATH o diagnostico tem de falhar: um doctor que sempre sai 0 nao
-# serve para automacao nenhuma.
+# Um doctor que sempre sai 0 nao serve para automacao nenhuma.
+#
+# A ferramenta e quebrada pelo CODIGO DE SAIDA, nao removendo o stub: o runner
+# Linux traz /usr/bin/docker, entao apagar o stub do sandbox nao simula ausencia
+# nenhuma — o teste passava no macOS e reprovava no Linux. E a mesma licao que a
+# bancada do Windows ja tinha aprendido com o ATLASFILE_FAKE_MISSING.
 make_sandbox
-rm -f "${SANDBOX}/bin/docker"
-rc=0; env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+rc=0; env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null STUB_RC_docker=1 \
   bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/nada" >/dev/null 2>&1 || rc=$?
-[ "$rc" != "0" ] && ok || no "doctor saiu 0 com o docker ausente"
+[ "$rc" != "0" ] && ok || no "doctor saiu 0 com o docker quebrado"
 
 make_sandbox
 t "--dry-run diz o que faria e nao instala nada"

@@ -1193,9 +1193,14 @@ doc_warn() { DOC_WARN=$(( DOC_WARN + 1 )); printf '%s%s!%s %s\n' "$GUT" "$ORANGE
 doc_fail() { DOC_FAIL=$(( DOC_FAIL + 1 )); printf '%s%s✘%s %s\n' "$GUT" "$RED" "$RESET" "$*"; }
 doc_head() { printf '%s\n' "$GUT"; rule_sweep "$1"; }
 
-doc_version() { # <cmd> <args...> — versão em uma linha, ou vazio
+doc_version() { # <cmd> <args...> — versão em uma linha; falha se o comando falhar
+  local saida
   command -v "$1" >/dev/null 2>&1 || return 1
-  "$@" 2>/dev/null | head -1
+  # O `| head -1` mascarava o código de saída do comando (o status do pipeline é
+  # o do head), então uma ferramenta presente mas QUEBRADA era relatada como ok.
+  saida="$("$@" 2>/dev/null)" || return 1
+  [ -n "$saida" ] || return 1
+  printf '%s' "$saida" | head -1
 }
 
 run_doctor() {
