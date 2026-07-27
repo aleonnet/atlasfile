@@ -72,6 +72,29 @@ Sete lacunas encontradas ao auditar os manifestos, todas verificadas no código:
 - **`--dry-run` é o nome público e compõe**: sozinho mostra o **retrato** da máquina (o que ele vê) e o plano de instalação; com `--uninstall`, o plano de remoção — nos dois casos sem tocar em nada. `--plan-only` continua existindo como flag de **protocolo** entre os dois instaladores e saiu da ajuda
 - No Windows, `-Uninstall -DryRun` caía no plano de **instalação** porque o bloco do `-DryRun` vinha antes do `-Uninstall` (achado pelo CI, no cenário escrito para essa propriedade)
 
+### Corrigido — o que o teste real no macOS achou
+
+Seis defeitos, todos na **mesma pergunta** (a pasta de projetos) ou no caminho dela, e nenhum alcançável por bancada sem terminal de verdade:
+
+- **A tecla de seta corrompia a resposta e derrubava a instalação.** `read -r` não tem readline, então cada seta virava byte de escape *dentro* da resposta. O `.env` recebeu `PROJECTS_HOST_ROOT=\033[C\033[D…` e o `${PROJECTS_HOST_ROOT}:/projects` do compose matou a instalação com *"service api refers to undefined volume :"*. Conferir o caminho antes do Enter quebrava a instalação
+- **Esse `.env` era relido na execução seguinte, sem validação.** O `.env already exists — preserved` pegava o lixo da primeira tentativa e nem chegava a perguntar. Havia **quatro** origens para esse caminho e só uma estava blindada; agora existe **um portão** por onde todas passam
+- **`~` não expandia**: `mkdir -p "~/Desktop/x"` criaria uma pasta chamada literalmente `~` no diretório atual
+- **`2>/dev/null` no `read -e` apagava a digitação da tela.** O readline escreve o eco no **stderr** — silenciá-lo deixava o cursor parado depois dos dois-pontos. Isolado sob pty com três experimentos antes de tocar no código
+- **O backspace comia o próprio prompt.** Impresso por um `printf` separado, o readline não sabia que havia texto na linha e redesenhava desde a coluna 0. Agora o prompt vai *para* o readline (`-p`), com os escapes de cor marcados em `\001..\002` para ele não contar bytes invisíveis como largura
+- **Cinco mensagens da fase 3 ainda saíam fora da calha.** A bancada passa a varrer o fonte inteiro: nenhum `printf` de mensagem pode existir sem a calha
+
+Mais: a barra de fase aparecia como `fase 0/5` nos fluxos que não têm fase (uninstall, doctor, dry-run), e a linha-sentinela vazava para a tela de quem digitou o comando em vez de ficar só no protocolo entre os dois instaladores.
+
+**Bancada: 116 → 152**, incluindo um teste que dirige um terminal real (pty), digita, apaga com backspace e cobra três coisas: o valor final, o prompt desenhado uma única vez e o eco na tela.
+
+### Compatibilidade
+
+- **As flags do Ollama viraram depreciadas, não desconhecidas.** O site publica `--with-ollama` e `-WithOllama` em quatro lugares e é repositório separado: responder "Unknown flag" a um comando que nós mesmos publicamos quebraria o usuário na primeira linha — no PowerShell, com erro terminante, sem nem mostrar o banner. Elas são aceitas, avisam e a instalação segue
+
+### Verificado em máquina real (macOS)
+
+Instalação pelo one-liner do site, completa e funcional (API `{"status":"ok"}`, UI 200, 5 containers). **Cancelar a desinstalação não removeu nada** — 5 containers de pé, pasta, volume e Docker/git/Ollama intactos. Desinstalação confirmada removeu só o que foi criado, preservando o Docker (a stack de desenvolvimento divide o mesmo daemon), o Ollama (não foi este instalador que o instalou) e os documentos. Num clone preexistente, o `.env` e o `config/api_keys.json` criados pelo instalador foram removidos individualmente — a chave de API não fica em disco.
+
 ### Pendente de prova real
 
 O E2E na máquina Windows: instalar pelo one-liner, conferir que o plano cita Docker/Ollama/WSL nas seções certas, **responder "n"** e verificar que nada foi removido, repetir com "y". Nenhuma VM aqui roda Docker, então essa continua sendo a única prova que falta.

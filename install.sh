@@ -256,8 +256,11 @@ bar_show() {
 # terceiro, que foi como o desinstalador do Docker embaralhou a tela.
 bar_clear() {
   if [ "$BAR_VISIBLE" = "1" ]; then
-    printf '\r'
-    tput el 2>/dev/null || printf '%*s\r' 60 ''
+    # `\033[2K` apaga a linha INTEIRA e não depende do TERM estar definido — o
+    # `tput el` falha calado quando não está, e sobrava rastro da barra por
+    # baixo do que viesse em seguida. Com um prompt do readline logo depois,
+    # esse rastro virava caractere duplicado na tela.
+    printf '\r\033[2K\r'
     BAR_VISIBLE=0
   fi
   return 0
