@@ -33,7 +33,12 @@ param(
     [switch]$Verbose,
     [switch]$Help,
     [string]$Dir = "",
-    [string]$Branch = ""
+    [string]$Branch = "",
+    # Depreciadas: aceitas e IGNORADAS. O site publica -WithOllama ha meses e
+    # PowerShell recusa parametro desconhecido com erro terminante - quem colar
+    # o comando do site nao veria nem o banner.
+    [switch]$WithOllama,
+    [string]$OllamaModel = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -93,6 +98,11 @@ Uninstall options:
   -RemoveDeps     Uninstall: also remove the Windows-side dependencies that the
                   manifest records as installed by AtlasFile
   -Force          Uninstall: remove the clone inside WSL even with local changes
+
+Deprecated (accepted and ignored, so a published command line never breaks):
+  -WithOllama     Ollama is no longer installed here - pulling a model is several
+  -OllamaModel    GB and made the install take an unpredictable amount of time.
+                  The final panel shows how to enable a local model afterwards
 
 Diagnostics:
   -Doctor         Read-only report of BOTH sides of this machine: Windows
@@ -1006,6 +1016,11 @@ function Wait-Spinner {
 # winget em ingles e tres estilos de barra), mas quando algo da errado ver o que
 # a ferramenta diz, na hora, vale mais.
 if ($Verbose) { $VerbosePreference = "Continue"; $script:AfVerbose = $true }
+
+if ($WithOllama -or $OllamaModel) {
+    Write-Warn "the Ollama flags are no longer used: pulling a model is several GB and made the install take an unpredictable amount of time"
+    Write-Info "this run continues normally; the final panel shows how to enable a local model afterwards"
+}
 
 # --- -Doctor: diagnostico read-only dos DOIS lados --------------------------
 # Nao existia, e era exatamente o que faltou quando a instalacao falhou numa

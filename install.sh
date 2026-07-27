@@ -50,6 +50,7 @@ HOST_EXTRA=""      # facts from the OTHER side of an OS boundary (install.ps1)
 DOCTOR=0
 DRY_RUN=0
 VERBOSE=0
+OLLAMA_DEPRECATED=0
 
 # Exit codes. 0 = done, 1 = failed, 10 = the user said no. `exit` in bash is
 # truncated to 8 bits, so the Windows-world MSI codes (1602 = user cancelled,
@@ -105,6 +106,12 @@ Uninstall options:
                         manifest records as installed by AtlasFile
   --force               Uninstall: remove the clone even with local changes
 
+Deprecated (accepted and ignored, so a published command line never breaks):
+  --with-ollama         Ollama is no longer installed here — pulling a model is
+  --no-ollama           several GB and made the install take an unpredictable
+  --ollama-model NAME   amount of time. The final panel shows how to enable a
+                        local model afterwards, in one command
+
 Diagnostics:
   --doctor              Read-only report of this machine: prerequisites, the
                         install manifest, the stack and the folders. Installs
@@ -135,6 +142,12 @@ while [ $# -gt 0 ]; do
     --bootstrap-only) BOOTSTRAP_ONLY=1; shift ;;  # hidden: prereqs only, then exit (CI/support)
     --no-open) OPEN_BROWSER=0; shift ;;
     --enable-auth) ENABLE_AUTH=1; shift ;;
+    # Depreciadas: aceitas e IGNORADAS. O site, o histórico do shell e as
+    # anotações de quem já instalou continuam trazendo estas flags; um
+    # instalador público que responde "Unknown flag" a um comando que ele mesmo
+    # publicou quebra o usuário na primeira linha. Elas avisam e seguem.
+    --with-ollama|--no-ollama) OLLAMA_DEPRECATED=1; shift ;;
+    --ollama-model) OLLAMA_DEPRECATED=1; shift 2 ;;
     --uninstall) UNINSTALL=1; shift ;;
     --purge-data) PURGE_DATA=1; shift ;;
     --keep-data) PURGE_DATA=0; shift ;;
@@ -1681,6 +1694,14 @@ trap af_restore_terminal EXIT INT TERM
 # would be noise in whatever is parsing it.
 if [ "$DELEGATED" != "1" ] && [ "$PLAN_ONLY" != "1" ]; then
   print_banner
+fi
+
+# O aviso vem DEPOIS do banner e antes de qualquer trabalho, para quem colou o
+# comando do site entender por que a flag não fez nada — e onde conseguir o que
+# ela prometia.
+if [ "$OLLAMA_DEPRECATED" = "1" ]; then
+  warn "the Ollama flags are no longer used: pulling a model is several GB and made the install take an unpredictable amount of time"
+  info "this run continues normally; the final panel shows how to enable a local model afterwards"
 fi
 
 if [ "$DOCTOR" = "1" ]; then

@@ -135,15 +135,24 @@ assert_eq "$rc" "0"
 # previsivel. O UNINSTALL continua sabendo reverter um Ollama de versoes
 # anteriores, e isso segue coberto pelos testes de plano mais abaixo.
 make_sandbox
-t "o instalador nao oferece nem instala Ollama"
+t "o instalador nao instala Ollama, mas NAO quebra quem colou o comando antigo"
+# O site publica --with-ollama ha meses, e responder "Unknown flag" a um comando
+# que nos mesmos publicamos quebraria o usuario na primeira linha. As flags sao
+# aceitas, avisam e seguem.
+for flag in --with-ollama --no-ollama; do
+  if bash "$REPO_ROOT/install.sh" "$flag" --help >/dev/null 2>&1; then ok
+  else no "o parser recusa ${flag}, que o site ainda publica"; fi
+done
+if bash "$REPO_ROOT/install.sh" --ollama-model x --help >/dev/null 2>&1; then ok
+else no "o parser recusa --ollama-model (e ele consome um valor)"; fi
 out="$(cat "$REPO_ROOT/install.sh" | bash -s -- --help 2>&1)"
-case "$out" in *"--with-ollama"*) no "a ajuda ainda promete --with-ollama" ;; *) ok ;; esac
-if bash "$REPO_ROOT/install.sh" --with-ollama --help >/dev/null 2>&1; then
-  no "o parser ainda aceita --with-ollama"
-else ok; fi
-if bash "$REPO_ROOT/install.sh" --no-ollama --help >/dev/null 2>&1; then
-  no "o parser ainda aceita --no-ollama (o install.ps1 nao pode passar essa flag)"
-else ok; fi
+case "$out" in *"Deprecated"*) ok ;; *) no "a ajuda nao explica que a flag foi depreciada" ;; esac
+# E a flag depreciada nao pode fazer NADA de Ollama acontecer.
+make_sandbox
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --with-ollama --doctor --dir "${SANDBOX}/nada" 2>&1 || true)"
+case "$out" in *"no longer used"*) ok ;; *) no "nao avisou que a flag foi ignorada: [$out]" ;; esac
+assert_not_contains "$CALLS" "ollama pull"
 
 # ── flag parser (full script run with --help exits before any action) ───────
 t "flag parser accepts the new flags (--help path proves parse phase)"
