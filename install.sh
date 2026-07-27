@@ -17,9 +17,9 @@
 #                         missing system dependencies — see --install-deps)
 #   --install-deps        authorize installing missing prerequisites without
 #                         prompting (Homebrew/Docker/git; sudo on Linux)
-#   --with-ollama         also install Ollama and pull a local model (opt-in)
-#   --ollama-model NAME   model to pull with --with-ollama
-#                         (default: gemma4:12b; env ATLASFILE_OLLAMA_MODEL)
+# Ollama NÃO faz parte da instalação: puxar um modelo é um download de vários GB
+# e transformava uma instalação de minutos em algo sem duração previsível. O
+# painel final ensina a habilitar um modelo local depois, em um comando.
 #   --no-open             do not open the browser at the end
 #   --enable-auth         enable API authentication (generates a key in
 #                         config/api_keys.json, sets API_AUTH_ENABLED=true and
@@ -34,7 +34,7 @@ PROJECTS_ROOT_DEFAULT="${HOME}/Documents/AtlasFileProjects"
 PROJECTS_ROOT=""
 ASSUME_YES=0
 INSTALL_DEPS=0
-WITH_OLLAMA=0
+# Só sugestão para o painel final — o instalador não baixa modelo nenhum.
 OLLAMA_MODEL="${ATLASFILE_OLLAMA_MODEL:-gemma4:12b}"
 BOOTSTRAP_ONLY=0
 OPEN_BROWSER=1
@@ -45,7 +45,6 @@ PURGE_DATA=""      # ""=undecided, 1=remove the volume, 0=keep it
 REMOVE_DEPS=0
 FORCE=0
 PLAN_ONLY=0
-NO_OLLAMA=0
 DELEGATED=0
 HOST_EXTRA=""      # facts from the OTHER side of an OS boundary (install.ps1)
 DOCTOR=0
@@ -91,13 +90,6 @@ Install options:
                         installs system dependencies — see --install-deps
   --install-deps        Authorize installing missing prerequisites without
                         asking (Homebrew/Docker/git; sudo on Linux)
-  --with-ollama         Also install Ollama and pull a local model (opt-in)
-  --no-ollama           Never offer nor install Ollama in this run. The Windows
-                        installer always passes it: there, Ollama belongs to the
-                        Windows side and the containers reach it through
-                        host.docker.internal — a second copy inside WSL would be
-                        several GB of duplicate
-  --ollama-model NAME   Model to pull with --with-ollama (default: ${OLLAMA_MODEL})
   --enable-auth         Enable API authentication (generates a key in
                         config/api_keys.json)
   --no-open             Do not open the browser at the end
@@ -140,8 +132,6 @@ while [ $# -gt 0 ]; do
     --projects-root) PROJECTS_ROOT="$2"; shift 2 ;;
     --yes|-y) ASSUME_YES=1; shift ;;
     --install-deps) INSTALL_DEPS=1; shift ;;
-    --with-ollama) WITH_OLLAMA=1; shift ;;
-    --ollama-model) OLLAMA_MODEL="$2"; shift 2 ;;
     --bootstrap-only) BOOTSTRAP_ONLY=1; shift ;;  # hidden: prereqs only, then exit (CI/support)
     --no-open) OPEN_BROWSER=0; shift ;;
     --enable-auth) ENABLE_AUTH=1; shift ;;
@@ -151,7 +141,6 @@ while [ $# -gt 0 ]; do
     --remove-deps) REMOVE_DEPS=1; shift ;;
     --force) FORCE=1; shift ;;
     --plan-only) PLAN_ONLY=1; shift ;;
-    --no-ollama) NO_OLLAMA=1; shift ;;
     --doctor) DOCTOR=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
@@ -532,81 +521,11 @@ ensure_docker_group_linux() {
   return 1
 }
 
-ensure_ollama() {
-  if command -v ollama >/dev/null 2>&1; then host_set ollama preexisting; return 100; fi
-  if [ "$OS_KIND" = "mac" ]; then
-    ensure_homebrew || return 1
-    # cask name changed over time: try the current one, then the legacy one
-    run_step "installing Ollama (Homebrew cask)" brew install --cask ollama-app \
-      || run_step "installing Ollama (Homebrew cask, legacy name)" brew install --cask ollama \
-      || return 1
-    open -g -a Ollama >/dev/null 2>&1 || true
-  else
-    ensure_sudo || return 1
-    run_step "installing Ollama (official install.sh)" \
-      sh -c "curl -fsSL https://ollama.com/install.sh | sh" || return 1
-  fi
-  wait_http http://localhost:11434/api/version 15 || warn "Ollama installed but the service did not answer yet — open the Ollama app once"
-  host_set ollama created
-  return 0
-}
-
-ollama_pull_model() {
-  local model="$1"
-  if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$model"; then
-    ok "model ${model} already pulled"
-    host_set ollama_model_state preexisting
-    return 0
-  fi
-  info "pulling model ${model} — large download (several GB), one-time"
-  if [ "$IS_TTY" = "1" ] && [ -r "$TTY_DEV" ]; then
-    # foreground: ollama's native progress bar is worth it for a multi-GB pull
-    if ! ollama pull "$model" < "$TTY_DEV"; then
-      warn "could not pull ${model} — run manually later: ollama pull ${model}"
-      return 0
-    fi
-  else
-    run_step "pulling model ${model}" ollama pull "$model" || {
-      warn "could not pull ${model} — run manually later: ollama pull ${model}"
-      return 0
-    }
-  fi
-  host_set ollama_model_state created
-  host_set ollama_model_name "$model"
-  ok "model ${model} ready"
-}
-
-# ── Ollama (opt-in): runs after the stack is up so it never delays first screen
-# --no-ollama silences BOTH the offer and the install. install.ps1 always passes
-# it: on Windows the Ollama belongs to the Windows side and the containers reach
-# it through host.docker.internal. Without the flag this question came back a
-# SECOND time inside the distro — where `command -v ollama` naturally fails,
-# because the binary lives on the other operating system — and a "y" pulled
-# several GB of duplicate. That intent used to live only in a comment in
-# install.ps1; it is a contract now, and this function exists so the contract is
-# reachable by the bench instead of being buried in the script's main flow.
-maybe_setup_ollama() {
-  local ollama_answer="" ollama_rc=0
-  [ "$NO_OLLAMA" = "1" ] && return 0
-  if [ "${WITH_OLLAMA}" = "0" ] && [ "$ASSUME_YES" = "0" ] && [ -r "$TTY_DEV" ] \
-    && ! command -v ollama >/dev/null 2>&1; then
-    ask "Also install Ollama for a 100% local model (${OLLAMA_MODEL}, several GB)? ${DIM}[y/N]${RESET} "
-    read -r ollama_answer < "$TTY_DEV" || ollama_answer=""
-    case "$ollama_answer" in y|Y|yes|YES|s|S) WITH_OLLAMA=1 ;; esac
-  fi
-  [ "${WITH_OLLAMA}" = "1" ] || return 0
-  ensure_ollama || ollama_rc=$?
-  if [ "$ollama_rc" = "100" ]; then
-    ok "ollama $(ollama --version 2>/dev/null | sed 's/ollama version is //' || true) (already installed — the app updates itself)"
-  fi
-  if [ "$ollama_rc" != "1" ]; then
-    ollama_pull_model "${OLLAMA_MODEL}"
-    info "in the assistant settings, type ollama/${OLLAMA_MODEL} in the model box to use it"
-  else
-    warn "Ollama setup failed — the stack is up; install manually later (https://ollama.com)"
-  fi
-  return 0
-}
+# Ollama saiu do instalador: puxar um modelo e um download de varios GB e
+# transformava uma instalacao de minutos em algo sem duracao previsivel. O
+# painel final ensina a habilitar um modelo local depois, em um comando. O
+# UNINSTALL continua sabendo reverter um Ollama instalado por versoes
+# anteriores — o manifesto daquelas instalacoes segue valendo.
 
 # Non-blocking upgrade hints for already-installed prerequisites. Docker Desktop
 # and Ollama self-update through their own apps — brew receipts lag behind and
@@ -1301,9 +1220,8 @@ run_dry_run() {
   printf '%s  • install dir  %s%s\n' "$GUT" "$INSTALL_DIR" \
     "$([ -d "${INSTALL_DIR}/.git" ] && printf ' (exists — would be UPDATED)' || printf ' (would be CLONED)')"
   printf '%s  • documents    %s\n' "$GUT" "${PROJECTS_ROOT:-$PROJECTS_ROOT_DEFAULT}"
-  printf '%s  • options      auth=%s ollama=%s open-browser=%s\n' "$GUT" \
+  printf '%s  • options      auth=%s open-browser=%s\n' "$GUT" \
     "$([ "$ENABLE_AUTH" = "1" ] && printf on || printf off)" \
-    "$([ "$WITH_OLLAMA" = "1" ] && printf "on (${OLLAMA_MODEL})" || printf off)" \
     "$([ "$OPEN_BROWSER" = "1" ] && printf on || printf off)"
   printf '%s\n' "$GUT"
   doc_head "Prerequisites this machine is missing"
@@ -1916,8 +1834,6 @@ run_step "starting the 5 services" docker compose up -d
 run_step "waiting for the API to become healthy" wait_http http://localhost:8000/health 90
 run_step "waiting for the interface" wait_http http://localhost:5173/ 30
 
-maybe_setup_ollama
-
 # ── 5. Done ─────────────────────────────────────────────────────────────────
 TOTAL_SECS=$(( $(step_now) - START_TS ))
 TOTAL=$(fmt_secs "$TOTAL_SECS")
@@ -1960,8 +1876,14 @@ printf '%s  • the onboarding wizard opens by itself in the interface\n' "$GUT"
 if [ "$(host_get docker_group)" = "created" ]; then
   printf '%s  • log out and back in: your docker group membership only applies to new sessions\n' "$GUT"
 fi
-if [ "${WITH_OLLAMA}" = "1" ]; then
-  printf '%s  • assistant settings: type ollama/%s in the model box\n' "$GUT" "${OLLAMA_MODEL}"
+# Modelo 100% local é um passo DEPOIS da instalação, e de propósito: o pull são
+# vários GB e tiraria qualquer previsibilidade da duração aqui.
+if command -v ollama >/dev/null 2>&1; then
+  printf '%s  • local model: %sollama pull %s%s, then type %sollama/%s%s in the assistant settings\n' \
+    "$GUT" "$BOLD" "${OLLAMA_MODEL}" "$RESET" "$BOLD" "${OLLAMA_MODEL}" "$RESET"
+else
+  printf '%s  • want a 100%% local model? install Ollama (https://ollama.com), then %sollama pull %s%s\n' \
+    "$GUT" "$BOLD" "${OLLAMA_MODEL}" "$RESET"
 fi
 if [ "$OS_KIND" = "mac" ] && [ "$(host_get docker)" = "created" ]; then
   printf '%s  • Docker Desktop was installed now — keep it open for the stack to run\n' "$GUT"
