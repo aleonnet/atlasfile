@@ -737,6 +737,59 @@ for modo in "--doctor" "--dry-run"; do
   fi
 done
 
+# `pull --ff-only` recusa historico divergente, e recusar esta certo — morrer
+# ali e que nao. Num Windows 11 real o clone estava num commit de um historico
+# reescrito e a instalacao parou em "Not possible to fast-forward, aborting".
+make_sandbox
+af_repo_divergente() { # <dir_do_clone> — remoto com historico REESCRITO
+  # HEAD do bare fixado em main: sem isto o nome do ramo default vem da config
+  # da MAQUINA (init.defaultBranch). Num runner sem config global o bare nasce
+  # apontando para master, o clone sai SEM working tree e o --ff-only avanca
+  # sozinho — o cenario nem chega a divergir, e o teste passava por acidente.
+  ( cd "$SANDBOX" && git init -q --bare "remoto_$1.git" \
+    && git -C "remoto_$1.git" symbolic-ref HEAD refs/heads/main
+    git clone -q "remoto_$1.git" "origem_$1" 2>/dev/null
+    cd "origem_$1" && git config user.email t@t && git config user.name t
+    printf 'v1\n' > f.txt && git add -A && git commit -qm v1 && git branch -M main && git push -q origin main
+  ) >/dev/null 2>&1
+  git clone -q "$SANDBOX/remoto_$1.git" "$SANDBOX/$1" >/dev/null 2>&1
+  ( cd "$SANDBOX/origem_$1" && git checkout -q --orphan novo \
+    && printf 'v2\n' > f.txt && git add -A && git commit -qm v2 \
+    && git branch -M main && git push -qf origin main ) >/dev/null 2>&1
+}
+
+t "clone divergente e LIMPO e realinhado ao remoto"
+af_repo_divergente c_limpo
+out="$(run_case PATH=/usr/bin:/bin -- '
+  AF_RESET_MARK="$SANDBOX/marca"
+  af_update_clone "$SANDBOX/c_limpo" main >/dev/null 2>&1
+  printf "%s|%s" "$(cat "$SANDBOX/c_limpo/f.txt")" "$([ -f "$SANDBOX/marca" ] && echo marcado || echo sem-marca)"')"
+assert_eq "$out" "v2|marcado"
+
+# O contrario importa mais: realinhar a forca por cima de trabalho do usuario
+# seria destruicao silenciosa.
+t "clone divergente com trabalho SEU e recusado, nomeando o arquivo"
+af_repo_divergente c_sujo
+touch "$SANDBOX/c_sujo/meu_trabalho.md"
+out="$(run_case PATH=/usr/bin:/bin -- '
+  rc=0; saida="$(af_update_clone "$SANDBOX/c_sujo" main 2>&1)" || rc=$?
+  printf "rc=%s|%s|%s" "$rc" \
+    "$(printf "%s" "$saida" | grep -c meu_trabalho.md)" \
+    "$(cat "$SANDBOX/c_sujo/f.txt")"')"
+assert_eq "$out" "rc=1|1|v1"
+
+# Artefato NOSSO dentro do clone nao pode impedir o realinhamento: e a mesma
+# lista que o plano de remocao consulta, e por isso ela e uma so.
+t "artefato do proprio instalador nao impede o realinhamento"
+af_repo_divergente c_nosso
+touch "$SANDBOX/c_nosso/.env" "$SANDBOX/c_nosso/.env.backup.20260101000000"
+mkdir -p "$SANDBOX/c_nosso/config" && touch "$SANDBOX/c_nosso/config/api_keys.json"
+out="$(run_case PATH=/usr/bin:/bin -- '
+  manifest_set "$SANDBOX/c_nosso/$AF_MANIFEST_NAME" env_backup .env.backup.20260101000000
+  af_update_clone "$SANDBOX/c_nosso" main >/dev/null 2>&1
+  printf "%s" "$(cat "$SANDBOX/c_nosso/f.txt")"')"
+assert_eq "$out" "v2"
+
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
 # o spinner longe da saída de terceiro.

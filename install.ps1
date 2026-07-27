@@ -148,6 +148,12 @@ function Stop-Installer([int]$Code) {
 if ($Help) { Show-Usage; return }
 
 function Confirm-Step([string]$Question) {
+    # A barra viva ocupa a ultima linha. Sem apaga-la a pergunta sai GRUDADA
+    # nela - medido no Windows 11 real:
+    #   "[bar] fase 2/3  ? Docker Desktop not found - install it now? [y/N]"
+    # O install.sh chama bar_clear antes de toda mensagem; aqui faltava nas
+    # perguntas, que sao justamente onde a tela precisa estar limpa.
+    Clear-AfBar
     if ($InstallDeps) { return $true }
     if ($Yes) { return $false }  # conservative: -Yes alone never installs system deps
     if (-not [Environment]::UserInteractive) { return $false }
@@ -357,6 +363,7 @@ function Invoke-NativeCapture {
 # significa "nao instale software de sistema por conta propria"; aqui -Yes e a
 # resposta do usuario a uma pergunta que ele mesmo pediu ao passar -Uninstall.
 function Confirm-Plan([string]$Pergunta) {
+    Clear-AfBar
     if ($Yes) { return $true }
     if (-not [Environment]::UserInteractive) { return $false }
     $resposta = Read-Host "  ? $Pergunta [y/N]"
@@ -468,6 +475,47 @@ function Test-DockerInWsl {
     try { & $caminhoWsl @argsWslDocker *> $null; $alcancavel = ($LASTEXITCODE -eq 0) } catch { $alcancavel = $false }
     $ErrorActionPreference = $prev
     return $alcancavel
+}
+
+# A integracao com o WSL e o que faz o `docker` existir DENTRO da distro, e ela
+# nem sempre vem ligada depois de uma instalacao nova: num Windows 11 real o
+# instalador parou exatamente aqui, pedindo um clique em
+# Settings > Resources > WSL Integration.
+#
+# Docker Desktop guarda isso em %APPDATA%\Docker. O nome do arquivo mudou na
+# versao 4.35 (settings.json -> settings-store.json), entao os dois sao
+# tentados, nessa ordem. E formato INTERNO, sem contrato publico: se o arquivo
+# nao existir, nao for JSON valido ou nao tiver a chave, isto NAO falha - cai na
+# espera e na mensagem manual que ja existiam. Nunca derrubar a instalacao por
+# causa de um palpite sobre esquema alheio.
+#
+# O diretorio e sobrescrivivel so para teste, mesma costura de DOCKER_APP_PATH.
+function Enable-AfWslIntegration {
+    $base = $env:ATLASFILE_DOCKER_SETTINGS_DIR
+    if (-not $base) { $base = Join-Path $env:APPDATA "Docker" }
+    $chave = "enableIntegrationWithDefaultWslDistro"
+    foreach ($nome in @("settings-store.json", "settings.json")) {
+        $arq = Join-Path $base $nome
+        if (-not (Test-Path $arq)) { continue }
+        try { $cfg = Get-Content $arq -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
+        catch { Write-Verbose "cannot read $arq : $($_.Exception.Message)"; continue }
+        if (-not $cfg.PSObject.Properties[$chave]) { continue }
+        if ($cfg.$chave -eq $true) { return $false }
+        $cfg.$chave = $true
+        try { $cfg | ConvertTo-Json -Depth 32 | Set-Content $arq -Encoding UTF8 -ErrorAction Stop }
+        catch { Write-Verbose "cannot write $arq : $($_.Exception.Message)"; continue }
+        return $true
+    }
+    return $false
+}
+
+# A mudanca so vale depois que o Docker Desktop reinicia - e o mesmo que o
+# botao "Apply & Restart" da tela de Settings faz.
+function Restart-AfDockerDesktop {
+    Get-Process "Docker Desktop" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+    $exe = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
+    if (Test-Path $exe) { Start-Process $exe }
 }
 
 # -- Banner: the orb, its two moons and the comet it fires (no face) ---------
@@ -628,7 +676,12 @@ function Write-AfGrid($Grid) {
             }
             $linha += $Grid.G[$r, $c]
         }
-        Write-Host ($linha + "$esc[0m")
+        # ESC[K apaga ate o fim da linha. Sem isto a lua que sai pela direita
+        # deixa RASTRO: as colunas que ela ocupava nao sao repintadas, porque a
+        # linha e cortada na ultima coluna com conteudo. Medido no Windows 11
+        # real. O install.sh nao tem o problema porque emite todas as colunas,
+        # inclusive as vazias.
+        Write-Host ($linha + "$esc[0m" + "$esc[K")
     }
 }
 
@@ -739,8 +792,16 @@ $script:StepStart = $null
 $BOX_V   = [string][char]0x2502   # |
 $BOX_H   = [string][char]0x2500   # -
 $BOX_T   = [string][char]0x251C   # |-
-$BAR_ON  = [string][char]0x25B0   # bloco cheio
-$BAR_OFF = [string][char]0x25B1   # bloco vazio
+# U+2588/U+2591 (Block Elements) no lugar de U+25B0/U+25B1 (Geometric Shapes).
+# Medido num Windows 11 real: o console renderiza a calha, as reguas e os
+# mas os paralelogramos saem como [?] - a fonte do console nao os tem. Block
+# Elements estao no CP437 e em toda fonte de console.
+#
+# Divergencia DELIBERADA e restrita a este par, decidida pelo dono do projeto:
+# no macOS e no Linux o par U+25B0/U+25B1 renderiza e fica melhor, entao
+# muda-lo la seria piorar o que funciona. O resto da UI segue identico.
+$BAR_ON  = [string][char]0x2588   # bloco cheio
+$BAR_OFF = [string][char]0x2591   # bloco vazio
 $script:Gut = $BOX_V + " "
 
 function Write-Gut([string]$Texto, [string]$Cor = "Gray", [switch]$NoNewline) {
@@ -851,7 +912,6 @@ function Start-Step([string]$Texto) {
     $script:StepStart = Get-Date
     Clear-AfBar
     Write-Gut ("{0} {1}..." -f $DOT, $Texto) DarkGray
-    Write-Host ""
 }
 function Format-Elapsed {
     if (-not $script:StepStart) { return "" }
@@ -979,7 +1039,7 @@ function Invoke-Step {
     # comando desenha a propria barra de progresso e nada e escondido.
     if ($script:AfVerbose) {
         Clear-AfBar
-        Write-Gut ("{0} {1}..." -f $DOT, $Label) DarkGray; Write-Host ""
+        Write-Gut ("{0} {1}..." -f $DOT, $Label) DarkGray
         $tv = Get-Date
         Invoke-Native $File $Arguments
         if ($script:NativeExitCode -eq 0) {
@@ -1064,7 +1124,7 @@ function Wait-Spinner {
         if (& $Test) { $ok = $true; break }
     }
     if ($script:AfAnim) { Write-Host ("`r" + (" " * 78) + "`r") -NoNewline }
-    if ($ok) { Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) Green; Write-Host ""; Show-AfBar }
+    if ($ok) { Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) Green; Show-AfBar }
     return $ok
 }
 
@@ -1092,11 +1152,10 @@ function Test-AfDoctor {
     $nOk = 0; $nAviso = 0; $nRuim = 0
     Write-Host ""
     Write-Rule "Windows"
-    Write-Gut ("{0} {1}" -f $OK, [Environment]::OSVersion.VersionString) Green; Write-Host ""; $nOk++
+    Write-Gut ("{0} {1}" -f $OK, [Environment]::OSVersion.VersionString) Green; $nOk++
     $elevado = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if ($elevado) { Write-Gut ("{0} elevated session" -f $OK) Green; $nOk++ }
     else { Write-Gut "! not elevated - installing WSL or Docker from here would fail" DarkYellow; $nAviso++ }
-    Write-Host ""
 
     Write-Rule "WSL2"
     if (Get-Tool wsl) {
@@ -1140,7 +1199,7 @@ function Test-AfDoctor {
 
     Write-Rule "Install manifest (Windows side)"
     if (Test-Path $AfManifest) {
-        Write-Gut ("{0} {1}" -f $OK, $AfManifest) Green; Write-Host ""; $nOk++
+        Write-Gut ("{0} {1}" -f $OK, $AfManifest) Green; $nOk++
         foreach ($linha in (Get-Content $AfManifest -ErrorAction SilentlyContinue)) {
             $p = $linha -split "`t", 2
             if ($p.Count -eq 2 -and $p[0] -ne "schema" -and $p[0] -notlike "#*") {
@@ -1148,7 +1207,7 @@ function Test-AfDoctor {
             }
         }
     } else {
-        Write-Gut "! no Windows manifest - nothing here was installed by AtlasFile" DarkYellow; Write-Host ""; $nAviso++
+        Write-Gut "! no Windows manifest - nothing here was installed by AtlasFile" DarkYellow; $nAviso++
     }
 
     # O lado Linux responde por si: mesmo diagnostico, mesmo vocabulario.
@@ -1163,7 +1222,7 @@ function Test-AfDoctor {
             Write-Host $linha
         }
     } else {
-        Write-Gut ("{0} could not run the diagnosis inside WSL" -f $BAD) Red; Write-Host ""; $nRuim++
+        Write-Gut ("{0} could not run the diagnosis inside WSL" -f $BAD) Red; $nRuim++
     }
 
     Write-Host ""
@@ -1201,7 +1260,6 @@ if ($DryRun -and -not $Uninstall) {
     )) {
         if ($item.Tem) { Write-Gut ("{0} {1} is already here" -f $OK, $item.Nome) Green }
         else { Write-Gut ("{0} {1} WOULD BE INSTALLED" -f $DOT, $item.Nome) DarkYellow }
-        Write-Host ""
     }
     Write-Host ""
     Write-Rule "Install plan (inside WSL)"
@@ -1590,7 +1648,7 @@ if (-not $docker) {
         }
     } else {
         Write-Fail "Docker Desktop not found: https://docs.docker.com/desktop/install/windows-install/"
-        Write-Host "    (or re-run with -InstallDeps to let this installer handle it)"
+        Write-Wrapped " " "(or re-run with -InstallDeps to let this installer handle it)" Red
         Stop-Installer 1; return
     }
 }
@@ -1614,14 +1672,22 @@ if (-not (Test-DockerDaemon)) {
         # Win32_ComputerSystem.HypervisorPresent still reported True, so there
         # is no reliable signal to tell them apart - name both instead.
         Write-Fail "the Docker daemon did not come up. Two usual causes:"
-        Write-Host "    1. Docker Desktop's first-launch dialog was not completed (accept the terms)."
-        Write-Host "    2. Virtualization is not available: enable it in the firmware/BIOS, or if this"
-        Write-Host "       is a virtual machine, turn on nested virtualization in the hypervisor."
-        Write-Host "    Fix it and re-run this installer - it is idempotent."
+        Write-Wrapped " " "1. Docker Desktop's first-launch dialog was not completed (accept the terms)." Red
+        Write-Wrapped " " "2. Virtualization is not available: enable it in the firmware/BIOS, or if this is a virtual machine, turn on nested virtualization in the hypervisor." Red
+        Write-Wrapped " " "Fix it and re-run this installer - it is idempotent." Red
         Stop-Installer 1; return
     }
 }
 Write-Ok "Docker Desktop running"
+
+# Tentar ANTES de esperar: sem isto a instalacao gastava os 120s do timeout para
+# so entao mandar o usuario clicar num menu.
+if (-not (Test-DockerInWsl)) {
+    if (Enable-AfWslIntegration) {
+        Write-Info "Docker's WSL integration was off - turning it on and restarting Docker Desktop"
+        Restart-AfDockerDesktop
+    }
+}
 
 # O Docker Desktop so injeta o CLI dentro da distro DEPOIS que o motor sobe, e
 # isso leva alguns segundos. Verificar uma unica vez, no instante seguinte,
@@ -1635,7 +1701,7 @@ $wslDockerOk = Wait-Spinner -Label "waiting for Docker's WSL integration" `
     -Test { Test-DockerInWsl } -TimeoutSeconds $esperaWsl
 if (-not $wslDockerOk) {
     Write-Fail "Docker is not reachable inside WSL."
-    Write-Host "    In Docker Desktop -> Settings -> Resources -> WSL Integration, enable your distro."
+    Write-Wrapped " " "In Docker Desktop -> Settings -> Resources -> WSL Integration, enable your distro." Red
     Stop-Installer 1; return
 }
 Write-Ok "Docker and WSL are talking to each other"

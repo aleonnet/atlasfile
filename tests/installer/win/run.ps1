@@ -629,6 +629,60 @@ Remove-Item Env:AF_SH_SENTINEL, Env:AF_SH_RC -ErrorAction SilentlyContinue
 Assert-Match "o caminho de recusa tambem fecha o trilho" $out $fecha
 Assert-Match "e a explicacao pendura na calha, sem furo" $out ("(?m)^" + $calha + "\s+Nothing was removed")
 
+Write-Host "== V. defeitos vistos num Windows 11 real =="
+# Todos medidos na maquina do dono do projeto, nao inferidos.
+$fonte = Get-Content $installer -Raw
+
+# A grade da animacao imprimia so ate a ultima coluna com conteudo, entao a lua
+# que saia pela direita deixava RASTRO do quadro anterior. O install.sh nao tem
+# o problema porque emite todas as colunas, inclusive as vazias.
+Assert-Match "a grade apaga ate o fim da linha (sem rastro)" $fonte ([regex]::Escape('$esc[K'))
+
+# Write-Gut JA emite a quebra de linha; o Write-Host "" seguinte produzia uma
+# linha VAZIA, que aparecia como buraco na calha entre um passo e outro.
+$dobradas = ([regex]::Matches($fonte, 'Write-Gut(?![^\r\n]*-NoNewline)[^\r\n]*Write-Host ""')).Count
+Assert-True "nenhum Write-Gut seguido de Write-Host vazio" ($dobradas -eq 0) "$dobradas par(es) ainda dobram a linha"
+
+# A barra viva ocupa a ultima linha: sem apaga-la a pergunta sai grudada nela.
+Assert-Match "Confirm-Step limpa a barra antes de perguntar" $fonte '(?s)function Confirm-Step.{0,400}?Clear-AfBar'
+Assert-Match "Confirm-Plan limpa a barra antes de perguntar" $fonte '(?s)function Confirm-Plan.{0,400}?Clear-AfBar'
+
+# U+25B0/U+25B1 saem como [?] no console do Windows; Block Elements saem.
+# Divergencia deliberada: no mac/Linux o par original renderiza e fica melhor.
+Assert-Match "a barra usa Block Elements" $fonte '0x2588'
+Assert-NoMatch "e nao os paralelogramos" $fonte '0x25B0'
+
+Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
+# Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
+# e exatamente o estado da maquina real, e o instalador tem de ligar a chave em
+# vez de mandar clicar num menu.
+$sb = New-Sandbox
+$env:AF_WSL_NO_DOCKER = "1"
+$dirCfg = Join-Path $sb "dockercfg"
+New-Item -ItemType Directory -Path $dirCfg -Force | Out-Null
+'{ "enableIntegrationWithDefaultWslDistro": false, "outraChave": 1 }' |
+    Set-Content (Join-Path $dirCfg "settings-store.json") -Encoding UTF8
+$env:ATLASFILE_DOCKER_SETTINGS_DIR = $dirCfg
+$out = Run-Installer @("-Yes")
+$depois = Get-Content (Join-Path $dirCfg "settings-store.json") -Raw | ConvertFrom-Json
+Assert-True "ligou a integracao no arquivo do Docker" ($depois.enableIntegrationWithDefaultWslDistro -eq $true) "ficou $($depois.enableIntegrationWithDefaultWslDistro)"
+Assert-True "preservando o resto do arquivo" ($depois.outraChave -eq 1) "perdeu outraChave"
+Assert-Match "e disse o que fez" $out "WSL integration was off"
+
+# Esquema desconhecido ou arquivo ilegivel NAO podem derrubar a instalacao: o
+# formato e interno do Docker e nao tem contrato publico. Cai na mensagem
+# manual, que continua existindo.
+$sb = New-Sandbox
+$env:AF_WSL_NO_DOCKER = "1"
+$dirCfg = Join-Path $sb "dockercfg2"
+New-Item -ItemType Directory -Path $dirCfg -Force | Out-Null
+'nao e json' | Set-Content (Join-Path $dirCfg "settings-store.json") -Encoding UTF8
+$env:ATLASFILE_DOCKER_SETTINGS_DIR = $dirCfg
+$out = Run-Installer @("-Yes")
+Assert-NoMatch "nao explode com JSON invalido" $out "Unhandled|ParameterBindingException|ConvertFrom-Json"
+Assert-Match "e ainda ensina o caminho manual" $out "WSL Integration"
+Remove-Item Env:ATLASFILE_DOCKER_SETTINGS_DIR -ErrorAction SilentlyContinue
+
 Write-Host ""
 Write-Host "$script:Pass passaram, $script:Fail falharam"
 # exit EXPLICITO tambem no sucesso. Sem ele a bancada nao define codigo de saida

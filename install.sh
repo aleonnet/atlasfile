@@ -1019,18 +1019,13 @@ un_collect() { # <dir>
     # Pelos NOMES que o manifesto registra, nunca pelo padrao `.env.backup.*`:
     # um arquivo com esse nome que o USUARIO tenha posto aqui continua travando
     # a remocao, que e o comportamento conservador que o resto do plano segue.
-    local excl_bkp="" bkp_nome
-    for bkp_nome in $(printf '%s' "$UN_ENV_BACKUP" | tr ',' ' '); do
-      [ -n "$bkp_nome" ] && excl_bkp="${excl_bkp} :(exclude)${bkp_nome}"
-    done
+    #
     # Guarda O QUE suja, nao so o sim/nao: "has local changes" sozinho nao e
     # acionavel. Numa maquina real o que travava a pasta era um backup do
     # PROPRIO instalador, e nao havia como o usuario descobrir isso pela tela.
     local sujo
-    # shellcheck disable=SC2086  # o split de excl_bkp e o objetivo aqui
-    sujo="$(git -C "$dir" status --porcelain -- . \
-        ":(exclude).env" ":(exclude)${AF_MANIFEST_NAME}" \
-        ":(exclude)config/api_keys.json" $excl_bkp 2>/dev/null || true)"
+    # shellcheck disable=SC2046,SC2086  # o split do pathspec e o objetivo aqui
+    sujo="$(git -C "$dir" status --porcelain -- . $(af_own_pathspec "$dir") 2>/dev/null || true)"
     if [ -n "$sujo" ]; then
       UN_DIR_DIRTY=1
       # o porcelain traz duas colunas de estado antes do caminho
@@ -1292,6 +1287,19 @@ $UN_DIRTY_LIST
 EOF
   [ "$n" -gt "$UN_DIRTY_SHOW" ] && af_wrap "${GUT}    - " "${GUT}      " 8 "and $(( n - UN_DIRTY_SHOW )) more"
   return 0
+}
+
+# Os artefatos que o PROPRIO instalador escreve dentro do clone, em forma de
+# pathspec do git. Uma lista so: a checagem de sujeira da desinstalacao e o
+# realinhamento do clone precisam concordar sobre o que e "nosso", e duas listas
+# separadas divergiriam na primeira alteracao.
+af_own_pathspec() { # <dir>
+  local dir="$1" n saida
+  saida=":(exclude).env :(exclude)${AF_MANIFEST_NAME} :(exclude)config/api_keys.json"
+  for n in $(printf '%s' "$(manifest_get "${dir}/${AF_MANIFEST_NAME}" env_backup)" | tr ',' ' '); do
+    [ -n "$n" ] && saida="${saida} :(exclude)${n}"
+  done
+  printf '%s' "$saida"
 }
 
 un_env_backups() {
@@ -1989,6 +1997,39 @@ print_banner() {
   printf '\n'
 }
 
+# `pull --ff-only` recusa quando o historico local divergiu do remoto, e recusar
+# esta CERTO. Morrer ali e que nao estava: o clone e nosso, e quem tem a
+# informacao para decidir e este script.
+#
+# Aconteceu num Windows 11 real: o clone estava num commit de um historico que
+# foi reescrito depois, e a instalacao parou com
+#   "+ 3e579e6...f86f4bb main -> origin/main (forced update)"
+#   "fatal: Not possible to fast-forward, aborting."
+#
+# Realinhar a forca so e aceitavel se NAO houver trabalho do usuario dentro — e
+# quem responde isso e a mesma lista de artefatos nossos que o plano de remocao
+# consulta antes de apagar a pasta.
+AF_RESET_MARK=""
+af_update_clone() { # <dir> <branch>
+  local dir="$1" branch="$2" sujo
+  git -C "$dir" fetch --prune origin "$branch" || return 1
+  git -C "$dir" merge --ff-only "origin/${branch}" && return 0
+  # shellcheck disable=SC2046,SC2086
+  sujo="$(git -C "$dir" status --porcelain -- . $(af_own_pathspec "$dir") 2>/dev/null || true)"
+  if [ -n "$sujo" ]; then
+    printf 'local history diverged from origin/%s AND this clone has local changes:\n' "$branch"
+    printf '%s\n' "$sujo"
+    printf 'refusing to reset — move or commit them, or use --dir to install elsewhere\n'
+    return 1
+  fi
+  printf 'local history diverged from origin/%s and there are no local changes — realigning\n' "$branch"
+  git -C "$dir" reset --hard "origin/${branch}" || return 1
+  # O run_step roda o comando num subshell em BACKGROUND, entao nada que ele
+  # defina volta para o shell principal: a marca em disco e o canal.
+  [ -n "$AF_RESET_MARK" ] && : > "$AF_RESET_MARK"
+  return 0
+}
+
 # ── Test-library guard: `ATLASFILE_INSTALL_LIB=1 source install.sh` stops here ─
 if [ -n "${ATLASFILE_INSTALL_LIB:-}" ]; then
   return 0 2>/dev/null || exit 0
@@ -2159,8 +2200,13 @@ done
 title "2/4" "Getting AtlasFile"
 if [ -d "${INSTALL_DIR}/.git" ]; then
   CLONE_STATE="preexisting"
+  AF_RESET_MARK="${LOG_FILE}.reset"
   run_step "updating existing install (${INSTALL_DIR})" \
-    git -C "${INSTALL_DIR}" pull --ff-only origin "${BRANCH}"
+    af_update_clone "${INSTALL_DIR}" "${BRANCH}"
+  if [ -f "$AF_RESET_MARK" ]; then
+    rm -f "$AF_RESET_MARK"
+    info "the local history had diverged from origin/${BRANCH} — realigned to it (nothing of yours was here)"
+  fi
 else
   CLONE_STATE="created"
   run_step "cloning ${REPO_URL} (${BRANCH})" \
