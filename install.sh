@@ -847,6 +847,12 @@ backup_env_once() {
   local nome
   nome=".env.backup.$(date +%Y%m%d%H%M%S)"
   cp .env "$nome" 2>/dev/null || return 0
+  # ACUMULA. A chave era sobrescrita a cada instalacao, entao o manifesto so
+  # conhecia o backup mais novo e os anteriores ficavam sem dono: presentes na
+  # pasta, ausentes do plano e sem ninguem para dizer que eram nossos.
+  local anteriores
+  anteriores="$(manifest_get "$AF_MANIFEST" env_backup)"
+  [ -n "$anteriores" ] && nome="${anteriores},${nome}"
   manifest_set "$AF_MANIFEST" env_backup "$nome"
   AF_ENV_BACKED_UP=1
   info "your previous .env was copied to ${nome}"
@@ -1003,9 +1009,24 @@ un_collect() { # <dir>
     # "has local changes — NOT removed" and kept the clone forever. The ignore
     # rule is fixed, but a clone created before the fix still carries the file,
     # so the exclusion has to live here too.
+    #
+    # `.env.backup.*` fecha a serie, e era o pior dos tres: backup_env_once cria
+    # um a cada instalacao que SOBRESCREVE um .env existente. Logo a primeira
+    # instalacao da vida deixava a pasta removivel, e toda reinstalacao a
+    # travava PARA SEMPRE — com a tela dizendo "has local changes", culpando o
+    # usuario por um arquivo que o instalador escreveu. Medido na maquina dele:
+    # dois backups, nenhum seu.
+    # Pelos NOMES que o manifesto registra, nunca pelo padrao `.env.backup.*`:
+    # um arquivo com esse nome que o USUARIO tenha posto aqui continua travando
+    # a remocao, que e o comportamento conservador que o resto do plano segue.
+    local excl_bkp="" bkp_nome
+    for bkp_nome in $(printf '%s' "$UN_ENV_BACKUP" | tr ',' ' '); do
+      [ -n "$bkp_nome" ] && excl_bkp="${excl_bkp} :(exclude)${bkp_nome}"
+    done
+    # shellcheck disable=SC2086  # o split de excl_bkp e o objetivo aqui
     if [ -n "$(git -C "$dir" status --porcelain -- . \
         ":(exclude).env" ":(exclude)${AF_MANIFEST_NAME}" \
-        ":(exclude)config/api_keys.json" 2>/dev/null || true)" ]; then
+        ":(exclude)config/api_keys.json" $excl_bkp 2>/dev/null || true)" ]; then
       UN_DIR_DIRTY=1
     fi
   fi
@@ -1035,7 +1056,7 @@ un_collect() { # <dir>
 # Builds UN_PLAN_REMOVE / UN_PLAN_KEEP / UN_ACTIONS from the facts above.
 # purge_data: 1 remove the volume, 0 keep it. remove_deps: 1 allowed.
 un_build_plan() { # <purge_data> <remove_deps> <force>
-  local purge="$1" deps="$2" force="$3" st model
+  local purge="$1" deps="$2" force="$3" st model bkp bkps
   UN_PLAN_REMOVE=""; UN_PLAN_KEEP=""; UN_ACTIONS=""
 
   # ── the stack (unambiguously ours) ──
@@ -1095,8 +1116,19 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
       un_add_remove "${UN_DIR}/.env — created by this installer (the folder itself is preserved)"
       un_act "rm-env"
     fi
-    if [ -n "$UN_ENV_BACKUP" ] && [ -f "${UN_DIR}/${UN_ENV_BACKUP}" ]; then
-      un_add_keep "${UN_ENV_BACKUP} — the .env you had before this install, kept so you can restore it"
+    while IFS= read -r bkp; do
+      [ -n "$bkp" ] || continue
+      un_add_keep "${bkp} — a .env you had before an install, kept so you can restore it"
+    done <<EOF
+$(un_env_backups)
+EOF
+  else
+    # A pasta inteira vai, e os backups estao dentro dela. Eles guardam a SENHA
+    # do OpenSearch e a CHAVE DE API de instalacoes anteriores, entao sumir com
+    # isso em silencio seria a mesma falta de prestacao de contas do volume.
+    bkps="$(un_env_backups | wc -l | tr -d ' ')"
+    if [ "${bkps:-0}" -gt 0 ]; then
+      un_add_remove "${bkps} .env backup(s) inside ${UN_DIR} — they hold the OpenSearch password and API key of earlier installs"
     fi
   fi
 
@@ -1210,10 +1242,13 @@ un_print_plan() {
 # aconteceu, em números, e só os próximos passos que de fato se aplicam. O
 # veredito anterior era uma frase fixa — dizia a mesma coisa tendo removido
 # tudo ou quase nada.
+# Fecha o trilho: uma linha de calha, o `╰──` e a folga antes do que vem fora
+# dele. Estava solto em quatro lugares e faltava em tres — o --doctor e os dois
+# --dry-run ABRIAM o trilho com `├──` e nunca o fechavam.
+rail_end() { printf '%s\n' "$GUT"; rule_close; printf '\n'; }
+
 un_report() {
-  printf '%s\n' "$GUT"
-  rule_close
-  printf '\n'
+  rail_end
   note "${BOLD}AtlasFile removed${RESET}"
   printf '  %s✔ %s removed%s' "$GREEN" "$UN_OK" "$RESET"
   [ "$UN_KO" -gt 0 ] && printf '   %s✘ %s failed%s' "$RED" "$UN_KO" "$RESET"
@@ -1227,6 +1262,18 @@ un_report() {
 }
 
 un_has_action() { printf '%s' "$UN_ACTIONS" | grep -qx "$1"; }
+
+# Todos os backups de .env que existem na pasta, nao so o do manifesto.
+# O manifesto guarda UMA chave `env_backup`, sobrescrita a cada instalacao:
+# o plano citava o mais novo e os anteriores ficavam sem dono na tela.
+un_env_backups() {
+  local n
+  [ -d "$UN_DIR" ] || return 0
+  for n in $(printf '%s' "$UN_ENV_BACKUP" | tr ',' ' '); do
+    [ -n "$n" ] && [ -f "${UN_DIR}/${n}" ] && printf '%s\n' "$n"
+  done
+  return 0
+}
 
 UN_FAILED=0
 UN_OK=0
@@ -1384,6 +1431,7 @@ run_uninstall() {
       sentinel "plan-only"
     else
       info "--dry-run: nothing was touched."
+      rail_end
     fi
     return 0
   fi
@@ -1559,8 +1607,9 @@ run_doctor() {
 
   printf '%s\n' "$GUT"
   rule_sweep "Diagnosis"
-  printf '%s%s✔ %s ok%s   %s! %s to watch%s   %s✘ %s broken%s\n\n' \
+  printf '%s%s✔ %s ok%s   %s! %s to watch%s   %s✘ %s broken%s\n' \
     "$GUT" "$GREEN" "$DOC_OK" "$RESET" "$ORANGE" "$DOC_WARN" "$RESET" "$RED" "$DOC_FAIL" "$RESET"
+  rail_end
   [ "$DOC_FAIL" = "0" ]
 }
 
@@ -1587,6 +1636,7 @@ run_dry_run() {
   [ "$falta" = "0" ] && doc_ok "none — everything needed is already here"
   printf '%s\n' "$GUT"
   info "--dry-run: nothing was installed."
+  rail_end
   return 0
 }
 

@@ -263,6 +263,7 @@ def check_ui_parity(problems):
         ("fechamento do trilho",          r'\brule_close\b', r'\bWrite-RuleClose\b'),
         ("mensagem fora do trilho",       r'\bnote\(\)',     r'\bWrite-Note\b'),
         ("quebra de linha com calha",     r'\baf_wrap\b',    r'\bWrite-Wrapped\b'),
+        ("fim do trilho",                 r'\brail_end\b',   r'\bClose-AfRail\b'),
     )
     for rotulo, alvo_sh, alvo_ps in pares:
         if not re.search(alvo_sh, sh):

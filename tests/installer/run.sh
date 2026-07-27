@@ -529,9 +529,11 @@ corte="$(grep -n 'AF-FIM-DO-TRILHO' "$REPO_ROOT/install.sh" | head -1 | cut -d: 
 [ -n "$corte" ] || corte=99999
 # un_report e print_banner vivem FORA do trilho de proposito: um e o relatorio
 # depois do fechamento, o outro e o banner antes da abertura.
+# rail_end sai da varredura porque a folga dele e DEPOIS do `╰──`: quem fecha o
+# trilho esta, por definicao, fora dele.
 cru="$(head -n "$corte" "$REPO_ROOT/install.sh" \
   | awk '/^(un_report|print_banner)\(\) \{/{pula=1} pula&&/^\}/{pula=0; next} !pula' \
-  | grep -n "printf '\\\\n'" || true)"
+  | grep -n "printf '\\\\n'" | grep -v 'rail_end()' || true)"
 [ -z "$cru" ] && ok || no "linha em branco sem calha dentro do trilho: $cru"
 
 # Sem TERM (env -i) o tput falha e o term_cols cai no fallback de 72 colunas —
@@ -599,6 +601,76 @@ out="$(run_case -- '
   un_execute' 2>&1)"
 printf '%s' "$(cat "$CALLS")" | grep -q 'docker volume rm atlasfile_opensearch_data' \
   && ok || no "nao chamou docker volume rm: $(cat "$CALLS")"
+
+# backup_env_once cria um .env.backup a cada instalacao que sobrescreve um .env
+# existente. Ate aqui: (a) a chave do manifesto era sobrescrita, entao so o mais
+# novo tinha dono; (b) os arquivos sujavam o clone, e a pasta ficava presa PARA
+# SEMPRE com a tela dizendo "has local changes" — culpando o usuario por um
+# arquivo que o instalador escreveu.
+make_sandbox
+t "o manifesto acumula os backups em vez de esquecer os anteriores"
+out="$(run_case -- '
+  cd "$SANDBOX"; git init -q 2>/dev/null; printf "X=1\n" > .env
+  AF_MANIFEST="$SANDBOX/.atlasfile-install-manifest"; ENV_STATE=preexisting
+  backup_env_once >/dev/null
+  AF_ENV_BACKED_UP=0; sleep 1; backup_env_once >/dev/null
+  manifest_get "$AF_MANIFEST" env_backup')"
+case "$out" in *,*) ok ;; *) no "guardou so um backup: [$out]" ;; esac
+
+# O clone vive num SUBdiretorio: o proprio sandbox guarda os stubs em bin/, que
+# o git veria como nao rastreado e sujaria tudo. A primeira versao destes dois
+# casos rodava na raiz do sandbox — o teste do "arquivo do usuario" passava por
+# causa do bin/, nao do arquivo. Verde pelo motivo errado.
+t "backup nosso NAO trava a remocao da pasta"
+out="$(run_case PATH=/usr/bin:/bin -- '
+  mkdir -p "$SANDBOX/clone2"; cd "$SANDBOX/clone2"; git init -q 2>/dev/null
+  touch .env.backup.20260101000000
+  manifest_set "$SANDBOX/clone2/$AF_MANIFEST_NAME" env_backup .env.backup.20260101000000
+  un_collect "$SANDBOX/clone2"; printf "%s" "$UN_DIR_DIRTY"')"
+assert_eq "$out" "0"
+
+# O contrario e igualmente importante: proveniencia vem do MANIFESTO, nunca do
+# padrao do nome. Um arquivo que so PARECE nosso continua sendo do usuario.
+t "arquivo que so parece backup nosso continua travando a remocao"
+out="$(run_case PATH=/usr/bin:/bin -- '
+  mkdir -p "$SANDBOX/clone3"; cd "$SANDBOX/clone3"; git init -q 2>/dev/null
+  touch .env.backup.meu-arquivo
+  manifest_set "$SANDBOX/clone3/$AF_MANIFEST_NAME" env_backup .env.backup.20260101000000
+  un_collect "$SANDBOX/clone3"; printf "%s" "$UN_DIR_DIRTY"')"
+assert_eq "$out" "1"
+
+t "o plano cita TODOS os backups, nao so o do manifesto mais novo"
+out="$(run_case -- '
+  UN_DIR="$SANDBOX"; touch "$SANDBOX/.env.backup.20260101000000" "$SANDBOX/.env.backup.20260202000000"
+  UN_ENV_BACKUP=".env.backup.20260101000000,.env.backup.20260202000000"
+  UN_CLONE_STATE=preexisting; UN_COMPOSE_FILE=1
+  un_build_plan 0 0 0; printf "%s" "$UN_PLAN_KEEP"')"
+n="$(printf '%s' "$out" | grep -c 'env.backup' || true)"
+[ "$n" = "2" ] && ok || no "citou $n backup(s), esperava 2"
+
+t "quando a pasta inteira vai, o plano avisa que os backups vao junto"
+out="$(run_case -- '
+  UN_DIR="$SANDBOX"; touch "$SANDBOX/.env.backup.20260101000000"
+  UN_ENV_BACKUP=".env.backup.20260101000000"
+  UN_CLONE_STATE=created; UN_DIR_RECORDED="$SANDBOX"; UN_COMPOSE_FILE=1
+  un_build_plan 0 0 0; printf "%s" "$UN_PLAN_REMOVE"')"
+case "$(achata "$out")" in *"backup(s) inside"*"OpenSearch password and API key"*) ok ;;
+  *) no "nao avisou que os backups vao junto: $out" ;; esac
+
+# O trilho ABRIA com `├──` e nunca fechava no --doctor nem nos dois --dry-run.
+t "todo modo que abre o trilho tambem o fecha"
+for modo in "--doctor" "--dry-run" "--uninstall --dry-run"; do
+  saida="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TERM=dumb \
+      TTY_DEV=/dev/null REPO_ROOT="$REPO_ROOT" \
+      bash "$REPO_ROOT/install.sh" $modo --dir "$SANDBOX" 2>&1 || true)"
+  abriu="$(printf '%s' "$saida" | grep -c '├──' || true)"
+  fechou="$(printf '%s' "$saida" | grep -c '╰──' || true)"
+  if [ "$abriu" -gt 0 ] && [ "$fechou" -lt 1 ]; then
+    no "modo ${modo} abriu ${abriu} regua(s) e nunca fechou o trilho"
+  else
+    ok
+  fi
+done
 
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém

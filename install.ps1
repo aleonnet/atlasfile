@@ -826,6 +826,15 @@ function Write-Rule([string]$Cabecalho) {
     Write-Host (" " + ($BOX_H * $tracos)) -ForegroundColor DarkYellow
 }
 
+# Fecha o TRILHO: linha de calha, o fechamento e a folga antes do que vem fora
+# dele. Espelho do rail_end do install.sh. O -Doctor ABRIA o trilho com `+--` e
+# nunca o fechava, exatamente como o --doctor do outro lado.
+function Close-AfRail {
+    Write-Host ($script:Gut) -ForegroundColor DarkGray
+    Write-RuleClose
+    Write-Host ""
+}
+
 # Fecha o bloco, como o fechamento do install.sh e do mac-env.
 function Write-RuleClose {
     $largura = Get-AfRuleWidth
@@ -1162,7 +1171,7 @@ function Test-AfDoctor {
     Write-Gut ("{0} {1} ok" -f $OK, $nOk) Green
     Write-Host ("   ! {0} to watch" -f $nAviso) -ForegroundColor DarkYellow -NoNewline
     Write-Host ("   {0} {1} broken" -f $BAD, $nRuim) -ForegroundColor Red
-    Write-Host ""
+    Close-AfRail
     return ($nRuim -eq 0)
 }
 
@@ -1677,9 +1686,7 @@ Write-Panel @(
 Clear-AfBar
 $dur = [int]((Get-Date) - $script:RunStart).TotalSeconds
 $durTexto = if ($dur -ge 60) { "{0}m{1:d2}s" -f [int]($dur / 60), ($dur % 60) } else { "${dur}s" }
-Write-Host ($script:Gut) -ForegroundColor DarkGray
-Write-RuleClose
-Write-Host ""
+Close-AfRail
 Write-Note ("AtlasFile is up in {0}" -f $durTexto)
 # Sem contador, como no install.sh: a tela acima ja mostra as fases com seus
 # tempos, e um numero novo aqui so compete com ela. Falha continua aparecendo,
