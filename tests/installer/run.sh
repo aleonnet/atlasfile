@@ -538,6 +538,17 @@ run_uninstaller() { # <args...> — script inteiro, TTY_DEV é um arquivo de res
     bash "$REPO_ROOT/install.sh" --uninstall --dir "${SANDBOX}/inst" "$@" 2>&1
 }
 
+# A sentinela e conversa entre os dois instaladores; numa desinstalacao direta
+# quem le a tela e uma pessoa. E a barra conta FASES da instalacao: nos fluxos
+# sem fase ela aparecia como "fase 0/5" depois da ultima mensagem.
+make_uninstall_sandbox
+printf 'n\n' > "${SANDBOX}/tty_in"
+t "desinstalacao direta nao vaza linha de protocolo nem barra de fase"
+out="$(run_uninstaller || true)"
+case "$out" in *ATLASFILE_UNINSTALL*) no "vazou a sentinela para o usuario" ;; *) ok ;; esac
+case "$out" in *"fase 0/"*) no "desenhou barra de fase num fluxo sem fase" ;; *) ok ;; esac
+case "$out" in *"nothing was touched"*) ok ;; *) no "nao disse que nada foi tocado: [$out]" ;; esac
+
 make_uninstall_sandbox
 : > "${SANDBOX}/tty_in"
 t "--uninstall --dry-run mostra o plano de remocao sem tocar em nada"
@@ -564,7 +575,7 @@ assert_not_contains "$CALLS" "compose down"
 make_uninstall_sandbox
 printf 'n\n' > "${SANDBOX}/tty_in"
 t "cancelar devolve código próprio (10) e a sentinela de cancelado"
-rc=0; out="$(run_uninstaller)" || rc=$?
+rc=0; out="$(run_uninstaller --delegated)" || rc=$?
 assert_eq "$rc" "10"
 case "$out" in *"ATLASFILE_UNINSTALL: cancelled"*) ok ;; *) no "sem a sentinela de cancelamento: [$out]" ;; esac
 case "$out" in *"nothing was touched"*) ok ;; *) no "não disse que nada foi tocado" ;; esac
@@ -573,7 +584,7 @@ assert_not_contains "$CALLS" "compose down"
 make_uninstall_sandbox
 : > "${SANDBOX}/tty_in"
 t "execução confirmada emite a sentinela que o orquestrador exige"
-rc=0; out="$(run_uninstaller --yes --keep-data)" || rc=$?
+rc=0; out="$(run_uninstaller --yes --keep-data --delegated)" || rc=$?
 assert_eq "$rc" "0"
 case "$out" in *"ATLASFILE_UNINSTALL: confirmed"*) ok ;; *) no "sem a sentinela de confirmação: [$out]" ;; esac
 assert_contains "$CALLS" "compose down"

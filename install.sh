@@ -61,7 +61,12 @@ RC_CANCELLED=10
 # line AND a zero exit code before it touches a single Windows package: there is
 # no official documentation that wsl.exe propagates the Linux exit code, and a
 # swallowed code must never be read as "the user confirmed".
-sentinel() { printf 'ATLASFILE_UNINSTALL: %s\n' "$1"; }
+# Só no modo de PROTOCOLO. Numa desinstalação direta quem lê a tela é uma
+# pessoa, e a linha-sentinela é conversa entre os dois instaladores.
+sentinel() {
+  { [ "$DELEGATED" = "1" ] || [ "$PLAN_ONLY" = "1" ]; } || return 0
+  printf 'ATLASFILE_UNINSTALL: %s\n' "$1"
+}
 LOG_FILE="${TMPDIR:-/tmp}/atlasfile-install-$(date +%s).log"
 START_TS=$(date +%s)
 TTY_DEV="${TTY_DEV:-/dev/tty}"
@@ -236,6 +241,10 @@ bar_render() {
 }
 
 bar_show() {
+  # A barra conta FASES da instalação. Nos fluxos que não têm fase — uninstall,
+  # doctor, dry-run — ela aparecia como `fase 0/5` depois da última mensagem,
+  # que é ruído puro. Antes da primeira fase, não existe barra.
+  [ "$BAR_DONE" -gt 0 ] || return 0
   bar_capable || return 0
   bar_render
   BAR_VISIBLE=1
