@@ -31,6 +31,9 @@ param(
     [switch]$KeepData,
     [switch]$RemoveDeps,
     [switch]$Force,
+    [switch]$Doctor,
+    [switch]$DryRun,
+    [switch]$Verbose,
     [switch]$Help,
     [string]$Dir = "",
     [string]$OllamaModel = "gemma4:12b"
@@ -94,6 +97,14 @@ Uninstall options:
   -RemoveDeps     Uninstall: also remove the Windows-side dependencies that the
                   manifest records as installed by AtlasFile
   -Force          Uninstall: remove the clone inside WSL even with local changes
+
+Diagnostics:
+  -Doctor         Read-only report of BOTH sides of this machine: Windows
+                  prerequisites and manifest, then the Linux side inside WSL.
+                  Installs nothing, changes nothing
+  -DryRun         Print what an install would do here and exit
+  -Verbose        Show the output of every tool as it runs, instead of hiding
+                  it in the log
 
 Other:
   -Help           This help
@@ -736,7 +747,10 @@ function Write-Phase([int]$Numero, [string]$Titulo) {
 # disciplina do install.sh, onde indexar string multibyte contaria bytes.
 function Write-Rule([string]$Cabecalho) {
     $largura = 76
-    try { if ($Host.UI.RawUI.WindowSize.Width -gt 40) { $largura = [Math]::Min(92, $Host.UI.RawUI.WindowSize.Width - 4) } } catch { }
+    # Host sem RawUI (sessao redirecionada, ISE, runspace) nao tem largura para
+    # dar: a regua cai na largura padrao e a instalacao segue.
+    try { if ($Host.UI.RawUI.WindowSize.Width -gt 40) { $largura = [Math]::Min(92, $Host.UI.RawUI.WindowSize.Width - 4) } }
+    catch { Write-Verbose "console width unavailable: $($_.Exception.Message)" }
     $tracos = $largura - $Cabecalho.Length - 8
     if ($tracos -lt 4) { $tracos = 4 }
     Write-Host ($script:Gut + $BOX_T + ($BOX_H * 2) + " ") -ForegroundColor DarkGray -NoNewline
@@ -849,6 +863,23 @@ function Invoke-Step {
         if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
     })
     # Start-Process exige arquivos DIFERENTES para stdout e stderr.
+    # -Verbose devolve a saida para a tela: o Invoke-Native herda o console, o
+    # comando desenha a propria barra de progresso e nada e escondido.
+    if ($script:AfVerbose) {
+        Clear-AfBar
+        Write-Gut ("{0} {1}..." -f $DOT, $Label) DarkGray; Write-Host ""
+        $tv = Get-Date
+        Invoke-Native $File $Arguments
+        if ($script:NativeExitCode -eq 0) {
+            Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $tv)) Green
+            $script:StepsDone++
+        } else {
+            Write-Gut ("{0} {1} (exit {2})" -f $BAD, $Label, $script:NativeExitCode) Red
+            $script:StepsFailed++
+        }
+        Write-Host ""
+        return
+    }
     $fOut = [IO.Path]::GetTempFileName()
     $fErr = [IO.Path]::GetTempFileName()
     $t0 = Get-Date
@@ -925,6 +956,137 @@ function Wait-Spinner {
     if ($script:AfAnim) { Write-Host ("`r" + (" " * 78) + "`r") -NoNewline }
     if ($ok) { Write-Gut ("{0} {1} ({2})" -f $OK, $Label, (Format-Since $t0)) Green; Write-Host ""; Show-AfBar }
     return $ok
+}
+
+# -Verbose: a saida das ferramentas volta para a tela. Esconde-la e a regra (e o
+# que separa uma tela limpa de uma colcha de retalhos com dism em portugues,
+# winget em ingles e tres estilos de barra), mas quando algo da errado ver o que
+# a ferramenta diz, na hora, vale mais.
+if ($Verbose) { $VerbosePreference = "Continue"; $script:AfVerbose = $true }
+
+# --- -Doctor: diagnostico read-only dos DOIS lados --------------------------
+# Nao existia, e era exatamente o que faltou quando a instalacao falhou numa
+# maquina real: sem log, sem manifesto a mao, a conversa virou adivinhacao. Aqui
+# ele mede o lado Windows e DELEGA o lado Linux ao mesmo install.sh - um comando
+# para diagnosticar a maquina inteira.
+function Test-AfDoctor {
+    $ok = 0; $aviso = 0; $ruim = 0
+    Write-Host ""
+    Write-Rule "Windows"
+    Write-Gut ("{0} {1}" -f $OK, [Environment]::OSVersion.VersionString) Green; Write-Host ""; $ok++
+    $elevado = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if ($elevado) { Write-Gut ("{0} elevated session" -f $OK) Green; $ok++ }
+    else { Write-Gut "! not elevated - installing WSL or Docker from here would fail" DarkYellow; $aviso++ }
+    Write-Host ""
+
+    Write-Rule "WSL2"
+    if (Get-Tool wsl) {
+        $prev = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        $st = ""
+        try { $st = (& (Resolve-ToolPath wsl) --status 2>&1 | Out-String) -replace "`0", "" } catch { $st = "" }
+        $distros = ""
+        try { $distros = (& (Resolve-ToolPath wsl) -l -q 2>&1 | Out-String) -replace "`0", "" } catch { $distros = "" }
+        $ErrorActionPreference = $prev
+        if (-not $st.Trim() -or $st -match "is not installed") {
+            Write-Gut ("{0} the WSL feature is not installed" -f $BAD) Red; $ruim++
+        } elseif (-not $distros.Trim()) {
+            Write-Gut ("{0} WSL is present but there is NO DISTRO" -f $BAD) Red; $ruim++
+        } else {
+            Write-Gut ("{0} distro(s): {1}" -f $OK, ($distros.Trim() -replace "\s+", ", ")) Green; $ok++
+            if ((Invoke-WslProbe @()) -eq "ok") { Write-Gut ("{0} the distro runs" -f $OK) Green; $ok++ }
+            else { Write-Gut ("{0} the distro does not answer in time" -f $BAD) Red; $ruim++ }
+        }
+    } else {
+        Write-Gut ("{0} wsl.exe not found" -f $BAD) Red; $ruim++
+    }
+    Write-Host ""
+
+    Write-Rule "Docker Desktop and Ollama"
+    if (Get-Tool docker) {
+        Write-Gut ("{0} the docker CLI is on PATH" -f $OK) Green; $ok++
+        if (Test-DockerDaemon) { Write-Gut ("{0} the daemon answers" -f $OK) Green; $ok++ }
+        else { Write-Gut ("{0} the daemon does not answer - open Docker Desktop" -f $BAD) Red; $ruim++ }
+        if (Test-DockerInWsl) { Write-Gut ("{0} WSL integration is on" -f $OK) Green; $ok++ }
+        else { Write-Gut "! Docker is not reachable inside WSL - Settings > Resources > WSL Integration" DarkYellow; $aviso++ }
+    } else {
+        Write-Gut ("{0} the docker CLI is not on PATH" -f $BAD) Red; $ruim++
+    }
+    if (Get-Tool ollama) {
+        if (Test-OllamaReady) { Write-Gut ("{0} the Ollama service answers" -f $OK) Green; $ok++ }
+        else { Write-Gut "! Ollama is installed but the service does not answer" DarkYellow; $aviso++ }
+    } else {
+        Write-Gut "! Ollama is not installed (optional, only for a 100% local model)" DarkYellow; $aviso++
+    }
+    Write-Host ""
+
+    Write-Rule "Install manifest (Windows side)"
+    if (Test-Path $AfManifest) {
+        Write-Gut ("{0} {1}" -f $OK, $AfManifest) Green; Write-Host ""; $ok++
+        foreach ($linha in (Get-Content $AfManifest -ErrorAction SilentlyContinue)) {
+            $p = $linha -split "`t", 2
+            if ($p.Count -eq 2 -and $p[0] -ne "schema" -and $p[0] -notlike "#*") {
+                Write-Host ("    " + $script:Gut + ("{0,-10} {1}" -f $p[0], $p[1])) -ForegroundColor DarkGray
+            }
+        }
+    } else {
+        Write-Gut "! no Windows manifest - nothing here was installed by AtlasFile" DarkYellow; Write-Host ""; $aviso++
+    }
+
+    # O lado Linux responde por si: mesmo diagnostico, mesmo vocabulario.
+    Write-Host ""
+    Write-Rule "Inside WSL"
+    $cmdDoc = "$AF_CURL $AF_SH_URL | bash -s -- --doctor --delegated"
+    if ($Dir) { $cmdDoc += " --dir $Dir" }
+    $saidaDoc = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdDoc))
+    if ($saidaDoc.Trim()) {
+        foreach ($linha in ($saidaDoc -split "`r?`n")) {
+            if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
+            Write-Host $linha
+        }
+    } else {
+        Write-Gut ("{0} could not run the diagnosis inside WSL" -f $BAD) Red; Write-Host ""; $ruim++
+    }
+
+    Write-Host ""
+    Write-Rule "Diagnosis (Windows side)"
+    Write-Gut ("{0} {1} ok" -f $OK, $ok) Green
+    Write-Host ("   ! {0} to watch" -f $aviso) -ForegroundColor DarkYellow -NoNewline
+    Write-Host ("   {0} {1} broken" -f $BAD, $ruim) -ForegroundColor Red
+    Write-Host ""
+    return ($ruim -eq 0)
+}
+
+if ($Doctor) {
+    if (Test-AfDoctor) { Stop-Installer 0; return }
+    Stop-Installer 1; return
+}
+
+# --- -DryRun: o que uma instalacao faria, dos dois lados ---------------------
+# Nao instala NADA, nem do lado Windows: um dry run que instalasse o WSL para
+# depois dizer "nada foi instalado" seria uma mentira cara.
+if ($DryRun) {
+    Write-Host ""
+    Write-Rule "Install plan (Windows side)"
+    foreach ($item in @(
+        @{ Nome = "WSL2";           Tem = [bool](Get-Tool wsl) },
+        @{ Nome = "Docker Desktop"; Tem = [bool](Get-Tool docker) },
+        @{ Nome = "Ollama";         Tem = [bool](Get-Tool ollama) }
+    )) {
+        if ($item.Tem) { Write-Gut ("{0} {1} is already here" -f $OK, $item.Nome) Green }
+        else { Write-Gut ("{0} {1} WOULD BE INSTALLED" -f $DOT, $item.Nome) DarkYellow }
+        Write-Host ""
+    }
+    Write-Host ""
+    Write-Rule "Install plan (inside WSL)"
+    $cmdSeco = "$AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
+    if ($Dir) { $cmdSeco += " --dir $Dir" }
+    $saidaSeca = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdSeco))
+    foreach ($linha in ($saidaSeca -split "`r?`n")) {
+        if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
+        Write-Host $linha
+    }
+    Write-Info "-DryRun: nothing was installed."
+    Stop-Installer 0; return
 }
 
 if ($Uninstall) {

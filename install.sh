@@ -48,6 +48,9 @@ PLAN_ONLY=0
 NO_OLLAMA=0
 DELEGATED=0
 HOST_EXTRA=""      # facts from the OTHER side of an OS boundary (install.ps1)
+DOCTOR=0
+DRY_RUN=0
+VERBOSE=0
 
 # Exit codes. 0 = done, 1 = failed, 10 = the user said no. `exit` in bash is
 # truncated to 8 bits, so the Windows-world MSI codes (1602 = user cancelled,
@@ -112,6 +115,14 @@ Uninstall options:
   --plan-only           Uninstall: print the removal plan and exit. Asks nothing,
                         changes nothing — the dry run of the uninstall
 
+Diagnostics:
+  --doctor              Read-only report of this machine: prerequisites, the
+                        install manifest, the stack and the folders. Installs
+                        nothing, changes nothing
+  --dry-run             Print what an install would do here and exit
+  --verbose             Show the output of every tool as it runs, instead of
+                        hiding it in the log
+
 Other:
   -h, --help            This help
 
@@ -141,6 +152,9 @@ while [ $# -gt 0 ]; do
     --force) FORCE=1; shift ;;
     --plan-only) PLAN_ONLY=1; shift ;;
     --no-ollama) NO_OLLAMA=1; shift ;;
+    --doctor) DOCTOR=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    --verbose) VERBOSE=1; shift ;;
     --delegated) DELEGATED=1; shift ;;             # hidden: called by install.ps1 — no banner, no closing verdict
     --host-extra) HOST_EXTRA="$2"; shift 2 ;;      # hidden: k=v,… facts from the Windows side, rendered in the plan
     -h|--help) usage; exit 0 ;;
@@ -253,6 +267,21 @@ run_step() {
   local msg="$1"; shift
   local t0; t0=$(step_now)
   bar_clear
+  # --verbose troca o spinner pela saída ao vivo. Esconder a saída de terceiro é
+  # a regra (é o que separa uma tela limpa de uma colcha de retalhos), mas
+  # quando algo dá errado ver o que a ferramenta diz, na hora, vale mais.
+  if [ "$VERBOSE" = "1" ]; then
+    printf '%s· %s...\n' "$GUT" "$msg"
+    if "$@" 2>&1 | tee -a "$LOG_FILE" | sed "s/^/$(printf '%s' "  | ")/"; then
+      :
+    fi
+    if [ "${PIPESTATUS[0]}" != "0" ]; then fail_with_log "$msg"; fi
+    printf '%s%s✔%s %s %s(%s)%s\n' "$GUT" "$GREEN" "$RESET" "$msg" "$DIM" "$(fmt_secs $(( $(step_now) - t0 )))" "$RESET"
+    RUN_STEPS="${RUN_STEPS}${msg}|$(( $(step_now) - t0 ))
+"
+    STEPS_DONE=$(( STEPS_DONE + 1 ))
+    return 0
+  fi
   if [ "$IS_TTY" = "1" ]; then
     "$@" >>"$LOG_FILE" 2>&1 &
     local pid=$!
@@ -1153,6 +1182,138 @@ run_uninstall() {
   return 0
 }
 
+# ── --doctor: diagnóstico read-only ─────────────────────────────────────────
+# Não existia, e era exatamente o que faltou quando o instalador falhou numa
+# máquina Windows real: sem log, sem manifesto à mão, a conversa virou
+# adivinhação. Instala nada, muda nada — só mede e conta o que achou. É o
+# run_doctor do mac_env_install.sh, com o que faz sentido aqui.
+DOC_OK=0; DOC_WARN=0; DOC_FAIL=0
+doc_ok()   { DOC_OK=$(( DOC_OK + 1 ));     printf '%s%s✔%s %s\n' "$GUT" "$GREEN" "$RESET" "$*"; }
+doc_warn() { DOC_WARN=$(( DOC_WARN + 1 )); printf '%s%s!%s %s\n' "$GUT" "$ORANGE" "$RESET" "$*"; }
+doc_fail() { DOC_FAIL=$(( DOC_FAIL + 1 )); printf '%s%s✘%s %s\n' "$GUT" "$RED" "$RESET" "$*"; }
+doc_head() { printf '%s\n' "$GUT"; rule_sweep "$1"; }
+
+doc_version() { # <cmd> <args...> — versão em uma linha, ou vazio
+  command -v "$1" >/dev/null 2>&1 || return 1
+  "$@" 2>/dev/null | head -1
+}
+
+run_doctor() {
+  detect_os
+  doc_head "System"
+  doc_ok "$(uname -s) $(uname -r) ($(uname -m)) · package manager: ${PKG}"
+
+  doc_head "Prerequisites"
+  local v
+  if v="$(doc_version git --version)"; then doc_ok "$v"; else doc_fail "git not found"; fi
+  if command -v curl >/dev/null 2>&1; then doc_ok "curl"; else doc_fail "curl not found"; fi
+  if v="$(doc_version docker --version)"; then
+    doc_ok "$v"
+    if docker info >/dev/null 2>&1; then
+      doc_ok "the Docker daemon answers"
+    else
+      doc_fail "Docker is installed but the daemon does not answer — start it before installing"
+    fi
+    if docker compose version >/dev/null 2>&1; then
+      doc_ok "docker compose $(docker compose version --short 2>/dev/null || echo v2)"
+    else
+      doc_fail "Docker Compose v2 not available"
+    fi
+  else
+    doc_fail "docker not found"
+  fi
+  if v="$(doc_version ollama --version)"; then doc_ok "$v"; else doc_warn "ollama not installed (optional, only for a 100% local model)"; fi
+
+  doc_head "Install manifest (what this installer created here)"
+  if [ -f "$AF_HOST_MANIFEST" ]; then
+    doc_ok "$AF_HOST_MANIFEST"
+    while IFS=$'\t' read -r chave valor; do
+      case "$chave" in \#*|schema|"") continue ;; esac
+      printf '%s    %s%-16s%s %s\n' "$GUT" "$DIM" "$chave" "$RESET" "$valor"
+    done < "$AF_HOST_MANIFEST"
+  else
+    doc_warn "no host manifest — nothing here was installed by AtlasFile, or it was already removed"
+  fi
+
+  doc_head "Installation at ${INSTALL_DIR}"
+  un_collect "$INSTALL_DIR"
+  if [ -d "$INSTALL_DIR" ]; then
+    doc_ok "the folder exists"
+    [ "$UN_COMPOSE_FILE" = "1" ] && doc_ok "docker-compose.yml present (compose project: ${UN_PROJECT})" \
+      || doc_fail "no docker-compose.yml — this does not look like an AtlasFile install"
+    [ "$UN_ENV" = "1" ] && doc_ok ".env present" || doc_warn ".env missing — the stack has no configuration"
+    case "$UN_CLONE_STATE" in
+      created) doc_ok "the clone was created by this installer (it may be removed by --uninstall)" ;;
+      *)       doc_warn "the clone was NOT created by this installer — --uninstall preserves it" ;;
+    esac
+    if [ "$UN_DIR_DIRTY" = "1" ]; then
+      doc_warn "there are local changes — --uninstall keeps the folder (use --force to remove it anyway)"
+    else
+      doc_ok "no local changes"
+    fi
+  else
+    doc_warn "the folder does not exist"
+  fi
+
+  doc_head "Stack"
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    doc_ok "${UN_CONTAINERS} container(s) of project '${UN_PROJECT}'"
+    [ -n "$UN_VOLUME" ] && doc_ok "data volume: ${UN_VOLUME}" || doc_warn "no data volume — the index has not been created yet"
+    [ -n "$UN_OTHER_ARTIFACTS" ] && doc_warn "another AtlasFile install shares this Docker: ${UN_OTHER_ARTIFACTS}"
+  else
+    doc_warn "the daemon does not answer — nothing to say about the stack"
+  fi
+  local porta
+  for porta in 5173 8000 9200; do
+    if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$porta" -sTCP:LISTEN >/dev/null 2>&1; then
+      if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q "atlasfile.*:${porta}"; then
+        doc_ok "port ${porta} is AtlasFile's own"
+      else
+        doc_fail "port ${porta} is taken by another process"
+      fi
+    fi
+  done
+
+  doc_head "Documents"
+  if [ -n "$UN_PROJECTS_ROOT" ]; then
+    doc_ok "${UN_PROJECTS_ROOT} (${UN_PROJECTS_FILES} item(s)) — never touched by the installer"
+  else
+    doc_warn "projects folder unknown (no .env and no manifest)"
+  fi
+
+  printf '%s\n' "$GUT"
+  rule_sweep "Diagnosis"
+  printf '%s%s✔ %s ok%s   %s! %s to watch%s   %s✘ %s broken%s\n\n' \
+    "$GUT" "$GREEN" "$DOC_OK" "$RESET" "$ORANGE" "$DOC_WARN" "$RESET" "$RED" "$DOC_FAIL" "$RESET"
+  [ "$DOC_FAIL" = "0" ]
+}
+
+# ── --dry-run: o que uma instalação faria aqui ──────────────────────────────
+run_dry_run() {
+  detect_os
+  doc_head "Install plan"
+  printf '%s  • repository   %s (%s)\n' "$GUT" "$REPO_URL" "$BRANCH"
+  printf '%s  • install dir  %s%s\n' "$GUT" "$INSTALL_DIR" \
+    "$([ -d "${INSTALL_DIR}/.git" ] && printf ' (exists — would be UPDATED)' || printf ' (would be CLONED)')"
+  printf '%s  • documents    %s\n' "$GUT" "${PROJECTS_ROOT:-$PROJECTS_ROOT_DEFAULT}"
+  printf '%s  • options      auth=%s ollama=%s open-browser=%s\n' "$GUT" \
+    "$([ "$ENABLE_AUTH" = "1" ] && printf on || printf off)" \
+    "$([ "$WITH_OLLAMA" = "1" ] && printf "on (${OLLAMA_MODEL})" || printf off)" \
+    "$([ "$OPEN_BROWSER" = "1" ] && printf on || printf off)"
+  printf '%s\n' "$GUT"
+  doc_head "Prerequisites this machine is missing"
+  local falta=0
+  command -v git >/dev/null 2>&1    || { doc_warn "git would be installed"; falta=1; }
+  command -v docker >/dev/null 2>&1 || { doc_warn "Docker would be installed"; falta=1; }
+  if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
+    doc_warn "docker-compose-plugin would be installed"; falta=1
+  fi
+  [ "$falta" = "0" ] && doc_ok "none — everything needed is already here"
+  printf '%s\n' "$GUT"
+  info "--dry-run: nothing was installed."
+  return 0
+}
+
 # ── Banner: the orb, its two moons and the comet it fires ───────────────────
 # Same identity as the product's CompanionOrb (frontend/src/components/
 # CompanionOrb.tsx): a lit core, two moons on opposite Keplerian orbits and the
@@ -1477,10 +1638,21 @@ if [ "$DELEGATED" != "1" ] && [ "$PLAN_ONLY" != "1" ]; then
   print_banner
 fi
 
+if [ "$DOCTOR" = "1" ]; then
+  doctor_rc=0
+  run_doctor || doctor_rc=$?
+  exit "$doctor_rc"
+fi
+
 if [ "$UNINSTALL" = "1" ]; then
   uninstall_rc=0
   run_uninstall || uninstall_rc=$?
   exit "$uninstall_rc"
+fi
+
+if [ "$DRY_RUN" = "1" ]; then
+  run_dry_run
+  exit 0
 fi
 
 # ── 1. Prerequisites ────────────────────────────────────────────────────────

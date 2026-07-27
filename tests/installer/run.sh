@@ -584,5 +584,35 @@ case "$out" in *"Your documents have gravity"*) no "desenhou o banner numa execu
 case "$out" in *"AtlasFile removed. What already existed"*) no "deu o veredito final que é do orquestrador" ;; *) ok ;; esac
 case "$out" in *"ATLASFILE_UNINSTALL: confirmed"*) ok ;; *) no "a sentinela some quando delegado" ;; esac
 
+# ── Modos de diagnóstico: leem a máquina, não a mudam ───────────────────────
+make_uninstall_sandbox
+: > "${SANDBOX}/tty_in"
+t "--doctor relata e nao muda nada"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"Prerequisites"*) ok ;; *) no "sem a secao de pre-requisitos: [$out]" ;; esac
+case "$out" in *"Install manifest"*) ok ;; *) no "sem a secao do manifesto" ;; esac
+case "$out" in *"Diagnosis"*) ok ;; *) no "sem o placar do diagnostico" ;; esac
+assert_not_contains "$CALLS" "compose down"
+assert_not_contains "$CALLS" "clone"
+
+t "--doctor devolve != 0 quando algo esta quebrado"
+# Sem docker no PATH o diagnostico tem de falhar: um doctor que sempre sai 0 nao
+# serve para automacao nenhuma.
+make_sandbox
+rm -f "${SANDBOX}/bin/docker"
+rc=0; env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/nada" >/dev/null 2>&1 || rc=$?
+[ "$rc" != "0" ] && ok || no "doctor saiu 0 com o docker ausente"
+
+make_sandbox
+t "--dry-run diz o que faria e nao instala nada"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --dry-run --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"Install plan"*) ok ;; *) no "sem o plano de instalacao: [$out]" ;; esac
+case "$out" in *"nothing was installed"*) ok ;; *) no "nao declarou que nada foi instalado" ;; esac
+assert_not_contains "$CALLS" "clone"
+assert_not_contains "$CALLS" "compose build"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAILED"
 [ "$FAILED" = "0" ]
