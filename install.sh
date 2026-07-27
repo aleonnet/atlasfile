@@ -873,7 +873,12 @@ un_collect() { # <dir>
   fi
   # Mesmo portão do lado da instalação: um .env corrompido não pode fazer o
   # plano de remoção falar de um caminho que não existe — nem, pior, tentar
-  # apagá-lo.
+  # apagá-lo. E os placeholders do .env.example não são pasta de ninguém: o lado
+  # da instalação já os descartava, o do uninstall não, e por isso um plano real
+  # anunciou "seus documentos em /Users/your-user/Documents/Projects".
+  case "$UN_PROJECTS_ROOT" in
+    "/path/to/Projects"|"/Users/your-user/Documents/Projects") UN_PROJECTS_ROOT="" ;;
+  esac
   if [ -n "$UN_PROJECTS_ROOT" ]; then
     UN_PROJECTS_ROOT="$(af_sane_path "$UN_PROJECTS_ROOT" || true)"
   fi
@@ -1981,7 +1986,7 @@ if [ ! -f .env ]; then
   sed -e "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${os_pass}|" \
       -e "s|^OPENSEARCH_INITIAL_ADMIN_PASSWORD=.*|OPENSEARCH_INITIAL_ADMIN_PASSWORD=${os_pass}|" \
       .env > "${tmp_env}" && mv "${tmp_env}" .env
-  printf '  %s✔%s .env created (OpenSearch password generated for this install)\n' "$GREEN" "$RESET"
+  ok ".env created (OpenSearch password generated for this install)"
 else
   info ".env already exists — preserved"
 fi
@@ -2039,7 +2044,7 @@ if grep -q '^PROJECTS_HOST_ROOT=' .env; then
 else
   printf '\nPROJECTS_HOST_ROOT=%s\n' "${PROJECTS_ROOT}" >> .env
 fi
-printf '  %s✔%s projects at: %s%s%s\n' "$GREEN" "$RESET" "$BOLD" "${PROJECTS_ROOT}" "$RESET"
+ok "projects at: ${BOLD}${PROJECTS_ROOT}${RESET}"
 
 # set_env VAR VALUE — replace or append in .env
 set_env() {
@@ -2063,7 +2068,7 @@ if [ -z "${cookie_current}" ] || [ "${cookie_current}" = "Troque-Esta-Senha-De-C
   cookie_rand="$( (LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 48)"
   [ -n "${cookie_rand}" ] || cookie_rand="$(openssl rand -hex 24 2>/dev/null || printf 'Af%s%s0000000000000000' "$(date +%s)" "$$")"
   set_env DASHBOARDS_COOKIE_PASSWORD "${cookie_rand}"
-  printf '  %s✔%s Dashboards cookie key generated for this install\n' "$GREEN" "$RESET"
+  ok "Dashboards cookie key generated for this install"
 fi
 
 # ── API authentication (opt-in via --enable-auth) ───────────────────────────
@@ -2081,11 +2086,11 @@ if [ "${ENABLE_AUTH}" = "1" ]; then
     API_KEY_VALUE="atlas_sk_${key_rand}"
     printf '{\n  "keys": [\n    {"key": "%s", "name": "installer", "projects": ["*"]}\n  ]\n}\n' "${API_KEY_VALUE}" > "${keys_file}"
     manifest_set "$AF_MANIFEST" api_keys_file created
-    printf '  %s✔%s api_keys.json created with a generated key\n' "$GREEN" "$RESET"
+    ok "api_keys.json created with a generated key"
   fi
   set_env API_AUTH_ENABLED true
   set_env ATLASFILE_API_TOKEN "${API_KEY_VALUE}"
-  printf '  %s✔%s API authentication enabled\n' "$GREEN" "$RESET"
+  ok "API authentication enabled"
 fi
 
 # ── 4. Build + launch ───────────────────────────────────────────────────────

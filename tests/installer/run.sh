@@ -447,6 +447,13 @@ $out
 EOF
 [ -z "$bad" ] && ok || no "linha fora da calha: $bad"
 
+# Varredura mecanica: NENHUMA linha de mensagem pode escapar da calha. Tres
+# vezes seguidas um ponto esquecido apareceu na tela do usuario — a pergunta da
+# pasta, e depois as cinco linhas da fase 3.
+t "nenhum printf de mensagem usa o prefixo antigo de dois espacos"
+fora="$(grep -n "printf '  %s" "$REPO_ROOT/install.sh" | grep -v 'GUT' || true)"
+[ -z "$fora" ] && ok || no "linha(s) fora da calha: $fora"
+
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
 # o spinner longe da saída de terceiro.
