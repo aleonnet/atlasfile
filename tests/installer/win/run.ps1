@@ -486,6 +486,27 @@ Assert-Match "e disse por que o preservou" $out "was already on this machine bef
 Assert-NoMatch "sem erro de binding na desinstalacao" $out "AmbiguousParameter|ParameterBindingException"
 Assert-Match "um unico veredito, no fim" $out "AtlasFile removed. What already existed on this machine was preserved"
 
+Write-Host "== F2. a identidade da instalacao e RECUPERADA do manifesto =="
+# $script:WslUser so era decidido na fase 1, que roda DEPOIS deste bloco: nos
+# caminhos de uninstall/doctor/dry-run ele estava sempre vazio, e o `wsl -e`
+# rodava como usuario PADRAO. Instalacao feita como root (o caso de quem deixou
+# o AtlasFile instalar o WSL) morava em /root e simplesmente nao era encontrada.
+$sb = New-UninstallSandbox @("docker`tcreated", "wsl_user`troot", "install_dir`t/root/Outro", "wsl_distro`tUbuntu")
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+$calls = Calls
+Assert-Match "fala com o WSL como o dono da instalacao" $calls "wsl -u root -e bash"
+Assert-Match "e no diretorio registrado, nao no default" $calls "--dir /root/Outro"
+Assert-Match "a distro baixada por nos entra no plano" $calls "wsl_distro=created"
+
+Write-Host "== F3. -Uninstall -DryRun mostra o plano dos dois lados e para =="
+$sb = New-UninstallSandbox @("docker`tcreated")
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData", "-DryRun")
+$calls = Calls
+Assert-Match "o plano chega a tela" $out "Removal plan"
+Assert-Match "e declara que nada foi tocado" $out "nothing was touched"
+Assert-NoMatch "nao removeu pacote nenhum" $calls "winget uninstall"
+Assert-NoMatch "nem mandou o outro lado executar" $calls "--uninstall --delegated --remove-deps --host-extra[^|]*--yes"
+
 Write-Host "== M. o lado WSL CANCELOU: nada pode ser removido no Windows =="
 # Este e o teste que faltava. Responder "n" ao plano devolvia 0, o install.ps1
 # lia sucesso e apagava o Docker Desktop de uma maquina cujo dono tinha acabado

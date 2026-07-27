@@ -524,6 +524,17 @@ run_uninstaller() { # <args...> — script inteiro, TTY_DEV é um arquivo de res
 
 make_uninstall_sandbox
 : > "${SANDBOX}/tty_in"
+t "--uninstall --dry-run mostra o plano de remocao sem tocar em nada"
+out="$(run_uninstaller --dry-run || true)"
+case "$out" in *"Removal plan"*) ok ;; *) no "nao imprimiu o plano: [$out]" ;; esac
+case "$out" in *"nothing was touched"*) ok ;; *) no "nao declarou que nada foi tocado" ;; esac
+# As linhas de maquina sao do PROTOCOLO entre os dois instaladores; na tela de
+# quem digitou --dry-run elas sao ruido.
+case "$out" in *ATLASFILE_FACT*|*ATLASFILE_UNINSTALL*) no "vazou linha de protocolo para o usuario" ;; *) ok ;; esac
+assert_not_contains "$CALLS" "compose down"
+
+make_uninstall_sandbox
+: > "${SANDBOX}/tty_in"
 t "--plan-only imprime o plano, não pergunta nada e não executa nada"
 out="$(run_uninstaller --plan-only || true)"
 case "$out" in *"Removal plan"*) ok ;; *) no "não imprimiu o plano: [$out]" ;; esac
@@ -560,6 +571,80 @@ out="$(run_uninstaller --yes --keep-data --delegated || true)"
 case "$out" in *"Your documents have gravity"*) no "desenhou o banner numa execução delegada" ;; *) ok ;; esac
 case "$out" in *"AtlasFile removed. What already existed"*) no "deu o veredito final que é do orquestrador" ;; *) ok ;; esac
 case "$out" in *"ATLASFILE_UNINSTALL: confirmed"*) ok ;; *) no "a sentinela some quando delegado" ;; esac
+
+# ── Registros da ida e da volta: chave gravada tem de virar decisão ─────────
+# `install_dir` era gravado e NUNCA lido — a garantia que o CHANGELOG anunciava
+# ("a pasta só some se bater com o install_dir registrado") não existia.
+make_sandbox
+t "pasta que nao bate com o install_dir registrado nao e removida"
+out="$(run_case -- "${PLAN_FACTS}
+  UN_DIR_RECORDED=/outro/lugar
+  un_build_plan 0 0 0; printf 'A:%s|K:%s' \"\$UN_ACTIONS\" \"\$UN_PLAN_KEEP\"")"
+case "$out" in *rm-clone*) no "removeu uma pasta que o manifesto nao aponta" ;; *) ok ;; esac
+case "$out" in *"records the install at /outro/lugar"*) ok ;; *) no "nao explicou por que preservou: [$out]" ;; esac
+
+t "quando bate, a remocao segue normal"
+out="$(run_case -- "${PLAN_FACTS}
+  UN_DIR_RECORDED=\"\$UN_DIR\"
+  un_build_plan 0 0 0; printf '%s' \"\$UN_ACTIONS\"")"
+case "$out" in *rm-clone*) ok ;; *) no "deixou de remover uma pasta legitima: [$out]" ;; esac
+
+# api_keys.json guarda uma CHAVE DE API VIVA. Num clone preexistente a pasta
+# inteira e preservada — e a chave ficava em disco depois de desinstalar.
+make_sandbox
+mkdir -p "${SANDBOX}/inst/config"
+printf '{}\n' > "${SANDBOX}/inst/config/api_keys.json"
+printf 'X=1\n' > "${SANDBOX}/inst/.env"
+t "artefatos nossos dentro de pasta preservada entram no plano"
+out="$(run_case -- "${PLAN_FACTS}
+  UN_DIR=\"\$SANDBOX/inst\"; UN_CLONE_STATE=unknown
+  UN_APIKEYS_CREATED=created; UN_ENV_CREATED=created
+  un_build_plan 0 0 0; printf 'A:%s|R:%s' \"\$UN_ACTIONS\" \"\$UN_PLAN_REMOVE\"")"
+case "$out" in *rm-apikeys*) ok ;; *) no "a chave de API ficaria em disco: [$out]" ;; esac
+case "$out" in *"holds a live API key"*) ok ;; *) no "nao disse que e uma credencial" ;; esac
+case "$out" in *rm-env*) ok ;; *) no "o .env que criamos ficaria para tras" ;; esac
+
+t "se a pasta inteira vai embora, nao ha acao separada para os arquivos"
+out="$(run_case -- "${PLAN_FACTS}
+  UN_DIR=\"\$SANDBOX/inst\"; UN_CLONE_STATE=created; UN_DIR_RECORDED=\"\$SANDBOX/inst\"
+  UN_APIKEYS_CREATED=created; UN_ENV_CREATED=created
+  un_build_plan 0 0 0; printf '%s' \"\$UN_ACTIONS\"")"
+case "$out" in *rm-apikeys*|*rm-env*) no "acao redundante com o rm-clone: [$out]" ;; *) ok ;; esac
+
+# `pending`: o instalador comecou a instalar e nao se sabe se terminou. Nao da
+# para provar que criou — entao PRESERVA e diz, em vez de deixar orfao calado.
+make_sandbox
+t "estado pending preserva, explica, e nunca vira acao"
+out="$(run_case -- "${PLAN_FACTS}
+  host_set docker pending
+  un_build_plan 0 1 0; printf 'A:%s|K:%s' \"\$UN_ACTIONS\" \"\$UN_PLAN_KEEP\"")"
+case "$out" in *brew-cask:docker-desktop*) no "removeu algo que nao pode provar ter criado" ;; *) ok ;; esac
+case "$out" in *"interrupted while installing it"*) ok ;; *) no "nao avisou que mexeu ali: [$out]" ;; esac
+
+# O unico mecanismo do mac_env_install.sh que faltava aqui: backup datado antes
+# de reescrever um arquivo do usuario.
+make_sandbox
+mkdir -p "${SANDBOX}/clone"
+printf 'PROJECTS_HOST_ROOT=/antigo\n' > "${SANDBOX}/clone/.env"
+t "um .env preexistente e copiado antes de ser reescrito"
+# `ls` sem -a NAO lista dotfile, e .env.backup.* comeca com ponto — a primeira
+# versao deste teste contava zero e ainda "passava" a segunda assertiva por
+# casar com a linha do info.
+out="$(run_case -- 'cd "$SANDBOX/clone"; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/clone/mf"
+  backup_env_once >/dev/null; backup_env_once >/dev/null
+  ls -a "$SANDBOX/clone" | grep -c "^\.env\.backup\."')"
+assert_eq "$out" "1"
+out="$(run_case -- 'cd "$SANDBOX/clone"; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/clone/mf2"
+  backup_env_once >/dev/null; manifest_get "$AF_MANIFEST" env_backup')"
+case "$out" in .env.backup.*) ok ;; *) no "o backup nao foi registrado no manifesto: [$out]" ;; esac
+
+t "um .env que nasceu agora nao gera backup"
+make_sandbox
+mkdir -p "${SANDBOX}/clone"
+printf 'X=1\n' > "${SANDBOX}/clone/.env"
+out="$(run_case -- 'cd "$SANDBOX/clone"; ENV_STATE=created; AF_MANIFEST="$SANDBOX/clone/mf"
+  backup_env_once >/dev/null; ls -a "$SANDBOX/clone" | grep -c "^\.env\.backup\." || true')"
+assert_eq "$out" "0"
 
 # ── Modos de diagnóstico: leem a máquina, não a mudam ───────────────────────
 make_uninstall_sandbox
