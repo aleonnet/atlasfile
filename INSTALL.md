@@ -6,17 +6,17 @@ Com o [Docker Desktop](https://docs.docker.com/get-docker/) rodando:
 
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth --with-ollama
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth
 ```
 
 ```powershell
 # Windows (PowerShell; usa WSL2 + Docker Desktop)
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth -WithOllama
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
 O instalador verifica pré-requisitos, clona em `~/AtlasFile`, cria o `.env` (perguntando só a pasta de projetos), sobe a stack e abre a interface — o onboarding guia o resto. Flags úteis: `--dir`, `--projects-root`, `--yes` (não-interativo), `--no-open`. Re-executar atualiza a instalação.
 - `--install-deps` — instala pré-requisitos que faltarem (Docker, git) sem perguntar
-- `--with-ollama` — instala também o Ollama + modelo local (`--ollama-model NOME`, default `gemma4:12b`)
+- **Modelo 100% local não faz parte da instalação**: o download são vários GB e tiraria a previsibilidade da duração. O painel final mostra o comando (`ollama pull …`) para habilitá-lo depois
 
 **Antes de instalar, ou quando algo der errado**, os dois instaladores têm modos que não mudam nada:
 
@@ -45,7 +45,7 @@ Para uma visão consolidada dos scripts do repositório e de quando cada um entr
 
 ## 1) Pré-requisitos
 
-**O instalador cuida deles**: quando falta Docker ou git, o `install.sh` detecta e **oferece instalar** (macOS: Homebrew + cask do Docker Desktop, abrindo o app e aguardando o daemon; Linux: script oficial get.docker.com + apt/dnf, com sudo só após confirmação). Itens já instalados aparecem com ✔ e versão; upgrades disponíveis viram aviso informativo. Política do modo não-interativo: `--yes` sozinho **não** instala dependências de sistema (falha com instrução) — a flag `--install-deps` autoriza o bootstrap sem perguntas. `--with-ollama` (sempre opt-in) instala também o Ollama e puxa um modelo local (`--ollama-model`, default `gemma4:12b`, ~8 GB). No Windows, o `install.ps1` oferece `wsl --install` e o Docker Desktop via winget.
+**O instalador cuida deles**: quando falta Docker ou git, o `install.sh` detecta e **oferece instalar** (macOS: Homebrew + cask do Docker Desktop, abrindo o app e aguardando o daemon; Linux: script oficial get.docker.com + apt/dnf, com sudo só após confirmação). Itens já instalados aparecem com ✔ e versão; upgrades disponíveis viram aviso informativo. Política do modo não-interativo: `--yes` sozinho **não** instala dependências de sistema (falha com instrução) — a flag `--install-deps` autoriza o bootstrap sem perguntas. O Ollama **saiu do instalador**: puxar um modelo são vários GB e transformava uma instalação de minutos em algo sem duração previsível — o painel final ensina a habilitá-lo depois, em um comando. Um Ollama instalado por versões anteriores continua sendo revertido pelo `--uninstall --remove-deps`. No Windows, o `install.ps1` oferece `wsl --install` e o Docker Desktop via winget.
 
 ### Instalação manual dos pré-requisitos (se preferir)
 

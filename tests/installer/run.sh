@@ -129,29 +129,25 @@ assert_eq "$rc" "0"
 rc=0; run_case -- 'OS_KIND=mac; PKG=none; DOCKER_APP_PATH=/nonexistent; hint_upgrades' >/dev/null || rc=$?
 assert_eq "$rc" "0"
 
-# ── ensure_ollama: presence first ───────────────────────────────────────────
+# ── Ollama saiu do instalador ───────────────────────────────────────────────
+# ensure_ollama, ollama_pull_model e maybe_setup_ollama nao existem mais: puxar
+# um modelo eram varios GB dentro de uma instalacao que precisa ter duracao
+# previsivel. O UNINSTALL continua sabendo reverter um Ollama de versoes
+# anteriores, e isso segue coberto pelos testes de plano mais abaixo.
 make_sandbox
-t "ensure_ollama returns 100 when ollama is on PATH"
-rc=0; run_case -- 'OS_KIND=mac; ensure_ollama' || rc=$?
-assert_eq "$rc" "100"
-assert_not_contains "$CALLS" "brew install --cask ollama"
-
-# ── ollama_pull_model: skip when already pulled ─────────────────────────────
-make_sandbox
-cat > "${SANDBOX}/bin/ollama" <<EOF
-#!/usr/bin/env bash
-echo "ollama \$*" >> "${CALLS}"
-if [ "\$1" = "list" ]; then printf 'NAME ID SIZE\ngemma4:12b abc 8GB\n'; fi
-exit 0
-EOF
-chmod +x "${SANDBOX}/bin/ollama"
-t "ollama_pull_model skips pull when model already present"
-run_case -- 'IS_TTY=0; LOG_FILE="$SANDBOX/log"; ollama_pull_model gemma4:12b' >/dev/null
-assert_not_contains "$CALLS" "ollama pull"
+t "o instalador nao oferece nem instala Ollama"
+out="$(cat "$REPO_ROOT/install.sh" | bash -s -- --help 2>&1)"
+case "$out" in *"--with-ollama"*) no "a ajuda ainda promete --with-ollama" ;; *) ok ;; esac
+if bash "$REPO_ROOT/install.sh" --with-ollama --help >/dev/null 2>&1; then
+  no "o parser ainda aceita --with-ollama"
+else ok; fi
+if bash "$REPO_ROOT/install.sh" --no-ollama --help >/dev/null 2>&1; then
+  no "o parser ainda aceita --no-ollama (o install.ps1 nao pode passar essa flag)"
+else ok; fi
 
 # ── flag parser (full script run with --help exits before any action) ───────
 t "flag parser accepts the new flags (--help path proves parse phase)"
-if bash "$REPO_ROOT/install.sh" --install-deps --with-ollama --ollama-model x --bootstrap-only --help >/dev/null 2>&1; then ok; else no "--help with new flags failed"; fi
+if bash "$REPO_ROOT/install.sh" --install-deps --bootstrap-only --help >/dev/null 2>&1; then ok; else no "--help with new flags failed"; fi
 
 t "flag parser accepts the uninstall flags"
 if bash "$REPO_ROOT/install.sh" --uninstall --purge-data --keep-data --remove-deps --force --help >/dev/null 2>&1; then ok; else no "--help with uninstall flags failed"; fi
@@ -502,25 +498,6 @@ out="$(run_case -- "${PLAN_FACTS}
   UN_OLLAMA_PRESENT=0
   un_build_plan 0 1 0; printf '%s' \"\$UN_PLAN_KEEP\"")"
 case "$out" in *Ollama*) no "falou de um Ollama que não existe aqui: [$out]" ;; *) ok ;; esac
-
-# ── --no-ollama: a decisão de projeto do install.ps1 vira contrato ──────────
-make_sandbox
-printf 'y\n' > "${SANDBOX}/tty_in"
-t "--no-ollama não pergunta nada e não chama o ollama"
-out="$(run_case -- 'NO_OLLAMA=1; WITH_OLLAMA=0; ASSUME_YES=0; TTY_DEV="$SANDBOX/tty_in"
-  OS_KIND=mac; IS_TTY=0; LOG_FILE="$SANDBOX/log"; maybe_setup_ollama')"
-case "$out" in *"Also install Ollama"*) no "perguntou mesmo com --no-ollama" ;; *) ok ;; esac
-assert_not_contains "$CALLS" "ollama pull"
-
-t "sem --no-ollama a oferta continua existindo (o caminho nativo não regride)"
-make_sandbox
-printf 'n\n' > "${SANDBOX}/tty_in"
-# A oferta só existe quando NÃO há ollama na máquina — que é exatamente o estado
-# de dentro da distro no Windows, e por isso a pergunta se repetia lá.
-rm -f "${SANDBOX}/bin/ollama"
-out="$(run_case -- 'NO_OLLAMA=0; WITH_OLLAMA=0; ASSUME_YES=0; TTY_DEV="$SANDBOX/tty_in"
-  OS_KIND=mac; IS_TTY=0; LOG_FILE="$SANDBOX/log"; maybe_setup_ollama' 2>&1)"
-case "$out" in *"Also install Ollama"*) ok ;; *) no "a oferta do caminho nativo sumiu: [$out]" ;; esac
 
 # ── Fluxo completo do uninstall: plan-only, cancelamento e delegação ────────
 # Monta uma instalação de mentira com volume, para o plano ter o que dizer.

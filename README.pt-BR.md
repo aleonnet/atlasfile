@@ -8,18 +8,18 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 
 ## Instalação rápida
 
-Sem pré-requisitos para preparar: o instalador detecta o que falta (Docker, git) e oferece instalar para você — use `--install-deps` para autorizar sem perguntas, e `--with-ollama` para configurar também um modelo 100% local.
+Sem pré-requisitos para preparar: o instalador detecta o que falta (Docker, git) e oferece instalar para você — use `--install-deps` para autorizar sem perguntas. Modelo 100% local é um passo **depois** da instalação: o download são vários GB e tiraria qualquer previsibilidade da duração.
 
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth --with-ollama
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth
 ```
 
 **Windows (via WSL2):**
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth -WithOllama
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
 O instalador clona o projeto, configura o `.env`, sobe a stack Docker e abre `http://localhost:5173` — o assistente de primeiros passos guia a criação do primeiro projeto. Instalação manual e detalhes: [INSTALL.md](INSTALL.md). Rode `install.sh --help` para ver todas as flags.

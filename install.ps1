@@ -5,14 +5,12 @@
 # Strategy: AtlasFile runs in Linux containers; on Windows the supported path is
 # WSL2 + Docker Desktop (WSL backend). This script checks prerequisites - and
 # OFFERS to install what is missing (wsl --install, Docker Desktop via winget,
-# optional Ollama) - then delegates to install.sh inside the default WSL distro:
+# then delegates to install.sh inside the default WSL distro:
 # one real installer, no duplicated logic.
 #
 # Parameters (when saved and run as a file; under `iex` the prompts cover it):
 #   -Yes           non-interactive (accept defaults; does NOT install deps)
 #   -InstallDeps   authorize installing missing prerequisites without prompting
-#   -WithOllama    also install Ollama on Windows and pull a local model
-#   -OllamaModel   model to pull (default: gemma4:12b)
 #   -EnableAuth    enable API authentication (forwarded to install.sh)
 #   -Uninstall     print a removal plan and, once confirmed, revert what this
 #                  installer created (delegates the Linux side to install.sh
@@ -24,7 +22,6 @@
 param(
     [switch]$Yes,
     [switch]$InstallDeps,
-    [switch]$WithOllama,
     [switch]$EnableAuth,
     [switch]$Uninstall,
     [switch]$PurgeData,
@@ -35,8 +32,7 @@ param(
     [switch]$DryRun,
     [switch]$Verbose,
     [switch]$Help,
-    [string]$Dir = "",
-    [string]$OllamaModel = "gemma4:12b"
+    [string]$Dir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -73,7 +69,7 @@ AtlasFile installer (Windows / WSL2)
 
 Usage:
   irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1 | iex
-  & ([scriptblock]::Create((irm .../install.ps1))) -EnableAuth -WithOllama
+  & ([scriptblock]::Create((irm .../install.ps1))) -EnableAuth
 
 AtlasFile runs in Linux containers, so on Windows the supported path is
 WSL2 + Docker Desktop. This script prepares the Windows side and then runs the
@@ -84,9 +80,7 @@ Install options:
                   Forwarded to install.sh as --dir, install and uninstall alike
   -Yes            Non-interactive. On its own it NEVER installs system
                   dependencies - see -InstallDeps
-  -InstallDeps    Authorize installing WSL2 / Docker Desktop / Ollama
-  -WithOllama     Also install Ollama on Windows and pull a local model
-  -OllamaModel    Model to pull with -WithOllama (default: gemma4:12b)
+  -InstallDeps    Authorize installing WSL2 and Docker Desktop
   -EnableAuth     Enable API authentication (forwarded to install.sh)
 
 Uninstall options:
@@ -699,7 +693,7 @@ if ($script:AfAnim -and $AfTrueColor) {
 # A calha vertical, a regua de fase, a barra viva e o placar sao os MESMOS do
 # install.sh, que por sua vez os tomou do mac_env_install.sh. Dois instaladores
 # com duas gramaticas visuais foi um dos defeitos deste ciclo, nao uma escolha.
-$script:PhaseTotal = 4
+$script:PhaseTotal = 3
 $script:StepStart = $null
 $BOX_V   = [string][char]0x2502   # |
 $BOX_H   = [string][char]0x2500   # -
@@ -1508,79 +1502,24 @@ if (-not $wslDockerOk) {
 }
 Write-Ok "Docker and WSL are talking to each other"
 
-Write-Phase 3 "Local model (optional)"
+# A fase 3 era o Ollama, e ela saiu: puxar um modelo sao varios GB e tirava
+# qualquer previsibilidade da duracao da instalacao. Habilitar um modelo local
+# passa a ser um passo POSTERIOR, ensinado no painel final. De quebra, o defeito
+# de o Ollama viver em dois sistemas operacionais ao mesmo tempo deixa de existir
+# por construcao. O UNINSTALL continua sabendo reverter um Ollama instalado por
+# versoes anteriores - o manifesto daquelas instalacoes segue valendo.
 
-# Ollama is installed on the WINDOWS side; containers reach it via
-#    host.docker.internal (Docker Desktop default). Not forwarded to install.sh
-#    to avoid a duplicate Ollama inside WSL.
-$ollama = Get-Tool ollama
-if ($ollama) {
-    Set-AfState "ollama" "preexisting"
-    Write-Ok "Ollama already installed"
-}
-if (-not $WithOllama -and -not $ollama -and -not $Yes -and [Environment]::UserInteractive) {
-    if (Confirm-Step "Also install Ollama for a 100% local model ($OllamaModel, several GB)?") { $WithOllama = $true }
-}
-if ($WithOllama) {
-    if (-not $ollama) {
-        $winget = Get-Tool winget
-        if ($winget) {
-            Invoke-Step "downloading and installing Ollama (~1.5 GB)" winget @(
-                "install", "-e", "--id", "Ollama.Ollama",
-                "--source", "winget", "--accept-package-agreements", "--accept-source-agreements",
-                "--disable-interactivity")
-            if ($script:NativeExitCode -eq 0) {
-                Set-AfState "ollama" "created"
-                Write-Ok "Ollama installed"
-                # Same trap as Docker: the CLI is not on this session's PATH yet.
-                Update-SessionPath
-                $ollama = Get-Tool ollama
-            }
-        }
-        if (-not $ollama) {
-            Write-Warn "Ollama is installed but not on this session's PATH - open a new terminal and run: ollama pull $OllamaModel"
-        }
-    }
-    if ($ollama) {
-        # Instalado nao e o mesmo que pronto: o servico do Ollama sobe alguns
-        # segundos depois do instalador terminar. Medido na maquina do usuario,
-        # logo apos o winget dizer "Successfully installed":
-        #   Error: Head "http://127.0.0.1:11434/": ... recusou ativamente
-        # e o modelo nao era baixado. Mesma classe do daemon do Docker.
-        $esperaOllama = 60
-        if ($env:ATLASFILE_OLLAMA_WAIT) { $esperaOllama = [int]$env:ATLASFILE_OLLAMA_WAIT }
-        if (-not (Wait-Spinner -Label "waiting for the Ollama service" `
-                    -Test { Test-OllamaReady } -TimeoutSeconds $esperaOllama)) {
-            Write-Warn "the Ollama service did not answer - the model can be pulled later with: ollama pull $OllamaModel"
-        }
-    }
-    if ($ollama) {
-        $listed = ""
-        $prevEap2 = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        try { $listed = (& ollama list 2>&1 | Out-String) } catch { $listed = "" }
-        $ErrorActionPreference = $prevEap2
-        $pulled = ($listed -match [regex]::Escape($OllamaModel))
-        if ($pulled) {
-            Write-Ok "model $OllamaModel already pulled"
-        } else {
-            Invoke-Step "pulling model $OllamaModel (several GB, one-time)" ollama @("pull", $OllamaModel)
-            if ($script:NativeExitCode -ne 0) { Write-Warn "could not pull $OllamaModel - run later: ollama pull $OllamaModel" }
-        }
-        Write-Info "in the assistant settings, type ollama/$OllamaModel in the model box to use it"
-    }
-}
-
-# 4. Delegate to the Linux installer inside WSL
-Write-Phase 4 "Installing AtlasFile inside WSL"
+Write-Phase 3 "Installing AtlasFile inside WSL"
 Write-Info "the Linux installer takes over from here - first run builds images (~15 min)"
 Write-Host ""
 # --delegated: o banner ja foi desenhado por este script segundos atras. Dois
 # banners seguidos leem como dois produtos - e eles nem eram o mesmo desenho.
-# --no-ollama: a decisao de projeto acima vira contrato. Sem ela o install.sh
-# reencontrava as condicoes de oferecer o Ollama DENTRO da distro (onde
-# `command -v ollama` falha, porque o binario mora do lado Windows) e um "y"
-# puxava varios GB de duplicado.
-$shFlags = "--no-open --delegated --no-ollama"
+#
+# --no-ollama NAO existe mais e nao pode ser passado: o Ollama saiu dos dois
+# instaladores, e uma flag desconhecida faz o install.sh sair com "Unknown flag".
+# O defeito que ela existia para conter (a pergunta reaparecendo dentro da
+# distro) deixou de existir por construcao.
+$shFlags = "--no-open --delegated"
 if ($Yes) { $shFlags += " --yes" }
 if ($InstallDeps) { $shFlags += " --install-deps" }
 if ($EnableAuth) { $shFlags += " --enable-auth" }

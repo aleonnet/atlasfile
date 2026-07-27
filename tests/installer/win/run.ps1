@@ -379,13 +379,19 @@ Assert-Match "cita o dialogo do primeiro launch" $out "first-launch"
 Assert-Match "cita virtualizacao indisponivel" $out "[Vv]irtualization is not available"
 Assert-NoMatch "sem excecao" $out "Unhandled|ParameterBindingException"
 
-Write-Host "== E. -WithOllama chama o pull com array explicito =="
+Write-Host "== E. o Ollama saiu do instalador: nada de pull, nada de flag =="
+# Puxar um modelo eram varios GB dentro de uma instalacao que precisa ter duracao
+# previsivel. E a flag --no-ollama, que existia so para conter o efeito colateral
+# desse recurso nos DOIS sistemas operacionais, tambem deixou de existir - passa-la
+# agora faria o install.sh sair com "Unknown flag".
 $sb = New-Sandbox
 $env:AF_OLLAMA_PRESENT = "1"
-$out = Run-Installer @("-Yes", "-WithOllama", "-OllamaModel", "gemma3:1b")
-Assert-Match "chamou ollama list" (Calls) "ollama list"
-Assert-Match "chamou ollama pull do modelo pedido" (Calls) "ollama pull gemma3:1b"
-Assert-NoMatch "sem erro de binding no ollama" $out "AmbiguousParameter|ParameterBindingException"
+$out = Run-Installer @("-Yes", "-InstallDeps")
+$calls = Calls
+Assert-NoMatch "nao puxa modelo nenhum" $calls "ollama pull"
+Assert-NoMatch "nem pergunta sobre Ollama" $out "Also install Ollama"
+Assert-NoMatch "e nao passa a flag que nao existe mais" $calls "--no-ollama"
+Assert-NoMatch "-WithOllama nao e mais aceito" $out "WithOllama"
 
 Write-Host "== H. o script entregue ao WSL chega INTEIRO, nao partido em palavras =="
 # Medido na maquina do usuario: o -ArgumentList do Start-Process junta o array
@@ -398,31 +404,18 @@ $sb = New-Sandbox
 $out = Run-Installer @("-Yes", "-EnableAuth", "-Dir", "/root/Outro")
 $calls = Calls
 Assert-Match "o -c chega como UM argumento citado" $calls '-c "curl -fsSL'
-Assert-Match "as flags do install.sh viajam no mesmo argumento" $calls 'bash -s -- --no-open --delegated --no-ollama --yes --enable-auth'
+Assert-Match "as flags do install.sh viajam no mesmo argumento" $calls 'bash -s -- --no-open --delegated --yes --enable-auth'
 Assert-NoMatch "o curl nao roda pelado" $out "curl: try"
 # Um banner por execucao: o do install.sh nao pode ser desenhado logo depois do
 # nosso - eram dois desenhos diferentes na mesma tela.
 Assert-Match "a delegacao silencia o banner do outro lado" $calls "--delegated"
-# A decisao de projeto (Ollama vive do lado Windows, o container o alcanca por
-# host.docker.internal) vira contrato: sem isto a pergunta reaparecia DENTRO da
-# distro e um "y" puxava varios GB de duplicado.
-Assert-Match "o Ollama nao e oferecido de novo dentro do WSL" $calls "--no-ollama"
+# --no-ollama nao pode mais ser passada: a flag saiu junto com o recurso, e uma
+# flag desconhecida faz o install.sh sair com "Unknown flag".
+Assert-NoMatch "nao passa flag que o outro lado nao conhece mais" $calls "--no-ollama"
 Assert-Match "-Dir viaja para o outro lado" $calls "--dir /root/Outro"
 # O curl endurecido (mesma dureza do mac-env-setup): um solucao de rede nao pode
 # virar instalacao pela metade.
 Assert-Match "download com retry e protocolo pinado" $calls "--proto '=https' --tlsv1.2 --retry 3"
-
-Write-Host "== I. Ollama instalado, servico ainda de pe atras: espera e segue =="
-# Medido na maquina do usuario, logo apos "Successfully installed":
-#   Error: Head "http://127.0.0.1:11434/": ... recusou ativamente
-# O binario existia; o servico ainda nao. Mesma classe do daemon do Docker.
-$sb = New-Sandbox
-$env:AF_OLLAMA_DOWN = "1"
-$env:ATLASFILE_OLLAMA_WAIT = "4"
-$out = Run-Installer @("-Yes", "-WithOllama", "-OllamaModel", "gemma3:1b")
-Assert-Match "anuncia a espera pelo servico" $out "waiting for the Ollama service"
-Assert-Match "avisa sem travar a instalacao" $out "Ollama service did not answer"
-Assert-Match "a instalacao segue ate a fase do WSL" $out "Installing AtlasFile inside WSL"
 
 Write-Host "== K. o caminho ANIMADO executa e termina no quadro final =="
 # Sem o ATLASFILE_FORCE_ANIM este caminho seria intestavel: redirecionado, o

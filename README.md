@@ -8,18 +8,18 @@ Local, per-project document organization system with a classifier operational cy
 
 ## Quick install
 
-No prerequisites to prepare: the installer detects what is missing (Docker, git) and offers to install it for you — pass `--install-deps` to authorize it without prompts, and `--with-ollama` to also set up a 100% local model.
+No prerequisites to prepare: the installer detects what is missing (Docker, git) and offers to install it for you — pass `--install-deps` to authorize it without prompts. A 100% local model is a step **after** the install: pulling one is several GB and would make the install take an unpredictable amount of time.
 
 **macOS / Linux:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth --with-ollama
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth
 ```
 
 **Windows (via WSL2):**
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth -WithOllama
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
 The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:5173` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag.
