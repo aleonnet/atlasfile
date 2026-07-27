@@ -2173,8 +2173,12 @@ printf '\n'
 note "${BOLD}Install finished in ${TOTAL}${RESET} 🎉"
 # Placar: o que de fato aconteceu, em números. A frase fixa de antes dizia a
 # mesma coisa numa instalação limpa e numa reexecução que não mudou nada.
-printf '  %s✔ %s steps%s   %s✔ %s prerequisites%s\n\n' \
-  "$GREEN" "$STEPS_DONE" "$RESET" "$GREEN" "$CHECKS_OK" "$RESET"
+# "steps" ficava logo abaixo de `[4/4]` e lia como contradicao — e ainda por
+# cima nao contava o .env, a chave do cookie, o api_keys.json nem a
+# autenticacao, que aparecem com ✔ na tela. O que ele conta sao as operacoes
+# CRONOMETRADAS, que sao exatamente as listadas no relatorio da execucao.
+printf '  %s✔ %s prerequisites%s   %s✔ %s timed operations%s\n\n' \
+  "$GREEN" "$CHECKS_OK" "$RESET" "$GREEN" "$STEPS_DONE" "$RESET"
 # box_row LABEL VALUE — padded to the fixed inner width; long values get a
 # leading ellipsis keeping the tail (the folder name is what matters)
 box_row() {

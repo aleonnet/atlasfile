@@ -1658,7 +1658,9 @@ Write-Host ($script:Gut) -ForegroundColor DarkGray
 Write-RuleClose
 Write-Host ""
 Write-Note ("AtlasFile is up in {0}" -f $durTexto)
-Write-Host ("  {0} {1} steps" -f $OK, $script:StepsDone) -ForegroundColor Green -NoNewline
+# Mesmo rotulo do install.sh: o que se conta aqui sao as operacoes
+# CRONOMETRADAS, e nao "passos" - que colidia com a numeracao das fases.
+Write-Host ("  {0} {1} timed operations" -f $OK, $script:StepsDone) -ForegroundColor Green -NoNewline
 if ($script:StepsFailed -gt 0) { Write-Host ("   {0} {1} failed" -f $BAD, $script:StepsFailed) -ForegroundColor Red -NoNewline }
 Write-Host ""
 
