@@ -661,14 +661,23 @@ for ($i = 1; $i -lt $linhas.Count - 1; $i++) {
 }
 Assert-True "nenhuma linha vazia ENTRE duas linhas de calha" ($buracos.Count -eq 0) ("depois de: " + ($buracos -join " | "))
 
-# A pergunta era a unica linha do trilho que nao pendurava nele.
-Assert-Match "a pergunta sai na calha" $fonte '(?s)function Confirm-Step.{0,600}?Write-Host \$script:Gut'
-# E o rabo do log saia como um bloco inteiro fora do trilho.
-Assert-Match "o rabo do log sai na calha" $fonte '(?s)function Show-LogTail.{0,400}?Write-Gut'
+# Guardas presas ao CORPO da funcao, nunca a uma distancia em caracteres. A
+# primeira versao usava .{0,600} e reprovou o codigo CORRETO: o alvo ficava a
+# 715 chars porque um comentario de seis linhas entrou no meio. Numero magico em
+# guarda so avisa que alguem escreveu um comentario.
+$corpoConfirm = [regex]::Match($fonte, '(?s)function Confirm-Step.*?\n\}').Value
+$corpoLogTail = [regex]::Match($fonte, '(?s)function Show-LogTail.*?\n\}').Value
+# Ancorado na LISTA de argumentos, e nao no rotulo: o rotulo tem "(~600 MB)" e
+# o fecha-parenteses dele encerrava a captura antes dos argumentos.
+$blocoDocker  = [regex]::Match($fonte, '(?s)"install", "-e", "--id", "Docker\.DockerDesktop".*?\)').Value
 
+# A pergunta era a unica linha do trilho que nao pendurava nele.
+Assert-Match "a pergunta sai na calha" $corpoConfirm 'Write-Host \$script:Gut'
+# E o rabo do log saia como um bloco inteiro fora do trilho.
+Assert-Match "o rabo do log sai na calha" $corpoLogTail 'Write-Gut'
 # Sem --silent o winget roda o instalador do Docker com INTERFACE e ele espera
 # um clique em "Close": o Docker instala e o winget devolve falha assim mesmo.
-Assert-Match "a instalacao do Docker e silenciosa" $fonte '(?s)"install", "-e", "--id", "Docker.DockerDesktop".{0,300}?--silent'
+Assert-Match "a instalacao do Docker e silenciosa" $blocoDocker '--silent'
 
 # A barra viva ocupa a ultima linha: sem apaga-la a pergunta sai grudada nela.
 Assert-Match "Confirm-Step limpa a barra antes de perguntar" $fonte '(?s)function Confirm-Step.{0,400}?Clear-AfBar'
