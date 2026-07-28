@@ -438,6 +438,23 @@ def check_glyph_shadowing(problems):
                     "maiusculas em nomes de variavel)" % (PS, linha, achado, nome))
 
 
+def check_singular_nouns(problems):
+    """Nome de funcao do PowerShell usa substantivo SINGULAR.
+
+    E regra do PSScriptAnalyzer (PSUseSingularNouns), e ele so roda no job do
+    Windows: `Set-AfDockerPrefs` passou pela bancada inteira e derrubou o CI
+    depois. Verificar aqui custa nada e a resposta vem em segundos, nao em
+    minutos.
+    """
+    ps = read(PS)
+    for nome in re.findall(r"^function ([A-Za-z]+)-([A-Za-z]+)", ps, re.M):
+        verbo, substantivo = nome
+        if substantivo.endswith("s") and not substantivo.endswith("ss"):
+            problems.append(
+                "%s  funcao '%s-%s' usa substantivo plural (PSUseSingularNouns "
+                "reprova no CI)" % (PS, verbo, substantivo))
+
+
 def main():
     problems = []
     check_assertions(problems)
@@ -447,6 +464,7 @@ def main():
     check_ui_parity(problems)
     check_gutter_holes(problems)
     check_glyph_shadowing(problems)
+    check_singular_nouns(problems)
     check_call_before_declaration(problems)
     check_manifest_keys(problems)
     for p in problems:

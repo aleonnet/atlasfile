@@ -550,7 +550,7 @@ function Test-DockerInWsl {
 # Devolve $true quando MUDOU alguma coisa, que e quando vale reiniciar o Docker.
 #
 # O diretorio e sobrescrivivel so para teste, mesma costura de DOCKER_APP_PATH.
-function Set-AfDockerPrefs {
+function Set-AfDockerSetting {
     $base = $env:ATLASFILE_DOCKER_SETTINGS_DIR
     if (-not $base) { $base = Join-Path $env:APPDATA "Docker" }
     $desejadas = @{ "enableIntegrationWithDefaultWslDistro" = $true
@@ -1964,7 +1964,7 @@ Write-Ok "Docker Desktop running"
 # Tentar ANTES de esperar: sem isto a instalacao gastava os 120s do timeout para
 # so entao mandar o usuario clicar num menu.
 if (-not (Test-DockerInWsl)) {
-    if (Set-AfDockerPrefs) {
+    if (Set-AfDockerSetting) {
         Write-Info "adjusting Docker Desktop (WSL integration, welcome survey) and restarting it"
         Restart-AfDockerDesktop
     }

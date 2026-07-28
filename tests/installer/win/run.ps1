@@ -779,7 +779,7 @@ Assert-Match "a confirmacao do plano sai na calha" $corpoConfP 'Write-Host \$scr
 Assert-Match "o passo com spinner roda em console proprio" $fonte ([regex]::Escape('-WindowStyle Hidden -PassThru'))
 
 Write-Host "== V4. o que a segunda desinstalacao no Windows real mostrou =="
-$corpoEnable = [regex]::Match($fonte, '(?s)function Set-AfDockerPrefs.*?\n\}').Value
+$corpoEnable = [regex]::Match($fonte, '(?s)function Set-AfDockerSetting.*?\n\}').Value
 
 # O log era ACUMULADO entre execucoes: o "last lines" mostrou um winget
 # uninstall bem-sucedido de OUTRA execucao, logo abaixo de "Nothing was removed".
