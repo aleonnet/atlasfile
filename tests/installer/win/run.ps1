@@ -804,7 +804,7 @@ Write-Host "== V5. handover, Ollama ausente e Docker sem clique =="
 # "existe tal string N vezes".
 $delegacoes = ([regex]::Matches($fonte, '\$AF_CURL \$AF_SH_URL')).Count
 $comPrefixo = ([regex]::Matches($fonte, '\$\(Get-AfEnvPrefix\)\$AF_CURL')).Count
-Assert-True "toda delegacao leva o ambiente do orquestrador" (($delegacoes -ge 5) -and ($comPrefixo -eq $delegacoes)) "$comPrefixo de $delegacoes
+Assert-True "toda delegacao leva o ambiente do orquestrador" (($delegacoes -ge 5) -and ($comPrefixo -eq $delegacoes)) "$comPrefixo de $delegacoes"
 
 # Dois fechamentos: o do install.sh e o daqui, com uma calha solta entre eles.
 Assert-Match "o trilho fecha uma vez so" $fonte '\$script:TrilhoFechadoNoWsl'

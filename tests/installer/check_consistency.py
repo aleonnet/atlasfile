@@ -455,6 +455,49 @@ def check_singular_nouns(problems):
                 "reprova no CI)" % (PS, verbo, substantivo))
 
 
+def _aspas_abertas(texto):
+    """Linhas que abrem aspa e nao fecham, fora de here-string."""
+    dentro, achados = False, []
+    for n, l in enumerate(texto.split("\n"), 1):
+        t = l.strip()
+        if dentro:
+            # A here-string fecha numa linha que COMECA com '@ - e ela costuma
+            # continuar com um pipe. Exigir a linha inteira igual a "'@" fazia o
+            # verificador ficar presa dentro dela e nao ver mais nada; foi assim
+            # que a primeira versao disto nao achou a aspa que derrubou o CI.
+            if t.startswith("'@") or t.startswith('"@'):
+                dentro = False
+            continue
+        if t.endswith("@'") or t.endswith('@"'):
+            dentro = True
+            continue
+        aspa = None
+        for c in l:
+            if aspa is None and c == "#":
+                break
+            if aspa is None and c in "'\"":
+                aspa = c
+            elif aspa == c:
+                aspa = None
+        if aspa is not None:
+            achados.append((n, aspa, t[:70]))
+    return achados
+
+
+def check_quotes(problems):
+    """Nenhuma linha abre aspa sem fechar, no instalador e na bancada.
+
+    O parser do PowerShell so roda no job do Windows, e uma aspa faltando la
+    produz erro em CASCATA que aponta para uma linha de COMENTARIO dezenas de
+    linhas adiante - diagnostico caro e a minutos de distancia. Aconteceu duas
+    vezes neste ciclo, as duas por edicao automatizada que comeu a aspa final.
+    """
+    for rel in (PS, "tests/installer/win/run.ps1"):
+        for linha, aspa, trecho in _aspas_abertas(read(rel)):
+            problems.append("%s:%d  aspa %s aberta e nao fechada -> %s"
+                            % (rel, linha, aspa, trecho))
+
+
 def main():
     problems = []
     check_assertions(problems)
@@ -465,6 +508,7 @@ def main():
     check_gutter_holes(problems)
     check_glyph_shadowing(problems)
     check_singular_nouns(problems)
+    check_quotes(problems)
     check_call_before_declaration(problems)
     check_manifest_keys(problems)
     for p in problems:
