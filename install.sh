@@ -278,9 +278,27 @@ bar_clear() {
   return 0
 }
 
+# Assina uma falha de REDE a partir do que a ferramenta escreveu. As frases sao
+# as que docker/buildkit/curl/git realmente emitem — nao um palpite sobre o que
+# elas talvez digam.
+af_falha_de_rede() { # <arquivo de log>
+  [ -s "$1" ] || return 1
+  LC_ALL=C tail -40 "$1" | LC_ALL=C grep -qiE \
+    'network is unreachable|no such host|temporary failure in name resolution|i/o timeout|TLS handshake timeout|connection refused|could not resolve host|failed to fetch anonymous token|dial tcp'
+}
+
 fail_with_log() {
   bar_clear
   printf '\r%s%s✘%s %s\n' "$GUT" "$RED" "$RESET" "$1"
+  # Rede fora nao e defeito da maquina de quem instala, e despejar doze linhas
+  # de Dockerfile e stack de Go faz parecer que e. Diz o que aconteceu, em uma
+  # frase, e lembra que reexecutar e seguro — o instalador e idempotente.
+  if af_falha_de_rede "$LOG_FILE"; then
+    warn "this looks like a NETWORK problem, not a problem with your machine:"
+    info "the images are downloaded from Docker Hub, and the connection failed"
+    info "check your internet (VPN, proxy or firewall are the usual suspects), then run the same command again"
+    info "nothing was left half-done: re-running continues from where it stopped"
+  fi
   if [ -s "$LOG_FILE" ]; then
     printf '%s%s── last log lines (%s) ──%s\n' "$GUT" "$DIM" "$LOG_FILE" "$RESET"
     tail -12 "$LOG_FILE" | sed "s/^/$(printf '%s' "  | ")/"

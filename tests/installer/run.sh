@@ -861,6 +861,23 @@ out="$(env -i HOME="$SANDBOX" PATH=/usr/bin:/bin TERM=xterm-256color COLORTERM=t
     printf "%s" "$COLOR_OK"')"
 assert_eq "$out" "0"
 
+# Rede fora nao e defeito da maquina de quem instala, e despejar doze linhas de
+# Dockerfile e stack de Go faz parecer que e.
+make_sandbox
+t "falha de rede e explicada, nao despejada"
+printf 'target mcp: failed to solve: failed to fetch anonymous token: dial tcp [2606::1]:443: connect: network is unreachable\n' > "$SANDBOX/log_rede"
+out="$(run_case -- 'LOG_FILE="$SANDBOX/log_rede"; ( fail_with_log "building images" ) 2>&1 || true')"
+printf '%s' "$out" | grep -q 'NETWORK problem' && ok || no "nao reconheceu a rede: $out"
+printf '%s' "$out" | grep -q 're-running continues' && ok || no "nao disse que reexecutar e seguro"
+
+t "e um erro comum NAO vira falha de rede"
+printf 'ERROR: syntax error in Dockerfile line 3\n' > "$SANDBOX/log_comum"
+out="$(run_case -- 'LOG_FILE="$SANDBOX/log_comum"; ( fail_with_log "building images" ) 2>&1 || true')"
+printf '%s' "$out" | grep -q 'NETWORK problem' && no "falso positivo: $out" || ok
+
+t "o rabo do log continua saindo, em qualquer caso"
+printf '%s' "$out" | grep -q 'last log lines' && ok || no "escondeu o log"
+
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
 # o spinner longe da saída de terceiro.

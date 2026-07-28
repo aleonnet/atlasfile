@@ -624,15 +624,26 @@ function Restart-AfDockerDesktop {
 function ConvertTo-AfWslPath([string]$Caminho) {
     if (-not $Caminho) { return "" }
     if ($Caminho.StartsWith("/")) { return $Caminho }   # ja e caminho da distro
-    $convertido = ""
-    try {
-        $argsPath = @($script:WslUser) + @("-e", "wslpath", "-a", $Caminho)
-        $convertido = ((& (Resolve-ToolPath wsl) @argsPath 2>$null) | Out-String).Trim()
-    } catch { Write-Verbose "wslpath failed: $($_.Exception.Message)" }
-    if ($convertido -and $convertido.StartsWith("/")) { return $convertido }
+
+    # Conversao LEXICA primeiro: C:\x\y -> /mnt/c/x/y. E a regra do automount do
+    # WSL, e o resultado nao depende de estado nenhum da maquina.
+    #
+    # O wslpath era a primeira escolha e, numa REINSTALACAO real, devolveu
+    #   /mnt/wsl/docker-desktop-bind-mounts/Ubuntu/60c0eb2a1c49...
+    # para a pasta de documentos - um ponto de montagem que o Docker Desktop
+    # tinha criado, e nao a pasta. Onde ficam os documentos de alguem nao pode
+    # depender do que estava montado no instante da instalacao.
     if ($Caminho -match '^([A-Za-z]):\\(.*)$') {
         return ("/mnt/" + $Matches[1].ToLower() + "/" + ($Matches[2] -replace '\\', '/'))
     }
+
+    # Sobra o que nao e caminho de unidade (UNC, por exemplo). Ai o wslpath e a
+    # unica saida, e o chamador confere o resultado.
+    try {
+        $argsPath = @($script:WslUser) + @("-e", "wslpath", "-a", $Caminho)
+        $convertido = ((& (Resolve-ToolPath wsl) @argsPath 2>$null) | Out-String).Trim()
+        if ($convertido -and $convertido.StartsWith("/")) { return $convertido }
+    } catch { Write-Verbose "wslpath failed: $($_.Exception.Message)" }
     return ""
 }
 
@@ -641,7 +652,18 @@ function Get-AfProjectsRoot {
     try { $doc = [Environment]::GetFolderPath('MyDocuments') } catch { $doc = "" }
     if (-not $doc) { $doc = Join-Path $env:USERPROFILE "Documents" }
     if (-not $doc) { return "" }
-    return (ConvertTo-AfWslPath (Join-Path $doc "AtlasFileProjects"))
+    $alvo = Join-Path $doc "AtlasFileProjects"
+    $convertido = ConvertTo-AfWslPath $alvo
+
+    # CONFERE antes de entregar. Uma traducao que perde o nome da pasta nao e
+    # uma traducao daquela pasta - foi assim que os documentos do usuario foram
+    # parar num ponto de montagem do Docker. Se nao bater, devolve vazio e o
+    # install.sh usa o padrao dele, que e conhecido e explicavel.
+    if (-not $convertido.EndsWith("/AtlasFileProjects")) {
+        Write-Verbose "unexpected translation for '$alvo': '$convertido' - falling back to the Linux default"
+        return ""
+    }
+    return $convertido
 }
 
 # -- Banner: the orb, its two moons and the comet it fires (no face) ---------

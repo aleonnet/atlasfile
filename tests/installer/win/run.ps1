@@ -885,6 +885,22 @@ Assert-Match "e e chamada antes de delegar" $fonte '(?s)Write-Handover "handover
 Assert-Match "so o glifo recebe cor" $corpoWrap 'Write-Host \$Glifo -ForegroundColor \$Cor -NoNewline'
 Assert-NoMatch "o texto nao e pintado junto" $corpoWrap 'Write-Host \("  " \+ \$linhas\[\$i\]\) -ForegroundColor'
 
+Write-Host "== V9. o caminho dos documentos nao depende do que esta montado =="
+$corpoConv = [regex]::Match($fonte, '(?s)function ConvertTo-AfWslPath.*?\n\}').Value
+$corpoRaiz = [regex]::Match($fonte, '(?s)function Get-AfProjectsRoot.*?\n\}').Value
+
+# Numa reinstalacao real o wslpath devolveu
+# /mnt/wsl/docker-desktop-bind-mounts/Ubuntu/<hash> para a pasta de documentos.
+# A conversao lexica vem PRIMEIRO porque nao depende de estado nenhum.
+$posLexica = $corpoConv.IndexOf('/mnt/')
+$posWslpath = $corpoConv.IndexOf('wslpath')
+Assert-True "a conversao lexica vem antes do wslpath" (($posLexica -gt 0) -and ($posWslpath -gt $posLexica)) "lexica em $posLexica, wslpath em $posWslpath"
+
+# E o resultado e CONFERIDO: traducao que perde o nome da pasta nao e traducao
+# daquela pasta.
+Assert-Match "o resultado e conferido antes de ser usado" $corpoRaiz 'EndsWith\("/AtlasFileProjects"\)'
+Assert-Match "e recusado devolve vazio, para o padrao do Linux valer" $corpoRaiz 'return ""'
+
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
 # e exatamente o estado da maquina real, e o instalador tem de ligar a chave em
