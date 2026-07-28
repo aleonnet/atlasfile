@@ -8,10 +8,20 @@
 test: test-backend test-frontend test-installer
 	@echo "All tests passed."
 
+# check_consistency.py so rodava no job Linux do CI: a paridade entre os dois
+# instaladores era invisivel para quem roda `make test` na propria maquina, e
+# era justamente ali que as divergencias moravam. Com pwsh instalado ele tambem
+# compara os QUADROS do banner; sem pwsh ele se anuncia pulado.
+# O parse do install.ps1 entra junto quando ha pwsh: um erro de sintaxe la so
+# aparecia no job Windows, a minutos de distancia.
 test-installer:
 	@bash -n install.sh
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -S warning install.sh; else echo "shellcheck not installed - skipped"; fi
 	@bash tests/installer/run.sh
+	@python3 tests/installer/check_consistency.py
+	@if command -v pwsh >/dev/null 2>&1; then \
+		pwsh -NoProfile -Command '$$e=$$null; $$null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path ./install.ps1).Path,[ref]$$null,[ref]$$e); if($$e){$$e|ForEach-Object{"install.ps1:$$($$_.Extent.StartLineNumber) $$($$_.Message)"};exit 1}; "install.ps1 parseia limpo"'; \
+	else echo "pwsh not installed - install.ps1 parse skipped"; fi
 
 test-backend:
 	@cd backend && if test -x .venv/bin/python; then .venv/bin/python -m pytest tests/ -v; else python3 -m pytest tests/ -v; fi

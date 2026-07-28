@@ -8,16 +8,25 @@
 # then delegates to install.sh inside the default WSL distro:
 # one real installer, no duplicated logic.
 #
-# Parameters (when saved and run as a file; under `iex` the prompts cover it):
+# Parameters (when saved and run as a file; under `iex` the prompts cover it).
+# This list is a summary — `-Help` is the complete one:
+#   -Dir PATH      where AtlasFile lives inside WSL (default: ~/AtlasFile)
+#   -ProjectsRoot PATH
+#                  where YOUR DOCUMENTS live (default: your Windows Documents)
+#   -Branch NAME   branch to clone (default: main)
 #   -Yes           non-interactive (accept defaults; does NOT install deps)
 #   -InstallDeps   authorize installing missing prerequisites without prompting
 #   -EnableAuth    enable API authentication (forwarded to install.sh)
+#   -Verbose       show every tool's output instead of hiding it in the log
 #   -Uninstall     print a removal plan and, once confirmed, revert what this
 #                  installer created (delegates the Linux side to install.sh
 #                  inside WSL and reverts the Windows side from the manifest)
 #   -PurgeData     uninstall: also erase the OpenSearch volume (the index)
 #   -KeepData      uninstall: keep the OpenSearch volume
 #   -RemoveDeps    uninstall: also remove Windows-side deps this script installed
+#   -Force         uninstall: remove the clone inside WSL even with local changes
+#   -Doctor        read-only report of BOTH sides; installs nothing
+#   -DryRun        show, do not do (with -Uninstall: the removal plan)
 #   -Help          this help
 param(
     [switch]$Yes,
@@ -647,6 +656,39 @@ function ConvertTo-AfWslPath([string]$Caminho) {
     return ""
 }
 
+# Um caminho da DISTRO virando argumento seguro para `bash -c`.
+#
+# Os dois requisitos brigam entre si e por isso a funcao existe:
+#   - ESPACO so sobrevive DENTRO de aspas. Sem elas, "C:\Users\Joao Silva" chega
+#     ao install.sh partido em varios argumentos e ele instala no lugar errado.
+#   - TIL so expande FORA de aspas simples. E o manifesto guarda literalmente
+#     "~/AtlasFile" (Set-AfState "install_dir"), entao um --dir '~/AtlasFile'
+#     faria o install.sh procurar uma pasta chamada "~" - a desinstalacao nao
+#     acharia instalacao nenhuma.
+#
+# Aspas DUPLAS atendem os dois: elas seguram o espaco e ainda expandem $HOME.
+# Entao o til vira $HOME aqui, antes de sair. O crase escapa o $ para o
+# PowerShell nao interpolar o $HOME DELE, que e o do Windows.
+#
+# O que o bash ainda expandiria dentro de aspas duplas ($ ` " \) e escapado
+# antes, senao um caminho com $ viraria outra coisa no meio do caminho.
+function ConvertTo-AfShArg([string]$Caminho) {
+    # Caminho SIMPLES viaja NU, que e exatamente como a v0.56.0 ja o mandava e
+    # como foi validado em maquina real: o bash expande o `~` sozinho e nao ha
+    # espaco para proteger. Citar tudo por precaucao teria dois precos — o til
+    # deixaria de expandir e a linha ganharia escapes (`\"`) que so poluem.
+    if ($Caminho -match '^[A-Za-z0-9_./~-]+$') { return $Caminho }
+
+    # Sobrou o que PRECISA de aspas (espaco, sobretudo). Aspas DUPLAS e nao
+    # simples porque elas seguram o espaco E deixam o $HOME expandir: com aspas
+    # simples o til morreria, e o manifesto grava literalmente "~/AtlasFile" —
+    # o install.sh iria procurar uma pasta chamada "~".
+    $v = $Caminho -replace '([\\"$`])', '\$1'
+    if ($v -eq '~') { $v = "`$HOME" }
+    elseif ($v.StartsWith('~/')) { $v = "`$HOME" + $v.Substring(1) }
+    return '"' + $v + '"'
+}
+
 function Get-AfProjectsRoot {
     $doc = ""
     try { $doc = [Environment]::GetFolderPath('MyDocuments') } catch { $doc = "" }
@@ -752,6 +794,16 @@ $AF_ORBIT = @(@(3, 19), @(4, 18), @(5, 16), @(6, 13), @(6, 10), @(6, 7), @(5, 4)
 # as letras - medido no install.sh, onde virou "y.ur .ocs".
 $AF_COMET = @(@(4, 17), @(3, 20), @(2, 22), @(1, 25), @(1, 31), @(0, 38), @(0, 46), @(0, 54))
 $AF_RAMP = @("592013", "ff5a36", "ff8a6b", "ffd0c4")
+# Cometa: cabeca BRANCA e tres celulas de cauda, os mesmos do install.sh
+# (AF_COMET_HEAD_HEX / AF_COL_C1..C3 / AF_COMET_TAIL). A cabeca era "ffd0c4" e a
+# cauda tinha quatro celulas - dois pixels diferentes no mesmo desenho.
+$AF_COMET_HEAD_HEX = "ffffff"
+$AF_COMET_TAIL_HEX = @("ff8a6b", "ff5a36", "b23f26")
+$AF_COMET_TAIL = 3
+# Quantizacao do degrade do orbe: o install.sh monta uma LUT de 32 passos e
+# indexa nela, e sao esses degraus que dao a textura da esfera. Interpolar
+# continuo aqui daria um degrade liso ao lado de um bandado.
+$AF_LUT_N = 32
 $AF_IGNITE = 5
 $AF_ORBIT_FRAMES = 12
 # 10, o MESMO do install.sh (AF_ORBIT_START). Com 2 as duas luas trocavam de
@@ -841,11 +893,53 @@ function Write-AfGrid($Grid) {
 # com cauda e o texto revelado pela passagem dele.
 function New-AfFrame([int]$N, [int]$Total) {
     $grid = New-AfGrid
-    # brilho especular: um ponto varre a esfera numa onda triangular, e cada
-    # celula escurece conforme a distancia ate ele. Uma rampa horizontal fixa
-    # deixava a esfera chapada.
+
+    # A ORDEM DE ESCRITA E A PRECEDENCIA, e ela e a mesma do af_row_cells do
+    # install.sh: cometa < orbe < texto < luas. E o que faz o cometa parecer
+    # SAIR DE TRAS do orbe - a celula de cauda que cai sobre uma coluna do orbe
+    # e coberta por ele. Aqui o cometa era desenhado por ULTIMO e passava por
+    # cima: no quadro 17 a cauda apagava o `▀` da linha 4, coluna 14, que no
+    # bash continua sendo orbe.
     $tri = $N % 20; if ($tri -gt 10) { $tri = 20 - $tri }
     $hlCol = 5 + $tri
+
+    # --- 1. cometa, e a revelacao que a passagem dele dispara ---------------
+    # O QUADRO FINAL NAO TEM COMETA (no install.sh, `n < AF_LAST`).
+    $primeiroCometa = $AF_IGNITE + $AF_ORBIT_FRAMES
+    $revelaAteCol = -1
+    if ($N -ge $primeiroCometa -and $N -lt ($primeiroCometa + $AF_COMET.Count)) {
+        $j = $N - $primeiroCometa
+        $hr = $AF_COMET[$j][0]; $hc = $AF_COMET[$j][1]
+        $grid.G[$hr, $hc] = $MOON_NEAR
+        $grid.C[$hr, $hc] = $AF_COMET_HEAD_HEX
+        # Cauda CONTIGUA atras da cabeca, na direcao do movimento. Amostrar as
+        # celulas anteriores do TRAJETO - que era o que se fazia aqui - deixa
+        # vaos de 3 a 5 colunas e le como faisca, nao como cometa. O install.sh
+        # registra essa forma como medida e REJEITADA; este lado a usava.
+        if ($j -gt 0) { $pr = $AF_COMET[$j - 1][0]; $pc = $AF_COMET[$j - 1][1] }
+        else          { $pr = $hr;                  $pc = $hc - 1 }
+        $dcol = $hc - $pc; $drow = $hr - $pr
+        if ($dcol -le 0) { $dcol = 1 }
+        for ($t = 1; $t -le $AF_COMET_TAIL; $t++) {
+            $tc = $hc - $t
+            if ($tc -lt 0) { break }
+            # Truncate e nao [int]: o cast do PowerShell arredonda (e arredonda
+            # para o par), o bash trunca em direcao ao zero. Com $drow negativo
+            # - o cometa SOBE - os dois dao linhas diferentes.
+            $tr = $hr - [int][Math]::Truncate(($drow * $t) / $dcol)
+            if ($tr -lt 0) { $tr = 0 }
+            if ($tr -ge $AF_ROWS) { $tr = $AF_ROWS - 1 }
+            $grid.G[$tr, $tc] = $DOT
+            $grid.C[$tr, $tc] = $AF_COMET_TAIL_HEX[$t - 1]
+        }
+        # A revelacao conta CARACTERES, nao colunas: no install.sh sao
+        # `hc - AF_WORD_COL` letras. Passando `hc` como ultima coluna permitida
+        # aparecia sempre uma letra a mais do que no outro lado.
+        $revelaAteCol = $hc - 1
+    }
+    if ($N -eq $Total - 1) { $revelaAteCol = $AF_COLS }
+
+    # --- 2. orbe, com o brilho especular ------------------------------------
     $arte = @(
         @{ Row = 1; Col = 8;  Glifos = (, $BLK_LO * 5) },
         @{ Row = 2; Col = 6;  Glifos = @($BLK_LO) + (, $BLK_FU * 7) + @($BLK_LO) },
@@ -853,62 +947,82 @@ function New-AfFrame([int]$N, [int]$Total) {
         @{ Row = 4; Col = 6;  Glifos = @($BLK_UP) + (, $BLK_FU * 7) + @($BLK_UP) },
         @{ Row = 5; Col = 8;  Glifos = (, $BLK_UP * 5) }
     )
-    # ignicao: o orbe ocupa as linhas 1..5 e nasce de dentro para fora
+    # Ignicao: o orbe ocupa as linhas 1..5 e nasce de dentro para fora. O
+    # install.sh revela `row < n+2`; aqui era `row <= n+2`, uma linha adiantada
+    # em cada um dos cinco quadros de ignicao.
     $revelaAte = if ($N -lt $AF_IGNITE) { $N + 2 } else { $AF_ROWS }
     foreach ($a in $arte) {
-        if ($a.Row -gt $revelaAte) { continue }
+        if ($a.Row -ge $revelaAte) { continue }
         for ($i = 0; $i -lt $a.Glifos.Count; $i++) {
             $col = $a.Col + $i
-            $dist = [Math]::Abs($col - $hlCol) + [Math]::Abs($a.Row - 3)
-            $pos = 1.0 - [Math]::Min($dist / 11.0, 1.0)
+            # A MESMA formula do install.sh: queda de 90 por coluna e 180 por
+            # linha a partir do ponto de luz (linha 2, nao 3), piso em 120, e o
+            # resultado quantizado nos 32 degraus da LUT. A formula anterior era
+            # outra (distancia de Manhattan sobre 11, centrada na linha 3) e
+            # sombreava a esfera de um jeito que o outro lado nunca produz.
+            $p = 1000 - [Math]::Abs($col - $hlCol) * 90 - [Math]::Abs($a.Row - 2) * 180
+            if ($p -lt 120) { $p = 120 }
+            $degrau = [int][Math]::Floor($p * ($AF_LUT_N - 1) / 1000)
+            $posLut = [Math]::Floor($degrau * 1000 / ($AF_LUT_N - 1)) / 1000.0
             $grid.G[$a.Row, $col] = $a.Glifos[$i]
-            $grid.C[$a.Row, $col] = Get-AfRampHex $pos
+            $grid.C[$a.Row, $col] = Get-AfRampHex $posLut
         }
     }
-    # luas: em oposicao na mesma tabela de 16 celulas
-    $idx = $AF_ORBIT_REST
-    if ($N -ge $AF_IGNITE -and $N -lt ($AF_IGNITE + $AF_ORBIT_FRAMES)) {
-        $idx = ($AF_ORBIT_START + ($N - $AF_IGNITE)) % 16
+
+    # --- 3. texto revelado pela passagem do cometa --------------------------
+    if ($revelaAteCol -ge 0) {
+        Set-AfText $grid 2 24 "AtlasFile" "ff5a36" $revelaAteCol
+        Set-AfText $grid 3 24 "Your documents have gravity." "8a8a8a" $revelaAteCol
+        # Divergencia DELIBERADA, decidida pelo dono do projeto: o lado Windows
+        # identifica a plataforma. E a unica linha que o install.sh nao tem, e a
+        # guarda de paridade de quadros a perdoa explicitamente (e cobra que ela
+        # continue existindo).
+        Set-AfText $grid 4 23 "(Windows / WSL2)" "8a8a8a" $revelaAteCol
     }
+
+    # --- 4. luas, por cima de tudo ------------------------------------------
+    # A orbita avanca em TODO quadro a partir da ignicao, inclusive durante o
+    # voo do cometa - e o que o install.sh faz. Aqui elas congelavam no indice
+    # de repouso assim que o cometa saia, e so o quadro FINAL coincidia: por
+    # isso a guarda do indice de repouso passava com as luas paradas.
+    $idx = $AF_ORBIT_REST
     if ($N -ge $AF_IGNITE) {
+        $idx = ($AF_ORBIT_START + ($N - $AF_IGNITE)) % $AF_ORBIT.Count
         # Glifo pela LINHA (a lua do lado de tras e menor e mais escura) e cor
-        # POR LUA - a regra do install.sh (af_row_cells). Antes o glifo e a cor
-        # eram fixos por indice de lua, o que dava profundidade invertida em
-        # metade da orbita.
+        # POR LUA - a regra do af_row_cells do install.sh.
         $m1 = $AF_ORBIT[$idx]
-        $m2 = $AF_ORBIT[($idx + 8) % 16]
+        $m2 = $AF_ORBIT[($idx + 8) % $AF_ORBIT.Count]
         if ($m1[0] -le 2) { $g1 = $MOON_FAR;  $c1 = "b23f26" } else { $g1 = $MOON_NEAR; $c1 = "ff5a36" }
         if ($m2[0] -le 2) { $g2 = $MOON_FAR;  $c2 = "8d56b2" } else { $g2 = $MOON_NEAR; $c2 = "c97bff" }
         $grid.G[$m1[0], $m1[1]] = $g1; $grid.C[$m1[0], $m1[1]] = $c1
         $grid.G[$m2[0], $m2[1]] = $g2; $grid.C[$m2[0], $m2[1]] = $c2
     }
-    # cometa e o texto que ele revela
-    $primeiroCometa = $AF_IGNITE + $AF_ORBIT_FRAMES
-    $revelaCol = -1
-    # O QUADRO FINAL NAO TEM COMETA. No install.sh isso e regra
-    # (af_frame_prepare so emite cometa enquanto n < AF_LAST) e ha teste para
-    # isso; aqui o laco continuava pintando tres celulas de cauda na linha 0, e
-    # eram exatamente as tres reticencias que sobravam no topo do banner.
-    if ($N -ge $primeiroCometa -and $N -lt ($primeiroCometa + $AF_COMET.Count)) {
-        $j = $N - $primeiroCometa
-        $caudaHex = @("ffd0c4", "ff8a6b", "ff5a36", "b23f26")
-        for ($t = 0; $t -lt 4; $t++) {
-            $k = $j - $t
-            if ($k -lt 0 -or $k -ge $AF_COMET.Count) { continue }
-            $cel = $AF_COMET[$k]
-            $grid.G[$cel[0], $cel[1]] = if ($t -eq 0) { $MOON_NEAR } else { $DOT }
-            $grid.C[$cel[0], $cel[1]] = $caudaHex[$t]
-        }
-        $ultimo = [Math]::Min($j, $AF_COMET.Count - 1)
-        $revelaCol = $AF_COMET[$ultimo][1]
-    }
-    if ($N -eq $Total - 1) { $revelaCol = $AF_COLS }
-    if ($revelaCol -ge 0) {
-        Set-AfText $grid 2 24 "AtlasFile" "ff5a36" $revelaCol
-        Set-AfText $grid 3 24 "Your documents have gravity." "8a8a8a" $revelaCol
-        Set-AfText $grid 4 23 "(Windows / WSL2)" "8a8a8a" $revelaCol
-    }
     return $grid
+}
+
+# Seam de teste, no mesmo espirito de ATLASFILE_FORCE_ANIM/ATLASFILE_FAKE_MISSING:
+# despeja os quadros do banner em TEXTO PURO e sai. E o equivalente exato do
+# af_frame_plain do install.sh.
+#
+# Existe porque a paridade de arte comparava as TABELAS (orbita, cometa, rampa,
+# hexes) e nunca o DESENHO que elas produzem. Quatro divergencias viviam
+# justamente nos algoritmos que consomem essas tabelas - cauda do cometa, luas
+# durante o voo, ignicao e brilho especular - e passavam verdes por ela.
+#
+# Variavel de ambiente e nao parametro: um parametro entraria no param() e a
+# guarda de ajuda cobraria que ele aparecesse no Show-Usage, poluindo a ajuda
+# publica com um gancho de bancada.
+if ($env:ATLASFILE_DUMP_FRAMES -eq "1") {
+    $totalDump = $AF_IGNITE + $AF_ORBIT_FRAMES + $AF_COMET.Count + 1
+    for ($nd = 0; $nd -lt $totalDump; $nd++) {
+        $gd = (New-AfFrame $nd $totalDump).G
+        for ($rd = 0; $rd -lt $AF_ROWS; $rd++) {
+            $linhaDump = ""
+            for ($cd = 0; $cd -lt $AF_COLS; $cd++) { $linhaDump += $gd[$rd, $cd] }
+            [Console]::Out.WriteLine($linhaDump.TrimEnd())
+        }
+    }
+    Stop-Installer 0; return
 }
 
 # Animar exige console de verdade E truecolor. Sem os dois, o banner estatico -
@@ -935,6 +1049,11 @@ if ($script:AfAnim -and $AfTrueColor) {
 }
 
 
+# AF-INICIO-DO-TRILHO: daqui para baixo tudo que vai a tela pendura na calha,
+# ate a marca AF-FIM-DO-TRILHO la embaixo. O banner fica ACIMA desta marca de
+# proposito: ele emoldura a arte com linhas vazias e e desenhado antes de o
+# trilho existir. A bancada varre exatamente esta faixa.
+#
 # --- UI: mesma gramatica visual do install.sh (fases, passos, painel) -------
 # A calha vertical, a regua de fase, a barra viva e o placar sao os MESMOS do
 # install.sh, que por sua vez os tomou do mac_env_install.sh. Dois instaladores
@@ -985,7 +1104,11 @@ function Show-AfBar {
             $linha += "$esc[38;5;240m$BAR_OFF"
         }
     }
-    Write-Host ("  " + $linha + "$esc[0m " + "fase $($script:BarDone)/$($script:PhaseTotal)") -NoNewline
+    # Na CALHA, como o bar_render do install.sh. Dois espacos crus deixavam a
+    # barra flutuando ao lado do trilho em vez de pendurada nele - e ela e a
+    # linha que fica VIVA na tela, entao o desalinhamento ficava permanente.
+    Write-Host $script:Gut -ForegroundColor DarkGray -NoNewline
+    Write-Host ($linha + "$esc[0m " + "fase $($script:BarDone)/$($script:PhaseTotal)") -NoNewline
     $script:BarVisible = $true
 }
 
@@ -1325,13 +1448,17 @@ function Invoke-Step {
             Write-Gut ("{0} {1} (exit {2})" -f $BAD, $Label, $script:NativeExitCode) Red
             $script:StepsFailed++
         }
-        Write-Host ""
+        # Linha de CALHA, nao linha vazia: em -Verbose a saida da ferramenta
+        # acabou de inundar a tela e o respiro ajuda, mas vazia ele e um buraco
+        # no trilho. O Write-Gut acima ja quebrou a linha.
+        Write-Gut ""
         return
     }
     $fOut = [IO.Path]::GetTempFileName()
     $fErr = [IO.Path]::GetTempFileName()
     $t0 = Get-Date
-    if (-not $script:AfAnim) { Write-Host ("  {0} {1}..." -f $DOT, $Label) -ForegroundColor DarkGray }
+    # Na calha, como o ramo sem TTY do run_step do install.sh.
+    if (-not $script:AfAnim) { Write-Gut ("{0} {1}..." -f $DOT, $Label) DarkGray }
     try {
         # CONSOLE PROPRIO (escondido) em vez de -NoNewWindow. Redirecionar
         # stdout/stderr so alcanca o FILHO: o desinstalador do Docker Desktop se
@@ -1400,7 +1527,7 @@ function Wait-Spinner {
     if (& $Test) { return $true }
     $t0 = Get-Date
     $i = 0
-    if (-not $script:AfAnim) { Write-Host ("  {0} {1}..." -f $DOT, $Label) -ForegroundColor DarkGray }
+    if (-not $script:AfAnim) { Write-Gut ("{0} {1}..." -f $DOT, $Label) DarkGray }
     # $pronto e nao $ok: nomes de variavel do PowerShell NAO diferenciam
     # maiusculas, entao um local chamado $ok sombreia o glifo global $OK e a
     # linha de sucesso saia "True waiting for..." - medido num Windows 11
@@ -1408,7 +1535,10 @@ function Wait-Spinner {
     $pronto = $false
     while (((Get-Date) - $t0).TotalSeconds -lt $TimeoutSeconds) {
         if ($script:AfAnim) {
-            Write-Host ("`r  " + $AF_SPIN[$i % $AF_SPIN.Count]) -ForegroundColor DarkYellow -NoNewline
+            # Na calha, igual ao spinner do Invoke-Step. Os dois spinners do
+            # arquivo divergiam entre si: um pendurava no trilho, este nao.
+            Write-Host ("`r" + $script:Gut) -ForegroundColor DarkGray -NoNewline
+            Write-Host ($AF_SPIN[$i % $AF_SPIN.Count]) -ForegroundColor DarkYellow -NoNewline
             Write-Host (" {0} {1}   " -f $Label, (Format-Since $t0)) -ForegroundColor DarkGray -NoNewline
             $i++
         }
@@ -1442,13 +1572,18 @@ function Test-AfDoctor {
     # glifo de check. O CI mostrou o resultado: a tela saiu com "0 Microsoft
     # Windows", "1 elevated session", "2 distro(s)" no lugar dos vistos.
     $nOk = 0; $nAviso = 0; $nRuim = 0
-    Write-Host ""
+    # Uma linha de CALHA antes de cada regua, nunca uma linha vazia: e o que o
+    # doc_head do install.sh faz (`printf '%s\n' "$GUT"`), e linha vazia dentro
+    # do trilho e um buraco nele. Eram cinco aqui, mais a regua do WSL2 que nao
+    # tinha separador nenhum.
+    Write-Gut ""
     Write-Rule "Windows"
     Write-Gut ("{0} {1}" -f $OK, [Environment]::OSVersion.VersionString) Green; $nOk++
     $elevado = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if ($elevado) { Write-Gut ("{0} elevated session" -f $OK) Green; $nOk++ }
     else { Write-Gut "! not elevated - installing WSL or Docker from here would fail" DarkYellow; $nAviso++ }
 
+    Write-Gut ""
     Write-Rule "WSL2"
     if (Get-Tool wsl) {
         $prev = $ErrorActionPreference; $ErrorActionPreference = "Continue"
@@ -1469,8 +1604,7 @@ function Test-AfDoctor {
     } else {
         Write-Gut ("{0} wsl.exe not found" -f $BAD) Red; $nRuim++
     }
-    Write-Host ""
-
+    Write-Gut ""
     Write-Rule "Docker Desktop and Ollama"
     if (Get-Tool docker) {
         Write-Gut ("{0} the docker CLI is on PATH" -f $OK) Green; $nOk++
@@ -1487,15 +1621,17 @@ function Test-AfDoctor {
     } else {
         Write-Gut "! Ollama is not installed (optional, only for a 100% local model)" DarkYellow; $nAviso++
     }
-    Write-Host ""
-
+    Write-Gut ""
     Write-Rule "Install manifest (Windows side)"
     if (Test-Path $AfManifest) {
         Write-Gut ("{0} {1}" -f $OK, $AfManifest) Green; $nOk++
         foreach ($linha in (Get-Content $AfManifest -ErrorAction SilentlyContinue)) {
             $p = $linha -split "`t", 2
             if ($p.Count -eq 2 -and $p[0] -ne "schema" -and $p[0] -notlike "#*") {
-                Write-Host ("    " + $script:Gut + ("{0,-10} {1}" -f $p[0], $p[1])) -ForegroundColor DarkGray
+                # A calha vem PRIMEIRO e o recuo depois. Invertido, o `|` caia na
+                # coluna 5 e o trilho ficava torto justo no despejo do manifesto.
+                # Largura 16 no campo da chave, a mesma do install.sh.
+                Write-Gut ("    " + ("{0,-16} {1}" -f $p[0], $p[1])) DarkGray
             }
         }
     } else {
@@ -1503,10 +1639,10 @@ function Test-AfDoctor {
     }
 
     # O lado Linux responde por si: mesmo diagnostico, mesmo vocabulario.
-    Write-Host ""
+    Write-Gut ""
     Write-Rule "Inside WSL"
     $cmdDoc = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- --doctor --delegated"
-    if ($script:AfDir) { $cmdDoc += " --dir $script:AfDir" }
+    if ($script:AfDir) { $cmdDoc += " --dir $(ConvertTo-AfShArg $script:AfDir)" }
     $saidaDoc = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdDoc))
     if ($saidaDoc.Trim()) {
         foreach ($linha in (("$saidaDoc").TrimEnd() -split "`r?`n")) {
@@ -1517,9 +1653,12 @@ function Test-AfDoctor {
         Write-Gut ("{0} could not run the diagnosis inside WSL" -f $BAD) Red; $nRuim++
     }
 
-    Write-Host ""
+    Write-Gut ""
     Write-Rule "Diagnosis (Windows side)"
-    Write-Gut ("{0} {1} ok" -f $OK, $nOk) Green
+    # UMA linha, como o placar do install.sh (`✔ N ok  ! N to watch  ✘ N broken`).
+    # Sem o -NoNewline o Write-Gut quebrava a linha depois do "N ok" e o resto do
+    # placar saia numa segunda linha, essa SEM calha.
+    Write-Gut ("{0} {1} ok" -f $OK, $nOk) Green -NoNewline
     Write-Host ("   ! {0} to watch" -f $nAviso) -ForegroundColor DarkYellow -NoNewline
     Write-Host ("   {0} {1} broken" -f $BAD, $nRuim) -ForegroundColor Red
     Close-AfRail
@@ -1543,12 +1682,16 @@ if ($Doctor) {
 # uninstall, que imprime o plano de REMOCAO. Sem esta guarda o -DryRun capturava
 # a combinacao e devolvia o plano de INSTALACAO - o oposto do que foi pedido.
 if ($DryRun -and -not $Uninstall) {
-    Write-Host ""
+    Write-Gut ""
     Write-Rule "Install plan (Windows side)"
+    # SEM Ollama. A fase 3 que o instalava saiu, e um dry run que promete instalar
+    # o que o instalador nao instala mais mente sobre o proprio trabalho - o
+    # `--dry-run` do install.sh lista so o que ele de fato instalaria (git, Docker,
+    # plugin do compose). O -Doctor continua reportando o Ollama, e ali esta
+    # certo: la a pergunta e "o que existe nesta maquina", nao "o que eu faria".
     foreach ($item in @(
         @{ Nome = "WSL2";           Tem = [bool](Get-Tool wsl) },
-        @{ Nome = "Docker Desktop"; Tem = [bool](Get-Tool docker) },
-        @{ Nome = "Ollama";         Tem = [bool](Get-Tool ollama) }
+        @{ Nome = "Docker Desktop"; Tem = [bool](Get-Tool docker) }
     )) {
         if ($item.Tem) { Write-Gut ("{0} {1} is already here" -f $OK, $item.Nome) Green }
         else { Write-Gut ("{0} {1} WOULD BE INSTALLED" -f $DOT, $item.Nome) DarkYellow }
@@ -1556,7 +1699,7 @@ if ($DryRun -and -not $Uninstall) {
     Write-Gut ""
     Write-Rule "Install plan (inside WSL)"
     $cmdSeco = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
-    if ($script:AfDir) { $cmdSeco += " --dir $script:AfDir" }
+    if ($script:AfDir) { $cmdSeco += " --dir $(ConvertTo-AfShArg $script:AfDir)" }
     $saidaSeca = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdSeco))
     foreach ($linha in (("$saidaSeca").TrimEnd() -split "`r?`n")) {
         if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
@@ -1585,27 +1728,65 @@ if ($Uninstall) {
     if ($RemoveDeps) { $flagsComuns += " --remove-deps" }
     if ($Force)      { $flagsComuns += " --force" }
     if ($extraHost)  { $flagsComuns += " --host-extra $extraHost" }
-    if ($script:AfDir) { $flagsComuns += " --dir $script:AfDir" }
+    if ($script:AfDir) { $flagsComuns += " --dir $(ConvertTo-AfShArg $script:AfDir)" }
 
     # --- 1. FATOS: nao pergunta, nao age ------------------------------------
     Start-Step "reading the removal plan from inside WSL"
     $cmdPlano = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --plan-only"
     $plano = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdPlano))
-    if ($script:NativeExitCode -ne 0 -or $plano -notmatch "ATLASFILE_UNINSTALL: plan-only") {
+    if ($script:NativeExitCode -eq 0 -and $plano -match "ATLASFILE_UNINSTALL: plan-only") {
+        Write-Ok "removal plan read"
+    } else {
+        # Plano ilegivel: o lado Windows NAO e tocado. Ponto.
+        #
+        # A tentacao e agir mesmo assim, porque uma instalacao que morreu depois
+        # do Docker Desktop e antes de o WSL ficar utilizavel deixa um Docker
+        # orfao que o usuario nao tinha. Mas "nao consegui ler o plano" NAO prova
+        # que nao ha instalacao do outro lado: o WSL pode estar vivo, com
+        # AtlasFile rodando dentro, e so a comunicacao ter falhado — e ai remover
+        # o Docker Desktop apaga o runtime de uma instalacao que existe. E a
+        # mesma classe do defeito da v0.55.0, em que um "nao" do usuario virava
+        # um Docker Desktop apagado.
+        #
+        # O manifesto tambem nao resolve: `install_dir` so passou a ser gravado
+        # na v0.55.0, entao "ausente" significa tanto "nunca delegou" quanto
+        # "instalado por uma versao anterior" — que pode ter WSL cheio.
+        #
+        # Entao o orfao e RELATADO, nunca removido: e a mesma disciplina que este
+        # projeto ja aplica ao Ollama no Linux e ao Homebrew, que sao listados
+        # com os passos e deixados para a pessoa executar.
         Write-Fail "could not read the removal plan from WSL (exit $($script:NativeExitCode))"
         Show-LogTail
-        Write-Host "    Nothing was removed."
+        Write-Wrapped " " "Nothing was removed, on either side." Red
+        $orfaos = @("docker", "ollama") | Where-Object { (Get-AfState $_) -eq "created" }
+        if ($orfaos) {
+            Write-Gut ""
+            Write-Wrapped " " ("The Windows manifest records these as installed by AtlasFile. They were " +
+                               "NOT removed, because without the WSL side there is no way to prove that " +
+                               "nothing still depends on them:") DarkYellow
+            foreach ($chaveOrfa in $orfaos) {
+                $rotuloOrfao = if ($chaveOrfa -eq "docker") { "Docker Desktop" } else { "Ollama" }
+                Write-Gut ("  - $rotuloOrfao") DarkYellow
+            }
+            Write-Wrapped " " ("Fix WSL and run this again to remove them properly, or uninstall them " +
+                               "by hand from Settings > Apps.") DarkYellow
+        }
+        Close-AfRail
         Stop-Installer 1; return
     }
-    Write-Ok "removal plan read"
 
     # --- 2. UM plano, cobrindo os dois lados --------------------------------
     # Sem linha em branco aqui: o proprio plano ABRE com uma linha de calha, e
     # uma vazia antes dela era um buraco no trilho.
-    foreach ($linha in (("$plano").TrimEnd() -split "`r?`n")) {
-        # As linhas de maquina existem para ESTE script, nao para o usuario.
-        if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
-        Write-Host $linha
+    # `if ($plano)`: vazio, o -split devolve UMA string vazia e o eco imprimiria
+    # uma linha em branco - buraco no trilho, no caminho em que o lado WSL nao
+    # respondeu e o plano acima ja foi desenhado por este script.
+    if ($plano) {
+        foreach ($linha in (("$plano").TrimEnd() -split "`r?`n")) {
+            # As linhas de maquina existem para ESTE script, nao para o usuario.
+            if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
+            Write-Host $linha
+        }
     }
     $volume = ""
     if ($plano -match 'ATLASFILE_FACT: volume=(\S+)') { $volume = $Matches[1] }
@@ -1859,11 +2040,15 @@ if (-not $wslReady) {
     if ($isAdmin -and (Confirm-Step "WSL2 is not usable - install it now? (a Windows restart may be required)")) {
         # Dizer O QUE vai baixar ANTES de baixar: o usuario viu "Baixando:
         # Ubuntu 31,3%" sem saber por que um Ubuntu aparecia na instalacao dele.
-        Write-Host ""
-        Write-Host "  Installing WSL2 and Ubuntu (~500 MB, one time)." -ForegroundColor Cyan
-        Write-Host "  AtlasFile runs in Linux containers: Ubuntu is where its installer"
-        Write-Host "  and its stack actually run, and Docker Desktop needs WSL2 too."
-        Write-Host ""
+        # Na calha: sao cinco linhas no MEIO da fase 1, e cruas elas abriam dois
+        # buracos e tres linhas soltas no trilho. O texto e um paragrafo, entao
+        # quem quebra e o Write-Wrapped - a largura passa a ser a do trilho em
+        # vez de uma quebra escrita a mao.
+        Write-Gut ""
+        Write-Wrapped " " "Installing WSL2 and Ubuntu (~500 MB, one time)." Cyan
+        Write-Wrapped " " ("AtlasFile runs in Linux containers: Ubuntu is where its installer " +
+                           "and its stack actually run, and Docker Desktop needs WSL2 too.") Gray
+        Write-Gut ""
         if ($jaTentou) {
             # Repetir o comando que JA nao resolveu seria pedir mais um reinicio
             # para nada. Estas duas features sao o que o proprio `wsl --install`
@@ -1886,9 +2071,13 @@ if (-not $wslReady) {
             # usuario reiniciava so para reencontrar exatamente a mesma tela.
             Write-Fail "wsl --install failed (exit code $($script:NativeExitCode)) - nothing to gain from restarting."
             Show-LogTail
-            Write-Host "    Run it by hand to read the real error:"
-            Write-Host "      wsl --install" -ForegroundColor Yellow
-            Write-Host "    Windows logs servicing failures in %WINDIR%\Logs\DISM\dism.log"
+            # Na calha. A tela de FALHA era justamente onde as linhas fugiam do
+            # trilho, e e a tela que o usuario mais le. Prosa pelo Write-Wrapped
+            # (que quebra na largura), COMANDO pelo Write-Gut: comando existe
+            # para ser copiado e nao pode ser requebrado.
+            Write-Wrapped " " "Run it by hand to read the real error:" Gray
+            Write-Gut "  wsl --install" Yellow
+            Write-Wrapped " " "Windows logs servicing failures in %WINDIR%\Logs\DISM\dism.log" Gray
             Stop-Installer 1; return
         }
         Set-AfState "wsl" "created"
@@ -1926,22 +2115,22 @@ if (-not $wslReady) {
 }
 if (-not $wslReady) {
     Write-Fail "WSL2 is not usable on this machine."
-    if ($wslMotivo) { Write-Host "    ($wslMotivo)" -ForegroundColor DarkGray }
+    if ($wslMotivo) { Write-Wrapped " " "($wslMotivo)" DarkGray }
     if ($wslMotivo -match "did not answer") {
         # Sem cravar causa: a virtualizacao pode estar LIGADA e o WSL ainda assim
         # nao subir. Lista o que verificar, na ordem de probabilidade.
-        Write-Host "    WSL did not answer. Check, in this order:"
-        Write-Host "      wsl --update      (already tried by this installer)" -ForegroundColor Yellow
-        Write-Host "      wsl --shutdown    then run this installer again" -ForegroundColor Yellow
-        Write-Host "      wsl -l -v         does the distro show as Stopped/Running?" -ForegroundColor Yellow
-        Write-Host "      Get-CimInstance Win32_Processor | Select VirtualizationFirmwareEnabled" -ForegroundColor Yellow
-        Write-Host "      Get-WinEvent -LogName System -MaxEvents 200 | Where ProviderName -like '*Hyper-V*'" -ForegroundColor Yellow
+        Write-Wrapped " " "WSL did not answer. Check, in this order:" Gray
+        Write-Gut "  wsl --update      (already tried by this installer)" Yellow
+        Write-Gut "  wsl --shutdown    then run this installer again" Yellow
+        Write-Gut "  wsl -l -v         does the distro show as Stopped/Running?" Yellow
+        Write-Gut "  Get-CimInstance Win32_Processor | Select VirtualizationFirmwareEnabled" Yellow
+        Write-Gut "  Get-WinEvent -LogName System -MaxEvents 200 | Where ProviderName -like '*Hyper-V*'" Yellow
     } else {
-        Write-Host "    Install it with (PowerShell as Administrator):"
-        Write-Host "      wsl --install" -ForegroundColor Yellow
-        Write-Host "    Restart Windows and run this installer again."
+        Write-Wrapped " " "Install it with (PowerShell as Administrator):" Gray
+        Write-Gut "  wsl --install" Yellow
+        Write-Wrapped " " "Restart Windows and run this installer again." Gray
     }
-    if (-not $isAdmin) { Write-Host "    (this session is not elevated, so the installer cannot do it for you)" -ForegroundColor DarkGray }
+    if (-not $isAdmin) { Write-Wrapped " " "(this session is not elevated, so the installer cannot do it for you)" DarkGray }
     Stop-Installer 1; return
 }
 Set-AfState "wsl" "preexisting"
@@ -2094,12 +2283,17 @@ $shFlags = "--no-open --delegated"
 if ($Yes) { $shFlags += " --yes" }
 if ($InstallDeps) { $shFlags += " --install-deps" }
 if ($EnableAuth) { $shFlags += " --enable-auth" }
-if ($Dir) { $shFlags += " --dir $Dir" }
+# -Verbose tem de ATRAVESSAR a fronteira. O build de ~15 min roda do outro lado,
+# e e la que as falhas acontecem: pedir a saida das ferramentas e receber so a
+# do lado Windows deixa mudo exatamente o trecho que se queria ver.
+if ($Verbose) { $shFlags += " --verbose" }
+if ($Dir) { $shFlags += " --dir $(ConvertTo-AfShArg $Dir)" }
 if ($Branch) { $shFlags += " --branch $Branch" }
-# Aspas simples: "C:\Users\Joao Silva\Documents" vira um caminho com ESPACO, e
-# a linha inteira viaja como argumento unico de `bash -c`.
+# "C:\Users\Joao Silva\Documents" vira um caminho com ESPACO, e a linha inteira
+# viaja como argumento unico de `bash -c`. Mesma regra de citacao do --dir: uma
+# so, senao as duas divergem na primeira alteracao.
 $raizProjetos = if ($ProjectsRoot) { ConvertTo-AfWslPath $ProjectsRoot } else { Get-AfProjectsRoot }
-if ($raizProjetos) { $shFlags += " --projects-root '$raizProjetos'" }
+if ($raizProjetos) { $shFlags += " --projects-root $(ConvertTo-AfShArg $raizProjetos)" }
 # A divisoria do handover, logo antes de entregar: daqui em diante quem escreve
 # na tela e o outro instalador, e isso precisa ficar visivel. A calha continua,
 # entao o trilho atravessa a fronteira em vez de recomecar do outro lado.
@@ -2135,6 +2329,9 @@ $dirWsl = if ($script:AfDir) { $script:AfDir } else { "~/AtlasFile" }
 Clear-AfBar
 $dur = [int]((Get-Date) - $script:RunStart).TotalSeconds
 $durTexto = if ($dur -ge 60) { "{0}m{1:d2}s" -f [int]($dur / 60), ($dur % 60) } else { "${dur}s" }
+# AF-FIM-DO-TRILHO: esta linha e o fechamento. Daqui para baixo o trilho JA
+# FECHOU — aqui, ou do lado do install.sh, que fecha o dele antes do painel — e
+# o relatorio final sai sem calha, que e o desenho do mac-env.
 if ($script:TrilhoFechadoNoWsl) { Write-Host "" } else { Close-AfRail }
 Write-Note ("AtlasFile is up in {0}" -f $durTexto)
 Write-Panel @(

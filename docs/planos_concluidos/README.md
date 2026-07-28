@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.56.1
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [paridade_instaladores_auditoria_v0561](paridade_instaladores_auditoria_v0561.plan.md) | Auditoria dos dois instaladores lado a lado, com os 4.663 linhas de fonte lidas e os caminhos read-only executados. **A guarda estava verde e 26 divergências viviam sob ela**: ela compara tabelas e existência de primitivas, e o que divergia eram os algoritmos e o uso delas. Um `-DryRun` que prometia instalar Ollama, uma desinstalação que abandonava o Docker Desktop, o trilho furado dos dois lados, e quatro divergências no banner — cauda do cometa faiscada, luas congeladas, ignição adiantada, brilho com outra fórmula. Guarda nova de **paridade de quadros** (renderiza os 26 dos dois e compara caractere a caractere), que nasceu cega e só passou a valer depois de âncora e piso de sanidade |
+
+---
+
 ## 0.56.0
 
 | # | Plano | Escopo |

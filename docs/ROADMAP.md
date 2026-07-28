@@ -37,7 +37,7 @@ visível na UI" (label + tooltip por modo)._
 
 | Item | O que é | Gatilho para executar |
 |---|---|---|
-| ~~Instalador bootstrapa os próprios pré-requisitos~~ | **Entregue na v0.43.0** — ver `planos_concluidos/installer_bootstrap_prereqs_v0430.plan.md` (bootstrap com confirmação, `--install-deps`, Ollama opt-in `--with-ollama`, en-US, step 0 do site removido) | — |
+| ~~Instalador bootstrapa os próprios pré-requisitos~~ | **Entregue na v0.43.0** — ver `planos_concluidos/installer_bootstrap_prereqs_v0430.plan.md` (bootstrap com confirmação, `--install-deps`, en-US, step 0 do site removido). O Ollama opt-in daquele ciclo **saiu do instalador na v0.55.0**: o pull são vários GB e tirava a previsibilidade da duração | — |
 
 ## Extração
 

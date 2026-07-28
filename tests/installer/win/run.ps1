@@ -426,7 +426,7 @@ Assert-Match "a delegacao silencia o banner do outro lado" $calls "--delegated"
 # --no-ollama nao pode mais ser passada: a flag saiu junto com o recurso, e uma
 # flag desconhecida faz o install.sh sair com "Unknown flag".
 Assert-NoMatch "nao passa flag que o outro lado nao conhece mais" $calls "--no-ollama"
-Assert-Match "-Dir viaja para o outro lado" $calls "--dir /root/Outro"
+Assert-Match "-Dir viaja para o outro lado" $calls '--dir /root/Outro'
 # Sem a URL sobrescrivivel e o -Branch, uma branch NAO pode ser testada de ponta
 # a ponta no Windows: o .ps1 da branch buscaria o .sh do main.
 $sb = New-Sandbox
@@ -517,8 +517,27 @@ $sb = New-UninstallSandbox @("docker`tcreated", "wsl_user`troot", "install_dir`t
 $out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
 $calls = Calls
 Assert-Match "fala com o WSL como o dono da instalacao" $calls "wsl -u root -e bash"
-Assert-Match "e no diretorio registrado, nao no default" $calls "--dir /root/Outro"
+Assert-Match "e no diretorio registrado, nao no default" $calls '--dir /root/Outro'
 Assert-Match "a distro baixada por nos entra no plano" $calls "wsl_distro=created"
+
+# O TIL tem de viajar NU. O manifesto grava literalmente "~/AtlasFile" e o bash
+# so expande `~` FORA de aspas: citar (o reflexo natural para proteger espaco)
+# faria o install.sh procurar uma pasta chamada "~" e nao achar instalacao
+# nenhuma. Aspas simples sao a armadilha obvia; as duplas tambem matam o til,
+# porque o bash nao expande `~` dentro delas.
+$sb = New-UninstallSandbox @("docker`tcreated", "install_dir`t~/AtlasFile")
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+$calls = Calls
+Assert-Match "o til viaja nu, para o bash expandir" $calls '--dir ~/AtlasFile'
+Assert-NoMatch "e nunca citado, que mataria a expansao" $calls '--dir [\\''"]~'
+
+# Espaco no -Dir e o caso que PRECISA de aspas, e ai elas aparecem escapadas na
+# linha de comando (o Invoke-Native escapa as aspas internas antes de montar o
+# -ArgumentList). O que importa e o caminho chegar INTEIRO.
+$sb = New-UninstallSandbox @("docker`tcreated")
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData", "-Dir", "/root/Meus Docs")
+$calls = Calls
+Assert-Match "-Dir com espaco viaja inteiro" $calls '--dir \\"/root/Meus Docs\\"'
 
 Write-Host "== F3. -Uninstall -DryRun mostra o plano dos dois lados e para =="
 $sb = New-UninstallSandbox @("docker`tcreated")
@@ -748,16 +767,17 @@ $sb = New-Sandbox
 $out = Run-Installer @("-Yes", "-EnableAuth")
 $calls = Calls
 Assert-Match "a delegacao carrega a raiz de projetos" $calls "--projects-root"
-Assert-Match "e ela aponta para um disco do Windows" $calls "--projects-root '/mnt/"
-Assert-NoMatch "nunca para dentro da distro" $calls "--projects-root '/root"
+Assert-Match "e ela aponta para um disco do Windows" $calls '--projects-root /mnt/'
+Assert-NoMatch "nunca para dentro da distro" $calls '--projects-root .{0,2}/root'
 
 # Caminho do Windows dado a mao tambem e convertido - o help promete os dois.
 $sb = New-Sandbox
 $out = Run-Installer @("-Yes", "-ProjectsRoot", "D:\Meus Documentos\Atlas")
 $calls = Calls
-Assert-Match "converte o caminho que o usuario deu" $calls "--projects-root '/mnt/"
+# Este caminho TEM espaco ("D:\Meus Documentos\Atlas"), entao ele vem citado.
+Assert-Match "converte o caminho que o usuario deu" $calls '--projects-root \\"/mnt/d/'
 # O espaco no caminho tem de sobreviver: a linha viaja dentro de um bash -c.
-Assert-NoMatch "sem quebrar no espaco do caminho" $calls "--projects-root '/mnt/d/Meus\s*$"
+Assert-NoMatch "sem quebrar no espaco do caminho" $calls '--projects-root \\"?/mnt/d/Meus\s*$'
 
 Write-Host "== V3. o que a desinstalacao no Windows 11 real mostrou =="
 $corpoBar  = [regex]::Match($fonte, '(?s)function Show-AfBar.*?\n\}').Value

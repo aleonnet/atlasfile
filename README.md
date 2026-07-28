@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
-The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:5173` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag.
+The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:5173` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag — on Windows, `install.ps1 -Help`.
 
 **On Windows your documents live on the Windows side**, in your Documents folder (`…\Documents\AtlasFileProjects`), so they show up in Explorer like any other folder and survive a `wsl --unregister`. Only AtlasFile itself lives inside WSL. Use `-ProjectsRoot` to pick another folder, and `-InstallDeps` to install WSL2 and Docker Desktop without being asked anything.
 
@@ -167,7 +167,7 @@ _ATLASFILE/
 # 1. Copy and configure the .env
 cp .env.example .env
 # Set PROJECTS_HOST_ROOT to the absolute path of your projects
-# Recommended default: $HOME/Documents/Projects
+# Recommended default: $HOME/Documents/AtlasFileProjects  (same as the installer's)
 
 # 2. Bring up the stack
 make docker-update
