@@ -779,7 +779,7 @@ Assert-Match "a confirmacao do plano sai na calha" $corpoConfP 'Write-Host \$scr
 Assert-Match "o passo com spinner roda em console proprio" $fonte ([regex]::Escape('-WindowStyle Hidden -PassThru'))
 
 Write-Host "== V4. o que a segunda desinstalacao no Windows real mostrou =="
-$corpoEnable = [regex]::Match($fonte, '(?s)function Enable-AfWslIntegration.*?\n\}').Value
+$corpoEnable = [regex]::Match($fonte, '(?s)function Set-AfDockerPrefs.*?\n\}').Value
 
 # O log era ACUMULADO entre execucoes: o "last lines" mostrou um winget
 # uninstall bem-sucedido de OUTRA execucao, logo abaixo de "Nothing was removed".
@@ -864,7 +864,12 @@ $out = Run-Installer @("-Yes")
 $depois = Get-Content (Join-Path $dirCfg "settings-store.json") -Raw | ConvertFrom-Json
 Assert-True "ligou a integracao no arquivo do Docker" ($depois.enableIntegrationWithDefaultWslDistro -eq $true) "ficou $($depois.enableIntegrationWithDefaultWslDistro)"
 Assert-True "preservando o resto do arquivo" ($depois.outraChave -eq 1) "perdeu outraChave"
-Assert-Match "e disse o que fez" $out "WSL integration was off"
+Assert-Match "e disse o que fez" $out "adjusting Docker Desktop"
+
+# O questionario de boas-vindas do Docker sai do caminho pela chave DOCUMENTADA.
+# A tela de LOGIN continua: nao ha chave documentada para ela, e inventar uma
+# sobre esquema alheio e palpite.
+Assert-True "e o questionario de boas-vindas tambem foi suprimido" ($depois.displayedOnboarding -eq $true) "ficou $($depois.displayedOnboarding)"
 
 # Arquivo AUSENTE: foi o caso da maquina real - Docker recem-instalado ainda
 # nao tinha escrito preferencia nenhuma, e a funcao desistia calada.

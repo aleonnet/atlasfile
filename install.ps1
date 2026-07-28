@@ -527,13 +527,35 @@ function Test-DockerInWsl {
 # causa de um palpite sobre esquema alheio.
 #
 # O diretorio e sobrescrivivel so para teste, mesma costura de DOCKER_APP_PATH.
-function Enable-AfWslIntegration {
+# As preferencias do Docker Desktop que ESTA instalacao precisa. Duas, e as duas
+# tem motivo:
+#
+#   enableIntegrationWithDefaultWslDistro  - e o que faz o `docker` existir
+#     DENTRO da distro. Nem sempre vem ligada apos uma instalacao nova: num
+#     Windows 11 real o instalador parou pedindo um clique em
+#     Settings > Resources > WSL Integration.
+#
+#   displayedOnboarding - tira o questionario de boas-vindas do caminho. Chave
+#     DOCUMENTADA pela Docker. A tela de LOGIN continua aparecendo, e de
+#     proposito: nao ha chave documentada para ela, e inventar uma sobre esquema
+#     alheio e o tipo de palpite que este projeto nao da. Ela tambem nao bloqueia
+#     nada - o instalador espera o daemon, nao o usuario.
+#
+# Docker Desktop guarda isso em %APPDATA%\Docker. O nome do arquivo mudou na
+# versao 4.35 (settings.json -> settings-store.json), entao os dois sao
+# tentados, nessa ordem. E formato INTERNO: se o arquivo nao for JSON valido,
+# isto NAO derruba a instalacao - cai na espera e na mensagem manual que ja
+# existiam.
+#
+# Devolve $true quando MUDOU alguma coisa, que e quando vale reiniciar o Docker.
+#
+# O diretorio e sobrescrivivel so para teste, mesma costura de DOCKER_APP_PATH.
+function Set-AfDockerPrefs {
     $base = $env:ATLASFILE_DOCKER_SETTINGS_DIR
     if (-not $base) { $base = Join-Path $env:APPDATA "Docker" }
-    $chave = "enableIntegrationWithDefaultWslDistro"
+    $desejadas = @{ "enableIntegrationWithDefaultWslDistro" = $true
+                    "displayedOnboarding"                   = $true }
 
-    # O arquivo que EXISTE manda; a 4.35 renomeou settings.json para
-    # settings-store.json e as duas versoes ainda circulam.
     $alvo = ""
     foreach ($nome in @("settings-store.json", "settings.json")) {
         $arq = Join-Path $base $nome
@@ -559,9 +581,14 @@ function Enable-AfWslIntegration {
     catch { Write-Verbose "cannot read $alvo : $($_.Exception.Message)"; return $false }
     if ($null -eq $cfg) { $cfg = New-Object PSObject }
 
-    if ($cfg.PSObject.Properties[$chave] -and $cfg.$chave -eq $true) { return $false }
-    if ($cfg.PSObject.Properties[$chave]) { $cfg.$chave = $true }
-    else { $cfg | Add-Member -NotePropertyName $chave -NotePropertyValue $true -Force }
+    $mudou = $false
+    foreach ($chave in $desejadas.Keys) {
+        if ($cfg.PSObject.Properties[$chave] -and $cfg.$chave -eq $desejadas[$chave]) { continue }
+        if ($cfg.PSObject.Properties[$chave]) { $cfg.$chave = $desejadas[$chave] }
+        else { $cfg | Add-Member -NotePropertyName $chave -NotePropertyValue $desejadas[$chave] -Force }
+        $mudou = $true
+    }
+    if (-not $mudou) { return $false }
 
     try { $cfg | ConvertTo-Json -Depth 32 | Set-Content $alvo -Encoding UTF8 -ErrorAction Stop }
     catch { Write-Verbose "cannot write $alvo : $($_.Exception.Message)"; return $false }
@@ -1937,8 +1964,8 @@ Write-Ok "Docker Desktop running"
 # Tentar ANTES de esperar: sem isto a instalacao gastava os 120s do timeout para
 # so entao mandar o usuario clicar num menu.
 if (-not (Test-DockerInWsl)) {
-    if (Enable-AfWslIntegration) {
-        Write-Info "Docker's WSL integration was off - turning it on and restarting Docker Desktop"
+    if (Set-AfDockerPrefs) {
+        Write-Info "adjusting Docker Desktop (WSL integration, welcome survey) and restarting it"
         Restart-AfDockerDesktop
     }
 }
