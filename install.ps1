@@ -381,9 +381,13 @@ function Invoke-NativeCapture {
         $script:NativeExitCode = 1
         Write-Verbose "$File : $($_.Exception.Message)"
     }
+    # Cada arquivo entra so se tiver conteudo. Concatenar "$vazio`n" duas vezes
+    # deixava o texto terminando em varias quebras, e quem ecoa linha a linha
+    # transformava isso em linhas em branco na tela do usuario.
     foreach ($f in @($fOut, $fErr)) {
         if (Test-Path $f) {
-            $texto += ((Get-AfText $f) + "`n")
+            $parte = (Get-AfText $f)
+            if ($parte.Trim()) { $texto += ($parte.TrimEnd() + "`n") }
         }
     }
     Write-LogSection ("$File " + ($Arguments -join " ")) @($fOut, $fErr)
@@ -1398,7 +1402,7 @@ function Test-AfDoctor {
     if ($script:AfDir) { $cmdDoc += " --dir $script:AfDir" }
     $saidaDoc = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdDoc))
     if ($saidaDoc.Trim()) {
-        foreach ($linha in ($saidaDoc -split "`r?`n")) {
+        foreach ($linha in (("$saidaDoc").TrimEnd() -split "`r?`n")) {
             if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
             Write-Host $linha
         }
@@ -1447,7 +1451,7 @@ if ($DryRun -and -not $Uninstall) {
     $cmdSeco = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
     if ($script:AfDir) { $cmdSeco += " --dir $script:AfDir" }
     $saidaSeca = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdSeco))
-    foreach ($linha in ($saidaSeca -split "`r?`n")) {
+    foreach ($linha in (("$saidaSeca").TrimEnd() -split "`r?`n")) {
         if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
         Write-Host $linha
     }
@@ -1491,7 +1495,7 @@ if ($Uninstall) {
     # --- 2. UM plano, cobrindo os dois lados --------------------------------
     # Sem linha em branco aqui: o proprio plano ABRE com uma linha de calha, e
     # uma vazia antes dela era um buraco no trilho.
-    foreach ($linha in ($plano -split "`r?`n")) {
+    foreach ($linha in (("$plano").TrimEnd() -split "`r?`n")) {
         # As linhas de maquina existem para ESTE script, nao para o usuario.
         if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
         Write-Host $linha
@@ -1559,7 +1563,7 @@ if ($Uninstall) {
     if ($temAcoes) {
     $cmdExec = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --yes $decisaoDados"
     $saidaExec = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdExec))
-    foreach ($linha in ($saidaExec -split "`r?`n")) {
+    foreach ($linha in (("$saidaExec").TrimEnd() -split "`r?`n")) {
         if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
         Write-Host $linha
     }

@@ -828,6 +828,27 @@ Assert-Match "com queda para cor chapada quando nao ha truecolor" $corpoRegua 'i
 $copias = ([regex]::Matches($fonte, '38;2;\$')).Count
 Assert-True "a conversao para escape de 24 bits vive num lugar so" ($copias -le 1) "$copias copias"
 
+Write-Host "== V7. a captura nao vaza linhas em branco para a tela =="
+# O texto capturado era montado como (stdout + quebra) + (stderr + quebra). Com
+# o stderr vazio, o split por linha produzia varias entradas vazias no fim, e
+# cada uma virava uma linha em branco - antes da pergunta do volume e antes de
+# "removing Docker Desktop". A guarda de tela nao pegava porque as vazias
+# ficavam ENTRE uma linha de calha e uma pergunta sem calha.
+Assert-Match "so entra no texto o arquivo que tem conteudo" $fonte ([regex]::Escape('if ($parte.Trim()) { $texto += ($parte.TrimEnd()'))
+$semTrim = ([regex]::Matches($fonte, 'foreach \(\$linha in \(\$\w+ -split')).Count
+Assert-True "e quem ecoa apara o fim antes de dividir" ($semTrim -eq 0) "$semTrim laco(s) ecoam sem aparar"
+
+# Prova na TELA, e nao so no fonte: a desinstalacao nao pode ter duas linhas em
+# branco seguidas em lugar nenhum.
+$sb = New-UninstallSandbox @("docker`tcreated", "wsl`tcreated")
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+$linhasU = $out -split "`r?`n"
+$duplas = 0
+for ($i = 1; $i -lt $linhasU.Count; $i++) {
+    if ($linhasU[$i].Trim() -eq "" -and $linhasU[$i-1].Trim() -eq "") { $duplas++ }
+}
+Assert-True "sem linhas em branco seguidas na desinstalacao" ($duplas -eq 0) "$duplas ocorrencia(s)"
+
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
 # e exatamente o estado da maquina real, e o instalador tem de ligar a chave em
