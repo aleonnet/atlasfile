@@ -264,6 +264,11 @@ def check_ui_parity(problems):
         ("mensagem fora do trilho",       r'\bnote\(\)',     r'\bWrite-Note\b'),
         ("quebra de linha com calha",     r'\baf_wrap\b',    r'\bWrite-Wrapped\b'),
         ("fim do trilho",                 r'\brail_end\b',   r'\bClose-AfRail\b'),
+        # A regua nao pode ser so "existir nos dois": ela tem de VARRER a rampa
+        # nos dois. Chapada de um lado e degrade do outro, as duas metades da
+        # tela nao parecem o mesmo produto — foi o que o usuario viu no Windows.
+        ("rampa na regua",                r'af_rgb_at "\$pos"',
+                                          r'Get-AfRampHex[^\n]*Cabecalho\[\$i\]'),
     )
     for rotulo, alvo_sh, alvo_ps in pares:
         if not re.search(alvo_sh, sh):

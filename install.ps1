@@ -709,6 +709,15 @@ $AF_ORBIT_START = 10
 $AF_ORBIT_REST = 14
 $AF_DELAY_MS = 45
 
+# Hex da rampa -> escape de 24 bits. A mesma conversao estava escrita a mao no
+# Write-AfGrid e no Show-AfBar; com a regua seria a terceira copia.
+function Get-AfEsc([string]$Hex) {
+    $r = [Convert]::ToInt32($Hex.Substring(0, 2), 16)
+    $g = [Convert]::ToInt32($Hex.Substring(2, 2), 16)
+    $b = [Convert]::ToInt32($Hex.Substring(4, 2), 16)
+    return ([char]27 + "[38;2;$r;$g;${b}m")
+}
+
 function Get-AfRampHex([double]$Pos) {
     if ($Pos -lt 0) { $Pos = 0 }
     if ($Pos -gt 1) { $Pos = 1 }
@@ -761,12 +770,7 @@ function Write-AfGrid($Grid) {
         for ($c = 0; $c -le $ultimo; $c++) {
             $cor = $Grid.C[$r, $c]
             if ($cor -ne $corAtual) {
-                if ($cor) {
-                    $rr = [Convert]::ToInt32($cor.Substring(0, 2), 16)
-                    $gg = [Convert]::ToInt32($cor.Substring(2, 2), 16)
-                    $bb = [Convert]::ToInt32($cor.Substring(4, 2), 16)
-                    $linha += "$esc[38;2;$rr;$gg;${bb}m"
-                } else { $linha += "$esc[0m" }
+                if ($cor) { $linha += (Get-AfEsc $cor) } else { $linha += "$esc[0m" }
                 $corAtual = $cor
             }
             $linha += $Grid.G[$r, $c]
@@ -923,11 +927,7 @@ function Show-AfBar {
     $linha = ""
     for ($i = 0; $i -lt $largura; $i++) {
         if ($i -lt $cheio) {
-            $hex = Get-AfRampHex ([double]$i / [Math]::Max(1, $largura - 1))
-            $r = [Convert]::ToInt32($hex.Substring(0, 2), 16)
-            $g = [Convert]::ToInt32($hex.Substring(2, 2), 16)
-            $b = [Convert]::ToInt32($hex.Substring(4, 2), 16)
-            $linha += "$esc[38;2;$r;$g;${b}m$BAR_ON"
+            $linha += (Get-AfEsc (Get-AfRampHex ([double]$i / [Math]::Max(1, $largura - 1)))) + $BAR_ON
         } else {
             $linha += "$esc[38;5;240m$BAR_OFF"
         }
@@ -976,13 +976,50 @@ function Get-AfRuleWidth {
 }
 
 # O conector E a calha, nao vem depois dela - no install.sh vale o mesmo.
+# A regua VARRE a rampa do produto, como o rule_sweep do install.sh - mesmas
+# posicoes, mesma segmentacao. Antes eram tres cores fixas de 16 (DarkGray,
+# White, DarkYellow) e as duas metades da tela nao pareciam o mesmo produto;
+# com a largura ja igualada, isto fecha o handover.
+#
+# A rampa nao e nova: Get-AfRampHex ja pinta o banner e a barra de fase. O que
+# faltava era a regua usar o que ja existia.
+#
+# UMA string com os escapes embutidos, e nao 90 Write-Host coloridos: e a mesma
+# tecnica do Write-AfGrid, e evita piscada numa linha desenhada ~10 vezes por
+# execucao.
+#
+# Oito segmentos nos tracos, como o bash. La a razao e tecnica (o traco e
+# multibyte e nao pode ser fatiado por indice); aqui daria para pintar caractere
+# a caractere, mas um degrade liso ao lado de um segmentado seria justamente a
+# costura que este trabalho remove.
+$AF_RULE_SEGS = 8
 function Write-Rule([string]$Cabecalho) {
     $largura = Get-AfRuleWidth
     $tracos = $largura - $Cabecalho.Length - $AF_RULE_COLS - 1
     if ($tracos -lt 4) { $tracos = 4 }
-    Write-Host ($BOX_T + ($BOX_H * 2) + " ") -ForegroundColor DarkGray -NoNewline
-    Write-Host $Cabecalho -ForegroundColor White -NoNewline
-    Write-Host (" " + ($BOX_H * $tracos)) -ForegroundColor DarkYellow
+
+    if (-not $AfTrueColor -or $AfPlain) {
+        Write-Host ($BOX_T + ($BOX_H * 2) + " ") -ForegroundColor DarkGray -NoNewline
+        Write-Host $Cabecalho -ForegroundColor White -NoNewline
+        Write-Host (" " + ($BOX_H * $tracos)) -ForegroundColor DarkYellow
+        return
+    }
+
+    $esc = [char]27
+    $vao = [Math]::Max(1, $Cabecalho.Length + $tracos - 1)
+    $linha = (Get-AfEsc (Get-AfRampHex 0)) + $BOX_T + ($BOX_H * 2) + " "
+    for ($i = 0; $i -lt $Cabecalho.Length; $i++) {
+        $linha += (Get-AfEsc (Get-AfRampHex ([double]$i / $vao))) + $Cabecalho[$i]
+    }
+    $linha += " "
+    for ($i = 0; $i -lt $AF_RULE_SEGS; $i++) {
+        $ini = [int]($i * $tracos / $AF_RULE_SEGS)
+        $fim = [int](($i + 1) * $tracos / $AF_RULE_SEGS)
+        $n = $fim - $ini
+        if ($n -le 0) { continue }
+        $linha += (Get-AfEsc (Get-AfRampHex ([double]($Cabecalho.Length + $ini) / $vao))) + ($BOX_H * $n)
+    }
+    Write-Host ($linha + "$esc[0m")
 }
 
 # Fecha o TRILHO: linha de calha, o fechamento e a folga antes do que vem fora
@@ -997,7 +1034,14 @@ function Close-AfRail {
 # Fecha o bloco, como o fechamento do install.sh e do mac-env.
 function Write-RuleClose {
     $largura = Get-AfRuleWidth
-    Write-Host ([string][char]0x2570 + ($BOX_H * ($largura - 1))) -ForegroundColor DarkYellow
+    $fecha = [string][char]0x2570 + ($BOX_H * ($largura - 1))
+    if (-not $AfTrueColor -or $AfPlain) {
+        Write-Host $fecha -ForegroundColor DarkYellow
+        return
+    }
+    # Cor UNICA no fim da rampa, como o rule_close do install.sh: o fechamento
+    # e o ponto de chegada da varredura, nao uma varredura nova.
+    Write-Host ((Get-AfEsc (Get-AfRampHex 1)) + $fecha + [char]27 + "[0m")
 }
 
 # Mensagem FORA da calha: depois que o trilho fecha, o relatorio final nao pode

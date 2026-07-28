@@ -815,6 +815,19 @@ Assert-Match "so afirma preservacao do que esta aqui" $fonte ([regex]::Escape('i
 Assert-Match "o Docker e removido pelo desinstalador dele, com --quiet" $fonte ([regex]::Escape('DiretoArgs = @("uninstall", "--quiet")'))
 Assert-Match "com o winget como reserva" $fonte '\$item.Direto -and \(Test-Path \$item.Direto\)'
 
+Write-Host "== V6. a regua do Windows varre a rampa, como a do WSL =="
+$corpoRegua = [regex]::Match($fonte, '(?s)function Write-Rule\(.*?\n\}').Value
+# Tres cores fixas de 16 de um lado e degrade do outro: as duas metades da tela
+# nao pareciam o mesmo produto.
+Assert-Match "a regua usa a rampa do produto" $corpoRegua 'Get-AfRampHex'
+Assert-Match "e o fechamento tambem" $fonte ([regex]::Escape('(Get-AfEsc (Get-AfRampHex 1))'))
+# Degradado sem truecolor viraria lixo na tela: a queda para 16 cores continua.
+Assert-Match "com queda para cor chapada quando nao ha truecolor" $corpoRegua 'if \(-not \$AfTrueColor -or \$AfPlain\)'
+# A conversao hex->escape estava escrita a mao em dois lugares e seria um
+# terceiro; tres copias divergem na primeira alteracao.
+$copias = ([regex]::Matches($fonte, '38;2;\$')).Count
+Assert-True "a conversao para escape de 24 bits vive num lugar so" ($copias -le 1) "$copias copias"
+
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
 # e exatamente o estado da maquina real, e o instalador tem de ligar a chave em
