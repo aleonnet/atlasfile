@@ -15,6 +15,36 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.56.2] - 2026-07-28
+
+### A desinstalação apagava os meios de reverter e falhava em reverter
+
+Primeiro E2E do `install.sh` **em Linux com stack de verdade no ar** — VM Ubuntu 24.04 ARM64 limpa, sem Docker. Todas as validações anteriores (v0.54.0 a v0.56.1) foram macOS ou Windows, e por isso este defeito nunca apareceu.
+
+**O que foi medido.** Numa desinstalação logo após a instalação, o resultado foi: cinco containers **ainda rodando**, volume e três imagens construídas **ainda lá**, e o clone e o manifesto **apagados**. O usuário ficava com a stack no ar e sem nenhuma ferramenta para removê-la.
+
+A cadeia:
+
+- **O plano nascia cego.** O `un_collect` trancava *todo* o retrato do Docker atrás de um `docker info` **sem sudo**. No Linux o grupo `docker` só vale no próximo login — o próprio instalador avisa isso —, então na janela entre instalar e relogar, que é exatamente quando alguém desinstala, o plano dizia **"0 container(s)"** com cinco no ar
+- **O volume sumia das duas seções**, e com ele a única garantia desta tela que não tem default: `--uninstall --yes` deixou de exigir `--purge-data`/`--keep-data` e seguiu em frente
+- **`docker compose down` falhava** por permissão e **a execução continuava**, apagando o clone (que contém o `docker-compose.yml`, a única forma de descer a stack) e o manifesto (o registro do que criamos)
+
+**As correções:**
+
+- **`af_docker_shim_linux`** — o shim que torna o `docker` alcançável nesta sessão, extraído do `ensure_docker_group_linux` e **sem efeito colateral nenhum**: não mexe em grupo, não escreve manifesto e não aborta. Desinstalar que adiciona alguém a um grupo seria o oposto do contrato
+- **`run_uninstall` monta o retrato antes de coletar os fatos** e, quando nem com sudo alcança, **diz na tela** que o plano não enxerga containers nem volumes, em vez de mentir com zero
+- **`un_execute` para na falha da stack.** Nada que sirva de ferramenta de recuperação sai antes de o que ela remove ter saído. A tela explica a parada e o que fazer
+
+**Validado na VM, com stack real**, os cinco caminhos: plano em `--dry-run` (5 containers e o volume, onde antes eram 0 e nenhum), exigência de decisão explícita em headless, `--keep-data` (volume sobrevive, imagens upstream preservadas, documentos intactos), `--purge-data` (índice apagado) e `--purge-data --remove-deps` (Docker e grupo revertidos, `git` preexistente preservado, documentos intactos).
+
+**Bancada: 197 → 202 asserções**, com o shim, a ausência de efeito colateral e a barreira do `un_execute` provados contra cópia mutada.
+
+### Achado registrado, não corrigido
+
+**`--keep-data` promete um reuso que a instalação recusa.** O plano de remoção diz *"data volume … (kept: a future reinstall reuses it)"*, mas uma instalação nova no mesmo diretório falha com *"the volume … already holds data from another instance"* — porque o `--keep-data` remove o clone, e sem clone a instalação seguinte é sempre "nova". Os dois remédios que a mensagem sugere (outro `--dir`, ou apagar o volume) anulam o reuso. Precisa de decisão de desenho: hoje não há como distinguir um volume que **nós** preservamos de propósito do volume de outra instância.
+
+---
+
 ## [0.56.1] - 2026-07-28
 
 ### Auditoria de paridade entre os dois instaladores

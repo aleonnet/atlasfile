@@ -784,22 +784,41 @@ wait_docker_daemon() {
 # Linux: docker installed but the current user is not in the docker group yet.
 # A bash function shim covers every `docker ...` call in the REST of this script;
 # group membership is fixed for future logins.
+# Só o SHIM, sem efeito colateral nenhum: nada de usermod, nada de manifesto,
+# nada de pedir senha. Existe separado porque a DESINSTALAÇÃO também precisa
+# alcançar o socket, e ela não pode adicionar ninguém a grupo nenhum nem
+# registrar artefato — desinstalar que cria coisa é o oposto do contrato.
+#
+# Devolve 0 quando o `docker` passa a responder nesta sessão.
+af_docker_shim_linux() {
+  docker info >/dev/null 2>&1 && return 0
+  command -v docker >/dev/null 2>&1 || return 1
+  command -v sudo >/dev/null 2>&1 || return 1
+  # shellcheck disable=SC2033  # `docker` aqui é o binário real, não o shim
+  sudo -n docker info >/dev/null 2>&1 || return 1
+  # Resolve the real binary BEFORE the shim shadows the name. The previous
+  # form was `sudo command docker "$@"`, which looks right but there is no
+  # /usr/bin/command on Debian/Ubuntu (verified in ubuntu:24.04) — every
+  # later `docker ...` would have died with "sudo: command: command not
+  # found" on exactly the platform this shim exists for.
+  AF_DOCKER_BIN="$(command -v docker)"
+  docker() { sudo "$AF_DOCKER_BIN" "$@"; }
+  return 0
+}
+
 ensure_docker_group_linux() {
   docker info >/dev/null 2>&1 && return 0
-  # shellcheck disable=SC2033  # `docker` below is the real binary, not the shim
-  if sudo -n docker info >/dev/null 2>&1 || { ensure_sudo && sudo docker info >/dev/null 2>&1; }; then
-    # Resolve the real binary BEFORE the shim shadows the name. The previous
-    # form was `sudo command docker "$@"`, which looks right but there is no
-    # /usr/bin/command on Debian/Ubuntu (verified in ubuntu:24.04) — every
-    # later `docker ...` would have died with "sudo: command: command not
-    # found" on exactly the platform this shim exists for.
-    AF_DOCKER_BIN="$(command -v docker)"
-    docker() { sudo "$AF_DOCKER_BIN" "$@"; }
-    if sudo usermod -aG docker "$USER" 2>/dev/null; then host_set docker_group created; fi
-    info "added ${USER} to the docker group — takes effect on your next login"
-    return 0
+  # O `ensure_sudo` fica AQUI e não dentro do shim: no caminho de INSTALAÇÃO
+  # não ter privilégio é fatal (sem daemon não há o que instalar), e ali pedir
+  # a senha é legítimo. O shim, que a desinstalação também usa, não pergunta
+  # nada e nunca aborta.
+  if ! af_docker_shim_linux; then
+    ensure_sudo || return 1
+    af_docker_shim_linux || return 1
   fi
-  return 1
+  if sudo usermod -aG docker "$USER" 2>/dev/null; then host_set docker_group created; fi
+  info "added ${USER} to the docker group — takes effect on your next login"
+  return 0
 }
 
 # Ollama saiu do instalador: puxar um modelo e um download de varios GB e
@@ -1400,7 +1419,22 @@ un_execute() {
     [ -n "$act" ] || continue
     case "$act" in
       compose-down)
-        un_step "removing the stack (containers, network, local images)" un_compose_down ;;
+        un_step "removing the stack (containers, network, local images)" un_compose_down
+        # PARA AQUI se a stack não saiu, e isso não é zelo: as ações seguintes
+        # apagam o clone — que contém o docker-compose.yml, a única forma de
+        # descer a stack — e o manifesto, que é o registro do que criamos.
+        #
+        # Medido numa VM Ubuntu: o `docker compose down` falhou por permissão,
+        # a execução seguiu, e o usuário ficou com CINCO containers no ar, um
+        # volume e três imagens construídas, sem clone e sem manifesto para
+        # removê-los. O desinstalador apagou os meios de reverter e falhou em
+        # reverter — perder a ferramenta é pior do que não usá-la.
+        if [ "$UN_FAILED" = "1" ]; then
+          warn "the stack did not come down — stopping here, on purpose"
+          info "nothing else was touched: the clone and the manifest are exactly what you need to retry"
+          info "check 'docker ps'; on Linux a fresh login applies your docker group, then run the uninstall again"
+          return 0
+        fi ;;
       purge-volume)
         # `compose down --volumes` ja leva o volume junto quando a stack sai do
         # clone, entao aqui nao ha trabalho a fazer — mas HA conta a prestar.
@@ -1483,6 +1517,29 @@ EOF
 
 run_uninstall() {
   detect_os
+  # O retrato do Docker ANTES de coletar os fatos, senão ele sai vazio.
+  #
+  # Medido numa VM Ubuntu limpa: logo após a instalação o grupo `docker` ainda
+  # não vale nesta sessão (só no próximo login — o próprio instalador avisa),
+  # então `docker info` falha sem sudo. Como o un_collect trancava TODO o
+  # retrato atrás dele, o plano saía cego: dizia "0 container(s)" com cinco no
+  # ar e o VOLUME sumia das duas seções — junto com a garantia de que o usuário
+  # decide sobre o índice, que é a única coisa nesta tela sem default.
+  #
+  # É exatamente a janela em que alguém desinstala: instalou, algo deu errado,
+  # ainda não relogou.
+  if [ "$OS_KIND" = "linux" ] && ! docker info >/dev/null 2>&1; then
+    if ! af_docker_shim_linux && [ -r "$TTY_DEV" ] && command -v sudo >/dev/null 2>&1; then
+      # Sem credencial em cache: pede uma vez, e só se houver terminal. NUNCA
+      # aborta — um uninstall que não consegue elevar ainda tem trabalho a
+      # fazer (a pasta, o manifesto, os documentos a preservar).
+      info "administrator password needed to read the Docker state"
+      sudo -v < "$TTY_DEV" >/dev/null 2>&1 || true
+      af_docker_shim_linux || true
+    fi
+    docker info >/dev/null 2>&1 \
+      || warn "docker is not reachable from this session — the plan below cannot see containers or volumes"
+  fi
   un_collect "$INSTALL_DIR"
 
   # A run that installed Docker and then died BEFORE cloning leaves no install

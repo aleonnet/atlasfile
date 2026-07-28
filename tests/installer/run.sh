@@ -691,6 +691,56 @@ done
 # pasta era um backup do PROPRIO instalador, e nao havia como o usuario saber
 # disso pela tela — ele precisou de ajuda para descobrir.
 make_sandbox
+# ── O socket do Docker que so responde com sudo ─────────────────────────────
+# Medido numa VM Ubuntu limpa: logo apos instalar, o grupo `docker` ainda nao
+# vale nesta sessao e `docker info` falha sem sudo. O un_collect trancava TODO o
+# retrato atras dele, entao o plano dizia "0 container(s)" com cinco no ar e o
+# VOLUME sumia das duas secoes — junto com a garantia de que o usuario decide
+# sobre o indice. E a janela exata em que alguem desinstala.
+make_sandbox
+t "o shim alcanca o socket quando ele so responde com sudo"
+out="$(run_case STUB_RC_docker=1 -- 'af_docker_shim_linux && docker info && printf SHIM_OK' 2>&1)"
+case "$out" in *SHIM_OK*) ok ;; *) no "nao instalou o shim: $out" ;; esac
+
+t "e desiste calado quando nem com sudo responde"
+out="$(run_case STUB_RC_docker=1 STUB_RC_sudo=1 -- 'af_docker_shim_linux || printf SEM_SHIM' 2>&1)"
+case "$out" in *SEM_SHIM*) ok ;; *) no "devia desistir: $out" ;; esac
+
+# O shim e READ-ONLY: quem desinstala nao pode adicionar ninguem a grupo nenhum
+# nem gravar artefato. Isso separa af_docker_shim_linux de
+# ensure_docker_group_linux, que faz as duas coisas de proposito.
+# USER vem definido de proposito: sem ele o `env -i` da bancada faz um usermod
+# introduzido por engano morrer em "unbound variable", e a guarda reprovaria
+# pelo motivo ERRADO — parecendo verde sobre um efeito colateral que ela nunca
+# chegou a medir.
+t "o shim nao mexe em grupo nem escreve manifesto"
+out="$(run_case STUB_RC_docker=1 USER=teste -- '
+  AF_HOST_MANIFEST="$SANDBOX/host-prereqs"
+  af_docker_shim_linux
+  printf "USERMOD:%s " "$(grep -c usermod "$CALLS" || true)"
+  printf "MANIFESTO:%s" "$(test -f "$AF_HOST_MANIFEST" && echo sim || echo nao)"' 2>&1)"
+case "$out" in *"USERMOD:0 MANIFESTO:nao"*) ok ;; *) no "teve efeito colateral: $out" ;; esac
+
+# A stack nao saiu: apagar o clone e o manifesto DEPOIS disso deixa containers,
+# volume e imagens orfaos SEM ferramenta para remove-los. Medido numa VM Ubuntu.
+t "a execucao PARA quando a stack nao sai, e o clone sobrevive"
+out="$(run_case -- '
+  C="$SANDBOX/c9"; mkdir -p "$C/.git"; printf "x\n" > "$C/docker-compose.yml"
+  AF_STATE_DIR="$SANDBOX/estado"; AF_HOST_MANIFEST="$AF_STATE_DIR/host-prereqs"
+  mkdir -p "$AF_STATE_DIR"; printf "docker\tcreated\n" > "$AF_HOST_MANIFEST"
+  UN_DIR="$C"; LOG_FILE="$SANDBOX/log"
+  un_compose_down() { return 1; }
+  UN_ACTIONS="compose-down
+rm-clone
+rm-state"
+  un_execute
+  test -d "$C" && printf "CLONE_VIVO "
+  test -f "$AF_HOST_MANIFEST" && printf "MANIFESTO_VIVO"' 2>&1)"
+case "$out" in *"CLONE_VIVO MANIFESTO_VIVO"*) ok ;; *) no "seguiu apagando apos a falha: $out" ;; esac
+
+t "e diz que parou de proposito, em vez de sumir com o assunto"
+printf '%s' "$out" | grep -q 'stopping here, on purpose' && ok || no "nao explicou a parada: $out"
+
 t "o plano diz O QUE suja o clone, nao so que esta sujo"
 out="$(run_case PATH=/usr/bin:/bin -- '
   C="$SANDBOX/c1"; mkdir -p "$C"; cd "$C"; git init -q
