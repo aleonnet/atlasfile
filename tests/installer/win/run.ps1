@@ -757,6 +757,23 @@ Assert-Match "a confirmacao do plano sai na calha" $corpoConfP 'Write-Host \$scr
 # nenhum redirecionamento do pai captura: o log dele vazou por cima do spinner.
 Assert-Match "o passo com spinner roda em console proprio" $fonte ([regex]::Escape('-WindowStyle Hidden -PassThru'))
 
+Write-Host "== V4. o que a segunda desinstalacao no Windows real mostrou =="
+$corpoEnable = [regex]::Match($fonte, '(?s)function Enable-AfWslIntegration.*?\n\}').Value
+
+# O log era ACUMULADO entre execucoes: o "last lines" mostrou um winget
+# uninstall bem-sucedido de OUTRA execucao, logo abaixo de "Nothing was removed".
+Assert-Match "o log e zerado a cada execucao" $fonte 'WriteAllText\(\$script:AfLog'
+# E era gravado com a code page ANSI, quebrando a calha dentro do proprio log.
+Assert-Match "e gravado em UTF-8 sem BOM" $fonte 'AppendAllText'
+Assert-NoMatch "sem Add-Content no log" $fonte 'Add-Content -Path \$script:AfLog'
+
+# Parar so porque o lado WSL nao tem acao deixava o Docker instalado.
+Assert-Match "o orquestrador olha os DOIS escopos" $fonte '\$temAcoesWindows'
+
+# Numa instalacao recem-feita o Docker ainda nao escreveu as preferencias.
+Assert-Match "a integracao cria o arquivo quando ele nao existe" $corpoEnable 'New-Item -ItemType Directory -Path \$base'
+Assert-Match "e acrescenta a chave quando ela falta" $corpoEnable 'Add-Member -NotePropertyName \$chave'
+
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
 # e exatamente o estado da maquina real, e o instalador tem de ligar a chave em
@@ -773,6 +790,20 @@ $depois = Get-Content (Join-Path $dirCfg "settings-store.json") -Raw | ConvertFr
 Assert-True "ligou a integracao no arquivo do Docker" ($depois.enableIntegrationWithDefaultWslDistro -eq $true) "ficou $($depois.enableIntegrationWithDefaultWslDistro)"
 Assert-True "preservando o resto do arquivo" ($depois.outraChave -eq 1) "perdeu outraChave"
 Assert-Match "e disse o que fez" $out "WSL integration was off"
+
+# Arquivo AUSENTE: foi o caso da maquina real - Docker recem-instalado ainda
+# nao tinha escrito preferencia nenhuma, e a funcao desistia calada.
+$sb = New-Sandbox
+$env:AF_WSL_NO_DOCKER = "1"
+$dirCfg = Join-Path $sb "dockercfg0"
+$env:ATLASFILE_DOCKER_SETTINGS_DIR = $dirCfg   # nem o diretorio existe
+$out = Run-Installer @("-Yes")
+$arqCriado = Join-Path $dirCfg "settings-store.json"
+Assert-True "cria o arquivo de preferencias que faltava" (Test-Path $arqCriado) "nao criou $arqCriado"
+if (Test-Path $arqCriado) {
+    $novo = Get-Content $arqCriado -Raw | ConvertFrom-Json
+    Assert-True "ja nascendo com a integracao ligada" ($novo.enableIntegrationWithDefaultWslDistro -eq $true) "ficou $($novo.enableIntegrationWithDefaultWslDistro)"
+}
 
 # Esquema desconhecido ou arquivo ilegivel NAO podem derrubar a instalacao: o
 # formato e interno do Docker e nao tem contrato publico. Cai na mensagem

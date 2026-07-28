@@ -1448,6 +1448,14 @@ run_uninstall() {
   if [ "$UN_COMPOSE_FILE" = "0" ] && [ ! -d "${INSTALL_DIR}" ]; then
     if [ -f "$AF_HOST_MANIFEST" ]; then
       info "no install at ${INSTALL_DIR}, but this host has a prerequisite manifest — planning the system dependencies only"
+    elif [ "$DELEGATED" = "1" ]; then
+      # Delegado e sem nada deste lado: isto NAO e erro, e o fluxo SEGUE. O
+      # outro lado tem o proprio manifesto e pode ter Docker Desktop para
+      # remover; o plano ainda precisa ser montado para RENDERIZAR os fatos
+      # dele. Abortar com codigo 1 fazia o orquestrador dizer "could not read
+      # the removal plan" e parar, deixando o Docker instalado — medido num
+      # Windows 11 real logo apos uma desinstalacao bem-sucedida.
+      info "nothing of AtlasFile is left at ${INSTALL_DIR} on this side"
     else
       fail "no AtlasFile install found at ${INSTALL_DIR} — point --dir at the right folder"
     fi

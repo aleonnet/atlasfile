@@ -807,6 +807,24 @@ out="$(run_case -- "${PLAN_FACTS}
   run_uninstall" 2>&1 || true)"
 printf '%s' "$out" | grep -q 'WILL BE REMOVED' && ok || no "sumiu o plano de quem confirma na tela"
 
+# Desinstalar com nada instalado NAO e erro. Abortar com codigo 1 fazia o
+# orquestrador dizer "could not read the removal plan" e parar, deixando o
+# Docker Desktop instalado — medido num Windows 11 real.
+make_sandbox
+t "delegado e sem instalacao, o plano sai e o codigo e 0"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TERM=dumb TTY_DEV=/dev/null \
+    bash "$REPO_ROOT/install.sh" --uninstall --delegated --remove-deps --plan-only \
+    --dir "$SANDBOX/nao-existe" 2>&1)"
+rc=$?
+[ "$rc" = "0" ] && ok || no "saiu com $rc em vez de 0"
+printf '%s' "$out" | grep -q 'ATLASFILE_FACT: actions=0' && ok || no "nao declarou actions=0: $out"
+printf '%s' "$out" | grep -q 'ATLASFILE_UNINSTALL: plan-only' && ok || no "sem a sentinela"
+
+t "sem delegacao, continua sendo erro nomear a pasta errada"
+env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TERM=dumb TTY_DEV=/dev/null \
+    bash "$REPO_ROOT/install.sh" --uninstall --plan-only --dir "$SANDBOX/nao-existe" >/dev/null 2>&1 \
+    && no "aceitou calado uma pasta que nao existe" || ok
+
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
 # o spinner longe da saída de terceiro.

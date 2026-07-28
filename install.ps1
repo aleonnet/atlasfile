@@ -527,19 +527,41 @@ function Enable-AfWslIntegration {
     $base = $env:ATLASFILE_DOCKER_SETTINGS_DIR
     if (-not $base) { $base = Join-Path $env:APPDATA "Docker" }
     $chave = "enableIntegrationWithDefaultWslDistro"
+
+    # O arquivo que EXISTE manda; a 4.35 renomeou settings.json para
+    # settings-store.json e as duas versoes ainda circulam.
+    $alvo = ""
     foreach ($nome in @("settings-store.json", "settings.json")) {
         $arq = Join-Path $base $nome
-        if (-not (Test-Path $arq)) { continue }
-        try { $cfg = Get-Content $arq -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
-        catch { Write-Verbose "cannot read $arq : $($_.Exception.Message)"; continue }
-        if (-not $cfg.PSObject.Properties[$chave]) { continue }
-        if ($cfg.$chave -eq $true) { return $false }
-        $cfg.$chave = $true
-        try { $cfg | ConvertTo-Json -Depth 32 | Set-Content $arq -Encoding UTF8 -ErrorAction Stop }
-        catch { Write-Verbose "cannot write $arq : $($_.Exception.Message)"; continue }
-        return $true
+        if (Test-Path $arq) { $alvo = $arq; break }
     }
-    return $false
+
+    # Nenhum dos dois existe. Foi o que aconteceu num Windows 11 real: numa
+    # instalacao RECEM-FEITA o Docker ainda nao escreveu suas preferencias, a
+    # funcao desistia calada e o instalador parou pedindo um clique no menu.
+    # Criar o arquivo aqui e seguro justamente porque nao ha preferencia
+    # nenhuma para perder.
+    if (-not $alvo) {
+        if (-not (Test-Path $base)) {
+            try { New-Item -ItemType Directory -Path $base -Force | Out-Null }
+            catch { Write-Verbose "cannot create $base : $($_.Exception.Message)"; return $false }
+        }
+        $alvo = Join-Path $base "settings-store.json"
+        try { "{}" | Set-Content $alvo -Encoding UTF8 -ErrorAction Stop }
+        catch { Write-Verbose "cannot create $alvo : $($_.Exception.Message)"; return $false }
+    }
+
+    try { $cfg = Get-Content $alvo -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop }
+    catch { Write-Verbose "cannot read $alvo : $($_.Exception.Message)"; return $false }
+    if ($null -eq $cfg) { $cfg = New-Object PSObject }
+
+    if ($cfg.PSObject.Properties[$chave] -and $cfg.$chave -eq $true) { return $false }
+    if ($cfg.PSObject.Properties[$chave]) { $cfg.$chave = $true }
+    else { $cfg | Add-Member -NotePropertyName $chave -NotePropertyValue $true -Force }
+
+    try { $cfg | ConvertTo-Json -Depth 32 | Set-Content $alvo -Encoding UTF8 -ErrorAction Stop }
+    catch { Write-Verbose "cannot write $alvo : $($_.Exception.Message)"; return $false }
+    return $true
 }
 
 # A mudanca so vale depois que o Docker Desktop reinicia - e o mesmo que o
@@ -1055,6 +1077,16 @@ function Write-Panel([string[]]$Linhas) {
 # para suporte, quando o TEMP do usuario nao e o lugar mais pratico.
 $script:AfLog = if ($env:ATLASFILE_LOG) { $env:ATLASFILE_LOG }
                 else { Join-Path ([IO.Path]::GetTempPath()) "atlasfile-install.log" }
+# ZERA a cada execucao. O caminho e fixo (o install.sh usa um arquivo por
+# execucao, e por isso nunca teve isto), entao sem truncar o "last lines of"
+# mostrava a saida de execucoes ANTERIORES. Numa maquina real isso pos, logo
+# abaixo de "Nothing was removed", a prova de um winget uninstall bem-sucedido
+# de OUTRA execucao. Diagnostico com evidencia de outro dia e pior que nenhum.
+try {
+    [IO.File]::WriteAllText($script:AfLog,
+        "AtlasFile install.ps1 - " + (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + [Environment]::NewLine,
+        (New-Object Text.UTF8Encoding $false))
+} catch { Write-Verbose "could not reset the log: $($_.Exception.Message)" }
 # Placar e relatorio da execucao, como no install.sh: o log guarda a saida das
 # FERRAMENTAS, e o que o instalador fez nao ficava em lugar nenhum.
 $script:StepsFailed = 0
@@ -1073,17 +1105,23 @@ function Format-Since($T0) {
     return "${s}s"
 }
 
-function Write-LogSection([string]$Titulo, [string[]]$Arquivos) {
+# UTF-8 SEM BOM e explicito. Add-Content sem -Encoding grava com a code page
+# ANSI no PowerShell 5.1, e a calha que vem do WSL virava lixo dentro do proprio
+# log - o "last lines" saiu com barras quebradas na tela do usuario.
+function Add-AfLog([string]$Texto) {
     try {
-        Add-Content -Path $script:AfLog -Value ("=== " + $Titulo + " ===") -ErrorAction Stop
-        foreach ($f in $Arquivos) {
-            if (Test-Path $f) {
-                $texto = Get-AfText $f
-                if ($texto) { Add-Content -Path $script:AfLog -Value $texto }
-            }
+        [IO.File]::AppendAllText($script:AfLog, $Texto + [Environment]::NewLine,
+                                 (New-Object Text.UTF8Encoding $false))
+    } catch { Write-Verbose "log write failed: $($_.Exception.Message)" }
+}
+
+function Write-LogSection([string]$Titulo, [string[]]$Arquivos) {
+    Add-AfLog ("=== " + $Titulo + " ===")
+    foreach ($f in $Arquivos) {
+        if (Test-Path $f) {
+            $texto = Get-AfText $f
+            if ($texto) { Add-AfLog $texto }
         }
-    } catch {
-        Write-Verbose "log write failed: $($_.Exception.Message)"
     }
 }
 
@@ -1415,7 +1453,17 @@ if ($Uninstall) {
     $volume = ""
     if ($plano -match 'ATLASFILE_FACT: volume=(\S+)') { $volume = $Matches[1] }
     $temAcoes = ($plano -match 'ATLASFILE_FACT: actions=1')
-    if (-not $temAcoes) {
+    # ESTA maquina tem DOIS escopos. Parar so porque o lado WSL nao tem acao
+    # deixava o Docker Desktop instalado mesmo com -RemoveDeps e mesmo com o
+    # manifesto do Windows registrando que fomos NOS que o instalamos - medido
+    # num Windows 11 real, ao rodar a desinstalacao depois de outra bem-sucedida.
+    $temAcoesWindows = $false
+    if ($RemoveDeps) {
+        foreach ($chaveDep in @("docker", "ollama")) {
+            if ((Get-AfState $chaveDep) -eq "created") { $temAcoesWindows = $true }
+        }
+    }
+    if (-not $temAcoes -and -not $temAcoesWindows) {
         Write-Info "nothing to remove."
         Stop-Installer 0; return
     }
@@ -1458,7 +1506,11 @@ if ($Uninstall) {
     }
 
     # --- 5. Execucao do lado WSL, nao-interativa ------------------------------
+    # So se houver o que fazer LA. Sem esta guarda, um plano que so tem itens do
+    # Windows mandava o install.sh remover o nada e depois exigia dele a prova
+    # "confirmed", que ele nao tem por que dar.
     Write-Host ""
+    if ($temAcoes) {
     $cmdExec = "$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --yes $decisaoDados"
     $saidaExec = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdExec))
     foreach ($linha in ($saidaExec -split "`r?`n")) {
@@ -1476,6 +1528,9 @@ if ($Uninstall) {
         Show-LogTail
         Close-AfRail
         Stop-Installer 1; return
+    }
+    } else {
+        Write-Info "nothing left to remove inside WSL - only the Windows side"
     }
 
     # --- 6. Lado Windows: so o que o plano confirmado mostrou -----------------
