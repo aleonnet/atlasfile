@@ -798,8 +798,13 @@ Assert-Match "e acrescenta a chave quando ela falta" $corpoEnable 'Add-Member -N
 Write-Host "== V5. handover, Ollama ausente e Docker sem clique =="
 # As duas metades da tela desenhavam trilhos de larguras DIFERENTES, porque o
 # install.sh media com tput e o orquestrador com Get-AfRuleWidth.
-$quantos = ([regex]::Matches($fonte, 'export COLUMNS=')).Count
-Assert-True "a largura do trilho viaja em toda delegacao" ($quantos -ge 5) "so $quantos delegacao(oes) levam COLUMNS"
+# Contada por PROPORCAO, e nao por um literal: a versao anterior procurava a
+# string "export COLUMNS=", que deixou de existir quando o prefixo virou funcao
+# - e reprovou codigo correto. O fato e "TODA delegacao leva o prefixo", nao
+# "existe tal string N vezes".
+$delegacoes = ([regex]::Matches($fonte, '\$AF_CURL \$AF_SH_URL')).Count
+$comPrefixo = ([regex]::Matches($fonte, '\$\(Get-AfEnvPrefix\)\$AF_CURL')).Count
+Assert-True "toda delegacao leva o ambiente do orquestrador" (($delegacoes -ge 5) -and ($comPrefixo -eq $delegacoes)) "$comPrefixo de $delegacoes
 
 # Dois fechamentos: o do install.sh e o daqui, com uma calha solta entre eles.
 Assert-Match "o trilho fecha uma vez so" $fonte '\$script:TrilhoFechadoNoWsl'
@@ -870,8 +875,6 @@ Assert-Match "leva o COLORTERM" $fonte 'COLORTERM=truecolor'
 Assert-Match "e diz que ha cor mesmo sob captura" $fonte 'ATLASFILE_FORCE_COLOR=1'
 # Anunciar truecolor sem ter seria mentir para o outro lado.
 Assert-Match "so quando ESTE lado tem truecolor" $fonte 'if \(\$AfTrueColor -and -not \$AfPlain\)'
-$semPrefixo = ([regex]::Matches($fonte, '"\$AF_CURL \$AF_SH_URL')).Count
-Assert-True "toda delegacao usa o mesmo prefixo" ($semPrefixo -eq 0) "$semPrefixo delegacao(oes) sem prefixo"
 
 # A divisoria do handover: onde um instalador entrega ao outro.
 Assert-True "existe a divisoria de handover" ($corpoHand.Length -gt 0) "Write-Handover nao existe"
