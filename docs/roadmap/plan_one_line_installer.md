@@ -1,6 +1,23 @@
 # Plano: Instalador One-Line (`curl | bash`)
 
-> **Status:** Rascunho -- ponto de decisao aberto (hospedagem + repo publico).
+> **Status: SUPERADO — documento historico, nao e intencao vigente.**
+>
+> O instalador foi entregue e evoluiu entre a v0.21.0 e a v0.56.0, e o que
+> ficou de pe diverge deste rascunho em pontos que importam:
+>
+> | Este rascunho | O que existe hoje |
+> |---|---|
+> | `https://atlasfile.dev/install.sh` | `https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh` |
+> | `--install-dir` | `--dir` |
+> | `--version <tag>`, `--install-method git\|tarball`, `--no-git-update` | nao existem; ha `--branch` e `--repo-url` |
+> | `--no-prompt` | `--yes` (e `--install-deps` para autorizar bootstrap) |
+> | `--gum` / `--no-gum` | descartado: baixa binario de terceiro e nao tem equivalente no PowerShell |
+> | `ATLASFILE_INSTALL_DIR`, `ATLASFILE_NO_PROMPT`, ... | so `ATLASFILE_REPO_URL`, `ATLASFILE_OLLAMA_MODEL` e os seams de teste |
+> | `atlasfile_install.sh` como script auxiliar | removido na v0.4x; ha um script so |
+>
+> A fonte de verdade e `install.sh --help` / `install.ps1 -Help`, e o registro
+> das decisoes esta em `docs/planos_concluidos/installer_*.plan.md`.
+> Mantido aqui, e nao movido, porque o CHANGELOG referencia este caminho.
 
 ## Objetivo
 

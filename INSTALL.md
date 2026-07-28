@@ -14,11 +14,11 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
-O instalador verifica pré-requisitos, clona em `~/AtlasFile`, cria o `.env` (perguntando só a pasta de projetos), sobe a stack e abre a interface — o onboarding guia o resto. Flags úteis: `--dir`, `--projects-root`, `--yes` (não-interativo), `--no-open`. Re-executar atualiza a instalação.
+O instalador verifica pré-requisitos, clona em `~/AtlasFile`, cria o `.env` (perguntando só a pasta de projetos), sobe a stack e abre a interface — o onboarding guia o resto. Flags úteis: `--dir`, `--projects-root`, `--yes` (não-interativo), `--no-open`, `--install-deps` (instala Docker e git que faltarem, sem perguntar). Re-executar atualiza a instalação. **A lista completa está em `install.sh --help`.**
 
-No **Windows** o AtlasFile é instalado dentro do WSL, mas **seus documentos ficam no disco do Windows**, na sua pasta Documentos (`…\Documents\AtlasFileProjects`) — visíveis no Explorer e independentes da distro. Flags do `install.ps1`: `-Dir`, `-ProjectsRoot`, `-InstallDeps` (instala WSL2 e Docker Desktop sem perguntar), `-Yes`, `-EnableAuth`. O Docker Desktop é instalado em silêncio, com o contrato de licença aceito na instalação, e a integração com o WSL é ligada automaticamente.
-- `--install-deps` — instala pré-requisitos que faltarem (Docker, git) sem perguntar
-- **Modelo 100% local não faz parte da instalação**: o download são vários GB e tiraria a previsibilidade da duração. O painel final mostra o comando (`ollama pull …`) para habilitá-lo depois
+No **Windows** o AtlasFile é instalado dentro do WSL, mas **seus documentos ficam no disco do Windows**, na sua pasta Documentos (`…\Documents\AtlasFileProjects`) — visíveis no Explorer e independentes da distro. Flags do `install.ps1`: `-Dir`, `-ProjectsRoot`, `-Branch`, `-Yes`, `-EnableAuth`, `-InstallDeps` (instala WSL2 e Docker Desktop sem perguntar), `-Verbose`, e as de diagnóstico e desinstalação descritas abaixo. **A lista completa está em `install.ps1 -Help`.** O Docker Desktop é instalado em silêncio, com o contrato de licença aceito na instalação, e a integração com o WSL é ligada automaticamente.
+
+**Modelo 100% local não faz parte da instalação**: o download são vários GB e tiraria a previsibilidade da duração. O painel final mostra o comando (`ollama pull …`) para habilitá-lo depois.
 
 **Antes de instalar, ou quando algo der errado**, os dois instaladores têm modos que não mudam nada:
 
@@ -29,8 +29,9 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 ```
 
 ```powershell
-# Windows — diagnostica os DOIS lados: o Windows e, dentro do WSL, o Linux
+# Windows — diagnosticam os DOIS lados: o Windows e, dentro do WSL, o Linux
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -Doctor
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -DryRun
 ```
 
 `--doctor` relata pré-requisitos com versão, o manifesto do que o instalador criou nesta máquina, o estado da instalação e da stack, as portas e a pasta de documentos — e sai com código diferente de zero se algo estiver quebrado. `--dry-run` é *mostre, não faça*: sozinho relata o que uma instalação encontraria e faria aqui; combinado com `--uninstall`, o plano de remoção. `--verbose` mostra a saída das ferramentas em vez de escondê-la no log.
@@ -93,15 +94,17 @@ Esse mesmo root também passa a armazenar o estado operacional compartilhado do 
 
 ### Exemplos
 
+O nome da pasta é livre, mas os exemplos usam `AtlasFileProjects` porque é **o mesmo default do instalador** — quem instalou pelo one-liner e quem instalou à mão acabam no mesmo lugar, e as instruções de suporte servem para os dois.
+
 ```bash
 # macOS
-PROJECTS_HOST_ROOT=/Users/seu_usuario/Documents/Projects
+PROJECTS_HOST_ROOT=/Users/seu_usuario/Documents/AtlasFileProjects
 
 # Linux
-PROJECTS_HOST_ROOT=/home/seu_usuario/Documents/Projects
+PROJECTS_HOST_ROOT=/home/seu_usuario/Documents/AtlasFileProjects
 
-# Windows (WSL)
-PROJECTS_HOST_ROOT=/mnt/c/Users/seu_usuario/Documents/Projects
+# Windows (WSL) — no disco do Windows, como o install.ps1 configura
+PROJECTS_HOST_ROOT=/mnt/c/Users/seu_usuario/Documents/AtlasFileProjects
 ```
 
 Se a pasta não existir, o AtlasFile a cria automaticamente no primeiro uso.

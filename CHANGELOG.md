@@ -15,6 +15,62 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.56.1] - 2026-07-28
+
+### Auditoria de paridade entre os dois instaladores
+
+Auditoria dos dois instaladores lado a lado, funcional e estética, com os dois fontes lidos por inteiro (4.663 linhas) e os caminhos read-only executados. **A guarda de consistência estava verde e 26 divergências viviam sob ela**: ela compara TABELAS e EXISTÊNCIA de primitivas, e o que divergia eram os ALGORITMOS que consomem essas tabelas e o USO das primitivas.
+
+#### O que estava errado e o usuário via
+
+- **O `-DryRun` do Windows prometia instalar o Ollama**, que saiu do instalador na v0.55.0. Um dry run que anuncia o que não vai acontecer mente sobre o próprio trabalho
+- **A desinstalação abandonava o Docker Desktop em silêncio.** Com o WSL mudo, o `install.ps1` apenas abortava, e o Docker Desktop que ELE instalou ficava órfão sem uma palavra na tela. Agora ele é **relatado, não removido**: a tela nomeia o que o manifesto registra como nosso e diz como revertê-lo. Remover automaticamente foi tentado e **descartado** — "não consegui ler o plano" não prova que não há instalação do outro lado (o WSL pode estar vivo com AtlasFile rodando, e só a comunicação ter falhado), e o manifesto não desempata, porque `install_dir` só existe desde a v0.55.0. É a mesma disciplina já aplicada ao Ollama no Linux e ao Homebrew: listados com os passos, executados pela pessoa
+- **`-Verbose` não atravessava a fronteira**: o build de ~15 min roda dentro do WSL, e era exatamente ele que continuava mudo
+- **`-Dir` com espaço quebrava** a linha que viaja dentro de um `bash -c`. A citação virou uma função só (`ConvertTo-AfShArg`), com aspas DUPLAS: aspas simples protegeriam o espaço mas matariam o `~` — e o manifesto grava literalmente `~/AtlasFile`, então o `install.sh` procuraria uma pasta chamada `~`
+
+#### O trilho (a calha `│`), furado dos dois lados
+
+- **`install.sh --dry-run` imprimia 4 linhas fora da calha** — o plano de instalação inteiro, o bloco mais importante da tela. Escapavam da varredura da bancada porque ela mirava o prefixo `printf '  %s` e essas linhas começavam com espaços literais
+- **`install.sh --uninstall` abria o trilho e nunca fechava** em três saídas: nada a fazer, cancelado e falhou. A guarda cobria `--doctor`, `--dry-run` e `--uninstall --dry-run` — justamente as que já tinham sido consertadas
+- **`install.ps1` tinha 8 linhas vazias cruas dentro do trilho** (cinco réguas do `-Doctor`, a abertura do `-DryRun`, o bloco que explica o WSL na fase 1, o respiro do `-Verbose`), a régua do WSL2 sem separador, o placar do `-Doctor` quebrado em duas linhas com a segunda fora da calha, o despejo do manifesto com a calha na coluna 5, a barra de fase e o `Wait-Spinner` fora do trilho, e os blocos de orientação de FALHA — as telas que mais se lê — com recuo de 4 espaços
+
+#### O banner: quatro divergências que a paridade de arte não via
+
+A `check_art_parity` compara órbita, cometa, rampa, hexes e índice de repouso. Nada disso pega o que os algoritmos fazem com esses dados:
+
+- **A cauda do cometa era contígua no bash e faiscada no PowerShell** — exatamente a forma que o comentário do `install.sh` registra como medida e REJEITADA ("deixava vãos de 3-5 colunas e lia como faísca")
+- **As luas congelavam durante o voo do cometa** no Windows e seguiam orbitando no bash. Só o quadro FINAL coincidia — que era o único que a guarda do índice de repouso olhava
+- **A ignição revelava uma linha a mais** em cada um dos cinco quadros iniciais
+- **O brilho especular usava outra fórmula e outra linha de destaque** (3 em vez de 2), sombreando a esfera de um jeito que o outro lado nunca produz
+- **A cabeça do cometa era salmão** (`ffd0c4`) em vez de branca, e a **ordem de escrita** era outra: o cometa passava por cima do orbe em vez de sair de trás dele
+
+Mantida de propósito uma única divergência, decidida pelo dono do projeto: a linha `(Windows / WSL2)` que identifica a plataforma. A guarda a perdoa explicitamente **e cobra que ela continue existindo**.
+
+#### Documentação
+
+- **O `--help` do `install.sh` prometia instalar `curl`** e não instala — não existe `ensure_curl`; a checagem apenas falha. O `README.md` estava certo; quem mentia era a ajuda do instalador
+- `INSTALL.md` não mostrava o `-DryRun` do Windows; não havia ponteiro para `install.ps1 -Help` (só para `install.sh --help`); a lista de flags do `.ps1` tinha 5 de 17
+- Os exemplos de instalação manual recomendavam `Documents/Projects` e o instalador usa `Documents/AtlasFileProjects` — quem instala à mão e quem usa o one-liner acabavam em pastas diferentes
+- `docs/roadmap/plan_one_line_installer.md` seguia como rascunho vigente com URLs (`atlasfile.dev`) e flags (`--install-dir`, `--gum`, `--no-prompt`) que nunca existiram — marcado como SUPERADO, com tabela do que de fato ficou de pé
+- `docs/ROADMAP.md` ainda citava `--with-ollama`; `docs/11_scripts_and_operations.md` não mencionava os instaladores, apesar de o `INSTALL.md` apontar para ele como a visão consolidada dos scripts
+
+#### Guardas (todas provadas com mutante)
+
+- **`check_frame_parity`** — a que faltava: renderiza os **26 quadros dos dois instaladores** e compara caractere a caractere. Um seam `ATLASFILE_DUMP_FRAMES=1` no `install.ps1` espelha o `af_frame_plain` do bash. Provada com três mutantes (luas congeladas, ignição adiantada, linha de plataforma removida)
+- **Varredura de calha do bash** ampliada: qualquer `printf` que comece com espaço literal, não só o prefixo `  %s`. E **descartando linhas de comentário** — sem isso ela casava com o próprio comentário que explica o defeito
+- **Fechamento do trilho** passou a cobrir o `--uninstall` real, não só os três modos já consertados
+- **`check_gutter_holes`** deixou de olhar só o corpo do `Write-Phase` e passou a varrer a faixa inteira do trilho no `install.ps1`, delimitada por marcas `AF-INICIO-DO-TRILHO`/`AF-FIM-DO-TRILHO`. **A primeira versão desta guarda nasceu cega** — a busca casava com a menção à marca dentro do próprio comentário de abertura e a faixa virava 1 linha —, então ela ganhou âncora de início de comentário e um piso de sanidade que grita se a faixa for pequena demais
+- **Cores do cometa** (cabeça e as três células de cauda) entraram na paridade de arte: a guarda de quadros compara glifos, não cor
+- **`make test-installer` passou a rodar `check_consistency.py`** e, quando há `pwsh`, o parse do `install.ps1` — os dois só existiam no CI, a minutos de distância
+
+### Bancadas
+
+- Bash: **196 → 197** asserções, verdes
+- `check_consistency.py`: 11 → 12 checagens
+- PowerShell: 3 asserções novas (til resolvido, til nunca literal, `-Dir` com espaço). **Não verificáveis no macOS** — a bancada invoca `powershell` 5.1; precisa do CI ou da VM
+
+---
+
 ## [0.56.0] - 2026-07-28
 
 ### Validação em máquina real: macOS e Windows 11

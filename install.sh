@@ -3,12 +3,18 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash
 #
-# Host requirements: Docker (with Compose v2), git, curl — and if any of them is
-# missing, the installer OFFERS to install it for you (Homebrew/cask on macOS,
-# official get.docker.com + apt/dnf on Linux). No make/node/python needed.
+# Host requirements: Docker (with Compose v2) and git — if either is missing,
+# the installer OFFERS to install it for you (Homebrew/cask on macOS, official
+# get.docker.com + apt/dnf on Linux). curl is also required, but it is NOT
+# installed for you: it is what fetches this script, and every supported system
+# ships it. No make/node/python needed.
 # Idempotent: re-running updates the clone and restarts the stack.
 #
-# Flags:
+# Ollama is NOT part of the install: pulling a model is several GB and made the
+# install take an unpredictable amount of time. The final panel shows how to
+# enable a local model afterwards, in one command.
+#
+# Flags (this list is a summary — `--help` is the complete one):
 #   --repo-url URL        (default: https://github.com/aleonnet/atlasfile.git; env ATLASFILE_REPO_URL)
 #   --branch NAME         (default: main)
 #   --dir PATH            (default: ~/AtlasFile)
@@ -17,14 +23,13 @@
 #                         missing system dependencies — see --install-deps)
 #   --install-deps        authorize installing missing prerequisites without
 #                         prompting (Homebrew/Docker/git; sudo on Linux)
-# Ollama NÃO faz parte da instalação: puxar um modelo é um download de vários GB
-# e transformava uma instalação de minutos em algo sem duração previsível. O
-# painel final ensina a habilitar um modelo local depois, em um comando.
 #   --no-open             do not open the browser at the end
 #   --enable-auth         enable API authentication (generates a key in
 #                         config/api_keys.json, sets API_AUTH_ENABLED=true and
 #                         ATLASFILE_API_TOKEN in .env). Re-running with this flag
 #                         enables auth on an existing install without data loss.
+#   --uninstall           revert what this installer created (see --help)
+#   --doctor / --dry-run  read-only diagnosis / show, do not do
 set -euo pipefail
 
 REPO_URL="${ATLASFILE_REPO_URL:-https://github.com/aleonnet/atlasfile.git}"
@@ -53,8 +58,15 @@ VERBOSE=0
 OLLAMA_DEPRECATED=0
 
 # Exit codes. 0 = done, 1 = failed, 10 = the user said no. `exit` in bash is
-# truncated to 8 bits, so the Windows-world MSI codes (1602 = user cancelled,
-# 3010 = reboot pending) live in install.ps1, which translates this one.
+# truncated to 8 bits, which is why this is 10 and not an MSI code (1602 would
+# arrive as 66).
+#
+# Reached only by a DIRECT `--uninstall`: under --delegated the question belongs
+# to install.ps1, which always passes --yes here, so this side never asks. The
+# MSI codes (1602 = user cancelled, 3010 = reboot pending) are install.ps1's own
+# verdict about its own screen — it does not translate this one, and it does not
+# need to: any non-zero here already reads as "the WSL side did not confirm",
+# which is the conservative answer.
 RC_CANCELLED=10
 
 # Machine-readable last word of an uninstall. install.ps1 requires BOTH this
@@ -84,8 +96,9 @@ Usage:
 
 With no options: installs into ~/AtlasFile, asks where your documents should
 live and starts the stack. Re-running updates the clone and restarts it — the
-installer is idempotent. Host requirements (Docker with Compose v2, git, curl)
-are detected and, with your confirmation, installed for you.
+installer is idempotent. Docker (with Compose v2) and git are detected and,
+with your confirmation, installed for you. curl is required too, but it is not
+installed for you: it is what fetched this script.
 
 Install options:
   --dir PATH            Where to install                 (default: ~/AtlasFile)
@@ -1544,8 +1557,17 @@ run_uninstall() {
     un_print_plan
   fi
 
+  # Quem ABRE o trilho tem de fecha-lo, e o un_print_plan acima abriu. Estas
+  # tres saidas (nada a fazer, cancelado, falhou) retornavam sem `╰──` e a tela
+  # terminava pendurada numa calha — medido. A guarda da bancada so cobria
+  # --doctor, --dry-run e --uninstall --dry-run, que sao justamente as que ja
+  # tinham sido consertadas.
+  #
+  # `DELEGATED` continua mandando: delegado, o trilho e do install.ps1 e quem o
+  # fecha e ele, depois de terminar o lado Windows.
   if [ -z "$UN_ACTIONS" ]; then
     info "nothing to do."
+    [ "$DELEGATED" = "1" ] || rail_end
     sentinel "nothing-to-do"
     return 0
   fi
@@ -1562,13 +1584,16 @@ run_uninstall() {
     # had just said no. Cancelling is its own outcome and gets its own code.
     case "$answer" in
       y|Y|yes|YES|s|S) ;;
-      *) info "uninstall cancelled — nothing was touched."; sentinel "cancelled"; return "$RC_CANCELLED" ;;
+      *) info "uninstall cancelled — nothing was touched."
+         [ "$DELEGATED" = "1" ] || rail_end
+         sentinel "cancelled"; return "$RC_CANCELLED" ;;
     esac
   fi
 
   un_execute
   if [ "$UN_FAILED" = "1" ]; then
     warn "uninstall finished with failures — see ${LOG_FILE}"
+    [ "$DELEGATED" = "1" ] || rail_end
     sentinel "failed"
     return 1
   fi
@@ -1712,14 +1737,21 @@ run_dry_run() {
   detect_os
   doc_prereqs
   doc_head "Install plan"
-  printf '    • repository   %s (%s)\n' "$REPO_URL" "$BRANCH"
-  printf '    • install dir  %s%s\n' "$INSTALL_DIR" \
-    "$([ -d "${INSTALL_DIR}/.git" ] && printf ' (exists — would be UPDATED)' || printf ' (would be CLONED)')"
-  printf '    • documents    %s\n' "${PROJECTS_ROOT:-$PROJECTS_ROOT_DEFAULT}"
-  printf '    • options      auth=%s open-browser=%s\n' \
-    "$([ "$ENABLE_AUTH" = "1" ] && printf on || printf off)" \
-    "$([ "$OPEN_BROWSER" = "1" ] && printf on || printf off)"
-  printf '%s\n' "$GUT"
+  # Na CALHA, como todo o resto do trilho. Estas quatro linhas eram `printf
+  # '    • …'` puro e abriam um buraco de quatro linhas no meio do bloco mais
+  # importante da tela — medido. Escapavam da varredura da bancada porque ela
+  # mirava o prefixo `printf '  %s`, e estas comecavam com espacos literais.
+  #
+  # O rotulo tem largura FIXA (13) para as quatro linhas fecharem na mesma
+  # coluna; nao passa pelo af_wrap porque ele junta as palavras com um espaco so
+  # e comeria justamente esse alinhamento.
+  af_plan_row() { printf '%s  • %-13s%s\n' "$GUT" "$1" "$2"; }
+  af_plan_row "repository" "${REPO_URL} (${BRANCH})"
+  af_plan_row "install dir" "${INSTALL_DIR}$([ -d "${INSTALL_DIR}/.git" ] && printf ' (exists — would be UPDATED)' || printf ' (would be CLONED)')"
+  af_plan_row "documents" "${PROJECTS_ROOT:-$PROJECTS_ROOT_DEFAULT}"
+  af_plan_row "options" "auth=$([ "$ENABLE_AUTH" = "1" ] && printf on || printf off) open-browser=$([ "$OPEN_BROWSER" = "1" ] && printf on || printf off)"
+  # Sem linha de calha solta aqui: o doc_head abaixo ja abre com uma, e as duas
+  # juntas davam um vao de duas linhas que nenhum outro bloco da tela tem.
   doc_head "Prerequisites this machine is missing"
   local falta=0
   command -v git >/dev/null 2>&1    || { doc_warn "git would be installed"; falta=1; }

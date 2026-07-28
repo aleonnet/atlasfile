@@ -509,16 +509,26 @@ done
 # Varredura mecanica: NENHUMA linha de mensagem pode escapar da calha. Tres
 # vezes seguidas um ponto esquecido apareceu na tela do usuario — a pergunta da
 # pasta, e depois as cinco linhas da fase 3.
-t "nenhum printf de mensagem usa o prefixo antigo de dois espacos"
+t "nenhum printf de mensagem comeca com espaco literal em vez da calha"
 # So ACIMA da marca AF-FIM-DO-TRILHO: depois dela o trilho ja fechou e o
 # relatorio final sai sem calha, que e o desenho do mac-env.
 # Dois trechos sao relatorio final e saem sem calha de proposito: o corpo do
 # un_report e tudo abaixo da marca AF-FIM-DO-TRILHO.
 corte="$(grep -n 'AF-FIM-DO-TRILHO' "$REPO_ROOT/install.sh" | head -1 | cut -d: -f1)"
 [ -n "$corte" ] || corte=99999
+# QUALQUER quantidade de espaco literal abrindo o formato, nao so `  %s`: o
+# --dry-run imprimia o plano de instalacao com `printf '    • …'` e passava
+# batido por essa varredura, deixando quatro linhas sem calha no meio do bloco
+# mais importante da tela. A regra e a propriedade ("o formato nao pode comecar
+# por espaco"), nao um prefixo especifico.
+#
+# COMENTARIO NAO E CODIGO: sem descartar as linhas de `#`, a guarda casa com o
+# proprio comentario que explica o defeito e reprova o codigo ja corrigido — foi
+# o que aconteceu aqui, e e a mesma armadilha que o check_gutter_holes registra.
 fora="$(head -n "$corte" "$REPO_ROOT/install.sh" \
   | awk '/^un_report\(\) \{/{pula=1} pula&&/^\}/{pula=0; next} !pula' \
-  | grep -n "printf '  %s" | grep -v 'GUT' | grep -v '^[0-9]*:note()' || true)"
+  | grep -vE "^[[:space:]]*#" \
+  | grep -nE "printf '[ ]{2,}" | grep -v 'GUT' | grep -v '^[0-9]*:note()' || true)"
 [ -z "$fora" ] && ok || no "linha(s) fora da calha: $fora"
 
 # Linha VAZIA dentro do trilho e um buraco na calha — foi o que o usuario viu em
@@ -659,7 +669,12 @@ case "$(achata "$out")" in *"backup(s) inside"*"OpenSearch password and API key"
 
 # O trilho ABRIA com `├──` e nunca fechava no --doctor nem nos dois --dry-run.
 t "todo modo que abre o trilho tambem o fecha"
-for modo in "--doctor" "--dry-run" "--uninstall --dry-run"; do
+# O `--uninstall` REAL entrou na lista. A guarda cobria so os tres modos que ja
+# tinham sido consertados, e as tres saidas normais da desinstalacao (nada a
+# fazer, cancelado, falhou) retornavam sem `╰──`: a tela terminava pendurada
+# numa calha. Medido no caminho "nothing to do", que e o que este sandbox
+# produz — sem .git e sem docker-compose.yml, o plano nao tem acao nenhuma.
+for modo in "--doctor" "--dry-run" "--uninstall --dry-run" "--uninstall --keep-data"; do
   saida="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TERM=dumb \
       TTY_DEV=/dev/null REPO_ROOT="$REPO_ROOT" \
       bash "$REPO_ROOT/install.sh" $modo --dir "$SANDBOX" 2>&1 || true)"

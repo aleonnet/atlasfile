@@ -6,11 +6,25 @@ Esta página consolida os scripts do repositório e explica, de forma operaciona
 
 | Etapa | Scripts principais |
 |---|---|
+| Instalação e desinstalação da máquina | `install.sh` (macOS/Linux), `install.ps1` (Windows/WSL2) |
 | Bootstrap do ambiente e projeto | `scripts/bootstrap_project.py`, `scripts/smoke-project-init.sh` |
 | Preparação manual de datasets do classificador | `backend/scripts/bootstrap_validation_set.py`, `backend/scripts/backfill_training_pool.py` |
 | Benchmark, ciclo e inspeção do classificador | `backend/scripts/benchmark_classification.py`, `backend/scripts/run_classifier_cycle.py`, `backend/scripts/classifier_status.py`, `backend/scripts/trace_classification.py` |
 | Operação e manutenção do stack | `scripts/reset-opensearch-index.sh`, `scripts/import-dashboards.sh` |
 | Testes e automação técnica | `scripts/ci.sh`, `scripts/e2e_layout_scenarios.py` |
+
+## Instaladores (`install.sh` / `install.ps1`)
+
+São os dois únicos scripts que rodam **antes** de existir um repositório clonado, e por isso vivem na raiz e não em `scripts/`. Ficavam de fora desta página, que se apresenta como a visão consolidada dos scripts do repositório.
+
+| Script | Plataforma | O que faz |
+|---|---|---|
+| `install.sh` | macOS / Linux | Verifica e (com confirmação) instala Docker e git, clona em `~/AtlasFile`, gera o `.env`, sobe a stack. Idempotente. |
+| `install.ps1` | Windows | Prepara o lado Windows (WSL2 + Docker Desktop via winget) e **delega** ao `install.sh` dentro da distro — um instalador real, sem lógica duplicada. |
+
+Modos que não alteram nada: `--doctor` / `-Doctor` (diagnóstico read-only; no Windows cobre os dois lados) e `--dry-run` / `-DryRun` (mostre, não faça). `--uninstall` / `-Uninstall` imprime um plano do que remove e do que preserva, e só age após confirmação — reverte apenas o que o manifesto prova que o instalador criou.
+
+Documentação de uso: [`INSTALL.md`](../INSTALL.md). Lista completa de flags: `install.sh --help` / `install.ps1 -Help`. Bancadas: `tests/installer/run.sh` (bash), `tests/installer/win/run.ps1` (PowerShell) e `tests/installer/check_consistency.py` (paridade entre os dois), todas em `make test-installer`.
 
 ## Pré-requisitos gerais
 

@@ -30,6 +30,8 @@ Uso: python3 tests/installer/check_consistency.py   (sai 1 se houver divergencia
 import io
 import os
 import re
+import shutil
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -215,10 +217,22 @@ def check_art_parity(problems):
 
     # Hex das luas: no bash sao variaveis, no PowerShell vivem no New-AfFrame.
     for nome, var in (("lua 1 perto", "AF_MOON1"), ("lua 1 longe", "AF_MOON1_FAR"),
-                      ("lua 2 perto", "AF_MOON2"), ("lua 2 longe", "AF_MOON2_FAR")):
+                      ("lua 2 perto", "AF_MOON2"), ("lua 2 longe", "AF_MOON2_FAR"),
+                      ("cabeca do cometa", "AF_COMET_HEAD_HEX")):
         m = re.search(r'%s="([0-9a-fA-F]{6})"' % var, sh)
         if m and m.group(1) not in ps:
             problems.append("o hex da %s (%s) nao aparece no install.ps1" % (nome, m.group(1)))
+
+    # Cauda do cometa. Os hexes vivem em AF_COL_C1..C3 no bash (dentro do af_fg)
+    # e num array no PowerShell. A guarda de quadros compara GLIFOS, nao cor:
+    # sem esta checagem uma cauda pintada errada -- que foi o caso, com a cabeca
+    # em "ffd0c4" no lugar do branco -- passaria batida por tudo.
+    caudas_sh = re.findall(r'AF_COL_C[123]="\$\(af_fg ([0-9a-fA-F]{6})', sh)
+    m = re.search(r'\$AF_COMET_TAIL_HEX = @\(([^)]+)\)', ps)
+    caudas_ps = re.findall(r'"([0-9a-fA-F]{6})"', m.group(1)) if m else []
+    if caudas_sh and [c.lower() for c in caudas_sh] != [c.lower() for c in caudas_ps]:
+        problems.append("a cauda do cometa difere: bash %s, install.ps1 %s"
+                        % (caudas_sh, caudas_ps))
 
     for var, rotulo in (("AF_WORD", "wordmark"), ("AF_TAG", "frase de chamada")):
         m = re.search(r'^%s="([^"]+)"' % var, sh, re.M)
@@ -245,6 +259,126 @@ def check_art_parity(problems):
         if m and int(m.group(1)) != inicio:
             problems.append("AF_ORBIT_START difere: bash %d, install.ps1 %d (as luas trocam de lugar)"
                             % (inicio, int(m.group(1))))
+
+
+# A UNICA divergencia deliberada entre os dois banners, decidida pelo dono do
+# projeto: o lado Windows identifica a plataforma numa terceira linha de texto.
+# Ela vive na linha 4, a partir da coluna 23 -- onde o install.sh nunca desenha
+# (na linha 4 o conteudo dele para na coluna 18). Esta constante e o unico
+# perdao que a guarda de quadros da; qualquer outro pixel diferente reprova.
+PS_LINHA_PLATAFORMA = "(Windows / WSL2)"
+PS_PLATAFORMA_COL = 23
+AF_LINHAS_POR_QUADRO = 7
+
+
+def _dump_quadros_sh():
+    """Os quadros do install.sh, em texto puro, pela funcao real dele."""
+    # `set --` ANTES do source: um script sourcado herda os parametros
+    # posicionais de quem o chama, entao o caminho passado em $1 chegava ao
+    # parser de flags do install.sh e ele morria com "Unknown flag: ./install.sh".
+    roteiro = ('export ATLASFILE_INSTALL_LIB=1; caminho="$1"; set --; . "$caminho"; '
+               'n=0; while [ $n -lt $AF_FRAMES ]; do af_frame_plain $n; n=$((n+1)); done')
+    saida = subprocess.run(["bash", "-c", roteiro, "_", os.path.join(ROOT, SH)],
+                           capture_output=True, text=True, cwd=ROOT, timeout=120)
+    if saida.returncode != 0:
+        return None, (saida.stderr.strip() or saida.stdout.strip() or
+                      "bash saiu com %d e sem mensagem" % saida.returncode)[:200]
+    return saida.stdout.split("\n"), None
+
+
+def _dump_quadros_ps():
+    """Os quadros do install.ps1, pelo seam ATLASFILE_DUMP_FRAMES."""
+    amb = dict(os.environ, ATLASFILE_DUMP_FRAMES="1", NO_COLOR="1")
+    saida = subprocess.run(["pwsh", "-NoProfile", "-File", os.path.join(ROOT, PS)],
+                           capture_output=True, text=True, cwd=ROOT, env=amb, timeout=180)
+    if saida.returncode != 0:
+        return None, (saida.stderr.strip() or saida.stdout.strip() or
+                      "pwsh saiu com %d e sem mensagem" % saida.returncode)[:200]
+    return saida.stdout.split("\n"), None
+
+
+def check_frame_parity(problems):
+    """Os dois banners DESENHAM igual, quadro a quadro.
+
+    A check_art_parity compara as TABELAS que alimentam o desenho (orbita,
+    cometa, rampa, hexes, indice de repouso). Isso deixa de fora tudo que os
+    ALGORITMOS fazem com elas -- e foi exatamente ali que os dois divergiram em
+    quatro pontos ao mesmo tempo, com a guarda verde o tempo todo:
+
+      * a cauda do cometa era contigua no bash e amostrada (faiscada) no
+        PowerShell -- justamente a forma que o comentario do install.sh registra
+        como MEDIDA e rejeitada;
+      * as luas seguiam orbitando durante o voo do cometa no bash e congelavam
+        no PowerShell (o quadro FINAL coincidia, que e o unico que a guarda de
+        repouso olhava);
+      * a ignicao revelava uma linha a mais no PowerShell;
+      * o brilho especular usava outra formula e outra linha de destaque.
+
+    Comparar desenho e a unica forma de pegar essa classe. O preco e rodar os
+    dois interpretadores; sem `pwsh` a checagem se ANUNCIA pulada, nunca some
+    calada -- guarda que pula em silencio vira guarda que nao existe.
+    """
+    if not shutil.which("pwsh"):
+        print("PULADO  check_frame_parity: pwsh ausente nesta maquina "
+              "(instale com `brew install powershell`) — a paridade de DESENHO "
+              "do banner nao foi verificada")
+        return
+
+    quadros_sh, erro = _dump_quadros_sh()
+    if quadros_sh is None:
+        problems.append("%s  nao consegui despejar os quadros: %s" % (SH, erro))
+        return
+    quadros_ps, erro = _dump_quadros_ps()
+    if quadros_ps is None:
+        problems.append("%s  nao consegui despejar os quadros: %s" % (PS, erro))
+        return
+
+    # A tag de plataforma tem de ESTAR la: sem esta assertiva, apagar a linha do
+    # Windows faria a guarda ficar verde e a divergencia deliberada sumiria sem
+    # ninguem notar.
+    if PS_LINHA_PLATAFORMA not in "\n".join(quadros_ps):
+        problems.append("%s  a linha de plataforma %r sumiu do banner — se foi de "
+                        "proposito, tire tambem a excecao em PS_LINHA_PLATAFORMA"
+                        % (PS, PS_LINHA_PLATAFORMA))
+        return
+
+    normalizado = []
+    for i, linha in enumerate(quadros_ps):
+        if i % AF_LINHAS_POR_QUADRO == 4:
+            cauda = linha[PS_PLATAFORMA_COL:]
+            # A revelacao e progressiva, entao um quadro do meio traz um PEDACO
+            # da tag ("(Win"). Qualquer outra coisa nessa faixa e divergencia de
+            # verdade e nao pode ser perdoada.
+            if cauda and not PS_LINHA_PLATAFORMA.startswith(cauda):
+                problems.append("%s  quadro %d, linha 4: a coluna %d em diante tem %r, "
+                                "que nao e a linha de plataforma"
+                                % (PS, i // AF_LINHAS_POR_QUADRO, PS_PLATAFORMA_COL, cauda))
+                return
+            linha = linha[:PS_PLATAFORMA_COL]
+        normalizado.append(linha.rstrip())
+
+    esperado = [l.rstrip() for l in quadros_sh]
+    while esperado and not esperado[-1]:
+        esperado.pop()
+    while normalizado and not normalizado[-1]:
+        normalizado.pop()
+
+    if len(esperado) != len(normalizado):
+        problems.append("o banner tem %d linhas no install.sh e %d no install.ps1 "
+                        "(%d e %d quadros) — a coreografia nao tem o mesmo tamanho"
+                        % (len(esperado), len(normalizado),
+                           len(esperado) // AF_LINHAS_POR_QUADRO,
+                           len(normalizado) // AF_LINHAS_POR_QUADRO))
+        return
+
+    divergentes = [i for i, (a, b) in enumerate(zip(esperado, normalizado)) if a != b]
+    for i in divergentes[:6]:
+        problems.append("banner diverge no quadro %d, linha %d:\n      bash: %r\n      ps1 : %r"
+                        % (i // AF_LINHAS_POR_QUADRO, i % AF_LINHAS_POR_QUADRO,
+                           esperado[i], normalizado[i]))
+    if len(divergentes) > 6:
+        problems.append("banner: mais %d linha(s) divergentes alem das mostradas"
+                        % (len(divergentes) - 6))
 
 
 def check_ui_parity(problems):
@@ -378,6 +512,16 @@ def check_call_before_declaration(problems):
                                 % (PS, linha_uso + 1, f, via, onde + 1))
 
 
+"""Funcoes do install.ps1 que desenham FORA do trilho de proposito.
+
+Write-Phase termina uma linha ja aberta com -NoNewline; Close-AfRail e
+Write-Panel escrevem DEPOIS do fechamento; Show-BannerStatic emoldura a arte,
+que vive antes de o trilho existir. Lista curta e explicita: uma isencao por
+descuido e como o buraco volta.
+"""
+PS_FORA_DO_TRILHO = ("Write-Phase", "Close-AfRail", "Write-Panel", "Show-BannerStatic")
+
+
 def check_gutter_holes(problems):
     """Nenhuma linha VAZIA dentro do trilho, dos dois lados.
 
@@ -387,24 +531,57 @@ def check_gutter_holes(problems):
     e `echo -e "${GUT}"`, nunca "".
 
     O lado bash tem a varredura mecanica na propria bancada (que roda o fonte).
-    Aqui fica o lado PowerShell, onde `Write-Host ""` e legitimo como terminador
-    de linha depois de -NoNewline: a guarda mira o unico ponto onde ele abria
-    buraco, o cabecalho de fase.
+    Aqui fica o lado PowerShell.
+
+    Antes isto mirava SO o corpo do Write-Phase -- o unico ponto conhecido na
+    epoca. Uma auditoria depois achou oito outros: cinco reguas do -Doctor, a
+    abertura do -DryRun, o bloco que explica o WSL no meio da fase 1 e o respiro
+    do -Verbose. Guarda de um ponto so nao e guarda da propriedade; agora a faixa
+    inteira do trilho e varrida, delimitada pelas mesmas marcas que o install.sh
+    usa (AF-INICIO-DO-TRILHO / AF-FIM-DO-TRILHO).
     """
-    ps = read(PS)
-    corpo = re.search(r"function Write-Phase\([^)]*\)\s*\{(.*?)\n\}", ps, re.S)
-    if not corpo:
-        problems.append("Write-Phase nao encontrado no install.ps1")
+    linhas = read(PS).splitlines()
+
+    # A marca tem de ABRIR a linha de comentario. Procurar a string solta casava
+    # com o proprio comentario de abertura, que cita "AF-FIM-DO-TRILHO la
+    # embaixo" no meio da prosa: a faixa virava (960, 961) e a guarda varria
+    # ZERO linha, passando com dois mutantes vivos dentro. Foi assim que ela
+    # nasceu inutil, e o piso de sanidade abaixo existe para isso nao se repetir
+    # em silencio.
+    def marca(nome):
+        alvo = re.compile(r'#\s*' + nome + r'\b')
+        return next((i for i, l in enumerate(linhas) if alvo.match(l.strip())), None)
+
+    ini, fim = marca("AF-INICIO-DO-TRILHO"), marca("AF-FIM-DO-TRILHO")
+    if ini is None or fim is None:
+        problems.append("%s  faltam as marcas AF-INICIO-DO-TRILHO / AF-FIM-DO-TRILHO "
+                        "que delimitam o trilho" % PS)
         return
-    # Comentario nao e codigo: a primeira versao desta guarda casou com o
-    # proprio comentario que explica o defeito e reprovou o codigo ja corrigido.
-    texto = "\n".join(l for l in corpo.group(1).split("\n")
-                      if not l.lstrip().startswith("#"))
-    antes = texto.split("Write-Gut")[0]
-    if 'Write-Host ""' in antes:
-        problems.append(
-            "Write-Phase emite linha VAZIA antes da calha: abre buraco no trilho "
-            "e diverge do install.sh")
+    # Faixa vazia ou invertida = guarda cega. Preferir gritar a passar verde.
+    if fim - ini < 200:
+        problems.append("%s  a faixa do trilho tem so %d linhas (marcas em %d e %d) — "
+                        "a guarda de calha estaria varrendo quase nada"
+                        % (PS, fim - ini, ini + 1, fim + 1))
+        return
+
+    atual = None
+    for i in range(ini + 1, fim):
+        linha = linhas[i]
+        m = re.match(r'function\s+([A-Za-z][A-Za-z-]*)', linha)
+        if m:
+            atual = m.group(1)
+        elif linha.startswith("}"):
+            atual = None          # funcoes deste arquivo sao todas de topo
+        if atual in PS_FORA_DO_TRILHO:
+            continue
+        # Comentario nao e codigo: a primeira versao desta guarda casou com o
+        # proprio comentario que explica o defeito e reprovou o codigo corrigido.
+        if linha.lstrip().startswith("#"):
+            continue
+        if re.search(r'Write-Host\s+""', linha):
+            problems.append(
+                "%s:%d  Write-Host \"\" dentro do trilho abre buraco na calha — "
+                "use Write-Gut \"\" (linha de calha), como o install.sh" % (PS, i + 1))
 
 
 def check_glyph_shadowing(problems):
@@ -484,6 +661,40 @@ def _aspas_abertas(texto):
     return achados
 
 
+def check_ascii_only(problems):
+    """O install.ps1 tem de ser ASCII PURO, byte a byte.
+
+    Nao e preciosismo: medido no Windows 11 com Windows PowerShell 5.1, UTF-8
+    sem BOM e lido como ANSI e o parser morre no primeiro glifo multibyte, numa
+    cascata de "Missing closing ')'" que aponta para linhas erradas. Adicionar
+    BOM conserta o `-File` e quebra o `irm | iex`, porque a string passa a
+    comecar com U+FEFF. ASCII puro e a unica forma que sobrevive aos DOIS
+    caminhos de entrega, e por isso os glifos do arquivo sao declarados por code
+    point ([char]0x2588 e afins).
+
+    Isto ja existia no job Windows do CI e em NENHUM lugar local: eu enchi os
+    comentarios de travessao, `checkmark` e meio-bloco durante uma auditoria, a
+    bancada inteira passou verde na minha maquina E na VM, e o CI reprovou com
+    30 bytes nao-ASCII. Guarda que so o CI ve custa uma volta de push a cada
+    descuido.
+    """
+    caminho = os.path.join(ROOT, PS)
+    with open(caminho, "rb") as fh:
+        octetos = fh.read()
+    ruins = {}
+    linha = 1
+    for byte in octetos:
+        if byte == 0x0A:
+            linha += 1
+        elif byte > 127:
+            ruins[linha] = ruins.get(linha, 0) + 1
+    if ruins:
+        onde = ", ".join("linha %d (%dx)" % (n, q) for n, q in sorted(ruins.items())[:8])
+        problems.append("%s  tem %d byte(s) nao-ASCII em %d linha(s) — o PowerShell 5.1 "
+                        "le o arquivo como ANSI e o parse quebra em cascata: %s"
+                        % (PS, sum(ruins.values()), len(ruins), onde))
+
+
 def check_quotes(problems):
     """Nenhuma linha abre aspa sem fechar, no instalador e na bancada.
 
@@ -504,10 +715,12 @@ def main():
     check_flags(problems)
     check_dead_functions(problems)
     check_art_parity(problems)
+    check_frame_parity(problems)
     check_ui_parity(problems)
     check_gutter_holes(problems)
     check_glyph_shadowing(problems)
     check_singular_nouns(problems)
+    check_ascii_only(problems)
     check_quotes(problems)
     check_call_before_declaration(problems)
     check_manifest_keys(problems)
