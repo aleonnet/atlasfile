@@ -194,7 +194,14 @@ fmt_secs() { local s=$1; if [ "$s" -ge 60 ]; then printf '%dm%02ds' $((s/60)) $(
 
 term_cols() {
   local c
-  c="$(tput cols 2>/dev/null || echo 72)"
+  # COLUMNS primeiro. Delegado pelo install.ps1, o `tput cols` daqui nao ve a
+  # mesma largura que o orquestrador usou para desenhar as reguas DELE, e as
+  # duas metades da tela saiam com trilhos de larguras diferentes - o handover
+  # ficava com cara de dois produtos. Com COLUMNS exportado na delegacao, os
+  # dois lados desenham o MESMO trilho. Fora da delegacao nada muda: COLUMNS
+  # vazio cai no tput, como antes.
+  c="${COLUMNS:-}"
+  [ -n "$c" ] || c="$(tput cols 2>/dev/null || echo 72)"
   case "$c" in ''|*[!0-9]*) c=72 ;; esac
   [ "$c" -gt 92 ] && c=92
   [ "$c" -lt 60 ] && c=60

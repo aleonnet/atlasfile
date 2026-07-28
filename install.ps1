@@ -1089,6 +1089,7 @@ try {
 } catch { Write-Verbose "could not reset the log: $($_.Exception.Message)" }
 # Placar e relatorio da execucao, como no install.sh: o log guarda a saida das
 # FERRAMENTAS, e o que o instalador fez nao ficava em lugar nenhum.
+$script:TrilhoFechadoNoWsl = $false
 $script:StepsFailed = 0
 $script:RunSteps = @()
 $script:RunStart = Get-Date
@@ -1349,7 +1350,7 @@ function Test-AfDoctor {
     # O lado Linux responde por si: mesmo diagnostico, mesmo vocabulario.
     Write-Host ""
     Write-Rule "Inside WSL"
-    $cmdDoc = "$AF_CURL $AF_SH_URL | bash -s -- --doctor --delegated"
+    $cmdDoc = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- --doctor --delegated"
     if ($script:AfDir) { $cmdDoc += " --dir $script:AfDir" }
     $saidaDoc = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdDoc))
     if ($saidaDoc.Trim()) {
@@ -1397,9 +1398,9 @@ if ($DryRun -and -not $Uninstall) {
         if ($item.Tem) { Write-Gut ("{0} {1} is already here" -f $OK, $item.Nome) Green }
         else { Write-Gut ("{0} {1} WOULD BE INSTALLED" -f $DOT, $item.Nome) DarkYellow }
     }
-    Write-Host ""
+    Write-Gut ""
     Write-Rule "Install plan (inside WSL)"
-    $cmdSeco = "$AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
+    $cmdSeco = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
     if ($script:AfDir) { $cmdSeco += " --dir $script:AfDir" }
     $saidaSeca = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdSeco))
     foreach ($linha in ($saidaSeca -split "`r?`n")) {
@@ -1433,7 +1434,7 @@ if ($Uninstall) {
 
     # --- 1. FATOS: nao pergunta, nao age ------------------------------------
     Start-Step "reading the removal plan from inside WSL"
-    $cmdPlano = "$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --plan-only"
+    $cmdPlano = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --plan-only"
     $plano = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdPlano))
     if ($script:NativeExitCode -ne 0 -or $plano -notmatch "ATLASFILE_UNINSTALL: plan-only") {
         Write-Fail "could not read the removal plan from WSL (exit $($script:NativeExitCode))"
@@ -1444,7 +1445,8 @@ if ($Uninstall) {
     Write-Ok "removal plan read"
 
     # --- 2. UM plano, cobrindo os dois lados --------------------------------
-    Write-Host ""
+    # Sem linha em branco aqui: o proprio plano ABRE com uma linha de calha, e
+    # uma vazia antes dela era um buraco no trilho.
     foreach ($linha in ($plano -split "`r?`n")) {
         # As linhas de maquina existem para ESTE script, nao para o usuario.
         if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
@@ -1483,7 +1485,7 @@ if ($Uninstall) {
             Write-Fail "the volume $volume holds the search index - decide explicitly: -PurgeData or -KeepData"
             Stop-Installer 1; return
         }
-        Write-Host ""
+        Write-Gut ""
         Write-Gut ("? The volume $volume holds the search index.") Yellow
         Write-Gut ("  Your documents and the _ATLASFILE journal live on disk and are NOT") Yellow
         Write-Gut ("  affected; the index is rebuilt by Reconcile after a reinstall.") Yellow
@@ -1497,7 +1499,7 @@ if ($Uninstall) {
     }
 
     # --- 4. UMA confirmacao ---------------------------------------------------
-    Write-Host ""
+    Write-Gut ""
     if (-not (Confirm-Plan "Execute the plan above?")) {
         Write-Info "uninstall cancelled - nothing was touched."
         Close-AfRail
@@ -1509,9 +1511,9 @@ if ($Uninstall) {
     # So se houver o que fazer LA. Sem esta guarda, um plano que so tem itens do
     # Windows mandava o install.sh remover o nada e depois exigia dele a prova
     # "confirmed", que ele nao tem por que dar.
-    Write-Host ""
+    Write-Gut ""
     if ($temAcoes) {
-    $cmdExec = "$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --yes $decisaoDados"
+    $cmdExec = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --yes $decisaoDados"
     $saidaExec = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdExec))
     foreach ($linha in ($saidaExec -split "`r?`n")) {
         if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
@@ -1539,11 +1541,30 @@ if ($Uninstall) {
         Write-Info "Windows-side dependencies preserved - pass -RemoveDeps to revert the ones AtlasFile installed"
     } else {
         foreach ($item in @(
-            @{ Key = "docker"; Id = "Docker.DockerDesktop"; Label = "Docker Desktop"; Path = (Join-Path $env:ProgramFiles "Docker\Docker") },
-            @{ Key = "ollama"; Id = "Ollama.Ollama";        Label = "Ollama";         Path = "" }
+            @{ Key = "docker"; Id = "Docker.DockerDesktop"; Label = "Docker Desktop"
+               Path = (Join-Path $env:ProgramFiles "Docker\Docker")
+               # Desinstalador PROPRIO, com --quiet. `winget uninstall` nao
+               # aceita --override nem --custom (medido: nao sao parametros
+               # dele), entao o --silent que passamos nao alcanca o instalador
+               # do Docker - ele abria janela e ficava esperando um clique em
+               # "Close", num Windows 11 real. Chamar o binario da Docker com
+               # --quiet e o caminho que a propria Docker documenta, e ele
+               # desregistra o produto sozinho. Se o binario nao estiver la, cai
+               # no winget, que continua sendo o caminho registrado.
+               Direto = (Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop Installer.exe")
+               DiretoArgs = @("uninstall", "--quiet") },
+            @{ Key = "ollama"; Id = "Ollama.Ollama";        Label = "Ollama";         Path = ""
+               Direto = ""; DiretoArgs = @() }
         )) {
             if ((Get-AfState $item.Key) -ne "created") {
-                Write-Info "$($item.Label) was already on this machine before AtlasFile - preserved"
+                # So afirma preservacao do que ESTA aqui. O usuario tinha
+                # removido o Ollama por conta propria ANTES de instalar o
+                # AtlasFile, e a tela dizia que nos o preservamos - promessa
+                # sobre uma coisa que nao existe. Mesma disciplina do plano:
+                # consultar o estado real antes de falar dele.
+                if (Get-Tool $item.Key) {
+                    Write-Info "$($item.Label) was already on this machine before AtlasFile - preserved"
+                }
                 continue
             }
             # Perguntar ANTES de prometer, como faz o desinstalador do
@@ -1560,8 +1581,12 @@ if ($Uninstall) {
             # contrato da Microsoft Store, porque consulta as duas fontes. E o
             # mesmo "Failed when searching source: msstore" que ja tinha
             # derrubado a instalacao numa maquina real.
-            Invoke-Step "removing $($item.Label)" winget @("uninstall", "-e", "--id", $item.Id,
-                "--source", "winget", "--silent", "--disable-interactivity")
+            if ($item.Direto -and (Test-Path $item.Direto)) {
+                Invoke-Step "removing $($item.Label)" $item.Direto $item.DiretoArgs
+            } else {
+                Invoke-Step "removing $($item.Label)" winget @("uninstall", "-e", "--id", $item.Id,
+                    "--source", "winget", "--silent", "--disable-interactivity")
+            }
             if ($script:NativeExitCode -ne 0) {
                 Write-Warn "could not remove $($item.Label) (exit $($script:NativeExitCode)) - remove it from Settings > Apps"
                 Show-LogTail 8
@@ -1920,12 +1945,21 @@ if ($Branch) { $shFlags += " --branch $Branch" }
 # a linha inteira viaja como argumento unico de `bash -c`.
 $raizProjetos = if ($ProjectsRoot) { ConvertTo-AfWslPath $ProjectsRoot } else { Get-AfProjectsRoot }
 if ($raizProjetos) { $shFlags += " --projects-root '$raizProjetos'" }
-$argsSh = @($script:WslUser) + @("-e", "bash", "-c", "$AF_CURL $AF_SH_URL | bash -s -- $shFlags")
+# COLUMNS exportado: sem isto o install.sh mede a largura com `tput cols`, que
+# nao ve a mesma coisa que o Get-AfRuleWidth daqui, e as duas metades da tela
+# saiam com trilhos de larguras diferentes. Com a mesma largura, o handover vira
+# UM trilho continuo em vez de dois desenhos empilhados.
+$largTrilho = Get-AfRuleWidth
+$argsSh = @($script:WslUser) + @("-e", "bash", "-c", "export COLUMNS=$largTrilho; $AF_CURL $AF_SH_URL | bash -s -- $shFlags")
 Invoke-Native wsl $argsSh
 if ($script:NativeExitCode -ne 0) {
     Write-Fail "Install failed inside WSL (see the messages above)."
     Stop-Installer 1; return
 }
+# O install.sh JA fechou o trilho (o `+--` antes do painel dele). Fechar de novo
+# aqui punha uma calha solta e um segundo fechamento no fim da tela - foi o que
+# o Windows real mostrou entre "run report:" e "AtlasFile is up in".
+$script:TrilhoFechadoNoWsl = $true
 
 # Abrir o navegador e cortesia, nao resultado: numa sessao nao interativa o
 # Start-Process falha com "The operation attempted is not supported" e cuspia
@@ -1946,7 +1980,7 @@ $dirWsl = if ($script:AfDir) { $script:AfDir } else { "~/AtlasFile" }
 Clear-AfBar
 $dur = [int]((Get-Date) - $script:RunStart).TotalSeconds
 $durTexto = if ($dur -ge 60) { "{0}m{1:d2}s" -f [int]($dur / 60), ($dur % 60) } else { "${dur}s" }
-Close-AfRail
+if ($script:TrilhoFechadoNoWsl) { Write-Host "" } else { Close-AfRail }
 Write-Note ("AtlasFile is up in {0}" -f $durTexto)
 Write-Panel @(
     "logs   wsl -e bash -c 'cd $dirWsl && docker compose logs -f'",

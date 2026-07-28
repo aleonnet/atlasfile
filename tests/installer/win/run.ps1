@@ -651,19 +651,33 @@ Assert-True "nenhum Write-Gut seguido de Write-Host vazio" ($dobradas -eq 0) "$d
 # real estava depois de um `}`, no fim do Invoke-Step, e nenhuma regex de uma
 # linha o alcancava. Esta olha a TELA, que e o que o usuario ve: nenhuma linha
 # VAZIA pode aparecer ENTRE duas linhas de calha.
+#
+# E ela rodava so no fluxo de INSTALACAO: cinco buracos sobreviveram no
+# UNINSTALL, que ela nunca olhava. Guarda que cobre um caminho so da a impressao
+# de cobrir todos - agora ela roda nos dois.
 $calhaV = [string][char]0x2502
+function Get-BuracosNaCalha([string]$Saida) {
+    $linhas = $Saida -split "`r?`n"
+    $achados = @()
+    for ($i = 1; $i -lt $linhas.Count - 1; $i++) {
+        if ($linhas[$i].Trim() -eq "" -and
+            $linhas[$i-1].TrimStart().StartsWith($script:calhaV) -and
+            $linhas[$i+1].TrimStart().StartsWith($script:calhaV)) {
+            $achados += $linhas[$i-1].Trim()
+        }
+    }
+    return ,$achados
+}
+
 $sb = New-Sandbox
 $out = Run-Installer @("-Yes", "-EnableAuth")
-$linhas = $out -split "`r?`n"
-$buracos = @()
-for ($i = 1; $i -lt $linhas.Count - 1; $i++) {
-    if ($linhas[$i].Trim() -eq "" -and
-        $linhas[$i-1].TrimStart().StartsWith($calhaV) -and
-        $linhas[$i+1].TrimStart().StartsWith($calhaV)) {
-        $buracos += $linhas[$i-1].Trim()
-    }
-}
-Assert-True "nenhuma linha vazia ENTRE duas linhas de calha" ($buracos.Count -eq 0) ("depois de: " + ($buracos -join " | "))
+$buracos = Get-BuracosNaCalha $out
+Assert-True "instalacao: nenhuma linha vazia ENTRE duas linhas de calha" ($buracos.Count -eq 0) ("depois de: " + ($buracos -join " | "))
+
+$sb = New-UninstallSandbox @("docker`tcreated", "wsl`tcreated")
+$out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+$buracos = Get-BuracosNaCalha $out
+Assert-True "desinstalacao: nenhuma linha vazia ENTRE duas linhas de calha" ($buracos.Count -eq 0) ("depois de: " + ($buracos -join " | "))
 
 # Guardas presas ao CORPO da funcao, nunca a uma distancia em caracteres. A
 # primeira versao usava .{0,600} e reprovou o codigo CORRETO: o alvo ficava a
@@ -773,6 +787,26 @@ Assert-Match "o orquestrador olha os DOIS escopos" $fonte '\$temAcoesWindows'
 # Numa instalacao recem-feita o Docker ainda nao escreveu as preferencias.
 Assert-Match "a integracao cria o arquivo quando ele nao existe" $corpoEnable 'New-Item -ItemType Directory -Path \$base'
 Assert-Match "e acrescenta a chave quando ela falta" $corpoEnable 'Add-Member -NotePropertyName \$chave'
+
+Write-Host "== V5. handover, Ollama ausente e Docker sem clique =="
+# As duas metades da tela desenhavam trilhos de larguras DIFERENTES, porque o
+# install.sh media com tput e o orquestrador com Get-AfRuleWidth.
+$quantos = ([regex]::Matches($fonte, 'export COLUMNS=')).Count
+Assert-True "a largura do trilho viaja em toda delegacao" ($quantos -ge 5) "so $quantos delegacao(oes) levam COLUMNS"
+
+# Dois fechamentos: o do install.sh e o daqui, com uma calha solta entre eles.
+Assert-Match "o trilho fecha uma vez so" $fonte '\$script:TrilhoFechadoNoWsl'
+
+# "Ollama preserved" era dito sem olhar a maquina - o usuario o tinha removido
+# por conta propria ANTES de instalar o AtlasFile.
+# Literal, e nao bloco delimitado por chave: capturar "ate o primeiro }" para
+# no primeiro fechamento aninhado. Ja errei assim duas vezes nesta bancada.
+Assert-Match "so afirma preservacao do que esta aqui" $fonte ([regex]::Escape('if (Get-Tool $item.Key) {'))
+
+# winget uninstall nao aceita --override nem --custom, entao --silent nao
+# alcanca o instalador do Docker: ele abria janela esperando um clique.
+Assert-Match "o Docker e removido pelo desinstalador dele, com --quiet" $fonte ([regex]::Escape('DiretoArgs = @("uninstall", "--quiet")'))
+Assert-Match "com o winget como reserva" $fonte '\$item.Direto -and \(Test-Path \$item.Direto\)'
 
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
