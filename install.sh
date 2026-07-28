@@ -174,8 +174,15 @@ done
 # TRUECOLOR picks the 24-bit ramp only when the terminal announces support,
 # ANIM_OK gates the animated banner (never in CI, never without tput).
 if [ -t 1 ]; then IS_TTY=1; else IS_TTY=0; fi
+# ATLASFILE_FORCE_COLOR: o install.ps1 CAPTURA a saida desta execucao para ler
+# o plano e a linha-sentinela, e sob captura `[ -t 1 ]` e falso — a cor sumia
+# inteira, e a desinstalacao saia branca do "Execute the plan above?" em diante.
+# Quem tem o console e o orquestrador, e e ele quem sabe se ha cor: entao ele
+# informa. Forca so a COR; a INTERATIVIDADE continua medida por IS_TTY, que e o
+# que ela sempre mediu — barra e spinner seguem exigindo terminal de verdade.
 COLOR_OK=0
-if [ "$IS_TTY" = "1" ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then COLOR_OK=1; fi
+if { [ "$IS_TTY" = "1" ] || [ "${ATLASFILE_FORCE_COLOR:-}" = "1" ]; } \
+   && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then COLOR_OK=1; fi
 TRUECOLOR=0
 if [ "$COLOR_OK" = "1" ]; then
   case "${COLORTERM:-}" in truecolor|24bit) TRUECOLOR=1 ;; esac

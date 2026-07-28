@@ -825,6 +825,42 @@ env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TERM=dumb TTY_DEV=/de
     bash "$REPO_ROOT/install.sh" --uninstall --plan-only --dir "$SANDBOX/nao-existe" >/dev/null 2>&1 \
     && no "aceitou calado uma pasta que nao existe" || ok
 
+# Sob captura (que e como o install.ps1 roda a desinstalacao, para ler o plano e
+# a sentinela) `[ -t 1 ]` e falso e a cor sumia inteira — a tela saia branca do
+# "Execute the plan above?" em diante. Quem tem o console e o orquestrador.
+make_sandbox
+t "cor informada pelo orquestrador acende sem tty"
+out="$(env -i HOME="$SANDBOX" PATH=/usr/bin:/bin TERM=xterm-256color COLORTERM=truecolor \
+    ATLASFILE_FORCE_COLOR=1 REPO_ROOT="$REPO_ROOT" bash -c '
+    export ATLASFILE_INSTALL_LIB=1; source "$REPO_ROOT/install.sh"
+    printf "%s|%s|%s" "$COLOR_OK" "$TRUECOLOR" "$IS_TTY"')"
+assert_eq "$out" "1|1|0"
+
+# E so a COR: forcar interatividade seria acordar barra e spinner numa saida que
+# ninguem esta olhando ao vivo.
+t "mas a interatividade continua medida, nao informada"
+out="$(env -i HOME="$SANDBOX" PATH=/usr/bin:/bin TERM=xterm-256color COLORTERM=truecolor \
+    ATLASFILE_FORCE_COLOR=1 REPO_ROOT="$REPO_ROOT" bash -c '
+    export ATLASFILE_INSTALL_LIB=1; source "$REPO_ROOT/install.sh"
+    bar_capable && echo capaz || echo incapaz')"
+assert_eq "$out" "incapaz"
+
+t "sem a variavel, nada muda para quem nao tem tty"
+out="$(env -i HOME="$SANDBOX" PATH=/usr/bin:/bin TERM=xterm-256color COLORTERM=truecolor \
+    REPO_ROOT="$REPO_ROOT" bash -c '
+    export ATLASFILE_INSTALL_LIB=1; source "$REPO_ROOT/install.sh"
+    printf "%s" "$COLOR_OK"')"
+assert_eq "$out" "0"
+
+# NO_COLOR continua mandando: informar capacidade nao pode atropelar a vontade
+# explicita de quem roda.
+t "NO_COLOR vence a cor informada"
+out="$(env -i HOME="$SANDBOX" PATH=/usr/bin:/bin TERM=xterm-256color COLORTERM=truecolor \
+    ATLASFILE_FORCE_COLOR=1 NO_COLOR=1 REPO_ROOT="$REPO_ROOT" bash -c '
+    export ATLASFILE_INSTALL_LIB=1; source "$REPO_ROOT/install.sh"
+    printf "%s" "$COLOR_OK"')"
+assert_eq "$out" "0"
+
 t "a barra viva é apagada antes de qualquer mensagem"
 # Sem isto a barra vira sujeira no meio do texto — a mesma disciplina que mantém
 # o spinner longe da saída de terceiro.

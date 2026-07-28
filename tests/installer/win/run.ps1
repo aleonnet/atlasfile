@@ -858,6 +858,30 @@ for ($i = $inicio + 1; $i -lt $linhasU.Count; $i++) {
 }
 Assert-True "sem linhas em branco seguidas depois que o trilho comeca" ($duplas -eq 0) "$duplas ocorrencia(s)"
 
+Write-Host "== V8. o outro lado recebe o que precisa para desenhar igual =="
+$corpoWrap = [regex]::Match($fonte, '(?s)function Write-Wrapped.*?\n\}').Value
+$corpoHand = [regex]::Match($fonte, '(?s)function Write-Handover.*?\n\}').Value
+
+# Nada disso atravessa o wsl.exe sozinho, e sem os tres o install.sh se degrada
+# em silencio: reguas brancas, e a desinstalacao (capturada) toda branca.
+Assert-Match "o prefixo leva a largura" $fonte 'COLUMNS=\$\(Get-AfRuleWidth\)'
+Assert-Match "leva o TERM" $fonte 'TERM=xterm-256color'
+Assert-Match "leva o COLORTERM" $fonte 'COLORTERM=truecolor'
+Assert-Match "e diz que ha cor mesmo sob captura" $fonte 'ATLASFILE_FORCE_COLOR=1'
+# Anunciar truecolor sem ter seria mentir para o outro lado.
+Assert-Match "so quando ESTE lado tem truecolor" $fonte 'if \(\$AfTrueColor -and -not \$AfPlain\)'
+$semPrefixo = ([regex]::Matches($fonte, '"\$AF_CURL \$AF_SH_URL')).Count
+Assert-True "toda delegacao usa o mesmo prefixo" ($semPrefixo -eq 0) "$semPrefixo delegacao(oes) sem prefixo"
+
+# A divisoria do handover: onde um instalador entrega ao outro.
+Assert-True "existe a divisoria de handover" ($corpoHand.Length -gt 0) "Write-Handover nao existe"
+Assert-Match "ela varre a rampa como as reguas" $corpoHand 'Get-AfRampHex'
+Assert-Match "e e chamada antes de delegar" $fonte '(?s)Write-Handover "handover.*?\n\$argsSh'
+
+# So o glifo colorido, como o ok() do install.sh e o do mac-env.
+Assert-Match "so o glifo recebe cor" $corpoWrap 'Write-Host \$Glifo -ForegroundColor \$Cor -NoNewline'
+Assert-NoMatch "o texto nao e pintado junto" $corpoWrap 'Write-Host \("  " \+ \$linhas\[\$i\]\) -ForegroundColor'
+
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
 # e exatamente o estado da maquina real, e o instalador tem de ligar a chave em

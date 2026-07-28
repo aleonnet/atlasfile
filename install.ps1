@@ -1053,6 +1053,56 @@ function Write-Rule([string]$Cabecalho) {
     Write-Host ($linha + "$esc[0m")
 }
 
+# O ambiente que a outra metade precisa para desenhar IGUAL a esta.
+#
+# Nada disso atravessa o wsl.exe sozinho, e sem esses tres o install.sh se
+# degrada em silencio: sem COLORTERM ele desiste do degrade (reguas brancas),
+# sem TERM ele desiste da cor inteira, e sob captura - que e como a
+# desinstalacao roda, para ler o plano e a sentinela - `[ -t 1 ]` e falso e a
+# tela sai toda branca. Quem sabe do que o console e capaz e ESTE lado.
+#
+# Anunciar truecolor sem ter seria mentir para o outro lado, entao vai preso ao
+# $AfTrueColor - que e medido, nao presumido.
+function Get-AfEnvPrefix {
+    $partes = @("COLUMNS=$(Get-AfRuleWidth)")
+    if ($AfTrueColor -and -not $AfPlain) {
+        $partes += @("TERM=xterm-256color", "COLORTERM=truecolor", "ATLASFILE_FORCE_COLOR=1")
+    }
+    return ("export " + ($partes -join " ") + "; ")
+}
+
+# A divisoria do HANDOVER: onde este instalador entrega ao do Linux.
+#
+# Tracejada e rotulada de proposito - ela NAO e uma fase, e parecer uma seria
+# pior do que nao existir. Continua pendurada na calha, entao o trilho atravessa
+# a fronteira inteiro em vez de recomecar do outro lado.
+$BOX_DASH = [string][char]0x2504
+function Write-Handover([string]$Rotulo) {
+    $largura = Get-AfRuleWidth
+    $texto = " " + $Rotulo + " "
+    $antes = 4
+    $depois = $largura - 1 - $antes - $texto.Length
+    if ($depois -lt 4) { $depois = 4 }
+
+    if (-not $AfTrueColor -or $AfPlain) {
+        Write-Host ($BOX_T + ($BOX_DASH * $antes) + $texto + ($BOX_DASH * $depois)) -ForegroundColor DarkYellow
+        return
+    }
+    $vao = [Math]::Max(1, $antes + $texto.Length + $depois - 1)
+    $linha = (Get-AfEsc (Get-AfRampHex 0)) + $BOX_T + ($BOX_DASH * $antes)
+    for ($i = 0; $i -lt $texto.Length; $i++) {
+        $linha += (Get-AfEsc (Get-AfRampHex ([double]($antes + $i) / $vao))) + $texto[$i]
+    }
+    for ($i = 0; $i -lt $AF_RULE_SEGS; $i++) {
+        $ini = [int]($i * $depois / $AF_RULE_SEGS)
+        $fim = [int](($i + 1) * $depois / $AF_RULE_SEGS)
+        $n = $fim - $ini
+        if ($n -le 0) { continue }
+        $linha += (Get-AfEsc (Get-AfRampHex ([double]($antes + $texto.Length + $ini) / $vao))) + ($BOX_DASH * $n)
+    }
+    Write-Host ($linha + [char]27 + "[0m")
+}
+
 # Fecha o TRILHO: linha de calha, o fechamento e a folga antes do que vem fora
 # dele. Espelho do rail_end do install.sh. O -Doctor ABRIA o trilho com `+--` e
 # nunca o fechava, exatamente como o --doctor do outro lado.
@@ -1113,8 +1163,16 @@ function Write-Wrapped([string]$Glifo, [string]$Texto, [string]$Cor) {
     $linhas = Split-AfWrap $Texto $util
     for ($i = 0; $i -lt $linhas.Count; $i++) {
         Write-Host $script:Gut -ForegroundColor DarkGray -NoNewline
-        if ($i -eq 0) { Write-Host ("{0} {1}" -f $Glifo, $linhas[$i]) -ForegroundColor $Cor }
-        else          { Write-Host ("  " + $linhas[$i]) -ForegroundColor $Cor }
+        if ($i -eq 0) {
+            # So o GLIFO recebe a cor. O texto fica na cor padrao, como o ok()
+            # do install.sh e o do mac_env_install.sh: a cor significa ESTADO, e
+            # pintar a frase inteira faz o verde competir com o conteudo dela.
+            # As duas telas divergiam justamente aqui.
+            Write-Host $Glifo -ForegroundColor $Cor -NoNewline
+            Write-Host (" " + $linhas[$i])
+        } else {
+            Write-Host ("  " + $linhas[$i])
+        }
     }
 }
 function Write-Ok([string]$Texto)   { Clear-AfBar; Write-Wrapped $OK ("{0}{1}" -f $Texto, (Format-Elapsed)) Green; Show-AfBar }
@@ -1425,7 +1483,7 @@ function Test-AfDoctor {
     # O lado Linux responde por si: mesmo diagnostico, mesmo vocabulario.
     Write-Host ""
     Write-Rule "Inside WSL"
-    $cmdDoc = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- --doctor --delegated"
+    $cmdDoc = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- --doctor --delegated"
     if ($script:AfDir) { $cmdDoc += " --dir $script:AfDir" }
     $saidaDoc = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdDoc))
     if ($saidaDoc.Trim()) {
@@ -1475,7 +1533,7 @@ if ($DryRun -and -not $Uninstall) {
     }
     Write-Gut ""
     Write-Rule "Install plan (inside WSL)"
-    $cmdSeco = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
+    $cmdSeco = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
     if ($script:AfDir) { $cmdSeco += " --dir $script:AfDir" }
     $saidaSeca = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdSeco))
     foreach ($linha in (("$saidaSeca").TrimEnd() -split "`r?`n")) {
@@ -1509,7 +1567,7 @@ if ($Uninstall) {
 
     # --- 1. FATOS: nao pergunta, nao age ------------------------------------
     Start-Step "reading the removal plan from inside WSL"
-    $cmdPlano = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --plan-only"
+    $cmdPlano = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --plan-only"
     $plano = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdPlano))
     if ($script:NativeExitCode -ne 0 -or $plano -notmatch "ATLASFILE_UNINSTALL: plan-only") {
         Write-Fail "could not read the removal plan from WSL (exit $($script:NativeExitCode))"
@@ -1588,7 +1646,7 @@ if ($Uninstall) {
     # "confirmed", que ele nao tem por que dar.
     Write-Gut ""
     if ($temAcoes) {
-    $cmdExec = "export COLUMNS=$(Get-AfRuleWidth); $AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --yes $decisaoDados"
+    $cmdExec = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --yes $decisaoDados"
     $saidaExec = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdExec))
     foreach ($linha in (("$saidaExec").TrimEnd() -split "`r?`n")) {
         if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
@@ -2020,12 +2078,12 @@ if ($Branch) { $shFlags += " --branch $Branch" }
 # a linha inteira viaja como argumento unico de `bash -c`.
 $raizProjetos = if ($ProjectsRoot) { ConvertTo-AfWslPath $ProjectsRoot } else { Get-AfProjectsRoot }
 if ($raizProjetos) { $shFlags += " --projects-root '$raizProjetos'" }
-# COLUMNS exportado: sem isto o install.sh mede a largura com `tput cols`, que
-# nao ve a mesma coisa que o Get-AfRuleWidth daqui, e as duas metades da tela
-# saiam com trilhos de larguras diferentes. Com a mesma largura, o handover vira
-# UM trilho continuo em vez de dois desenhos empilhados.
-$largTrilho = Get-AfRuleWidth
-$argsSh = @($script:WslUser) + @("-e", "bash", "-c", "export COLUMNS=$largTrilho; $AF_CURL $AF_SH_URL | bash -s -- $shFlags")
+# A divisoria do handover, logo antes de entregar: daqui em diante quem escreve
+# na tela e o outro instalador, e isso precisa ficar visivel. A calha continua,
+# entao o trilho atravessa a fronteira em vez de recomecar do outro lado.
+Write-Gut ""
+Write-Handover "handover $([char]0x2504) Linux installer"
+$argsSh = @($script:WslUser) + @("-e", "bash", "-c", "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- $shFlags")
 Invoke-Native wsl $argsSh
 if ($script:NativeExitCode -ne 0) {
     Write-Fail "Install failed inside WSL (see the messages above)."
