@@ -9,7 +9,7 @@
 # one real installer, no duplicated logic.
 #
 # Parameters (when saved and run as a file; under `iex` the prompts cover it).
-# This list is a summary — `-Help` is the complete one:
+# This list is a summary - `-Help` is the complete one:
 #   -Dir PATH      where AtlasFile lives inside WSL (default: ~/AtlasFile)
 #   -ProjectsRoot PATH
 #                  where YOUR DOCUMENTS live (default: your Windows Documents)
@@ -675,13 +675,13 @@ function ConvertTo-AfWslPath([string]$Caminho) {
 function ConvertTo-AfShArg([string]$Caminho) {
     # Caminho SIMPLES viaja NU, que e exatamente como a v0.56.0 ja o mandava e
     # como foi validado em maquina real: o bash expande o `~` sozinho e nao ha
-    # espaco para proteger. Citar tudo por precaucao teria dois precos — o til
+    # espaco para proteger. Citar tudo por precaucao teria dois precos: o til
     # deixaria de expandir e a linha ganharia escapes (`\"`) que so poluem.
     if ($Caminho -match '^[A-Za-z0-9_./~-]+$') { return $Caminho }
 
     # Sobrou o que PRECISA de aspas (espaco, sobretudo). Aspas DUPLAS e nao
     # simples porque elas seguram o espaco E deixam o $HOME expandir: com aspas
-    # simples o til morreria, e o manifesto grava literalmente "~/AtlasFile" —
+    # simples o til morreria, e o manifesto grava literalmente "~/AtlasFile" e
     # o install.sh iria procurar uma pasta chamada "~".
     $v = $Caminho -replace '([\\"$`])', '\$1'
     if ($v -eq '~') { $v = "`$HOME" }
@@ -898,7 +898,7 @@ function New-AfFrame([int]$N, [int]$Total) {
     # install.sh: cometa < orbe < texto < luas. E o que faz o cometa parecer
     # SAIR DE TRAS do orbe - a celula de cauda que cai sobre uma coluna do orbe
     # e coberta por ele. Aqui o cometa era desenhado por ULTIMO e passava por
-    # cima: no quadro 17 a cauda apagava o `▀` da linha 4, coluna 14, que no
+    # cima: no quadro 17 a cauda apagava o meio-bloco da linha 4, coluna 14, que no
     # bash continua sendo orbe.
     $tri = $N % 20; if ($tri -gt 10) { $tri = 20 - $tri }
     $hlCol = 5 + $tri
@@ -1655,7 +1655,7 @@ function Test-AfDoctor {
 
     Write-Gut ""
     Write-Rule "Diagnosis (Windows side)"
-    # UMA linha, como o placar do install.sh (`✔ N ok  ! N to watch  ✘ N broken`).
+    # UMA linha, como o placar do install.sh (check N ok / ! N to watch / x N broken).
     # Sem o -NoNewline o Write-Gut quebrava a linha depois do "N ok" e o resto do
     # placar saia numa segunda linha, essa SEM calha.
     Write-Gut ("{0} {1} ok" -f $OK, $nOk) Green -NoNewline
@@ -1743,14 +1743,14 @@ if ($Uninstall) {
         # do Docker Desktop e antes de o WSL ficar utilizavel deixa um Docker
         # orfao que o usuario nao tinha. Mas "nao consegui ler o plano" NAO prova
         # que nao ha instalacao do outro lado: o WSL pode estar vivo, com
-        # AtlasFile rodando dentro, e so a comunicacao ter falhado — e ai remover
+        # AtlasFile rodando dentro, e so a comunicacao ter falhado - e ai remover
         # o Docker Desktop apaga o runtime de uma instalacao que existe. E a
         # mesma classe do defeito da v0.55.0, em que um "nao" do usuario virava
         # um Docker Desktop apagado.
         #
         # O manifesto tambem nao resolve: `install_dir` so passou a ser gravado
         # na v0.55.0, entao "ausente" significa tanto "nunca delegou" quanto
-        # "instalado por uma versao anterior" — que pode ter WSL cheio.
+        # "instalado por uma versao anterior", que pode ter WSL cheio.
         #
         # Entao o orfao e RELATADO, nunca removido: e a mesma disciplina que este
         # projeto ja aplica ao Ollama no Linux e ao Homebrew, que sao listados
@@ -2330,7 +2330,7 @@ Clear-AfBar
 $dur = [int]((Get-Date) - $script:RunStart).TotalSeconds
 $durTexto = if ($dur -ge 60) { "{0}m{1:d2}s" -f [int]($dur / 60), ($dur % 60) } else { "${dur}s" }
 # AF-FIM-DO-TRILHO: esta linha e o fechamento. Daqui para baixo o trilho JA
-# FECHOU — aqui, ou do lado do install.sh, que fecha o dele antes do painel — e
+# FECHOU - aqui, ou do lado do install.sh, que fecha o dele antes do painel - e
 # o relatorio final sai sem calha, que e o desenho do mac-env.
 if ($script:TrilhoFechadoNoWsl) { Write-Host "" } else { Close-AfRail }
 Write-Note ("AtlasFile is up in {0}" -f $durTexto)

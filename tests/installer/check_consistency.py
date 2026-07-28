@@ -661,6 +661,40 @@ def _aspas_abertas(texto):
     return achados
 
 
+def check_ascii_only(problems):
+    """O install.ps1 tem de ser ASCII PURO, byte a byte.
+
+    Nao e preciosismo: medido no Windows 11 com Windows PowerShell 5.1, UTF-8
+    sem BOM e lido como ANSI e o parser morre no primeiro glifo multibyte, numa
+    cascata de "Missing closing ')'" que aponta para linhas erradas. Adicionar
+    BOM conserta o `-File` e quebra o `irm | iex`, porque a string passa a
+    comecar com U+FEFF. ASCII puro e a unica forma que sobrevive aos DOIS
+    caminhos de entrega, e por isso os glifos do arquivo sao declarados por code
+    point ([char]0x2588 e afins).
+
+    Isto ja existia no job Windows do CI e em NENHUM lugar local: eu enchi os
+    comentarios de travessao, `checkmark` e meio-bloco durante uma auditoria, a
+    bancada inteira passou verde na minha maquina E na VM, e o CI reprovou com
+    30 bytes nao-ASCII. Guarda que so o CI ve custa uma volta de push a cada
+    descuido.
+    """
+    caminho = os.path.join(ROOT, PS)
+    with open(caminho, "rb") as fh:
+        octetos = fh.read()
+    ruins = {}
+    linha = 1
+    for byte in octetos:
+        if byte == 0x0A:
+            linha += 1
+        elif byte > 127:
+            ruins[linha] = ruins.get(linha, 0) + 1
+    if ruins:
+        onde = ", ".join("linha %d (%dx)" % (n, q) for n, q in sorted(ruins.items())[:8])
+        problems.append("%s  tem %d byte(s) nao-ASCII em %d linha(s) — o PowerShell 5.1 "
+                        "le o arquivo como ANSI e o parse quebra em cascata: %s"
+                        % (PS, sum(ruins.values()), len(ruins), onde))
+
+
 def check_quotes(problems):
     """Nenhuma linha abre aspa sem fechar, no instalador e na bancada.
 
@@ -686,6 +720,7 @@ def main():
     check_gutter_holes(problems)
     check_glyph_shadowing(problems)
     check_singular_nouns(problems)
+    check_ascii_only(problems)
     check_quotes(problems)
     check_call_before_declaration(problems)
     check_manifest_keys(problems)
