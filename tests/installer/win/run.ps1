@@ -842,12 +842,21 @@ Assert-True "e quem ecoa apara o fim antes de dividir" ($semTrim -eq 0) "$semTri
 # branco seguidas em lugar nenhum.
 $sb = New-UninstallSandbox @("docker`tcreated", "wsl`tcreated")
 $out = Run-Installer @("-Yes", "-Uninstall", "-RemoveDeps", "-KeepData")
+# A partir do TRILHO, e nao do topo da tela: o banner emoldura a arte com uma
+# linha em branco de cada lado, e a propria grade tem a fileira vazia de cima
+# (por onde o cometa passa) e a de baixo (as luas). Isso e desenho, nao buraco -
+# a primeira versao desta guarda acusava justamente essas quatro e reprovava
+# codigo correto. O assunto dela e o trilho.
 $linhasU = $out -split "`r?`n"
+$inicio = 0
+for ($i = 0; $i -lt $linhasU.Count; $i++) {
+    if ($linhasU[$i].TrimStart().StartsWith($calhaV)) { $inicio = $i; break }
+}
 $duplas = 0
-for ($i = 1; $i -lt $linhasU.Count; $i++) {
+for ($i = $inicio + 1; $i -lt $linhasU.Count; $i++) {
     if ($linhasU[$i].Trim() -eq "" -and $linhasU[$i-1].Trim() -eq "") { $duplas++ }
 }
-Assert-True "sem linhas em branco seguidas na desinstalacao" ($duplas -eq 0) "$duplas ocorrencia(s)"
+Assert-True "sem linhas em branco seguidas depois que o trilho comeca" ($duplas -eq 0) "$duplas ocorrencia(s)"
 
 Write-Host "== W. a integracao Docker<->WSL e ligada sozinha =="
 # Pelo caminho REAL: o stub do wsl diz que o docker nao responde la dentro, que
