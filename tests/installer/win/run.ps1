@@ -414,7 +414,10 @@ Write-Host "== H. o script entregue ao WSL chega INTEIRO, nao partido em palavra
 $sb = New-Sandbox
 $out = Run-Installer @("-Yes", "-EnableAuth", "-Dir", "/root/Outro")
 $calls = Calls
-Assert-Match "o -c chega como UM argumento citado" $calls '-c "curl -fsSL'
+# Ancorada na PROPRIEDADE (a aspa que abre logo depois do -c), e nao no que vem
+# dentro: a largura do trilho passou a viajar antes do curl e a versao anterior,
+# presa a "-c \"curl -fsSL", reprovou codigo correto.
+Assert-Match "o -c chega como UM argumento citado" $calls '-c "[^"]*curl -fsSL'
 Assert-Match "as flags do install.sh viajam no mesmo argumento" $calls 'bash -s -- --no-open --delegated --yes --enable-auth'
 Assert-NoMatch "o curl nao roda pelado" $out "curl: try"
 # Um banner por execucao: o do install.sh nao pode ser desenhado logo depois do
@@ -721,8 +724,12 @@ Assert-Match "a caixa cresce com o conteudo" $corpoPanel '\$l\.Length -gt \$larg
 Assert-Match "a barra e apagada antes de delegar ao WSL" $fonte '(?s)takes over from here.{0,400}?Clear-AfBar'
 
 # O trilho fechava DEPOIS da caixa, deixando uma calha solta no fim.
-$fim = [regex]::Match($fonte, '(?s)Close-AfRail\s*\r?\n\s*Write-Note \("AtlasFile is up.*?Write-Panel').Value
-Assert-True "o trilho fecha ANTES da caixa" ($fim.Length -gt 0) "a caixa ainda vem antes do fechamento"
+# ORDEM, medida por posicao: o veredito sai antes da caixa. A versao anterior
+# casava o texto exato do fechamento e reprovou quando ele virou condicional -
+# a propriedade nao tinha mudado, so a forma.
+$posNota  = $fonte.IndexOf('Write-Note ("AtlasFile is up')
+$posCaixa = $fonte.IndexOf('Write-Panel @(')
+Assert-True "o veredito sai ANTES da caixa" (($posNota -gt 0) -and ($posCaixa -gt $posNota)) "nota em $posNota, caixa em $posCaixa"
 
 # Sem --accept-license o contrato do Docker e pedido no PRIMEIRO USO, e e ali
 # que o usuario precisa clicar - o --silent so cala o instalador.
