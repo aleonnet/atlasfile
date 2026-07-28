@@ -15,6 +15,8 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 ```
 
 O instalador verifica pré-requisitos, clona em `~/AtlasFile`, cria o `.env` (perguntando só a pasta de projetos), sobe a stack e abre a interface — o onboarding guia o resto. Flags úteis: `--dir`, `--projects-root`, `--yes` (não-interativo), `--no-open`. Re-executar atualiza a instalação.
+
+No **Windows** o AtlasFile é instalado dentro do WSL, mas **seus documentos ficam no disco do Windows**, na sua pasta Documentos (`…\Documents\AtlasFileProjects`) — visíveis no Explorer e independentes da distro. Flags do `install.ps1`: `-Dir`, `-ProjectsRoot`, `-InstallDeps` (instala WSL2 e Docker Desktop sem perguntar), `-Yes`, `-EnableAuth`. O Docker Desktop é instalado em silêncio, com o contrato de licença aceito na instalação, e a integração com o WSL é ligada automaticamente.
 - `--install-deps` — instala pré-requisitos que faltarem (Docker, git) sem perguntar
 - **Modelo 100% local não faz parte da instalação**: o download são vários GB e tiraria a previsibilidade da duração. O painel final mostra o comando (`ollama pull …`) para habilitá-lo depois
 

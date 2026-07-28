@@ -15,6 +15,47 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.56.0] - 2026-07-28
+
+### Validação em máquina real: macOS e Windows 11
+
+A v0.55.0 entregou a orquestração dos dois lados com CI verde. Esta versão é o que **o uso real encontrou** — sete rodadas de instalação e desinstalação num Windows 11 e num macOS de verdade. Nenhum destes defeitos aparecia na bancada.
+
+#### Impediam a instalação
+
+- **`winget` instalava o Docker Desktop com INTERFACE.** Faltava `--silent`, e `--disable-interactivity` desliga os prompts *do winget*, não a janela do instalador — que ficava esperando um clique em "Close" e devolvia falha mesmo tendo instalado. A chamada de remoção já passava `--silent`; a de instalação não. Somado a isso, `--accept-license` aceita o contrato **na instalação** em vez de no primeiro uso, e `3010` passa a contar como sucesso-com-reinício
+- **A integração Docker↔WSL não subia sozinha.** Agora é ligada em `%APPDATA%\Docker` (com o questionário de boas-vindas suprimido junto) e o Docker é reiniciado. Formato interno, sem contrato público: arquivo ausente, JSON inválido ou esquema desconhecido não derrubam nada
+- **`git pull --ff-only` matava a instalação num clone divergente.** Recusar está certo; morrer ali não. Sem trabalho seu dentro, realinha e **diz** que realinhou; com trabalho dentro, para nomeando os arquivos
+- **Desinstalar sem nada instalado abortava** e deixava o Docker Desktop instalado, mesmo com `-RemoveDeps`. Delegado, a ausência deixa de ser erro, e o orquestrador só para quando os **dois** escopos estão vazios
+
+#### Diziam coisas que não eram verdade
+
+- **O log era acumulado entre execuções**: o "last lines of…" mostrou um `winget uninstall` bem-sucedido de **outra** execução, logo abaixo de "Nothing was removed."
+- **"Ollama preserved"** era dito sem olhar a máquina — o Ollama tinha sido removido pelo usuário antes de instalar
+- **O volume de dados era apagado em silêncio**, sem linha própria, embora o plano o listasse em destaque
+- **O `--doctor` dizia "package manager: none"** em qualquer macOS, com Homebrew instalado
+- **"has local changes"** nunca dizia *qual* mudança — e o que travava a pasta era um `.env.backup` do próprio instalador
+
+#### Onde os documentos ficam, no Windows
+
+- **Eles nasciam em `/root/Documents` dentro da distro**: invisíveis no Explorer e reféns de um `wsl --unregister`. Agora ficam na pasta **Documentos do Windows**, com `-ProjectsRoot` para escolher outra
+- A conversão do caminho é **léxica** (`C:\x` → `/mnt/c/x`) e o resultado é **conferido**: numa reinstalação o `wslpath` devolveu um ponto de montagem do Docker Desktop no lugar da pasta
+
+#### A tela
+
+- **Um trilho só, atravessando a fronteira**: a largura, o `TERM`, o `COLORTERM` e a cor-sob-captura viajam na delegação. Sem eles o lado Linux se degradava em silêncio — réguas brancas, desinstalação inteira sem cor
+- **Divisória do handover** (`├┄┄ handover ┄ Linux installer ┄┄`), tracejada e rotulada, com a mesma rampa
+- **A régua do Windows varre a rampa do produto**, como a do `install.sh` — antes eram três cores fixas de 16
+- **Rastro da animação, mojibake, `[?]` na barra, caixa vazando, calha furada em nove pontos e o log do desinstalador do Docker por cima do spinner** — todos corrigidos, cada um com guarda
+- **Falha de rede não explode mais na cara de quem instala**: é reconhecida pelo que a ferramenta escreveu e explicada em três linhas, dizendo que reexecutar é seguro
+
+#### Bancada
+
+- **196 asserções no bash** (eram 116) e **~200 no Windows** (eram 73). Toda guarda nova foi provada contra uma cópia mutada — se não reprova o defeito, não entra
+- Guardas locais para o que só o CI enxergava: substantivo plural em nome de função (`PSUseSingularNouns`), aspa não fechada (que quebra o *parse* e aponta para a linha errada) e variável local sombreando glifo global (`$ok` vs `$OK`, que já mordeu duas vezes)
+
+---
+
 ## [0.55.0] - 2026-07-27
 
 Ciclo aberto por um `-Uninstall -RemoveDeps` rodado numa máquina Windows 11 real. O log mostrou que **o plano que o usuário confirma descrevia apenas o lado WSL**, enquanto o lado Windows agia depois, sem plano e sem confirmação. Ao ler os dois instaladores por inteiro apareceu um defeito pior, que ninguém tinha visto.

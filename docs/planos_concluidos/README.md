@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.56.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [installer_validacao_maquina_real_macos_windows_v0560](installer_validacao_maquina_real_macos_windows_v0560.plan.md) | Sete rodadas de instalação e desinstalação num macOS e num Windows 11 **reais** — a única prova que o CI não dá. Vinte e um defeitos que a bancada não via: `winget` instalando o Docker com interface, integração WSL que não subia, clone divergente matando a instalação, log acumulado entre execuções mostrando evidência de *outra* execução, documentos nascendo dentro da distro, e a tela do lado Linux degradada em silêncio por falta de `TERM`/`COLORTERM`. Bancadas 116→196 e 73→~200, toda guarda provada contra cópia mutada |
+
+---
+
 ## 0.55.0
 
 | # | Plano | Escopo |
