@@ -691,6 +691,140 @@ done
 # pasta era um backup do PROPRIO instalador, e nao havia como o usuario saber
 # disso pela tela — ele precisou de ajuda para descobrir.
 make_sandbox
+# ── O volume que o --keep-data guardou tem de poder VOLTAR ──────────────────
+# O plano promete, em letras, "a future reinstall reuses it". A instalacao
+# seguinte recusava o volume como "de outra instancia", e os dois remedios da
+# mensagem nao devolvem o dado: `--dir` diferente muda o nome do projeto compose
+# (o volume preservado fica orfao) e `docker volume rm` apaga o que se pediu
+# para guardar. Medido numa VM Ubuntu: --keep-data era um beco sem saida.
+make_sandbox
+t "o volume preservado e reconhecido na instalacao seguinte, no MESMO diretorio"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!senha9
+  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile && printf REUSA')"
+case "$out" in *REUSA*) ok ;; *) no "nao reconheceu o proprio registro: $out" ;; esac
+
+# A SENHA e obrigatoria, nao acessorio: o indice de seguranca do OpenSearch nasce
+# com a senha da primeira subida e nao muda. Reusar o volume com senha nova
+# levanta cinco containers que nao funcionam — "Authentication finally failed
+# for admin" —, que e PIOR do que a falha alta que existia antes. Medido na VM.
+t "e a senha do volume volta junto, senao o reuso sobe quebrado"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile "Af!senhaDoVolume9"
+  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile
+  printf "SENHA:%s" "$AF_KEPT_VOLUME_PASS"')"
+case "$out" in *"SENHA:Af!senhaDoVolume9"*) ok ;; *) no "a senha nao voltou: $out" ;; esac
+
+# A guarda que faltava: eu tinha testado so as funcoes de registro, e o mutante
+# que faz o .env ignorar a senha do volume — o defeito EXATO que sobe cinco
+# containers quebrados — passou verde. O ponto de consumo tem de ser alcancavel.
+t "a senha do volume reusado e a que vai para o .env"
+out="$(run_case -- 'AF_REUSE_OS_PASS="Af!doVolume9"; af_os_password')"
+case "$out" in *"Af!doVolume9"*) ok ;; *) no "o .env ignoraria a senha do volume: $out" ;; esac
+
+t "e sem reuso ela e gerada, nunca vazia"
+out="$(run_case -- 'p="$(af_os_password)"; case "$p" in Af!??????????*9) printf GERADA ;; esac')"
+case "$out" in *GERADA*) ok ;; *) no "senha gerada fora do formato: $out" ;; esac
+
+t "e o registro nasce ilegivel para os outros"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!senha9
+  ls -l "$AF_KEPT_VOLUMES" | cut -c1-10')"
+case "$out" in *-rw-------*) ok ;; *) no "permissao frouxa num arquivo com senha: $out" ;; esac
+
+# O diretorio faz parte da chave: reconhecer so o nome do volume seria a adocao
+# silenciosa que a guarda existe para impedir.
+t "mas NAO em outro diretorio — adocao silenciosa continua barrada"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!s9
+  af_kept_volume_claim  atlasfile_opensearch_data /home/x/Outro || printf BARRADO')"
+case "$out" in *BARRADO*) ok ;; *) no "adotou volume de outro diretorio: $out" ;; esac
+
+t "e o reuso e de UMA vez, nao permissao eterna"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!s9
+  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile >/dev/null
+  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile || printf CONSUMIDO')"
+case "$out" in *CONSUMIDO*) ok ;; *) no "o registro sobreviveu ao reuso: $out" ;; esac
+
+# Apagado o indice, nao ha reuso a prometer.
+t "apagar o volume esquece o registro"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!s9
+  af_kept_volume_forget atlasfile_opensearch_data
+  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile || printf ESQUECIDO')"
+case "$out" in *ESQUECIDO*) ok ;; *) no "registro sobreviveu ao purge: $out" ;; esac
+
+# O registro so vale se SOBREVIVER ao rm-state, que apaga o manifesto no fim da
+# desinstalacao. Ele mora no mesmo diretorio de proposito: o `rmdir` falha com
+# ele dentro, e e isso que o mantem vivo para a instalacao seguinte.
+t "o registro sobrevive ao rm-state da desinstalacao"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  AF_HOST_MANIFEST="$AF_STATE_DIR/host-prereqs"
+  mkdir -p "$AF_STATE_DIR"; printf "docker\tcreated\n" > "$AF_HOST_MANIFEST"
+  af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!s9
+  UN_ACTIONS="rm-state"; LOG_FILE="$SANDBOX/log"; un_execute
+  test -f "$AF_HOST_MANIFEST" || printf "MANIFESTO_FOI "
+  test -f "$AF_KEPT_VOLUMES" && printf "REGISTRO_VIVO"')"
+case "$out" in *"MANIFESTO_FOI REGISTRO_VIVO"*) ok ;; *) no "o registro nao sobreviveu: $out" ;; esac
+
+# ── O socket do Docker que so responde com sudo ─────────────────────────────
+# Medido numa VM Ubuntu limpa: logo apos instalar, o grupo `docker` ainda nao
+# vale nesta sessao e `docker info` falha sem sudo. O un_collect trancava TODO o
+# retrato atras dele, entao o plano dizia "0 container(s)" com cinco no ar e o
+# VOLUME sumia das duas secoes — junto com a garantia de que o usuario decide
+# sobre o indice. E a janela exata em que alguem desinstala.
+make_sandbox
+t "o shim alcanca o socket quando ele so responde com sudo"
+out="$(run_case STUB_RC_docker=1 -- 'af_docker_shim_linux && docker info && printf SHIM_OK' 2>&1)"
+case "$out" in *SHIM_OK*) ok ;; *) no "nao instalou o shim: $out" ;; esac
+
+t "e desiste calado quando nem com sudo responde"
+out="$(run_case STUB_RC_docker=1 STUB_RC_sudo=1 -- 'af_docker_shim_linux || printf SEM_SHIM' 2>&1)"
+case "$out" in *SEM_SHIM*) ok ;; *) no "devia desistir: $out" ;; esac
+
+# O shim e READ-ONLY: quem desinstala nao pode adicionar ninguem a grupo nenhum
+# nem gravar artefato. Isso separa af_docker_shim_linux de
+# ensure_docker_group_linux, que faz as duas coisas de proposito.
+# USER vem definido de proposito: sem ele o `env -i` da bancada faz um usermod
+# introduzido por engano morrer em "unbound variable", e a guarda reprovaria
+# pelo motivo ERRADO — parecendo verde sobre um efeito colateral que ela nunca
+# chegou a medir.
+t "o shim nao mexe em grupo nem escreve manifesto"
+out="$(run_case STUB_RC_docker=1 USER=teste -- '
+  AF_HOST_MANIFEST="$SANDBOX/host-prereqs"
+  af_docker_shim_linux
+  printf "USERMOD:%s " "$(grep -c usermod "$CALLS" || true)"
+  printf "MANIFESTO:%s" "$(test -f "$AF_HOST_MANIFEST" && echo sim || echo nao)"' 2>&1)"
+case "$out" in *"USERMOD:0 MANIFESTO:nao"*) ok ;; *) no "teve efeito colateral: $out" ;; esac
+
+# A stack nao saiu: apagar o clone e o manifesto DEPOIS disso deixa containers,
+# volume e imagens orfaos SEM ferramenta para remove-los. Medido numa VM Ubuntu.
+t "a execucao PARA quando a stack nao sai, e o clone sobrevive"
+out="$(run_case -- '
+  C="$SANDBOX/c9"; mkdir -p "$C/.git"; printf "x\n" > "$C/docker-compose.yml"
+  AF_STATE_DIR="$SANDBOX/estado"; AF_HOST_MANIFEST="$AF_STATE_DIR/host-prereqs"
+  mkdir -p "$AF_STATE_DIR"; printf "docker\tcreated\n" > "$AF_HOST_MANIFEST"
+  UN_DIR="$C"; LOG_FILE="$SANDBOX/log"
+  un_compose_down() { return 1; }
+  UN_ACTIONS="compose-down
+rm-clone
+rm-state"
+  un_execute
+  test -d "$C" && printf "CLONE_VIVO "
+  test -f "$AF_HOST_MANIFEST" && printf "MANIFESTO_VIVO"' 2>&1)"
+case "$out" in *"CLONE_VIVO MANIFESTO_VIVO"*) ok ;; *) no "seguiu apagando apos a falha: $out" ;; esac
+
+t "e diz que parou de proposito, em vez de sumir com o assunto"
+printf '%s' "$out" | grep -q 'stopping here, on purpose' && ok || no "nao explicou a parada: $out"
+
 t "o plano diz O QUE suja o clone, nao so que esta sujo"
 out="$(run_case PATH=/usr/bin:/bin -- '
   C="$SANDBOX/c1"; mkdir -p "$C"; cd "$C"; git init -q

@@ -15,6 +15,44 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.56.2] - 2026-07-28
+
+### A desinstalação apagava os meios de reverter e falhava em reverter
+
+Primeiro E2E do `install.sh` **em Linux com stack de verdade no ar** — VM Ubuntu 24.04 ARM64 limpa, sem Docker. Todas as validações anteriores (v0.54.0 a v0.56.1) foram macOS ou Windows, e por isso este defeito nunca apareceu.
+
+**O que foi medido.** Numa desinstalação logo após a instalação, o resultado foi: cinco containers **ainda rodando**, volume e três imagens construídas **ainda lá**, e o clone e o manifesto **apagados**. O usuário ficava com a stack no ar e sem nenhuma ferramenta para removê-la.
+
+A cadeia:
+
+- **O plano nascia cego.** O `un_collect` trancava *todo* o retrato do Docker atrás de um `docker info` **sem sudo**. No Linux o grupo `docker` só vale no próximo login — o próprio instalador avisa isso —, então na janela entre instalar e relogar, que é exatamente quando alguém desinstala, o plano dizia **"0 container(s)"** com cinco no ar
+- **O volume sumia das duas seções**, e com ele a única garantia desta tela que não tem default: `--uninstall --yes` deixou de exigir `--purge-data`/`--keep-data` e seguiu em frente
+- **`docker compose down` falhava** por permissão e **a execução continuava**, apagando o clone (que contém o `docker-compose.yml`, a única forma de descer a stack) e o manifesto (o registro do que criamos)
+
+**As correções:**
+
+- **`af_docker_shim_linux`** — o shim que torna o `docker` alcançável nesta sessão, extraído do `ensure_docker_group_linux` e **sem efeito colateral nenhum**: não mexe em grupo, não escreve manifesto e não aborta. Desinstalar que adiciona alguém a um grupo seria o oposto do contrato
+- **`run_uninstall` monta o retrato antes de coletar os fatos** e, quando nem com sudo alcança, **diz na tela** que o plano não enxerga containers nem volumes, em vez de mentir com zero
+- **`un_execute` para na falha da stack.** Nada que sirva de ferramenta de recuperação sai antes de o que ela remove ter saído. A tela explica a parada e o que fazer
+
+**Validado na VM, com stack real**, os cinco caminhos: plano em `--dry-run` (5 containers e o volume, onde antes eram 0 e nenhum), exigência de decisão explícita em headless, `--keep-data` (volume sobrevive, imagens upstream preservadas, documentos intactos), `--purge-data` (índice apagado) e `--purge-data --remove-deps` (Docker e grupo revertidos, `git` preexistente preservado, documentos intactos).
+
+**Bancada: 197 → 202 asserções**, com o shim, a ausência de efeito colateral e a barreira do `un_execute` provados contra cópia mutada.
+
+### `--keep-data` era um beco sem saída
+
+O plano prometia, em letras, *"a future reinstall reuses it"* — e a instalação seguinte **recusava** o volume como *"data from another instance"*. Como o `--keep-data` remove o clone, a próxima instalação é sempre "nova" e a guarda sempre disparava. Os dois remédios sugeridos não devolvem o dado: `--dir` diferente muda o nome do projeto compose (e o volume preservado fica órfão), e `docker volume rm` apaga justamente o que se pediu para guardar.
+
+Faltava um sinal que separasse *"volume que **nós** preservamos"* de *"volume de outra instância"* — sinal que a desinstalação tinha e jogava fora. Agora ela anota o volume preservado em `~/.atlasfile/kept-volumes` (fora do manifesto, que o `rm-state` apaga), e a instalação seguinte reusa **quando o diretório é o mesmo**. O registro é consumido no reuso: uma instalação futura, sem desinstalação no meio, volta a esbarrar na guarda — reuso é de uma vez, não permissão eterna.
+
+**A senha vai junto, e isso não é detalhe.** A primeira tentativa de conserto liberou só a guarda, e o resultado medido foi pior que o bug: o índice de segurança do OpenSearch nasce com a senha da primeira subida e não muda, então a instalação nova gerava outra senha, **subia cinco containers e não funcionava** — `Authentication finally failed for admin` em todas as requisições. Uma falha alta e clara é melhor que uma stack quebrada em silêncio. O registro guarda a senha (arquivo `600`), a instalação a restaura, e o plano de remoção diz isso ao usuário em vez de esconder.
+
+Guardar credencial em disco não é novidade aqui: a desinstalação já preserva backups de `.env` anunciando, no próprio plano, que eles *"hold the OpenSearch password and API key of earlier installs"*.
+
+**Validado na VM**, o fluxo inteiro: instala → `--uninstall --keep-data` → reinstala. Mesmo volume (`CreatedAt` idêntico), mesma senha, API `{"status":"ok"}`, UI 200 e **zero** falhas de autenticação.
+
+---
+
 ## [0.56.1] - 2026-07-28
 
 ### Auditoria de paridade entre os dois instaladores

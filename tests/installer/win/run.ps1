@@ -196,7 +196,17 @@ exit /b 0
     $env:AF_SH_PLAN_KEEP = "your documents in /root/Documents/AtlasFileProjects - never touched"
     $env:AF_WSL_INSTALLED = "1"; $env:AF_WSL_RC = "0"; $env:AF_WSL_INSTALL_RC = "0"; $env:AF_WSL_INSTALL_FIXES = "0"; $env:AF_WSL_NO_DOCKER = "0"
     $env:AF_WSL_NO_DISTRO = "0"; $env:AF_WSL_DEAD_DISTRO = "0"; $env:AF_WSL_UNINIT = "0"; $env:AF_WSL_HANG = "0"
-    $env:ATLASFILE_WSL_PROBE_MS = "2000"   # teto curto na bancada
+    # Teto GENEROSO por padrao. Ele era 2000 para todos os cenarios, e isso
+    # tornava FLAKY todo caminho que espera o WSL funcionar: o stub responde na
+    # hora, mas num runner do CI carregado o proprio Start-Process + WaitForExit
+    # passa de 2s. Aconteceu — o job Windows reprovou com "the distro is
+    # installed but did not answer in time" contra um stub que so faz `echo`, e
+    # a falha apareceu vinte cenarios adiante, no teste do arquivo de
+    # preferencias do Docker, porque a fase 2 nunca chegou a rodar.
+    #
+    # Quem precisa de teto curto e SO o cenario que testa o estouro, e ele o
+    # define por conta propria.
+    $env:ATLASFILE_WSL_PROBE_MS = "20000"
     $env:AF_DOCKER_PRESENT = "1"; $env:AF_DOCKER_INFO_RC = "0"
     $env:AF_OLLAMA_PRESENT = "1"; $env:AF_OLLAMA_DOWN = "0"
     $env:ATLASFILE_DOCKER_WAIT = "3"   # sem isso o cenario D esperaria 5 minutos reais
@@ -276,6 +286,10 @@ Write-Host "== A5. distro listada que NAO responde: nao trava e aponta virtualiz
 # mesma maquina em que o Docker acusava "Virtualization support not detected".
 $sb = New-Sandbox
 $env:AF_WSL_HANG = "1"
+# ESTE cenario e o dono do teto curto: e ele que prova que a sonda desiste em
+# vez de pendurar. Nos demais o teto e generoso, senao um runner lento reprova
+# caminhos que nao tem nada de errado.
+$env:ATLASFILE_WSL_PROBE_MS = "2000"
 $inicio = Get-Date
 $out = Run-Installer @("-Yes")
 $decorrido = ((Get-Date) - $inicio).TotalSeconds

@@ -784,22 +784,41 @@ wait_docker_daemon() {
 # Linux: docker installed but the current user is not in the docker group yet.
 # A bash function shim covers every `docker ...` call in the REST of this script;
 # group membership is fixed for future logins.
+# Só o SHIM, sem efeito colateral nenhum: nada de usermod, nada de manifesto,
+# nada de pedir senha. Existe separado porque a DESINSTALAÇÃO também precisa
+# alcançar o socket, e ela não pode adicionar ninguém a grupo nenhum nem
+# registrar artefato — desinstalar que cria coisa é o oposto do contrato.
+#
+# Devolve 0 quando o `docker` passa a responder nesta sessão.
+af_docker_shim_linux() {
+  docker info >/dev/null 2>&1 && return 0
+  command -v docker >/dev/null 2>&1 || return 1
+  command -v sudo >/dev/null 2>&1 || return 1
+  # shellcheck disable=SC2033  # `docker` aqui é o binário real, não o shim
+  sudo -n docker info >/dev/null 2>&1 || return 1
+  # Resolve the real binary BEFORE the shim shadows the name. The previous
+  # form was `sudo command docker "$@"`, which looks right but there is no
+  # /usr/bin/command on Debian/Ubuntu (verified in ubuntu:24.04) — every
+  # later `docker ...` would have died with "sudo: command: command not
+  # found" on exactly the platform this shim exists for.
+  AF_DOCKER_BIN="$(command -v docker)"
+  docker() { sudo "$AF_DOCKER_BIN" "$@"; }
+  return 0
+}
+
 ensure_docker_group_linux() {
   docker info >/dev/null 2>&1 && return 0
-  # shellcheck disable=SC2033  # `docker` below is the real binary, not the shim
-  if sudo -n docker info >/dev/null 2>&1 || { ensure_sudo && sudo docker info >/dev/null 2>&1; }; then
-    # Resolve the real binary BEFORE the shim shadows the name. The previous
-    # form was `sudo command docker "$@"`, which looks right but there is no
-    # /usr/bin/command on Debian/Ubuntu (verified in ubuntu:24.04) — every
-    # later `docker ...` would have died with "sudo: command: command not
-    # found" on exactly the platform this shim exists for.
-    AF_DOCKER_BIN="$(command -v docker)"
-    docker() { sudo "$AF_DOCKER_BIN" "$@"; }
-    if sudo usermod -aG docker "$USER" 2>/dev/null; then host_set docker_group created; fi
-    info "added ${USER} to the docker group — takes effect on your next login"
-    return 0
+  # O `ensure_sudo` fica AQUI e não dentro do shim: no caminho de INSTALAÇÃO
+  # não ter privilégio é fatal (sem daemon não há o que instalar), e ali pedir
+  # a senha é legítimo. O shim, que a desinstalação também usa, não pergunta
+  # nada e nunca aborta.
+  if ! af_docker_shim_linux; then
+    ensure_sudo || return 1
+    af_docker_shim_linux || return 1
   fi
-  return 1
+  if sudo usermod -aG docker "$USER" 2>/dev/null; then host_set docker_group created; fi
+  info "added ${USER} to the docker group — takes effect on your next login"
+  return 0
 }
 
 # Ollama saiu do instalador: puxar um modelo e um download de varios GB e
@@ -846,6 +865,18 @@ hint_upgrades() {
 # answer, so --uninstall can only ever remove what it can prove it made.
 AF_STATE_DIR="${HOME}/.atlasfile"
 AF_HOST_MANIFEST="${AF_STATE_DIR}/host-prereqs"
+# Volumes que uma desinstalação preservou DE PROPÓSITO.
+#
+# Existe porque o plano promete, em letras, "a future reinstall reuses it" — e a
+# instalação seguinte recusava o volume como se fosse de outra instância, com
+# dois remédios que não devolvem o dado: `--dir` diferente muda o nome do
+# projeto compose (e o volume preservado fica órfão) e `docker volume rm` apaga
+# justamente o que se pediu para guardar. O `--keep-data` era um beco sem saída.
+#
+# Fica FORA do manifesto porque o `rm-state` apaga o manifesto no fim da
+# desinstalação, e este registro precisa sobreviver exatamente para a próxima
+# instalação. O `rmdir` do rm-state falha com ele dentro, que é o desejado.
+AF_KEPT_VOLUMES="${AF_STATE_DIR}/kept-volumes"
 AF_MANIFEST_NAME=".atlasfile-install-manifest"
 # Declarados aqui porque a BIBLIOTECA os referencia: só ganham valor na fase 2
 # (o caminho da instalação) e na fase 3 (se o .env já existia). Sem isto, sob
@@ -878,6 +909,74 @@ manifest_set() { # <file> <key> <value> — merge, never downgrading `created`
 
 host_get() { manifest_get "$AF_HOST_MANIFEST" "$1"; }
 host_set() { manifest_set "$AF_HOST_MANIFEST" "$1" "$2"; }
+
+# Anota que ESTA desinstalação preservou este volume, para este diretório.
+# Best-effort como o resto da escrituração: nunca derruba uma desinstalação.
+# A SENHA vai junto, e é obrigatório: o índice de segurança do OpenSearch nasce
+# na primeira subida com a senha daquele momento e não muda depois. Preservar o
+# volume sem ela produz uma instalação que SOBE e não funciona — cinco
+# containers no ar e `Authentication finally failed for admin` no log, medido
+# numa VM Ubuntu. Uma falha alta e clara é melhor que isso; um reuso que
+# funciona é melhor que as duas.
+#
+# Guardar credencial em disco aqui não é novidade no produto: a própria
+# desinstalação preserva backups de `.env` dizendo, no plano, que eles "hold the
+# OpenSearch password and API key of earlier installs". O arquivo nasce 600.
+af_kept_volume_record() { # <volume> <install dir> <senha do opensearch>
+  [ -n "$1" ] || return 0
+  mkdir -p "$AF_STATE_DIR" 2>/dev/null || return 0
+  printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}" >> "$AF_KEPT_VOLUMES" 2>/dev/null || true
+  chmod 600 "$AF_KEPT_VOLUMES" 2>/dev/null || true
+  return 0
+}
+
+# 0 quando este volume foi preservado por uma desinstalação NESTE diretório.
+#
+# O diretório entra na chave de propósito: um volume preservado por uma
+# instalação em ~/AtlasFile não autoriza uma instalação nova em outro lugar a
+# adotá-lo — isso seria a adoção silenciosa que a guarda existe para impedir.
+#
+# O registro é CONSUMIDO no reuso: uma instalação futura, sem desinstalação no
+# meio, volta a esbarrar na guarda. Reuso é de uma vez, não permissão eterna.
+# A senha que ESTE .env deve levar: a do volume reusado, se houver, senão uma
+# nova. É função, e não código solto na fase 3, porque é justamente o ponto que
+# a bancada precisa alcançar: sem isso o defeito que sobe cinco containers
+# quebrados (senha nova contra índice de segurança antigo) fica sem guarda —
+# testei o mutante com a lógica inline e ele passou verde.
+af_os_password() {
+  if [ -n "${AF_REUSE_OS_PASS:-}" ]; then printf '%s' "$AF_REUSE_OS_PASS"; return 0; fi
+  local r
+  r="$( (LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 20)"
+  [ -n "$r" ] || r="$(openssl rand -hex 10 2>/dev/null || date +%s)"
+  printf 'Af!%s9' "$r"
+}
+
+AF_KEPT_VOLUME_PASS=""
+af_kept_volume_claim() { # <volume> <install dir> — senha sai em AF_KEPT_VOLUME_PASS
+  AF_KEPT_VOLUME_PASS=""
+  [ -f "$AF_KEPT_VOLUMES" ] || return 1
+  awk -F'\t' -v v="$1" -v d="$2" '$1 == v && $2 == d { achou = 1 } END { exit !achou }' \
+    "$AF_KEPT_VOLUMES" 2>/dev/null || return 1
+  AF_KEPT_VOLUME_PASS="$(awk -F'\t' -v v="$1" -v d="$2" \
+    '$1 == v && $2 == d { print $3; exit }' "$AF_KEPT_VOLUMES" 2>/dev/null || true)"
+  local tmp="${AF_KEPT_VOLUMES}.tmp.$$"
+  if awk -F'\t' -v v="$1" -v d="$2" '!($1 == v && $2 == d)' "$AF_KEPT_VOLUMES" > "$tmp" 2>/dev/null; then
+    mv "$tmp" "$AF_KEPT_VOLUMES" 2>/dev/null || true
+  fi
+  rm -f "$tmp" 2>/dev/null || true
+  return 0
+}
+
+# O registro morre junto com o volume: apagado o índice, não há reuso a prometer.
+af_kept_volume_forget() { # <volume>
+  [ -f "$AF_KEPT_VOLUMES" ] || return 0
+  local tmp="${AF_KEPT_VOLUMES}.tmp.$$"
+  if awk -F'\t' -v v="$1" '$1 != v' "$AF_KEPT_VOLUMES" > "$tmp" 2>/dev/null; then
+    mv "$tmp" "$AF_KEPT_VOLUMES" 2>/dev/null || true
+  fi
+  rm -f "$tmp" 2>/dev/null || true
+  return 0
+}
 
 # Backup datado antes de mexer num .env que JÁ EXISTIA — a mesma disciplina do
 # backup_and_install_file do mac_env_install.sh, que é a única coisa do modelo
@@ -1122,7 +1221,7 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
       # is "still open", never a default dressed up as a decision.
       un_add_keep "data volume ${UN_VOLUME} — still your call (--purge-data erases the index, --keep-data keeps it)"
     else
-      un_add_keep "data volume ${UN_VOLUME} (kept: a future reinstall reuses it)"
+      un_add_keep "data volume ${UN_VOLUME} — kept, with its admin password, so a reinstall in this same folder reuses it (the password is recorded in ${AF_KEPT_VOLUMES}, readable only by you)"
     fi
   fi
   [ -n "$UN_IMAGES" ] && un_add_keep "shared upstream images (opensearchproject/*) — remove them by hand if you want the disk back"
@@ -1400,7 +1499,22 @@ un_execute() {
     [ -n "$act" ] || continue
     case "$act" in
       compose-down)
-        un_step "removing the stack (containers, network, local images)" un_compose_down ;;
+        un_step "removing the stack (containers, network, local images)" un_compose_down
+        # PARA AQUI se a stack não saiu, e isso não é zelo: as ações seguintes
+        # apagam o clone — que contém o docker-compose.yml, a única forma de
+        # descer a stack — e o manifesto, que é o registro do que criamos.
+        #
+        # Medido numa VM Ubuntu: o `docker compose down` falhou por permissão,
+        # a execução seguiu, e o usuário ficou com CINCO containers no ar, um
+        # volume e três imagens construídas, sem clone e sem manifesto para
+        # removê-los. O desinstalador apagou os meios de reverter e falhou em
+        # reverter — perder a ferramenta é pior do que não usá-la.
+        if [ "$UN_FAILED" = "1" ]; then
+          warn "the stack did not come down — stopping here, on purpose"
+          info "nothing else was touched: the clone and the manifest are exactly what you need to retry"
+          info "check 'docker ps'; on Linux a fresh login applies your docker group, then run the uninstall again"
+          return 0
+        fi ;;
       purge-volume)
         # `compose down --volumes` ja leva o volume junto quando a stack sai do
         # clone, entao aqui nao ha trabalho a fazer — mas HA conta a prestar.
@@ -1418,6 +1532,7 @@ un_execute() {
           else
             un_step "removing volume ${UN_VOLUME}" docker volume rm $UN_VOLUME
           fi
+          af_kept_volume_forget "$UN_VOLUME"
         fi ;;
       rm-clone)
         if un_dir_is_safe "$UN_DIR"; then
@@ -1483,6 +1598,29 @@ EOF
 
 run_uninstall() {
   detect_os
+  # O retrato do Docker ANTES de coletar os fatos, senão ele sai vazio.
+  #
+  # Medido numa VM Ubuntu limpa: logo após a instalação o grupo `docker` ainda
+  # não vale nesta sessão (só no próximo login — o próprio instalador avisa),
+  # então `docker info` falha sem sudo. Como o un_collect trancava TODO o
+  # retrato atrás dele, o plano saía cego: dizia "0 container(s)" com cinco no
+  # ar e o VOLUME sumia das duas seções — junto com a garantia de que o usuário
+  # decide sobre o índice, que é a única coisa nesta tela sem default.
+  #
+  # É exatamente a janela em que alguém desinstala: instalou, algo deu errado,
+  # ainda não relogou.
+  if [ "$OS_KIND" = "linux" ] && ! docker info >/dev/null 2>&1; then
+    if ! af_docker_shim_linux && [ -r "$TTY_DEV" ] && command -v sudo >/dev/null 2>&1; then
+      # Sem credencial em cache: pede uma vez, e só se houver terminal. NUNCA
+      # aborta — um uninstall que não consegue elevar ainda tem trabalho a
+      # fazer (a pasta, o manifesto, os documentos a preservar).
+      info "administrator password needed to read the Docker state"
+      sudo -v < "$TTY_DEV" >/dev/null 2>&1 || true
+      af_docker_shim_linux || true
+    fi
+    docker info >/dev/null 2>&1 \
+      || warn "docker is not reachable from this session — the plan below cannot see containers or volumes"
+  fi
   un_collect "$INSTALL_DIR"
 
   # A run that installed Docker and then died BEFORE cloning leaves no install
@@ -1588,6 +1726,13 @@ run_uninstall() {
          [ "$DELEGATED" = "1" ] || rail_end
          sentinel "cancelled"; return "$RC_CANCELLED" ;;
     esac
+  fi
+
+  # Anotado ANTES de executar: o rm-state apaga o manifesto no fim, e este
+  # registro é o que faz a promessa "a future reinstall reuses it" valer.
+  if [ -n "$UN_VOLUME" ] && [ "$PURGE_DATA" = "0" ]; then
+    af_kept_volume_record "$UN_VOLUME" "$UN_DIR" \
+      "$(grep '^OPENSEARCH_PASSWORD=' "${UN_DIR}/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
   fi
 
   un_execute
@@ -2252,7 +2397,20 @@ if [ -n "${other_dir}" ]; then
   fail "the directory ${INSTALL_DIR} would produce the same docker project name ('${compose_project}') as the instance above — they would share containers and volumes. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the other instance first."
 fi
 if [ ! -d "${INSTALL_DIR}/.git" ] && docker volume ls -q 2>/dev/null | grep -qx "${compose_project}_opensearch_data"; then
-  fail "fresh install into ${INSTALL_DIR}, but the volume '${compose_project}_opensearch_data' already holds data from another instance. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the volume (docker volume rm) if you are sure you no longer need it."
+  # O volume pode ser NOSSO, guardado de propósito por um `--uninstall
+  # --keep-data` neste mesmo diretório. Sem essa distinção o plano prometia "a
+  # future reinstall reuses it" e a instalação seguinte recusava o dado como se
+  # fosse de outra instância — com dois remédios que não o devolvem. Era um beco
+  # sem saída, e foi medido numa VM Ubuntu.
+  if af_kept_volume_claim "${compose_project}_opensearch_data" "${INSTALL_DIR}"; then
+    info "reusing the data volume you kept on the last uninstall (${compose_project}_opensearch_data)"
+    # A senha viaja com o volume até a fase 3. Sem ela o stack sobe e não
+    # funciona: o índice de segurança do OpenSearch guarda a senha da PRIMEIRA
+    # subida, e uma gerada agora só produz "Authentication finally failed".
+    AF_REUSE_OS_PASS="$AF_KEPT_VOLUME_PASS"
+  else
+    fail "fresh install into ${INSTALL_DIR}, but the volume '${compose_project}_opensearch_data' already holds data from another instance. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the volume (docker volume rm) if you are sure you no longer need it."
+  fi
 fi
 
 # Container names are fixed (atlasfile-*): even with distinct project names,
@@ -2305,14 +2463,17 @@ if [ ! -f .env ]; then
   # One OpenSearch password per install — the template ships a public
   # placeholder; keeping a known default would be a factory-leaked credential.
   # (Creation-time only: changing it after first boot would break auth.)
-  os_rand="$( (LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 20)"
-  [ -n "${os_rand}" ] || os_rand="$(openssl rand -hex 10 2>/dev/null || date +%s)"
-  os_pass="Af!${os_rand}9"
+  # Volume reusado exige a senha DELE — ver af_os_password.
+  os_pass="$(af_os_password)"
   tmp_env="$(mktemp)"
   sed -e "s|^OPENSEARCH_PASSWORD=.*|OPENSEARCH_PASSWORD=${os_pass}|" \
       -e "s|^OPENSEARCH_INITIAL_ADMIN_PASSWORD=.*|OPENSEARCH_INITIAL_ADMIN_PASSWORD=${os_pass}|" \
       .env > "${tmp_env}" && mv "${tmp_env}" .env
-  ok ".env created (OpenSearch password generated for this install)"
+  if [ -n "${AF_REUSE_OS_PASS:-}" ]; then
+    ok ".env created (OpenSearch password restored from the volume you kept)"
+  else
+    ok ".env created (OpenSearch password generated for this install)"
+  fi
 else
   info ".env already exists — preserved"
 fi

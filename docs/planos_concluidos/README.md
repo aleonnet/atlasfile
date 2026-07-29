@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.56.2
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [uninstall_linux_stack_real_v0562](uninstall_linux_stack_real_v0562.plan.md) | Primeiro E2E do `install.sh` **em Linux com stack real no ar** (VM Ubuntu limpa, sem Docker) — o buraco que v0.54.0→v0.56.1 nunca cobriram, porque todas validaram em macOS ou Windows. Achou o desinstalador **apagando os meios de reverter e falhando em reverter**: plano cego pelo `docker info` sem sudo (0 containers com 5 no ar, volume sumido das duas seções, exigência headless evaporada) e `un_execute` seguindo depois de o `compose down` falhar. Shim sem efeito colateral, barreira na execução, e os cinco caminhos do uninstall validados com stack real |
+
+---
+
 ## 0.56.1
 
 | # | Plano | Escopo |
