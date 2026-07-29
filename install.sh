@@ -239,7 +239,8 @@ GUT="${DIM}│${RESET} "
 # O mac-env conta ITENS porque instala N pacotes discretos; aqui o que existe de
 # discreto e conhecido são as 5 fases, e inventar um total de passos daria um
 # número arbitrário — que é pior que não ter barra. Numa instalação onde o
-# `docker compose build` sozinho leva ~15 min, saber "fase 4 de 5" é o que falta.
+# `docker compose build` leva ~1-2 min (medido: 48s numa VM ARM64, 94s no runner
+# x86 do CI, 1m05s num Windows 11 real); saber "fase 4 de 5" é o que falta.
 BAR_TOTAL=4
 BAR_DONE=0
 BAR_VISIBLE=0
@@ -2633,7 +2634,15 @@ fi
 
 # ── 4. Build + launch ───────────────────────────────────────────────────────
 title "4/4" "Building and starting the stack"
-info "first run downloads images and compiles — a good moment for a coffee ☕"
+# A frase depende do ESTADO, e não é decorativa: ela saía igual na reinstalação,
+# onde o build reaproveita o cache e levou 3s — prometer café para uma espera de
+# três segundos é ruído. Medido no Windows 11 real (2026-07-29): 1m05s no
+# primeiro build, 3s no segundo.
+if [ "${CLONE_STATE}" = "created" ]; then
+  info "first run downloads images and compiles — takes a minute or two"
+else
+  info "reusing the build cache — this is usually quick"
+fi
 run_step "building images (api, web, mcp)" docker compose build
 run_step "starting the 5 services" docker compose up -d
 

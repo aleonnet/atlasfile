@@ -15,6 +15,44 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.56.5] - 2026-07-29
+
+### O instalador rodou num Windows 11 real, e achou quatro defeitos
+
+Primeiro teste do `install.ps1` **com a stack de verdade no ar num Windows de verdade** — bloqueado por hardware desde a v0.54.0, porque exige virtualização aninhada em convidado Windows, que nem Parallels nem UTM entregam em Apple Silicon.
+
+**O que passou:** instalação do zero em 15m56s (WSL2, Docker Desktop e os cinco containers), reinstalação por cima em 26s com `.env`, senha do OpenSearch e chave de API preservados, e os dois caminhos de desinstalação testados — o plano dos dois lados e o `-KeepData`, que removeu a stack e o clone e preservou volume, documentos e Docker.
+
+**A correção da v0.56.4 estava incompleta.** Ela impedia o `wsl -e`, mas `Test-WslUsable` chamava `--status` e `--list` em sequência, sempre — e o teste provou que **`wsl --list` também dispara** o prompt "Pressione qualquer tecla para instalar Subsistema do Windows para Linux" quando o recurso está ligado sem distro. A correção só trocava a origem do prompt. Agora há curto-circuito: se o `--status` já disse que não está instalado, a função retorna antes de listar.
+
+**O script de reset tinha o mesmo defeito que eu havia acabado de corrigir.** `scripts/reset-wsl-windows.bat` chamava `wsl --list --verbose` e `wsl --shutdown` sem guarda, e o prompt do Windows apareceu duas vezes na tela. Agora a inspeção usa fontes que não tocam no `wsl.exe`: o `dism` para saber se o recurso está ligado, e **o registro do Windows** para listar as distros.
+
+**O reset dizia "Docker Desktop IS installed" e "done" sem remover nada.** A detecção era `winget list` com `if errorlevel 1`, mas **o winget sai 0 mesmo quando não acha o pacote** — escreve "No installed package found" e considera que o comando funcionou. Numa máquina sem Docker o script anunciou que estava lá, tentou remover, não achou o desinstalador, caiu no winget que não achou nada, e imprimiu sucesso. É a mesma lição do `wsl --status`: **código de saída não é sinal, a mensagem é**. Agora a detecção casa o identificador na saída, e o resultado é conferido depois de remover em vez de anunciado.
+
+**O plano da desinstalação ignorava a decisão já tomada.** Com `-KeepData` na linha de comando, ele imprimia que o volume "ainda é sua escolha" — o texto de indecisão é honesto quando nada foi decidido e falso quando a decisão veio na linha de comando. A flag não chegava ao `--plan-only`; agora chega.
+
+### As estimativas de tempo estavam erradas de um jeito curioso
+
+Terceira medição, agora em máquina real: **build de 1m05s** (contra 48s numa VM ARM64 e 94s no runner do CI). O instalador prometia `~15 min` para o build — e o total de fato deu 15m56s, **mas onze desses minutos foram o download do Docker Desktop**, não a compilação. O número acertava por coincidência e atribuía o tempo à coisa errada. Recalibrado para `~1-2 min`.
+
+E a mensagem "um bom momento para um café" saía idêntica na **reinstalação**, onde o build reaproveita o cache e levou 3 segundos. Agora ela depende do estado.
+
+### Os documentos deixam de nascer dentro do OneDrive
+
+No Windows testado, a pasta Documentos estava redirecionada para o OneDrive — então os documentos **e o estado operacional em `_ATLASFILE`** foram criados dentro de uma pasta sincronizada, que o AtlasFile reescreve a cada ingestão.
+
+O padrão agora detecta esse redirecionamento e usa a pasta do perfil do usuário: continua visível no Explorer, sem sincronização em nuvem. Quem quiser na nuvem passa `-ProjectsRoot` apontando para lá.
+
+### Guardas
+
+Provadas na ordem certa: **o commit dos testes foi ao CI sozinho e reprovou**, com três asserções acusando `casou /-e bash/ e nao devia`; só o commit seguinte, com a correção, ficou verde. Há contrapositivo — com WSL presente, os modos read-only têm de continuar delegando ao `install.sh`, senão a correção passaria mesmo se alguém simplesmente parasse de falar com o lado Linux.
+
+### O que continua em aberto
+
+O bug do painel final (`wsl -e` sem `-u root`) **não se manifestou**: a distro ficou sem conta inicializada e roda como root. Confirmá-lo exige completar o assistente de conta do Ubuntu. E `-PurgeData`, `-RemoveDeps` e o ciclo `-KeepData` → reinstalar reusando o volume seguem sem exercitar.
+
+---
+
 ## [0.56.4] - 2026-07-29
 
 ### Um `--dry-run` que oferecia instalar o sistema operacional

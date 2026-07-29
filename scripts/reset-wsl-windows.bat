@@ -53,8 +53,34 @@ echo ---------------------------------------------------------------------------
 echo   What is on this machine right now:
 echo ---------------------------------------------------------------------------
 echo.
-wsl --list --verbose 2>nul
-if errorlevel 1 echo   (no WSL distributions installed)
+
+REM NAO usar `wsl --list` para inspecionar. Medido no Windows 11 real do teste
+REM (2026-07-29): com a feature ligada e ZERO distro, `wsl --list` DISPARA
+REM "Pressione qualquer tecla para instalar Subsistema do Windows para Linux" -
+REM um script que promete apenas relatar ficava esperando 60s por um prompt do
+REM sistema. As duas fontes abaixo sao read-only de verdade:
+REM   - dism  : diz se a feature esta ligada, sem tocar no wsl.exe
+REM   - registro: lista as distros registradas, que e onde o WSL as guarda
+set "WSL_FEATURE=0"
+dism.exe /online /get-featureinfo /featurename:Microsoft-Windows-Subsystem-Linux /English 2>nul | findstr /i /c:"State : Enabled" >nul
+if not errorlevel 1 set "WSL_FEATURE=1"
+set "VMP_FEATURE=0"
+dism.exe /online /get-featureinfo /featurename:VirtualMachinePlatform /English 2>nul | findstr /i /c:"State : Enabled" >nul
+if not errorlevel 1 set "VMP_FEATURE=1"
+
+if "!WSL_FEATURE!"=="1" (echo   Windows feature "Subsystem for Linux" : ENABLED) else (echo   Windows feature "Subsystem for Linux" : disabled)
+if "!VMP_FEATURE!"=="1" (echo   Windows feature "VirtualMachinePlatform": ENABLED) else (echo   Windows feature "VirtualMachinePlatform": disabled)
+echo.
+
+set "TEM_DISTRO=0"
+echo   Registered distributions:
+for /f "tokens=2,*" %%A in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss" /s /v DistributionName 2^>nul ^| findstr /i "REG_SZ"') do (
+    if not "%%B"=="" (
+        set "TEM_DISTRO=1"
+        echo     - %%B
+    )
+)
+if "!TEM_DISTRO!"=="0" echo     (none)
 echo.
 if exist "%LOCALAPPDATA%\AtlasFile" (
     echo   AtlasFile installer state: FOUND at %LOCALAPPDATA%\AtlasFile
@@ -77,27 +103,35 @@ if not "!CONFIRM!"=="RESET" (
 echo.
 
 REM --- 1. stop everything ---------------------------------------------------
+REM Guarda pela feature: com ela DESLIGADA, qualquer wsl.exe cai no prompt de
+REM instalacao do sistema. Nada a parar nesse estado, de todo modo.
 echo [1/6] Shutting down WSL...
-wsl --shutdown 2>nul
-echo       done.
+if "!WSL_FEATURE!"=="1" (
+    wsl --shutdown 2>nul
+    echo       done.
+) else (
+    echo       feature already off - nothing to shut down.
+)
 
 REM --- 2. unregister every distro ------------------------------------------
+REM A lista vem do REGISTRO, nao de `wsl --list`, pela mesma razao. E o
+REM --unregister so e chamado quando ha distro de verdade para remover.
 echo [2/6] Unregistering distributions...
-set "FOUND_ANY="
-for /f "usebackq delims=" %%D in (`wsl --list --quiet 2^>nul`) do (
-    set "DISTRO=%%D"
-    if not "!DISTRO!"=="" (
-        set "FOUND_ANY=1"
-        echo       - unregistering !DISTRO!
-        wsl --unregister "!DISTRO!" >nul 2>&1
-        if errorlevel 1 (
-            echo         [!] failed to unregister !DISTRO!
-        ) else (
-            echo         removed.
+if "!TEM_DISTRO!"=="0" (
+    echo       none registered.
+) else (
+    for /f "tokens=2,*" %%A in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss" /s /v DistributionName 2^>nul ^| findstr /i "REG_SZ"') do (
+        if not "%%B"=="" (
+            echo       - unregistering %%B
+            wsl --unregister "%%B" >nul 2>&1
+            if errorlevel 1 (
+                echo         [!] failed to unregister %%B
+            ) else (
+                echo         removed.
+            )
         )
     )
 )
-if not defined FOUND_ANY echo       none installed.
 
 REM --- 3. remove the WSL app itself (Store-delivered builds only) -----------
 echo [3/6] Uninstalling the WSL app...
@@ -134,7 +168,13 @@ if exist "%LOCALAPPDATA%\AtlasFile" (
 
 REM --- 6. Docker Desktop is optional: it is slow to reinstall ---------------
 echo [6/6] Docker Desktop
-winget list -e --id Docker.DockerDesktop >nul 2>&1
+REM `if errorlevel 1` NAO serve aqui: o winget sai 0 mesmo quando nao acha o
+REM pacote - ele escreve "No installed package found matching input criteria" e
+REM considera que o COMANDO funcionou. Medido no Windows 11 real do teste
+REM (2026-07-29): o script anunciou "Docker Desktop IS installed" numa maquina
+REM sem Docker, tentou remover, e imprimiu "done" sem ter removido nada. A prova
+REM de verdade e o id aparecer na SAIDA, mesma licao do `wsl --status`.
+winget list -e --id Docker.DockerDesktop 2>nul | findstr /i /c:"Docker.DockerDesktop" >nul
 if errorlevel 1 (
     echo       not installed - nothing to do.
 ) else (
@@ -158,7 +198,14 @@ if errorlevel 1 (
         ) else (
             echo       Docker's own uninstaller not found - falling back to winget.
             winget uninstall -e --id Docker.DockerDesktop --silent
-            echo       done ^(if a window opened, finish it there^).
+            REM Confere o RESULTADO em vez de anunciar sucesso: era aqui que o
+            REM script dizia "done" tendo falhado.
+            winget list -e --id Docker.DockerDesktop 2>nul | findstr /i /c:"Docker.DockerDesktop" >nul
+            if errorlevel 1 (
+                echo       removed.
+            ) else (
+                echo       [!] STILL INSTALLED - remove it from Settings ^> Apps by hand.
+            )
         )
     ) else (
         echo       kept. The installer will detect it and skip installing it.

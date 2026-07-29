@@ -206,19 +206,17 @@ Cobre **os dois lados** da máquina: o Windows e o Linux dentro do WSL.
 
 ```powershell
 # 1) Remove a stack, PRESERVA o índice de busca
-& ([scriptblock]::Create((irm .../install.ps1))) -Uninstall -KeepData -Yes
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -Uninstall -KeepData -Yes
 
 # 2) Remove a stack e APAGA o índice
-& ([scriptblock]::Create((irm .../install.ps1))) -Uninstall -PurgeData -Yes
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -Uninstall -PurgeData -Yes
 
 # 3) Idem, e ainda remove o que o instalador instalou (Docker Desktop, WSL2)
-& ([scriptblock]::Create((irm .../install.ps1))) -Uninstall -PurgeData -RemoveDeps -Yes
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -Uninstall -PurgeData -RemoveDeps -Yes
 
 # 4) Se a pasta dentro do WSL tiver alterações locais e ele se recusar a apagar
-& ([scriptblock]::Create((irm .../install.ps1))) -Uninstall -PurgeData -Force -Yes
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -Uninstall -PurgeData -Force -Yes
 ```
-
-> Substitua `.../install.ps1` pela URL completa do bloco acima.
 
 **Regra sem default:** em modo não-interativo, `-Uninstall -Yes` **exige**
 `-PurgeData` ou `-KeepData`. Sem um dos dois ele para e pede a decisão — o índice
