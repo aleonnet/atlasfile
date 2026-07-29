@@ -62,6 +62,39 @@ def test_caso_real_embrulho_duplo():
     )
 
 
+def test_nome_de_usuario_com_cauda_vNN_nao_e_desembrulhado():
+    """Caso real (2026-07-29): o arquivo chega ao INBOX com nome DO USUÁRIO que
+    já termina em ``__v01.pdf`` — versionamento manual, convenção comum em
+    documento real — e contém ``__`` no meio. O parser casava a cauda, tratava o
+    nome como canônico e devolvia ``Anexos_v_A__v01.pdf``, DESCARTANDO
+    ``DocuSign_Project_Neptune___SPA``: o documento perdia seu identificador.
+
+    O que distingue este nome de um canônico legítimo é o PREFIXO — aqui o
+    primeiro segmento não é data (\\d{8}) e o segundo não é o project_id. Sem
+    prova positiva do prefixo, qualquer nome com ``__`` e cauda ``__vNN`` era
+    mutilado. Compare com test_caso_real_embrulho_duplo, que é o MESMO arquivo
+    embrulhado de verdade e tem de continuar sendo desembrulhado.
+    """
+    assert (
+        _unwrap_canonical_stem(
+            "DocuSign_Project_Neptune___SPA__Anexos_v_A__v01__v01.pdf", _profile()
+        )
+        is None
+    )
+
+
+def test_prefixo_com_data_valida_mas_projeto_de_outro_nao_desembrulha():
+    """A data sozinha não prova canonicidade: o segmento de {project} tem de ser
+    o project_id DESTE profile. Um canônico de outro projeto que caia neste
+    INBOX segue intacto em vez de ser desembrulhado com o pattern errado."""
+    assert (
+        _unwrap_canonical_stem(
+            "20260320__projeto_de_outro__Contrato_Social__v01.pdf", _profile()
+        )
+        is None
+    )
+
+
 def test_titulo_com_underscores_duplos_sobrevive_uma_passada():
     """Título original contendo '__' não é destruído: a extração pelo pattern do
     profile pula exatamente os segmentos do prefixo e para (sem cauda no resto)."""

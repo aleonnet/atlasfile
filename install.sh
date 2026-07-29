@@ -1759,6 +1759,12 @@ run_uninstall() {
 # adivinhação. Instala nada, muda nada — só mede e conta o que achou. É o
 # run_doctor do mac_env_install.sh, com o que faz sentido aqui.
 DOC_OK=0; DOC_WARN=0; DOC_FAIL=0
+# O QUE faltou, e nao so quantos: o --dry-run precisa nomear cada pendencia, e
+# reperguntar ao sistema para descobrir isso era a origem da contradicao (duas
+# fontes de verdade sobre o mesmo fato). Preenchidos por doc_prereqs.
+#   DOC_MISSING  — o instalador resolve sozinho ("would be installed")
+#   DOC_BLOCKERS — so o usuario resolve (daemon parado, curl ausente)
+DOC_MISSING=""; DOC_BLOCKERS=""
 doc_ok()   { DOC_OK=$(( DOC_OK + 1 ));     af_wrap "${GUT}${GREEN}✔${RESET} " "${GUT}  " 4 "$*"; }
 doc_warn() { DOC_WARN=$(( DOC_WARN + 1 )); af_wrap "${GUT}${ORANGE}!${RESET} " "${GUT}  " 4 "$*"; }
 doc_fail() { DOC_FAIL=$(( DOC_FAIL + 1 )); af_wrap "${GUT}${RED}✘${RESET} " "${GUT}  " 4 "$*"; }
@@ -1779,22 +1785,27 @@ doc_version() { # <cmd> <args...> — versão em uma linha; falha se o comando f
 doc_prereqs() {
   doc_head "Prerequisites"
   local v
-  if v="$(doc_version git --version)"; then doc_ok "$v"; else doc_fail "git not found"; fi
-  if command -v curl >/dev/null 2>&1; then doc_ok "curl"; else doc_fail "curl not found"; fi
+  DOC_MISSING=""; DOC_BLOCKERS=""
+  if v="$(doc_version git --version)"; then doc_ok "$v"; else doc_fail "git not found"; DOC_MISSING="${DOC_MISSING}git "; fi
+  # curl nao entra em DOC_MISSING: nao ha ensure_curl — o instalador nao o instala.
+  if command -v curl >/dev/null 2>&1; then doc_ok "curl"; else doc_fail "curl not found"; DOC_BLOCKERS="${DOC_BLOCKERS}curl "; fi
   if v="$(doc_version docker --version)"; then
     doc_ok "$v"
     if docker info >/dev/null 2>&1; then
       doc_ok "the Docker daemon answers"
     else
       doc_fail "Docker is installed but the daemon does not answer — start it before installing"
+      DOC_BLOCKERS="${DOC_BLOCKERS}docker-daemon "
     fi
     if docker compose version >/dev/null 2>&1; then
       doc_ok "docker compose $(docker compose version --short 2>/dev/null || echo v2)"
     else
       doc_fail "Docker Compose v2 not available"
+      DOC_MISSING="${DOC_MISSING}docker-compose-plugin "
     fi
   else
     doc_fail "docker not found"
+    DOC_MISSING="${DOC_MISSING}docker "
   fi
   if v="$(doc_version ollama --version)"; then doc_ok "$v"; else doc_warn "ollama not installed (optional, only for a 100% local model)"; fi
 
@@ -1898,13 +1909,31 @@ run_dry_run() {
   # Sem linha de calha solta aqui: o doc_head abaixo ja abre com uma, e as duas
   # juntas davam um vao de duas linhas que nenhum outro bloco da tela tem.
   doc_head "Prerequisites this machine is missing"
-  local falta=0
-  command -v git >/dev/null 2>&1    || { doc_warn "git would be installed"; falta=1; }
-  command -v docker >/dev/null 2>&1 || { doc_warn "Docker would be installed"; falta=1; }
-  if command -v docker >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
-    doc_warn "docker-compose-plugin would be installed"; falta=1
-  fi
-  [ "$falta" = "0" ] && doc_ok "none — everything needed is already here"
+  # UMA fonte de verdade: o doc_prereqs acima ja mediu esta maquina e registrou o
+  # que achou. Reperguntar aqui com `command -v` era a origem da contradicao —
+  # `command -v docker` tem sucesso com o daemon PARADO e ate com um binario que
+  # nao responde --version, entao a tela dizia "✘ docker not found" e, quatro
+  # linhas abaixo, "✔ none — everything needed is already here".
+  #
+  # A separacao importa para quem le: o instalador RESOLVE o que esta em
+  # DOC_MISSING, e nao tem como resolver o que esta em DOC_BLOCKERS.
+  local item
+  # shellcheck disable=SC2086  # o split nos espacos e o objetivo: sao listas
+  for item in $DOC_MISSING; do
+    case "$item" in
+      docker-compose-plugin) doc_warn "docker-compose-plugin would be installed" ;;
+      docker)                doc_warn "Docker would be installed" ;;
+      *)                     doc_warn "${item} would be installed" ;;
+    esac
+  done
+  # shellcheck disable=SC2086
+  for item in $DOC_BLOCKERS; do
+    case "$item" in
+      docker-daemon) doc_fail "the Docker daemon is not answering — start Docker before installing" ;;
+      *)             doc_fail "${item} is required and is not on this machine" ;;
+    esac
+  done
+  [ -z "${DOC_MISSING}${DOC_BLOCKERS}" ] && doc_ok "none — everything needed is already here"
   printf '%s\n' "$GUT"
   info "--dry-run: nothing was installed."
   [ "$DELEGATED" = "1" ] || rail_end

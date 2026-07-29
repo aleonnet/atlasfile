@@ -96,15 +96,30 @@ def build_canonical_filename(
     return f"{prefix}__v{version:02d}{original_suffix.lower()}"
 
 
-def extract_original_name_from_canonical(
+_PATTERN_FIELD_RE = re.compile(r"\{(\w+)\}")
+
+
+def canonical_prefix_fields(pattern: str) -> list[str]:
+    """Field names that come BEFORE ``{original_name}`` in *pattern*, in order.
+
+    These are exactly the segments the parser skips, so this is the single source
+    of truth for both the count (``split_canonical``) and the identity of each
+    segment (callers that need to validate what a segment should look like).
+    """
+    return _PATTERN_FIELD_RE.findall(pattern.split("{original_name}")[0])
+
+
+def split_canonical(
     canonical: str,
     pattern: str = DEFAULT_CANONICAL_PATTERN,
-) -> str | None:
-    """Extract the original filename (with extension) from a canonical filename.
+) -> tuple[list[str], str] | None:
+    """Split a canonical filename into ``(prefix segments, original name + ext)``.
 
     Returns ``None`` when *canonical* doesn't match the expected structure.
-    Uses *pattern* to determine how many ``__``-separated prefix segments to skip
-    before reaching ``{original_name}``.
+    Purely structural: it counts ``__``-separated segments and does NOT judge
+    whether the prefix really is canonical — a name that merely *looks* like one
+    splits just fine here. Callers that need that proof must check the segments
+    against the pattern fields themselves (see ``canonical_prefix_fields``).
     """
     tail = _CANONICAL_TAIL_RE.search(canonical)
     if not tail:
@@ -118,4 +133,18 @@ def extract_original_name_from_canonical(
     parts = without_tail.split("__", n_skip)
     if len(parts) <= n_skip:
         return None
-    return parts[n_skip] + ext
+    return parts[:n_skip], parts[n_skip] + ext
+
+
+def extract_original_name_from_canonical(
+    canonical: str,
+    pattern: str = DEFAULT_CANONICAL_PATTERN,
+) -> str | None:
+    """Extract the original filename (with extension) from a canonical filename.
+
+    Returns ``None`` when *canonical* doesn't match the expected structure.
+    Uses *pattern* to determine how many ``__``-separated prefix segments to skip
+    before reaching ``{original_name}``.
+    """
+    split = split_canonical(canonical, pattern)
+    return split[1] if split else None

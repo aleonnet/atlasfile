@@ -23,10 +23,11 @@ from .utils import (
     _CANONICAL_TAIL_RE,
     DEFAULT_CANONICAL_PATTERN,
     build_canonical_filename,
-    extract_original_name_from_canonical,
+    canonical_prefix_fields,
     fs_safe,
     sanitize_token,
     sha256_file,
+    split_canonical,
     utc_now_iso,
 )
 
@@ -289,10 +290,52 @@ def _find_latest_version(
 
 
 _DATE_PREFIX_RE = re.compile(r"^\d{8}__")
+_DATE_SEGMENT_RE = re.compile(r"^\d{8}$")
 
 # Mesma cadeia de patterns do reconcile (reconcile.py): pattern do profile,
 # variante de 3 segmentos e o default de 2 — o extrator só conta separadores.
 _UNWRAP_PATTERN_VARIANTS = ("{date}__{project}__{area}__{original_name}",)
+
+
+def _prefix_proves_canonical(
+    segments: list[str],
+    fields: list[str],
+    *,
+    project_token: str,
+    domain_keys: set[str],
+    doc_type_keys: set[str],
+) -> bool:
+    """O prefixo É canônico DESTE projeto? Prova positiva, segmento a segmento.
+
+    Existe porque contar separadores não prova nada: `split_canonical` reparte
+    qualquer nome com `__` suficientes. Caso real (2026-07-29) —
+    `DocuSign_Project_Neptune___SPA__Anexos_v_A__v01__v01.pdf`, nome DO USUÁRIO
+    com versionamento manual — casava a cauda `__vNN`, era repartido como se
+    fosse canônico e devolvia `Anexos_v_A__v01.pdf`, jogando fora
+    `DocuSign_Project_Neptune___SPA`. O documento perdia o identificador.
+
+    Cada segmento é checado contra o campo que ele deveria ser, usando FATOS do
+    profile (data de 8 dígitos, o project_id, chaves de domínio/tipo) — nunca
+    heurística sobre a forma do nome. Campo que o profile não conhece não
+    bloqueia: o pattern é configurável e um campo novo não pode reprovar um
+    prefixo legítimo.
+    """
+    if len(segments) != len(fields):
+        return False
+    for seg, field in zip(segments, fields):
+        if field == "date":
+            if not _DATE_SEGMENT_RE.match(seg):
+                return False
+        elif field == "project":
+            if seg != project_token:
+                return False
+        elif field in ("area", "business_domain"):
+            if seg not in domain_keys:
+                return False
+        elif field == "document_type":
+            if seg not in doc_type_keys:
+                return False
+    return True
 
 
 def _unwrap_canonical_stem(filename: str, profile: dict[str, Any]) -> str | None:
@@ -300,9 +343,17 @@ def _unwrap_canonical_stem(filename: str, profile: dict[str, Any]) -> str | None
     embutido, para a reingestão não re-embrulhar prefixo/cauda
     (20260725__proj__20260320__proj__...__v01__v01) nem quebrar a linhagem de
     versão. Iterativo (nome pode estar embrulhado mais de uma vez, inclusive
-    por patterns diferentes após migração de naming); um candidato com resíduo
-    de canônico (data, project_id ou domínio conhecido na frente — fatos do
-    profile, não heurística solta) é preterido pelo próximo pattern da cadeia.
+    por patterns diferentes após migração de naming).
+
+    Dois filtros, em ordem, e a ordem importa:
+    1. `_prefix_proves_canonical` decide QUAIS patterns podem sequer ser
+       aplicados — só entra como candidato o pattern cujo prefixo se prova
+       canônico. É o que impede um nome de usuário de ser mutilado.
+    2. entre os candidatos que sobraram, um com resíduo de canônico na frente
+       (data, project_id ou domínio conhecido) é preterido pelo próximo — é o
+       desempate que resolve migração de naming (pattern de 3 segmentos lido
+       por um profile hoje em 2).
+
     None quando nada parseia (nome comum segue o fluxo normal)."""
     naming = profile.get("naming") or {}
     patterns: list[str] = [naming.get("canonical_pattern", DEFAULT_CANONICAL_PATTERN)]
@@ -310,24 +361,39 @@ def _unwrap_canonical_stem(filename: str, profile: dict[str, Any]) -> str | None
         if variant not in patterns:
             patterns.append(variant)
 
-    project_id = str(profile.get("project_id") or "")
-    domain_keys = {
-        str(d.get("key") or "")
-        for d in (profile.get("classification") or {}).get("business_domains", [])
-    }
+    classification = (profile.get("classification") or {})
+    # sanitize_token porque é assim que build_canonical_filename grava o segmento:
+    # comparar com o project_id cru erraria em qualquer id com espaço ou acento.
+    project_token = sanitize_token(str(profile.get("project_id") or ""))
+    domain_keys = {str(d.get("key") or "") for d in classification.get("business_domains", [])}
+    doc_type_keys = {str(d.get("key") or "") for d in classification.get("document_types", [])}
 
     def has_residue(name: str) -> bool:
         if _DATE_PREFIX_RE.match(name):
             return True
         head = name.split("__", 1)[0]
-        return bool(head) and (head == project_id or head in domain_keys)
+        return bool(head) and (head == project_token or head in domain_keys)
 
     current = filename
     unwrapped = False
     for _ in range(3):  # embrulhos aninhados reais têm 1-2 níveis; 3 é teto seguro
         if not _CANONICAL_TAIL_RE.search(current):
             break
-        candidates = [c for c in (extract_original_name_from_canonical(current, p) for p in patterns) if c]
+        candidates: list[str] = []
+        for pattern in patterns:
+            split = split_canonical(current, pattern)
+            if not split:
+                continue
+            segments, original = split
+            if not _prefix_proves_canonical(
+                segments,
+                canonical_prefix_fields(pattern),
+                project_token=project_token,
+                domain_keys=domain_keys,
+                doc_type_keys=doc_type_keys,
+            ):
+                continue
+            candidates.append(original)
         if not candidates:
             break
         current = next((c for c in candidates if not has_residue(c)), candidates[0])

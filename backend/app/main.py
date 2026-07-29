@@ -508,6 +508,10 @@ async def lifespan(app: FastAPI):
             _backfill_channel_web(os_client)
             backfill_search_fields(os_client)
             _start_auto_reconcile_if_enabled()
+            # Depois do laço periódico de propósito: este cobre a janela que ele
+            # deixa aberta (o `wait` vem antes do primeiro ciclo), e só dispara
+            # quando há projeto no disco com o índice ainda vazio.
+            _start_setup_reconcile_if_needed()
             _start_auto_ingest_if_enabled()
             break
         except Exception as exc:  # pragma: no cover - startup resiliency
@@ -1108,6 +1112,43 @@ def _start_auto_reconcile_if_enabled() -> None:
                 continue
 
     thread = threading.Thread(target=loop, name="atlasfile-auto-reconcile", daemon=True)
+    thread.start()
+
+
+def _start_setup_reconcile_if_needed() -> None:
+    """Primeiro reconcile logo após a subida — só quando há projeto no disco E o
+    índice ainda está vazio.
+
+    O laço periódico acima faz `wait(interval)` ANTES do corpo, então o primeiro
+    ciclo só sai `interval` depois de subir — 600s no default do compose
+    (`AUTO_RECONCILE_INTERVAL_SECONDS:-600`, não o 0 do settings). Numa instalação
+    nova apontada para uma pasta que JÁ tem documentos, a UI mostrava zero até
+    lá, e "Reconciliar agora" era o único caminho.
+
+    A condição é o índice VAZIO, e não "algum projeto sem documento": ela precisa
+    ser FALSA em todo `docker compose restart` de rotina, senão um corpus grande
+    pagaria um reconcile completo a cada reinício. Projeto novo numa instalação
+    já povoada continua sendo coberto pelo laço periódico e pelo watcher.
+
+    Nunca derruba o boot: qualquer falha ao decidir vira "não dispara".
+    """
+    try:
+        roots = list_project_roots(Path(settings.projects_root))
+        if not roots or _index_has_documents():
+            return
+    except Exception:
+        _logger.debug("reconcile de setup: decisão indisponível, pulando", exc_info=True)
+        return
+    _logger.info(
+        "reconcile de setup: %d projeto(s) no disco e índice vazio — reconciliando agora",
+        len(roots),
+    )
+    thread = threading.Thread(
+        target=_run_reconcile_background,
+        args=(roots, bool(settings.auto_reconcile_reindex_search), "full", True),
+        name="atlasfile-setup-reconcile",
+        daemon=True,
+    )
     thread.start()
 
 
