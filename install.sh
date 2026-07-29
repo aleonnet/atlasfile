@@ -943,10 +943,32 @@ af_kept_volume_record() { # <volume> <install dir> <senha do opensearch>
 # a bancada precisa alcançar: sem isso o defeito que sobe cinco containers
 # quebrados (senha nova contra índice de segurança antigo) fica sem guarda —
 # testei o mutante com a lógica inline e ele passou verde.
+# Aleatorio de fonte FINITA: le um bloco fixo de /dev/urandom e filtra.
+#
+# O padrao anterior era `(tr -dc ... < /dev/urandom) | head -c N`, em que o `tr`
+# le /dev/urandom PARA SEMPRE e so termina quando o `head` fecha o pipe e ele
+# leva SIGPIPE. Isso dependia de o SIGPIPE chegar e ser fatal — e no runner
+# macOS do CI nao chegava: a bancada travava exatamente na primeira geracao de
+# senha e o job batia o teto de 6h do GitHub (2026-07-29, tres execucoes
+# seguidas; o ponto de parada foi provado com AF_BENCH_TRACE). Nao reproduz em
+# macOS local (300 geracoes sem uma falha) nem no runner Linux, que roda a mesma
+# bancada — por isso a correcao ataca a CLASSE do problema em vez do sintoma:
+# com `head -c` na ENTRADA nenhum processo le sem fim e ninguem depende de sinal
+# para terminar.
+#
+# 1024 bytes: para 'A-Za-z0-9' passam 62/256 dos bytes, ~248 esperados; para
+# 'a-z0-9', 36/256, ~144. Os maiores consumidores pedem 48 e 32 — margem de mais
+# de dez desvios-padrao, e o fallback openssl segue cobrindo o caso vazio.
+af_random_token() { # <n de caracteres> [classe tr, default alfanumerica]
+  LC_ALL=C head -c 1024 /dev/urandom 2>/dev/null \
+    | LC_ALL=C tr -dc "${2:-A-Za-z0-9}" 2>/dev/null \
+    | head -c "$1"
+}
+
 af_os_password() {
   if [ -n "${AF_REUSE_OS_PASS:-}" ]; then printf '%s' "$AF_REUSE_OS_PASS"; return 0; fi
   local r
-  r="$( (LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 20)"
+  r="$(af_random_token 20)"
   [ -n "$r" ] || r="$(openssl rand -hex 10 2>/dev/null || date +%s)"
   printf 'Af!%s9' "$r"
 }
@@ -2581,7 +2603,7 @@ set_env() {
 # placeholder (rotating an existing key just logs Dashboards users out).
 cookie_current="$(grep '^DASHBOARDS_COOKIE_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
 if [ -z "${cookie_current}" ] || [ "${cookie_current}" = "Troque-Esta-Senha-De-Cookie-Com-32-Ou-Mais-Chars" ]; then
-  cookie_rand="$( (LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 48)"
+  cookie_rand="$(af_random_token 48)"
   [ -n "${cookie_rand}" ] || cookie_rand="$(openssl rand -hex 24 2>/dev/null || printf 'Af%s%s0000000000000000' "$(date +%s)" "$$")"
   set_env DASHBOARDS_COOKIE_PASSWORD "${cookie_rand}"
   ok "Dashboards cookie key generated for this install"
@@ -2597,7 +2619,7 @@ if [ "${ENABLE_AUTH}" = "1" ]; then
     [ -n "${API_KEY_VALUE}" ] && info "api_keys.json already exists — key preserved"
   fi
   if [ -z "${API_KEY_VALUE}" ]; then
-    key_rand="$( (LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom || true) | head -c 32)"
+    key_rand="$(af_random_token 32 'a-z0-9')"
     [ -n "${key_rand}" ] || key_rand="$(openssl rand -hex 16 2>/dev/null || date +%s)"
     API_KEY_VALUE="atlas_sk_${key_rand}"
     printf '{\n  "keys": [\n    {"key": "%s", "name": "installer", "projects": ["*"]}\n  ]\n}\n' "${API_KEY_VALUE}" > "${keys_file}"

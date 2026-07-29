@@ -737,6 +737,35 @@ t "e sem reuso ela e gerada, nunca vazia"
 out="$(run_case -- 'p="$(af_os_password)"; case "$p" in Af!??????????*9) printf GERADA ;; esac')"
 case "$out" in *GERADA*) ok ;; *) no "senha gerada fora do formato: $out" ;; esac
 
+# ── O gerador de aleatorio tem de TERMINAR ──────────────────────────────────
+# Foi aqui que a bancada travou no runner macOS do CI, ate o teto de 6h do
+# GitHub, tres execucoes seguidas. O padrao antigo era
+# `(tr -dc ... < /dev/urandom) | head -c N`: o `tr` le /dev/urandom PARA SEMPRE
+# e so morre quando o `head` fecha o pipe e o SIGPIPE chega. Naquele runner nao
+# chegava. Nao reproduz em macOS local (300 geracoes limpas) nem no runner
+# Linux, entao guarda de TELA nao pega — a regressao so aparece num ambiente que
+# a bancada nao alcanca. Por isso, excepcionalmente, uma guarda de FONTE.
+# A guarda mira o REDIRECIONAMENTO `< /dev/urandom`, que e o que faz o leitor
+# nunca parar. A primeira versao desta assertiva filtrava linhas com `head -c` e
+# por isso passava verde no mutante: o padrao defeituoso TAMBEM tem `head -c` —
+# na saida, que e justamente onde ele nao resolve. O jeito certo de ler a fonte
+# e `head -c N /dev/urandom` (limite na ENTRADA, sem `<`).
+t "nenhuma leitura sem limite de /dev/urandom (o gerador nao pode depender de SIGPIPE)"
+# Comentarios ficam de fora porque o proprio af_random_token DOCUMENTA o padrao
+# defeituoso para explicar por que ele saiu — a guarda mira codigo, nao prosa.
+sem_limite="$(grep -n '< *\/dev\/urandom' "$REPO_ROOT/install.sh" | grep -v '^[0-9]*:[[:space:]]*#' || true)"
+if [ -z "$sem_limite" ]; then ok; else no "leitura infinita de /dev/urandom: $sem_limite"; fi
+
+t "af_random_token entrega o comprimento pedido"
+out="$(run_case -- 'printf "%s" "$(af_random_token 20)" | wc -c | tr -d " "')"
+assert_eq "$out" "20"
+out="$(run_case -- 'printf "%s" "$(af_random_token 48)" | wc -c | tr -d " "')"
+assert_eq "$out" "48"
+
+t "e respeita a classe de caracteres pedida"
+out="$(run_case -- 'case "$(af_random_token 32 "a-z0-9")" in *[!a-z0-9]*) printf SUJO ;; *) printf LIMPO ;; esac')"
+assert_eq "$out" "LIMPO"
+
 t "e o registro nasce ilegivel para os outros"
 out="$(run_case -- '
   AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
