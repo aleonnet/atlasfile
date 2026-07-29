@@ -216,6 +216,24 @@ jobs:
             throw "install.ps1 tem $($bad.Count) bytes nao-ASCII: o PowerShell 5.1 le como ANSI e o parse quebra"
           }
 
+      # O reset-wsl-windows.bat roda num Windows real, fora do controle do
+      # instalador. Duas coisas o quebram em silencio e nenhuma aparece no
+      # macOS de quem edita: byte nao-ASCII (vira lixo noutro codepage) e LF
+      # puro (o cmd.exe tropeca em label/goto). Mesma razao da guarda de ASCII
+      # do install.ps1, logo acima.
+      - name: reset-wsl-windows.bat precisa ser ASCII puro e CRLF
+        shell: pwsh
+        run: |
+          $b = [IO.File]::ReadAllBytes("$PWD/scripts/reset-wsl-windows.bat")
+          $naoAscii = @($b | Where-Object { $_ -gt 127 })
+          if ($naoAscii.Count -gt 0) {
+            throw "reset-wsl-windows.bat tem $($naoAscii.Count) bytes nao-ASCII"
+          }
+          $texto = [Text.Encoding]::ASCII.GetString($b)
+          $lf = ([regex]::Matches($texto, "(?<!`r)`n")).Count
+          if ($lf -gt 0) { throw ".bat tem $lf quebra(s) de linha LF sem CR - precisa ser CRLF" }
+          Write-Host "reset-wsl-windows.bat: ASCII puro, CRLF"
+
       # Argumento iniciado por `-` e oferecido aos parametros da FUNCAO antes de
       # chegar ao comando nativo, e `-e` (do winget) e ambiguo com -ErrorAction/
       # -ErrorVariable. Medido num Windows 11 real: "O parametro nao pode ser

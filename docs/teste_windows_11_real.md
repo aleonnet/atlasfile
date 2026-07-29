@@ -26,6 +26,29 @@ inventado. Rode tudo em **PowerShell como Administrador**, salvo onde indicado.
 
 ## 1. Zerar o WSL (partir do absoluto zero)
 
+### Jeito rápido: rode o script
+
+`scripts/reset-wsl-windows.bat` faz tudo desta seção de uma vez. Baixe e rode
+**como Administrador** (ele recusa rodar sem elevação):
+
+```powershell
+irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/scripts/reset-wsl-windows.bat -OutFile "$env:TEMP\reset-wsl-windows.bat"
+Start-Process -Verb RunAs "$env:TEMP\reset-wsl-windows.bat"
+```
+
+Ele mostra o que existe na máquina, **exige que você digite `RESET`** para
+seguir, e então: derruba o WSL, desregistra cada distro, desliga os dois
+recursos do Windows, limpa o manifesto do instalador e — se você quiser —
+desinstala o Docker Desktop pelo desinstalador próprio da Docker (o
+`winget uninstall` não serve aqui: medido num Windows 11 real, ele abre janela e
+fica esperando clique).
+
+**Depois reinicie o Windows** e pule para a seção 2.
+
+Se preferir fazer à mão, ou se algo falhar, os comandos avulsos estão abaixo.
+
+### Jeito manual
+
 **Ver o que existe hoje:**
 
 ```powershell

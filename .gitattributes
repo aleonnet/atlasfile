@@ -1,0 +1,3 @@
+# .bat precisa chegar ao Windows com CRLF: sem normalizacao de EOL,
+# o blob guarda os bytes como estao e o download cru entrega CRLF.
+*.bat -text
