@@ -102,6 +102,13 @@ exit /b %AF_WSL_INSTALL_RC%
 echo A versao mais recente do WSL ja esta instalada.
 exit /b 0
 :status
+if not "%AF_WSL_NOT_INSTALLED%"=="1" goto status_ok
+REM Windows 11 zerado: wsl.exe EXISTE (vem com o sistema), escreve isto na
+REM STDERR e ainda assim sai 0 - por isso nem o codigo de saida nem o redirect
+REM servem de sinal, so o texto. Medido num build limpo.
+echo The Windows Subsystem for Linux is not installed. 1>&2
+exit /b 0
+:status_ok
 echo WSL version: 2.0.0
 exit /b 0
 :list
@@ -639,6 +646,54 @@ Assert-Match "diz o que faria no Windows" $out "WOULD BE INSTALLED"
 Assert-Match "e delega o plano do outro lado" $calls "--dry-run"
 Assert-NoMatch "sem instalar coisa alguma" $calls "winget install"
 Assert-Match "declara que nada foi instalado" $out "nothing was installed"
+
+Write-Host "== S2. modo read-only numa maquina SEM WSL nao pode chamar 'wsl -e' =="
+# Achado num Windows 11 REAL, recem-zerado com scripts/reset-wsl-windows.bat
+# (2026-07-29): o -DryRun anunciou "WSL2 is already here", abriu "Pressione
+# qualquer tecla para instalar o Subsistema do Windows para Linux" e terminou
+# com "-DryRun: nothing was installed".
+#
+# Duas causas no mesmo bloco:
+#  1. a deteccao era `Get-Tool wsl`, e wsl.exe VEM COM O WINDOWS 11 mesmo com a
+#     feature desligada - sempre existia, sempre dizia "already here";
+#  2. para montar o plano do lado Linux ele invocava `wsl -e`, e num Windows sem
+#     WSL quem responde a essa chamada e o PROPRIO WINDOWS, com o instalador.
+$sb = New-Sandbox
+$env:AF_WSL_NOT_INSTALLED = "1"
+$out = Run-Installer @("-Yes", "-DryRun")
+$calls = Calls
+Assert-NoMatch "nao chama wsl -e sem WSL (era o que abria o instalador do Windows)" $calls "-e bash"
+Assert-NoMatch "nao mente dizendo que o WSL2 ja esta aqui" $out "WSL2 is already here"
+Assert-Match "diz que o WSL2 SERIA instalado" $out "WOULD BE INSTALLED"
+Assert-Match "explica que o lado Linux nao pode ser inspecionado" $out "Linux side cannot be inspected"
+Assert-Match "segue declarando que nada foi instalado" $out "nothing was installed"
+$env:AF_WSL_NOT_INSTALLED = ""
+
+Write-Host "== S3. feature ligada e ZERO distro tambem cai no instalador do Windows =="
+# O outro estado que engana: `wsl --status` responde normalmente, mas nao ha
+# distro registrada - e `wsl -e` ali tambem faz o Windows oferecer instalar.
+$sb = New-Sandbox
+$env:AF_WSL_NO_DISTRO = "1"
+$out = Run-Installer @("-Yes", "-DryRun")
+Assert-NoMatch "sem distro, tambem nao chama wsl -e" (Calls) "-e bash"
+Assert-Match "e trata como WSL ausente" $out "WOULD BE INSTALLED"
+$env:AF_WSL_NO_DISTRO = ""
+
+Write-Host "== S4. -Doctor sem WSL relata em vez de disparar o instalador =="
+$sb = New-Sandbox
+$env:AF_WSL_NOT_INSTALLED = "1"
+$out = Run-Installer @("-Doctor")
+Assert-NoMatch "o -Doctor nao chama wsl -e sem WSL" (Calls) "-e bash"
+Assert-Match "relata o WSL indisponivel" $out "WSL is not usable"
+$env:AF_WSL_NOT_INSTALLED = ""
+
+Write-Host "== S5. CONTRAPOSITIVO: com WSL, os read-only continuam delegando =="
+# Sem esta assertiva, a correcao acima passaria mesmo se alguem simplesmente
+# parasse de falar com o lado Linux em qualquer situacao.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-DryRun")
+Assert-Match "com WSL presente, delega o plano ao install.sh" (Calls) "-e bash"
+Assert-Match "e reconhece o WSL2 que esta la" $out "WSL2 is already here"
 
 Write-Host "== U. todo fluxo que abre o trilho tambem o fecha, e o veredito sai fora =="
 # O -DryRun e o -Uninstall abriam o trilho com a regua e nunca fechavam, e o

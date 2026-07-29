@@ -15,6 +15,30 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.56.4] - 2026-07-29
+
+### Um `--dry-run` que oferecia instalar o sistema operacional
+
+Primeiro defeito encontrado pelo teste do instalador **num Windows 11 real**, com a máquina recém-zerada. O `-DryRun` anunciou `WSL2 is already here`, abriu **"Pressione qualquer tecla para instalar o Subsistema do Windows para Linux"** e terminou dizendo `-DryRun: nothing was installed`.
+
+**Duas causas, no mesmo bloco.**
+
+A detecção mentia: era `Get-Tool wsl`, que só verifica se o executável existe — e **`wsl.exe` vem com o Windows 11 mesmo com o recurso desligado**. O próprio código já registrava essa medição num comentário da fase de instalação, que usa a lógica correta (a mensagem do `wsl --status`); o caminho do `-DryRun` a ignorava e perguntava só pelo arquivo.
+
+E o modo invocava o WSL de verdade: para montar o plano do lado Linux ele roda `wsl -e bash -c ...`. Num Windows sem WSL, **quem responde a essa chamada é o próprio Windows**, com o instalador do subsistema. Não era o AtlasFile pedindo para instalar — era o sistema operacional reagindo a ser chamado.
+
+**Não era só o `-DryRun`.** As mesmas invocações estavam no `-Doctor` e nos dois pontos do `-Uninstall`: os três modos que prometem não mudar nada.
+
+**A correção.** `Test-WslUsable` é read-only de verdade — só `--status` e `-l -q`, nunca `wsl -e` — e trata os dois estados que enganam: recurso desligado (a mensagem sai na stderr e o código de saída é 0, então só o texto serve de sinal) e recurso ligado com zero distro, que também cai no instalador do Windows.
+
+No `-Uninstall`, a saída vazia com código diferente de zero é deliberada: ela cai no caminho de "plano ilegível" que já existia e **não toca no lado Windows**. Nenhum caminho novo foi inventado para o desinstalador.
+
+O `-Doctor` também deixa de contar WSL ausente como "broken" — é um fato da máquina, não uma falha do diagnóstico. Antes ele saía com código diferente de zero num Windows limpo, que é um estado perfeitamente legítimo.
+
+**A guarda foi provada na ordem certa:** o commit com os testes foi ao CI **sozinho e reprovou**, com as três asserções acusando `casou /-e bash/ e nao devia`; só o commit seguinte, com a correção, ficou verde. O stub de `wsl` ganhou `AF_WSL_NOT_INSTALLED`, que replica o estado real medido. E há um contrapositivo: com WSL presente, os modos read-only têm de continuar delegando ao `install.sh` — sem ele, a correção passaria mesmo se alguém simplesmente parasse de falar com o lado Linux.
+
+---
+
 ## [0.56.3] - 2026-07-29
 
 ### O nome do documento perdia o identificador na ingestão
