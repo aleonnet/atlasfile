@@ -39,6 +39,26 @@ visível na UI" (label + tooltip por modo)._
 |---|---|---|
 | ~~Instalador bootstrapa os próprios pré-requisitos~~ | **Entregue na v0.43.0** — ver `planos_concluidos/installer_bootstrap_prereqs_v0430.plan.md` (bootstrap com confirmação, `--install-deps`, en-US, step 0 do site removido). O Ollama opt-in daquele ciclo **saiu do instalador na v0.55.0**: o pull são vários GB e tirava a previsibilidade da duração | — |
 
+### Pendências abertas dos instaladores (v0.56.1 / v0.56.2)
+
+Sobraram da auditoria de paridade (PR #2) e do E2E em Linux com stack real
+(PR #3). Nenhuma bloqueia usuário; estão em ordem de custo/benefício.
+
+| # | Item | O que é | Por que ainda não foi feito |
+|---|---|---|---|
+| 1 | `--dry-run` do `install.sh` se contradiz | A tela mostra `✘ Docker is installed but the daemon does not answer` e, quatro linhas abaixo, `✔ none — everything needed is already here`. A checagem de "faltando" só testa `command -v docker`, não o daemon | Ficou fora do escopo aprovado da auditoria. **Correção de ~1 linha** em `run_dry_run` (`install.sh`) |
+| 2 | `install.ps1` sem `-NoOpen`, `-RepoUrl` e `-NoOllama` | O `.sh` tem as três; o `.ps1` não. `-RepoUrl`/`ATLASFILE_REPO_URL` é a que dói: **impede testar um *fork* de ponta a ponta no Windows** (uma *branch* funciona, via `ATLASFILE_SH_URL` + `-Branch`) | Achado A4 da auditoria, deliberadamente fora dos 31 itens aprovados. Exige mexer no `param()`, no `Show-Usage` e no encaminhamento — a guarda `check_flags` cobra os três |
+| 3 | Painel final do `install.ps1` usa `wsl -e` sem `-u root` | Os comandos de `logs`/`stop` que a caixa final imprime não carregam `$script:WslUser`. Funciona hoje porque distro não inicializada tem root como padrão; **quebra assim que alguém completar o assistente de conta do Ubuntu** | Achado A7, mesma decisão de escopo. Risco baixo, correção pequena |
+| 4 | 6 falhas pré-existentes da bancada Windows sob `prlctl exec` | A `main` já falha 6 asserções do grupo "fechamento de trilho/calha" quando a bancada roda via `prlctl exec` na VM Parallels. **Não são regressão** — medidas contra baseline da `main` no mesmo canal | Hipótese **não provada**: `prlctl exec` roda como `nt authority\system` com saída redirecionada, `$AfTrueColor` cai e o desenho degrada. **É a mais valiosa**: hoje ela cega a bancada Windows nesse canal |
+| 5 | Estimativa de tempo desatualizada | O instalador fala em café (`a good moment for a coffee`) e o `INSTALL.md` em **~15 min**. Medido numa VM Ubuntu ARM64: **48s de build, 2m10s no total** | Uma única medição não justifica mudar o texto. **Gatilho: medir em mais uma máquina** (x86, disco lento ou rede fria) antes de recalibrar |
+| 6 | Site publica `--with-ollama` | Quatro ocorrências em `~/Development/atlasfile-website`. As flags do Ollama são aceitas e ignoradas desde a v0.55.0, então **não quebra** — mas o site ensina o que o instalador desaprovou | Fora deste repositório |
+
+**Como validar o que for feito.** O `install.sh` tem E2E com stack real numa VM
+Linux (`lima`) — ver `planos_concluidos/uninstall_linux_stack_real_v0562.plan.md`.
+O `install.ps1` só é validável na VM Parallels ou no CI: a bancada invoca
+`powershell` 5.1, que não existe no macOS. **Sempre medir a VM contra a baseline
+da `main` no mesmo canal** — sem isso, as 6 falhas do item 4 leem como regressão.
+
 ## Extração
 
 | Item | O que é | Registrado em |
@@ -72,6 +92,8 @@ visível na UI" (label + tooltip por modo)._
 | Item | O que é | Registrado em |
 |---|---|---|
 | ~~Chat Kimi (Moonshot) completo~~ | **Validado pelo usuário em 2026-07-25** com o Kimi K3 na stack de desenvolvimento ("testei com kimi k3 e tudo certo") — o gatilho era ter créditos na conta Moonshot. Sem plano próprio: a integração já existia desde a v0.36.0, o que faltava era a prova em conta real. | — |
+| ~~`install.sh` com stack real no ar~~ | **Feito na v0.56.2** em VM Ubuntu 24.04 ARM64 (`lima`): instalação do zero, os cinco caminhos do `--uninstall`, e o ciclo `--keep-data` → reinstalação reusando volume e senha. Container Linux **não** precisa de virtualização aninhada — foi isso que destravou | — |
+| `install.ps1` com stack real no ar | Instalar e desinstalar no Windows **com os 5 containers subindo**. Hoje só os caminhos sem daemon são validados (VM Parallels e CI) | **Bloqueado por hardware**: exige Hyper-V → virtualização aninhada em convidado Windows, que nem Parallels nem UTM entregam em Apple Silicon (só convidado *Linux*, desde macOS 15 + M3). Gatilho: **PC físico, VM em nuvem com nested virt, ou um job de CI que suba a stack no `windows-latest`** |
 
 ## Website
 
