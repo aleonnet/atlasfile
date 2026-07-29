@@ -1561,6 +1561,49 @@ if ($WithOllama -or $OllamaModel) {
     Write-Info "this run continues normally; the final panel shows how to enable a local model afterwards"
 }
 
+# --- O WSL da para USAR? read-only de verdade -------------------------------
+# So `--status` e `-l -q`. NUNCA `wsl -e`, e e essa a razao de existir.
+#
+# Os modos que prometem nao mudar nada (-Doctor, -DryRun, -Uninstall) falavam
+# com o lado Linux invocando `wsl -e` direto. Num Windows SEM WSL quem responde
+# a essa chamada e o PROPRIO WINDOWS, oferecendo instalar o subsistema. Medido
+# num Windows 11 real, com a maquina zerada: o -DryRun anunciou "WSL2 is already
+# here", abriu "Pressione qualquer tecla para instalar o Subsistema do Windows
+# para Linux" e, no fim, imprimiu "-DryRun: nothing was installed". Um dry run
+# que oferece instalar o sistema operacional nao e um dry run.
+#
+# `Get-Tool wsl` NAO serve para decidir isto: wsl.exe VEM COM O WINDOWS 11
+# mesmo com a feature desligada, entao ele existe sempre e nao prova nada - a
+# mesma medicao que a fase 1 ja registrava, e que este caminho ignorava. O sinal
+# real e a MENSAGEM do --status, mais a existencia de distro registrada: feature
+# ligada com zero distro tambem cai no instalador do Windows.
+function Test-WslUsable {
+    if (-not (Get-Tool wsl)) { return $false }
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $status = ""
+    $distros = ""
+    try { $status = (& (Resolve-ToolPath wsl) --status 2>&1 | Out-String) } catch { $status = "" }
+    try { $distros = (& (Resolve-ToolPath wsl) -l -q 2>&1 | Out-String) } catch { $distros = "" }
+    $ErrorActionPreference = $prev
+    # wsl.exe emite UTF-16: sem tirar os NUL, todo -match falha em silencio.
+    $status = $status -replace "`0", ""
+    $distros = $distros -replace "`0", ""
+    if (-not $status.Trim()) { return $false }
+    if ($status -match "is not installed") { return $false }
+    if ($status -match "no installed distributions") { return $false }
+    if (-not $distros.Trim()) { return $false }
+    return $true
+}
+
+# Mensagem unica para os tres modos read-only, para nao divergirem.
+function Write-WslUnavailableNote {
+    Write-Gut "! WSL is not usable on this machine - the Linux side cannot be inspected" DarkYellow
+    Write-Gut "  Nothing was installed. To get WSL2 either run:" DarkYellow
+    Write-Gut "    wsl --install" DarkYellow
+    Write-Gut "  or let AtlasFile do it, with: -InstallDeps" DarkYellow
+}
+
 # --- -Doctor: diagnostico read-only dos DOIS lados --------------------------
 # Nao existia, e era exatamente o que faltou quando a instalacao falhou numa
 # maquina real: sem log, sem manifesto a mao, a conversa virou adivinhacao. Aqui
@@ -1643,13 +1686,25 @@ function Test-AfDoctor {
     Write-Rule "Inside WSL"
     $cmdDoc = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- --doctor --delegated"
     if ($script:AfDir) { $cmdDoc += " --dir $(ConvertTo-AfShArg $script:AfDir)" }
-    $saidaDoc = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdDoc))
+    # Sem esta guarda, o `wsl -e` abaixo faz o WINDOWS oferecer instalar o
+    # subsistema - num -Doctor, que promete nao mudar nada.
+    $saidaDoc = ""
+    $wslUsavel = Test-WslUsable
+    if (-not $wslUsavel) {
+        Write-WslUnavailableNote
+        $nAviso++
+    } else {
+        $saidaDoc = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdDoc))
+    }
     if ($saidaDoc.Trim()) {
         foreach ($linha in (("$saidaDoc").TrimEnd() -split "`r?`n")) {
             if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
             Write-Host $linha
         }
-    } else {
+    } elseif ($wslUsavel) {
+        # So e FALHA quando havia WSL para responder. Maquina sem WSL e um fato
+        # da maquina, ja relatado acima como aviso - contar como "broken" faria
+        # o -Doctor sair != 0 num Windows limpo, que e um estado legitimo.
         Write-Gut ("{0} could not run the diagnosis inside WSL" -f $BAD) Red; $nRuim++
     }
 
@@ -1689,8 +1744,13 @@ if ($DryRun -and -not $Uninstall) {
     # `--dry-run` do install.sh lista so o que ele de fato instalaria (git, Docker,
     # plugin do compose). O -Doctor continua reportando o Ollama, e ali esta
     # certo: la a pergunta e "o que existe nesta maquina", nao "o que eu faria".
+    # Test-WslUsable e nao `Get-Tool wsl`: wsl.exe vem com o Windows 11 mesmo com
+    # a feature desligada, entao Get-Tool sempre dizia "WSL2 is already here" -
+    # inclusive numa maquina recem-zerada, onde era mentira. Medido num Windows
+    # 11 real.
+    $wslPresente = Test-WslUsable
     foreach ($item in @(
-        @{ Nome = "WSL2";           Tem = [bool](Get-Tool wsl) },
+        @{ Nome = "WSL2";           Tem = $wslPresente },
         @{ Nome = "Docker Desktop"; Tem = [bool](Get-Tool docker) }
     )) {
         if ($item.Tem) { Write-Gut ("{0} {1} is already here" -f $OK, $item.Nome) Green }
@@ -1698,12 +1758,19 @@ if ($DryRun -and -not $Uninstall) {
     }
     Write-Gut ""
     Write-Rule "Install plan (inside WSL)"
-    $cmdSeco = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
-    if ($script:AfDir) { $cmdSeco += " --dir $(ConvertTo-AfShArg $script:AfDir)" }
-    $saidaSeca = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdSeco))
-    foreach ($linha in (("$saidaSeca").TrimEnd() -split "`r?`n")) {
-        if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
-        Write-Host $linha
+    # Sem WSL nao ha lado Linux para inspecionar - e tentar assim mesmo era o que
+    # fazia o WINDOWS abrir "Pressione qualquer tecla para instalar o Subsistema
+    # do Windows para Linux" no meio de um -DryRun.
+    if (-not $wslPresente) {
+        Write-WslUnavailableNote
+    } else {
+        $cmdSeco = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- --dry-run --delegated"
+        if ($script:AfDir) { $cmdSeco += " --dir $(ConvertTo-AfShArg $script:AfDir)" }
+        $saidaSeca = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdSeco))
+        foreach ($linha in (("$saidaSeca").TrimEnd() -split "`r?`n")) {
+            if ($linha -match '^ATLASFILE_(FACT|UNINSTALL):') { continue }
+            Write-Host $linha
+        }
     }
     Write-Info "-DryRun: nothing was installed."
     Close-AfRail
@@ -1733,7 +1800,17 @@ if ($Uninstall) {
     # --- 1. FATOS: nao pergunta, nao age ------------------------------------
     Start-Step "reading the removal plan from inside WSL"
     $cmdPlano = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --plan-only"
-    $plano = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdPlano))
+    # Sem WSL, `wsl -e` faz o Windows OFERECER INSTALAR o subsistema - no meio de
+    # uma DESINSTALACAO. Aqui a saida vazia com codigo != 0 e deliberada: ela cai
+    # no mesmo caminho de "plano ilegivel" logo abaixo, que ja e conservador e
+    # NAO toca no lado Windows. Nao inventamos um caminho novo para o uninstall.
+    if (-not (Test-WslUsable)) {
+        $plano = ""
+        $script:NativeExitCode = 1
+        Write-WslUnavailableNote
+    } else {
+        $plano = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", $cmdPlano))
+    }
     if ($script:NativeExitCode -eq 0 -and $plano -match "ATLASFILE_UNINSTALL: plan-only") {
         Write-Ok "removal plan read"
     } else {
