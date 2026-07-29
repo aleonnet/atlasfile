@@ -687,6 +687,30 @@ Assert-NoMatch "o -Doctor nao chama wsl -e sem WSL" (Calls) "-e bash"
 Assert-Match "relata o WSL indisponivel" $out "WSL is not usable"
 $env:AF_WSL_NOT_INSTALLED = ""
 
+Write-Host "== S6. sem WSL, nem o list e chamado (curto-circuito no --status) =="
+# A PRIMEIRA versao de Test-WslUsable chamava --status e -l em sequencia, sempre.
+# Isso so trocava a origem do prompt: medido no Windows 11 real, `wsl --list`
+# TAMBEM dispara "Pressione qualquer tecla para instalar Subsistema do Windows
+# para Linux" quando a feature esta ligada sem distro. Se o --status ja disse
+# "is not installed", nao ha nada a listar - e listar custa um prompt de 60s.
+$sb = New-Sandbox
+$env:AF_WSL_NOT_INSTALLED = "1"
+$out = Run-Installer @("-Yes", "-DryRun")
+$calls = Calls
+Assert-Match "consultou o --status" $calls "wsl --status"
+Assert-NoMatch "e NAO listou distros depois de saber que nao ha WSL" $calls "wsl -l"
+$env:AF_WSL_NOT_INSTALLED = ""
+
+Write-Host "== S7. -KeepData: o plano diz que o volume FICA, nao 'still your call' =="
+# Visto no Windows 11 real: o usuario passou -KeepData e o plano respondeu
+# "data volume ... - still your call (--purge-data erases the index, --keep-data
+# keeps it)". O texto de "ainda em aberto" e honesto quando nada foi decidido, e
+# mentira quando a decisao veio na linha de comando - a flag nao chegava ao
+# --plan-only.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-Uninstall", "-KeepData", "-DryRun")
+Assert-Match "a decisao de manter chega ao plano" (Calls) "--keep-data"
+
 Write-Host "== S5. CONTRAPOSITIVO: com WSL, os read-only continuam delegando =="
 # Sem esta assertiva, a correcao acima passaria mesmo se alguem simplesmente
 # parasse de falar com o lado Linux em qualquer situacao.

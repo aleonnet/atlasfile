@@ -694,6 +694,27 @@ function Get-AfProjectsRoot {
     try { $doc = [Environment]::GetFolderPath('MyDocuments') } catch { $doc = "" }
     if (-not $doc) { $doc = Join-Path $env:USERPROFILE "Documents" }
     if (-not $doc) { return "" }
+
+    # Documentos redirecionados para o OneDrive: NAO e onde o indice deve morar.
+    # Visto no teste do Windows 11 real (2026-07-29): a pasta Documentos era
+    # C:\Users\<user>\OneDrive\Documentos, entao os documentos E o estado
+    # operacional em _ATLASFILE nasceram dentro de uma pasta sincronizada - o
+    # OneDrive passa a subir cada arquivo que a ingestao mexe, e a raiz de
+    # projetos e algo que o AtlasFile reescreve com frequencia.
+    #
+    # Fora do OneDrive, ao lado do perfil, segue visivel no Explorer e sem
+    # sincronizacao. Quem QUER na nuvem passa -ProjectsRoot apontando para la.
+    $ehOneDrive = $false
+    foreach ($od in @($env:OneDrive, $env:OneDriveCommercial, $env:OneDriveConsumer)) {
+        if ($od -and $doc.StartsWith($od, [StringComparison]::OrdinalIgnoreCase)) { $ehOneDrive = $true }
+    }
+    if (-not $ehOneDrive -and $doc -match '(?i)\\OneDrive([\\ -]|$)') { $ehOneDrive = $true }
+    if ($ehOneDrive) {
+        $doc = $env:USERPROFILE
+        if (-not $doc) { return "" }
+        Write-Verbose "Documents is inside OneDrive - using $doc to keep the index out of cloud sync"
+    }
+
     $alvo = Join-Path $doc "AtlasFileProjects"
     $convertido = ConvertTo-AfWslPath $alvo
 
@@ -1582,16 +1603,28 @@ function Test-WslUsable {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     $status = ""
-    $distros = ""
     try { $status = (& (Resolve-ToolPath wsl) --status 2>&1 | Out-String) } catch { $status = "" }
-    try { $distros = (& (Resolve-ToolPath wsl) -l -q 2>&1 | Out-String) } catch { $distros = "" }
     $ErrorActionPreference = $prev
     # wsl.exe emite UTF-16: sem tirar os NUL, todo -match falha em silencio.
     $status = $status -replace "`0", ""
-    $distros = $distros -replace "`0", ""
+    # CURTO-CIRCUITO OBRIGATORIO: sai aqui antes de tocar em `-l`.
+    # Medido no Windows 11 real do teste (2026-07-29): `wsl --list` DISPARA o
+    # prompt "Pressione qualquer tecla para instalar Subsistema do Windows para
+    # Linux" quando a feature esta ligada e nao ha distro. A primeira versao
+    # desta funcao chamava --status e -l em sequencia, sempre - o que trocava o
+    # prompt vindo do `wsl -e` por um prompt vindo do `wsl -l`, e resolvia nada.
     if (-not $status.Trim()) { return $false }
     if ($status -match "is not installed") { return $false }
     if ($status -match "no installed distributions") { return $false }
+    # Aqui o --status ja provou que a feature responde. Listar e seguro.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $distros = ""
+    try { $distros = (& (Resolve-ToolPath wsl) -l -q 2>&1 | Out-String) } catch { $distros = "" }
+    $ErrorActionPreference = $prev
+    $distros = $distros -replace "`0", ""
+    # Feature ligada com ZERO distro tambem cai no instalador do Windows quando
+    # alguem chama `wsl -e`, entao daqui em diante ela conta como inutilizavel.
     if (-not $distros.Trim()) { return $false }
     return $true
 }
@@ -1798,8 +1831,17 @@ if ($Uninstall) {
     if ($script:AfDir) { $flagsComuns += " --dir $(ConvertTo-AfShArg $script:AfDir)" }
 
     # --- 1. FATOS: nao pergunta, nao age ------------------------------------
+    # A decisao sobre o volume, quando JA veio na linha de comando, tem de chegar
+    # ao --plan-only. Sem isso o plano saia com "data volume ... - still your
+    # call (--purge-data erases the index, --keep-data keeps it)" numa execucao
+    # em que o usuario acabou de passar -KeepData: o texto de "ainda em aberto" e
+    # honesto quando nada foi decidido, e mentira quando ja foi. Visto no teste
+    # do Windows 11 real (2026-07-29).
+    $flagsPlano = $flagsComuns
+    if ($PurgeData)    { $flagsPlano += " --purge-data" }
+    elseif ($KeepData) { $flagsPlano += " --keep-data" }
     Start-Step "reading the removal plan from inside WSL"
-    $cmdPlano = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- $flagsComuns --plan-only"
+    $cmdPlano = "$(Get-AfEnvPrefix)$AF_CURL $AF_SH_URL | bash -s -- $flagsPlano --plan-only"
     # Sem WSL, `wsl -e` faz o Windows OFERECER INSTALAR o subsistema - no meio de
     # uma DESINSTALACAO. Aqui a saida vazia com codigo != 0 e deliberada: ela cai
     # no mesmo caminho de "plano ilegivel" logo abaixo, que ja e conservador e
@@ -2341,7 +2383,7 @@ Write-Ok "Docker and WSL are talking to each other"
 # versoes anteriores - o manifesto daquelas instalacoes segue valendo.
 
 Write-Phase 3 "Installing AtlasFile inside WSL"
-Write-Info "the Linux installer takes over from here - first run builds images (~15 min)"
+Write-Info "the Linux installer takes over from here - first run builds images (~1-2 min)"
 # A barra vive pinada na ultima linha, e daqui em diante quem escreve e o outro
 # instalador: sem apaga-la, a linha dela fica encalhada no meio da saida dele,
 # sem calha. Medido num Windows 11 real.
@@ -2360,7 +2402,7 @@ $shFlags = "--no-open --delegated"
 if ($Yes) { $shFlags += " --yes" }
 if ($InstallDeps) { $shFlags += " --install-deps" }
 if ($EnableAuth) { $shFlags += " --enable-auth" }
-# -Verbose tem de ATRAVESSAR a fronteira. O build de ~15 min roda do outro lado,
+# -Verbose tem de ATRAVESSAR a fronteira. O build roda do outro lado,
 # e e la que as falhas acontecem: pedir a saida das ferramentas e receber so a
 # do lado Windows deixa mudo exatamente o trecho que se queria ver.
 if ($Verbose) { $shFlags += " --verbose" }
