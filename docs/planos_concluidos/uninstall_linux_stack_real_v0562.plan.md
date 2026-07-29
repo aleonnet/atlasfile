@@ -46,7 +46,9 @@ Cadeia causal:
 | Reusar `ensure_docker_group_linux` no uninstall | **Não** | Ela roda `usermod -aG` e grava `docker_group created`. Desinstalar que cria grupo e registra artefato é o oposto do contrato |
 | Como alcançar o socket no uninstall | **`af_docker_shim_linux`**, novo | Só o shim: sem grupo, sem manifesto, sem `fail`. Usa `sudo -n`; pede senha só em `run_uninstall`, com terminal, e nunca aborta |
 | Falha ao descer a stack | **Barreira: para tudo** | Perder a ferramenta é pior que não usá-la. Clone e manifesto são exatamente o que se precisa para tentar de novo |
-| Contradição `--keep-data` × instalação nova | **Registrar, não corrigir** | Precisa de decisão de desenho, não de conserto pontual |
+| Contradição `--keep-data` × instalação nova | **Corrigir** | O desenho já estava decidido pela própria mensagem do produto ("a future reinstall reuses it"); faltava o código honrá-la |
+| Como distinguir nosso volume do de outra instância | **Registro em `~/.atlasfile/kept-volumes`**, com o diretório na chave | O sinal existe na desinstalação e era jogado fora. O diretório entra na chave para não virar adoção silenciosa; o registro é consumido no reuso |
+| Reuso sem a senha do volume | **Rejeitado, com medição** | Libera a guarda e sobe cinco containers que não funcionam (`Authentication finally failed`). Falha alta e clara é melhor que stack quebrada em silêncio |
 
 ## Mudanças
 
@@ -57,7 +59,9 @@ Cadeia causal:
   `un_collect`, e avisa na tela quando não consegue
 - `install.sh` — `un_execute` para quando `compose-down` falha, explicando a
   parada e o caminho de volta
-- `tests/installer/run.sh` — 5 asserções novas (197 → 202)
+- `install.sh` — `af_kept_volume_record/claim/forget` e `af_os_password`: o
+  volume preservado pelo `--keep-data` volta a ser reusável, com a senha dele
+- `tests/installer/run.sh` — 14 asserções novas (197 → 211)
 
 ## Verificação
 
@@ -74,6 +78,26 @@ Cadeia causal:
 Guardas provadas com mutante: remover a barreira do `un_execute` reprova; devolver
 o `usermod` ao shim reprova com `USERMOD:1`.
 
+### O reuso do volume preservado
+
+Segunda parte do ciclo, achada pela mesma VM. O `--keep-data` era um beco sem
+saída: prometia reuso e a instalação seguinte recusava o volume.
+
+**A primeira tentativa de conserto foi pior que o bug** — liberar só a guarda
+fazia a instalação subir cinco containers que não funcionavam, porque o índice
+de segurança do OpenSearch guarda a senha da primeira subida e a instalação nova
+gerava outra. Medido: `Authentication finally failed for admin` em loop, com a
+tela dizendo que tudo deu certo. Provado ao devolver a senha antiga ao `.env`:
+a API voltou a `{"status":"ok"}` na hora.
+
+**E a guarda da correção também nasceu cega:** eu testei só as funções de
+registro, e o mutante que faz o `.env` ignorar a senha do volume passou verde.
+A lógica saiu de dentro da fase 3 para `af_os_password`, que a bancada alcança.
+
+Validado na VM: instala → `--uninstall --keep-data` → reinstala, com o mesmo
+volume (`CreatedAt` idêntico), a mesma senha, API `{"status":"ok"}`, UI 200 e
+zero falhas de autenticação.
+
 **Erro de método registrado:** minha primeira espera pelo fim da instalação
 olhava `~/.atlasfile/last-run.log`, que **sobrevive** ao `rm-state` (o `rmdir`
 falha com o log dentro). Li estado velho como novo e agi sobre uma instalação
@@ -81,15 +105,9 @@ pela metade. Passou a esperar por `Install finished` no log da execução.
 
 ## Pendências
 
-1. **`--keep-data` promete reuso que a instalação recusa** (`install.sh:1144`
-   × `install.sh:2311`). O `--keep-data` remove o clone, então a instalação
-   seguinte é sempre "nova" e a guarda de volume órfão dispara. Os remédios
-   sugeridos anulam o reuso. Opções: marcar o volume preservado no estado do
-   host e liberar a guarda para ele; ou perguntar em vez de falhar; ou parar de
-   prometer reuso.
-2. **A estimativa de tempo está calibrada para outro cenário.** O instalador
+1. **A estimativa de tempo está calibrada para outro cenário.** O instalador
    fala em café e o `INSTALL.md` em ~15 min; medido aqui: **48s de build,
    2m10s no total**. Medir em mais uma máquina antes de mudar o texto.
-3. `install.ps1` sem `-NoOpen`, `-RepoUrl`, `-NoOllama`; painel final usa
+2. `install.ps1` sem `-NoOpen`, `-RepoUrl`, `-NoOllama`; painel final usa
    `wsl -e` sem `-u root`. As 6 falhas pré-existentes da bancada Windows sob
    `prlctl exec`.

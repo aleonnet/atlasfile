@@ -39,9 +39,17 @@ A cadeia:
 
 **Bancada: 197 → 202 asserções**, com o shim, a ausência de efeito colateral e a barreira do `un_execute` provados contra cópia mutada.
 
-### Achado registrado, não corrigido
+### `--keep-data` era um beco sem saída
 
-**`--keep-data` promete um reuso que a instalação recusa.** O plano de remoção diz *"data volume … (kept: a future reinstall reuses it)"*, mas uma instalação nova no mesmo diretório falha com *"the volume … already holds data from another instance"* — porque o `--keep-data` remove o clone, e sem clone a instalação seguinte é sempre "nova". Os dois remédios que a mensagem sugere (outro `--dir`, ou apagar o volume) anulam o reuso. Precisa de decisão de desenho: hoje não há como distinguir um volume que **nós** preservamos de propósito do volume de outra instância.
+O plano prometia, em letras, *"a future reinstall reuses it"* — e a instalação seguinte **recusava** o volume como *"data from another instance"*. Como o `--keep-data` remove o clone, a próxima instalação é sempre "nova" e a guarda sempre disparava. Os dois remédios sugeridos não devolvem o dado: `--dir` diferente muda o nome do projeto compose (e o volume preservado fica órfão), e `docker volume rm` apaga justamente o que se pediu para guardar.
+
+Faltava um sinal que separasse *"volume que **nós** preservamos"* de *"volume de outra instância"* — sinal que a desinstalação tinha e jogava fora. Agora ela anota o volume preservado em `~/.atlasfile/kept-volumes` (fora do manifesto, que o `rm-state` apaga), e a instalação seguinte reusa **quando o diretório é o mesmo**. O registro é consumido no reuso: uma instalação futura, sem desinstalação no meio, volta a esbarrar na guarda — reuso é de uma vez, não permissão eterna.
+
+**A senha vai junto, e isso não é detalhe.** A primeira tentativa de conserto liberou só a guarda, e o resultado medido foi pior que o bug: o índice de segurança do OpenSearch nasce com a senha da primeira subida e não muda, então a instalação nova gerava outra senha, **subia cinco containers e não funcionava** — `Authentication finally failed for admin` em todas as requisições. Uma falha alta e clara é melhor que uma stack quebrada em silêncio. O registro guarda a senha (arquivo `600`), a instalação a restaura, e o plano de remoção diz isso ao usuário em vez de esconder.
+
+Guardar credencial em disco não é novidade aqui: a desinstalação já preserva backups de `.env` anunciando, no próprio plano, que eles *"hold the OpenSearch password and API key of earlier installs"*.
+
+**Validado na VM**, o fluxo inteiro: instala → `--uninstall --keep-data` → reinstala. Mesmo volume (`CreatedAt` idêntico), mesma senha, API `{"status":"ok"}`, UI 200 e **zero** falhas de autenticação.
 
 ---
 
