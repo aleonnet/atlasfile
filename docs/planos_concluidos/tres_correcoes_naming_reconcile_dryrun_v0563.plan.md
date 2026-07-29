@@ -155,24 +155,69 @@ docker ausente → `! Docker would be installed`.
 
 ---
 
+---
+
+## 4. A bancada travava seis horas no CI (entrou no ciclo)
+
+Estava fora do plano original como "causa não provada". Entrou porque o CI 100%
+verde era requisito, e o diagnóstico fechou.
+
+### Como o ponto foi provado
+
+O job macOS batia o **teto de 6h do GitHub**, três execuções seguidas, e o log
+não dizia onde parava: a bancada é silenciosa por desenho (`ok()` não imprime),
+então ausência de saída não é sintoma de nada. A hipótese inicial de buffering
+estava **errada** — bash builtins escrevem direto.
+
+`AF_BENCH_TRACE=1` (novo) anuncia cada teste em stderr, e a primeira execução
+instrumentada entregou o ponto: `"e sem reuso ela e gerada, nunca vazia"` — o
+único teste que exercita a **geração** de senha, já que o anterior usa
+`AF_REUSE_OS_PASS` e retorna antes.
+
+### Causa
+
+```sh
+(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 20
+```
+
+O `tr` lê `/dev/urandom` para sempre e só termina quando o `head` fecha o pipe e
+o `SIGPIPE` chega. Naquele runner não chegava.
+
+**Não reproduz** em macOS local (300 gerações limpas, nenhum órfão), com stdin
+bloqueado, sem `TERM`, com ambiente de CI, nem no runner Linux — que roda a mesma
+bancada. Por isso a correção ataca a **classe** e não o sintoma: `af_random_token`
+limita a **entrada** (`head -c 1024 /dev/urandom`), então nenhum processo lê sem
+fim e nenhum depende de sinal para terminar. Aplicado nos três geradores.
+
+`timeout-minutes` em todos os jobs (10 no macOS, onde a bancada roda em ~50s)
+transforma trava futura em falha rápida.
+
+### A guarda nasceu inútil — duas vezes
+
+1. Filtrava linhas com `head -c` e o mutante passou **verde**: o padrão defeituoso
+   também tem `head -c`, só que na *saída*, que é onde não resolve
+2. Corrigida, passou a acusar o próprio comentário que documenta o padrão antigo
+
+A versão final mira `< /dev/urandom` (o redirecionamento infinito), ignora
+comentários, reprova o mutante apontando a linha e passa limpa. É guarda de
+**fonte** por exceção justificada: o sintoma só existe num ambiente que a bancada
+não alcança, então guarda de tela não pegaria.
+
+---
+
 ## Resultado
 
 | Bancada | Antes | Depois |
 |---|---:|---:|
 | Backend (pytest) | 725 | **731** |
-| Instalador (`run.sh`) | 211 | **214** |
+| Instalador (`run.sh`) | 211 | **218** |
 | Frontend (vitest) | 252 | 252 (intocado) |
 
 `shellcheck -S warning` limpo, sintaxe validada no bash 3.2 do macOS,
 `check_consistency.py` verde, `install.ps1` parseia limpo.
 
-## Fora deste plano
-
-**CI travando 6h no job macOS.** Correlação forte com `e9553be6` (último verde:
-`950820c1`), mas causa **não provada**: não reproduz local (214 passed em 47s) nem
-no job Linux, que roda a mesma bancada. O log só traz stderr porque o stdout fica
-preso no buffer de bloco do pipe. A contenção (`timeout-minutes` no job) é
-independente do diagnóstico e segue pendente de decisão.
+**CI verde nos 6 jobs** (run 30461683979): o job macOS voltou a 1m38s, contra as
+6h do teto que vinha batendo.
 
 ## Verificação
 

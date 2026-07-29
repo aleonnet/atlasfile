@@ -61,9 +61,29 @@ Agora o retrato registra **o que** faltou, não só quantos, separado por quem r
 
 O `install.ps1` delega o lado Linux ao `install.sh --dry-run`, então a correção vale para o Windows sem tocar no PowerShell.
 
+### A bancada travava seis horas no CI gerando uma senha
+
+O job macOS do CI batia o **teto de 6h do GitHub** em três execuções seguidas — ~18 horas de runner queimadas, e o log não dizia onde parava, porque a bancada é silenciosa por desenho (só imprime falhas e o placar final).
+
+Com um rastreio novo (`AF_BENCH_TRACE=1`, que anuncia cada teste em stderr) o ponto de parada ficou provado na primeira execução: o teste que gera a senha do OpenSearch — o único que exercita a **geração**, já que o anterior usa senha reusada e retorna antes.
+
+A causa é o padrão do gerador:
+
+```sh
+(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 20
+```
+
+O `tr` lê `/dev/urandom` **para sempre** e só termina quando o `head` fecha o pipe e o `SIGPIPE` chega. Naquele runner não chegava. Não reproduz em macOS local (300 gerações sem uma falha, nenhum processo órfão) nem no runner Linux, que roda exatamente a mesma bancada.
+
+Por isso a correção ataca a **classe** do problema e não o sintoma: `af_random_token` limita a **entrada** (`head -c 1024 /dev/urandom`), então nenhum processo lê sem fim e ninguém depende de sinal para terminar. Aplicado nos três geradores — senha do OpenSearch, chave de cookie do Dashboards e chave de API.
+
+`timeout-minutes` em todos os jobs fecha a porta para o próximo travamento: dez minutos onde a bancada roda em cinquenta segundos, o que transforma qualquer trava futura em falha rápida em vez de seis horas.
+
+**A guarda nasceu inútil**, e só passou a valer depois de duas correções. A primeira filtrava linhas com `head -c` e deixava o mutante passar verde — o padrão defeituoso *também* tem `head -c`, só que na saída, que é justamente onde ele não resolve. A segunda passou a acusar o próprio comentário que documenta o padrão antigo. A versão final reprova o mutante apontando a linha e passa limpa no código correto.
+
 ### Bancadas
 
-Backend 725 → **731** asserções, instalador 211 → **214**. Cada guarda nova foi provada contra o defeito: neutralizada a prova de canonicidade, o nome volta a ser mutilado; removida a condição de índice vazio, o reconcile volta a rodar em todo restart; e a asserção do `--dry-run` reprovava antes da correção. A do `--dry-run` vem em par com o contrapositivo — com tudo no lugar a frase *tem* de continuar aparecendo —, que é o que impede a correção preguiçosa de apenas apagar a mensagem.
+Backend 725 → **731** asserções, instalador 211 → **218**. Cada guarda nova foi provada contra o defeito: neutralizada a prova de canonicidade, o nome volta a ser mutilado; removida a condição de índice vazio, o reconcile volta a rodar em todo restart; e a asserção do `--dry-run` reprovava antes da correção. A do `--dry-run` vem em par com o contrapositivo — com tudo no lugar a frase *tem* de continuar aparecendo —, que é o que impede a correção preguiçosa de apenas apagar a mensagem.
 
 ---
 
