@@ -11,6 +11,15 @@ PASS=0; FAILED=0
 
 t() { # t "name" — followed by asserts that call ok/no
   CURRENT="$1"
+  # A bancada e SILENCIOSA por desenho: `ok` nao imprime nada, so o placar final
+  # e os FAIL saem. Isso a torna cega quando ela TRAVA — foi exatamente o que
+  # aconteceu no job macOS do CI (2026-07-29): seis horas ate o teto do GitHub,
+  # e no log so os broken pipes que vinham do stderr, nenhuma pista de ONDE
+  # parou. Com AF_BENCH_TRACE=1 cada teste anuncia o nome em STDERR (que nao
+  # concorre com as assercoes que capturam stdout), e a ultima linha do log
+  # passa a ser o ponto de parada.
+  [ "${AF_BENCH_TRACE:-0}" = "1" ] && printf 'TRACE: %s\n' "$1" >&2
+  return 0
 }
 ok() { PASS=$((PASS+1)); }
 no() { FAILED=$((FAILED+1)); printf 'FAIL: %s — %s\n' "$CURRENT" "$1"; }
@@ -728,6 +737,35 @@ t "e sem reuso ela e gerada, nunca vazia"
 out="$(run_case -- 'p="$(af_os_password)"; case "$p" in Af!??????????*9) printf GERADA ;; esac')"
 case "$out" in *GERADA*) ok ;; *) no "senha gerada fora do formato: $out" ;; esac
 
+# ── O gerador de aleatorio tem de TERMINAR ──────────────────────────────────
+# Foi aqui que a bancada travou no runner macOS do CI, ate o teto de 6h do
+# GitHub, tres execucoes seguidas. O padrao antigo era
+# `(tr -dc ... < /dev/urandom) | head -c N`: o `tr` le /dev/urandom PARA SEMPRE
+# e so morre quando o `head` fecha o pipe e o SIGPIPE chega. Naquele runner nao
+# chegava. Nao reproduz em macOS local (300 geracoes limpas) nem no runner
+# Linux, entao guarda de TELA nao pega — a regressao so aparece num ambiente que
+# a bancada nao alcanca. Por isso, excepcionalmente, uma guarda de FONTE.
+# A guarda mira o REDIRECIONAMENTO `< /dev/urandom`, que e o que faz o leitor
+# nunca parar. A primeira versao desta assertiva filtrava linhas com `head -c` e
+# por isso passava verde no mutante: o padrao defeituoso TAMBEM tem `head -c` —
+# na saida, que e justamente onde ele nao resolve. O jeito certo de ler a fonte
+# e `head -c N /dev/urandom` (limite na ENTRADA, sem `<`).
+t "nenhuma leitura sem limite de /dev/urandom (o gerador nao pode depender de SIGPIPE)"
+# Comentarios ficam de fora porque o proprio af_random_token DOCUMENTA o padrao
+# defeituoso para explicar por que ele saiu — a guarda mira codigo, nao prosa.
+sem_limite="$(grep -n '< *\/dev\/urandom' "$REPO_ROOT/install.sh" | grep -v '^[0-9]*:[[:space:]]*#' || true)"
+if [ -z "$sem_limite" ]; then ok; else no "leitura infinita de /dev/urandom: $sem_limite"; fi
+
+t "af_random_token entrega o comprimento pedido"
+out="$(run_case -- 'printf "%s" "$(af_random_token 20)" | wc -c | tr -d " "')"
+assert_eq "$out" "20"
+out="$(run_case -- 'printf "%s" "$(af_random_token 48)" | wc -c | tr -d " "')"
+assert_eq "$out" "48"
+
+t "e respeita a classe de caracteres pedida"
+out="$(run_case -- 'case "$(af_random_token 32 "a-z0-9")" in *[!a-z0-9]*) printf SUJO ;; *) printf LIMPO ;; esac')"
+assert_eq "$out" "LIMPO"
+
 t "e o registro nasce ilegivel para os outros"
 out="$(run_case -- '
   AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
@@ -1389,6 +1427,62 @@ case "$out" in *"Install plan"*) ok ;; *) no "sem o plano de instalacao: [$out]"
 case "$out" in *"nothing was installed"*) ok ;; *) no "nao declarou que nada foi instalado" ;; esac
 assert_not_contains "$CALLS" "clone"
 assert_not_contains "$CALLS" "compose build"
+
+# ── O --dry-run nao pode se contradizer sobre os pre-requisitos ────────────
+# A tela mostrava `✘ Docker is installed but the daemon does not answer` e,
+# quatro linhas abaixo, `✔ none — everything needed is already here`. A causa
+# eram DUAS fontes de verdade sobre o mesmo fato: doc_prereqs pergunta ao daemon
+# (e exige que a ferramenta RESPONDA --version, ver doc_version), enquanto o
+# bloco de prerequisites do --dry-run repergunta com `command -v docker`, que
+# tem sucesso com o daemon morto — e ate com um binario mudo.
+#
+# Stubs que respondem --version de verdade: sem isso doc_version os declara
+# "not found" e o teste mediria a contradicao errada.
+stub_ferramentas_reais() { # <dir de bin> — git e docker que se comportam
+  cat > "${1}/git" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = "--version" ] && echo "git version 2.45.0"
+exit 0
+STUB
+  cat > "${1}/docker" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  info)    exit "${STUB_DOCKER_INFO_RC:-0}" ;;
+  compose) [ "$2" = "version" ] && echo "Docker Compose version v2.30.0"; exit 0 ;;
+  *)       echo "Docker version 27.0.0, build abcdefg" ;;
+esac
+exit 0
+STUB
+  chmod +x "${1}/git" "${1}/docker"
+}
+
+make_sandbox
+stub_ferramentas_reais "${SANDBOX}/bin"
+t "--dry-run com o daemon morto nao anuncia que esta tudo pronto"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  STUB_DOCKER_INFO_RC=1 \
+  bash "$REPO_ROOT/install.sh" --dry-run --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in
+  *"daemon does not answer"*) ok ;;
+  *) no "nao avisou que o daemon nao responde: [$out]" ;;
+esac
+case "$out" in
+  *"everything needed is already here"*)
+    no "contradicao: daemon morto E 'everything needed is already here' na mesma tela" ;;
+  *) ok ;;
+esac
+
+# O contrapositivo, que impede a correcao preguicosa: com tudo no lugar a frase
+# TEM de continuar aparecendo. Sem esta assercao, apagar a mensagem passaria.
+make_sandbox
+stub_ferramentas_reais "${SANDBOX}/bin"
+t "--dry-run com tudo no lugar segue dizendo que nada falta"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --dry-run --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in
+  *"everything needed is already here"*) ok ;;
+  *) no "sumiu com a frase em vez de torna-la verdadeira: [$out]" ;;
+esac
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAILED"
 [ "$FAILED" = "0" ]

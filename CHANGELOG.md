@@ -15,6 +15,78 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.56.3] - 2026-07-29
+
+### O nome do documento perdia o identificador na ingestão
+
+Relatado pelo usuário com arquivo real, e reproduzido contra o código antes de qualquer correção:
+
+```
+entrada : DocuSign_Project_Neptune___SPA__Anexos_v_A__v01__v01.pdf
+saída   : Anexos_v_A__v01.pdf
+```
+
+**O que acontecia.** O arquivo chega ao INBOX com o nome **do usuário**, que já termina em `__v01.pdf` — versionamento manual, convenção comum em documento real — e contém `__` no meio. A cauda casava com `_CANONICAL_TAIL_RE`, o nome era tratado como canônico sem nunca ter sido embrulhado, e a repartição por `__` devolvia o terceiro pedaço. `DocuSign_Project_Neptune___SPA` ia para o lixo.
+
+O guarda que deveria impedir isso validava o **candidato de saída** em vez de provar a **entrada**: `Anexos_v_A` não é data, nem `project_id`, nem domínio conhecido, então passava.
+
+**O caminho legítimo sempre esteve certo** — o mesmo arquivo *com* prefixo canônico era desembrulhado preservando tudo, e havia teste para isso desde a v0.45.0. O defeito era só no caso sem prefixo.
+
+**A correção.** Antes de desembrulhar, o instalador prova que o prefixo **é** canônico, checando cada segmento contra o campo que ele deveria ser, com fatos do profile: `{date}` casa `\d{8}`, `{project}` casa o `project_id`, `{area}`/`{document_type}` casam chaves conhecidas. Nada de heurística sobre a forma do nome. Campo que o profile não conhece não bloqueia, porque o pattern é configurável.
+
+Nenhum arquivo em disco é renomeado e o formato canônico não muda — escapar o `__` na geração seria correto na raiz, mas exigiria migrar tudo que já foi canonizado.
+
+### O reconcile nunca rodava logo após a instalação
+
+Numa instalação nova apontada para uma pasta que **já tem documentos**, a interface mostrava zero por dez minutos, e "Reconciliar agora" era o único caminho.
+
+A causa é uma linha: o laço do reconcile automático faz `wait(interval)` **antes** do corpo, então o primeiro ciclo só sai um intervalo inteiro depois da subida — 600s no default do compose. (O `0` que aparece no `config.py` não é o valor efetivo: o `docker-compose.yml` o sobrescreve.)
+
+Agora um ciclo dispara na subida **quando há projeto no disco e o índice ainda está vazio**. A condição é deliberadamente essa, e não "algum projeto sem documento": ela precisa ser falsa em todo `docker compose restart` de rotina, senão um corpus grande pagaria uma reconciliação completa a cada reinício. Projeto novo em instalação já povoada segue coberto pelo laço periódico e pelo watcher.
+
+### `--dry-run` se contradizia na mesma tela
+
+O `--dry-run` mostrava o veredito sobre os pré-requisitos duas vezes, e as duas discordavam:
+
+```
+│ ✘ docker not found
+│ ✔ none — everything needed is already here
+```
+
+Pior do que o registrado no roadmap, que só previa o caso do daemon parado: as duas seções discordavam sobre a própria **existência** do Docker.
+
+A causa eram duas fontes de verdade sobre o mesmo fato. O retrato de pré-requisitos pergunta ao daemon e exige que a ferramenta responda `--version`; o bloco do `--dry-run` reperguntava com `command -v docker`, que tem sucesso com o daemon parado **e** com um binário mudo.
+
+Agora o retrato registra **o que** faltou, não só quantos, separado por quem resolve: o que o instalador instala sozinho aparece como `!` ("would be installed"), e o que exige ação sua aparece como `✘` ("start Docker before installing"). O bloco do `--dry-run` consome esse registro em vez de remedir a máquina — a contradição fica impossível por construção, não por remendo.
+
+O `install.ps1` delega o lado Linux ao `install.sh --dry-run`, então a correção vale para o Windows sem tocar no PowerShell.
+
+### A bancada travava seis horas no CI gerando uma senha
+
+O job macOS do CI batia o **teto de 6h do GitHub** em três execuções seguidas — ~18 horas de runner queimadas, e o log não dizia onde parava, porque a bancada é silenciosa por desenho (só imprime falhas e o placar final).
+
+Com um rastreio novo (`AF_BENCH_TRACE=1`, que anuncia cada teste em stderr) o ponto de parada ficou provado na primeira execução: o teste que gera a senha do OpenSearch — o único que exercita a **geração**, já que o anterior usa senha reusada e retorna antes.
+
+A causa é o padrão do gerador:
+
+```sh
+(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom || true) | head -c 20
+```
+
+O `tr` lê `/dev/urandom` **para sempre** e só termina quando o `head` fecha o pipe e o `SIGPIPE` chega. Naquele runner não chegava. Não reproduz em macOS local (300 gerações sem uma falha, nenhum processo órfão) nem no runner Linux, que roda exatamente a mesma bancada.
+
+Por isso a correção ataca a **classe** do problema e não o sintoma: `af_random_token` limita a **entrada** (`head -c 1024 /dev/urandom`), então nenhum processo lê sem fim e ninguém depende de sinal para terminar. Aplicado nos três geradores — senha do OpenSearch, chave de cookie do Dashboards e chave de API.
+
+`timeout-minutes` em todos os jobs fecha a porta para o próximo travamento: dez minutos onde a bancada roda em cinquenta segundos, o que transforma qualquer trava futura em falha rápida em vez de seis horas.
+
+**A guarda nasceu inútil**, e só passou a valer depois de duas correções. A primeira filtrava linhas com `head -c` e deixava o mutante passar verde — o padrão defeituoso *também* tem `head -c`, só que na saída, que é justamente onde ele não resolve. A segunda passou a acusar o próprio comentário que documenta o padrão antigo. A versão final reprova o mutante apontando a linha e passa limpa no código correto.
+
+### Bancadas
+
+Backend 725 → **731** asserções, instalador 211 → **218**. Cada guarda nova foi provada contra o defeito: neutralizada a prova de canonicidade, o nome volta a ser mutilado; removida a condição de índice vazio, o reconcile volta a rodar em todo restart; e a asserção do `--dry-run` reprovava antes da correção. A do `--dry-run` vem em par com o contrapositivo — com tudo no lugar a frase *tem* de continuar aparecendo —, que é o que impede a correção preguiçosa de apenas apagar a mensagem.
+
+---
+
 ## [0.56.2] - 2026-07-28
 
 ### A desinstalação apagava os meios de reverter e falhava em reverter

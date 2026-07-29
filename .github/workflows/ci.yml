@@ -16,6 +16,7 @@ jobs:
   backend:
     name: backend · pytest (com OCR de verdade)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -56,6 +57,7 @@ jobs:
   frontend:
     name: frontend · tsc + vitest
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -82,6 +84,11 @@ jobs:
   installers-macos:
     name: instaladores · bash 3.2 (macOS)
     runs-on: macos-latest
+    # Este job TRAVOU e consumiu o teto de 6h do GitHub em três execuções
+    # seguidas (2026-07-29). A bancada roda em ~50s, e o job verde levava 1m11:
+    # 10 minutos é folga de 12x sobre o pior caso conhecido, e transforma um
+    # travamento em falha rápida em vez de seis horas de runner queimadas.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -99,7 +106,12 @@ jobs:
           brew install shellcheck
           shellcheck -S warning install.sh
 
+      # AF_BENCH_TRACE: a bancada é silenciosa (só FAIL e placar), então quando
+      # ela travou aqui o log não dizia ONDE. Com o rastreio, a última linha do
+      # log é o ponto de parada — o dado que faltou no diagnóstico de 2026-07-29.
       - name: Testes do instalador
+        env:
+          AF_BENCH_TRACE: "1"
         run: /bin/bash tests/installer/run.sh
 
       # `--help` fazia `grep '^#' "$0"` e sob `curl | bash` o $0 é `bash`:
@@ -137,6 +149,7 @@ jobs:
   installers-linux:
     name: instaladores · bash 5 + smoke de detecção (Linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -187,6 +200,7 @@ jobs:
   powershell:
     name: install.ps1 · ASCII, parse e degradação (Windows)
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -336,6 +350,7 @@ jobs:
   docker-build:
     name: imagens · docker compose build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 

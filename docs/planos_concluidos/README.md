@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.56.3
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [tres_correcoes_naming_reconcile_dryrun_v0563](tres_correcoes_naming_reconcile_dryrun_v0563.plan.md) | Três defeitos independentes, todos reproduzidos antes de corrigir. **O nome do documento perdia o identificador**: arquivo cujo nome de usuário já terminava em `__vNN` e continha `__` era confundido com canônico, e `DocuSign_Project_Neptune___SPA__Anexos_v_A__v01__v01.pdf` virava `Anexos_v_A__v01.pdf` — o guarda validava o candidato de SAÍDA em vez de provar a ENTRADA. **O reconcile nunca rodava na subida**: o laço faz `wait(interval)` antes do corpo, então uma instalação nova sobre pasta com documentos mostrava zero por 10 minutos. **O `--dry-run` se contradizia** e pior do que o registrado — duas fontes de verdade faziam a tela dizer `✘ docker not found` e `✔ none — everything needed is already here` na mesma imagem. E, já que o CI verde era requisito, **a bancada que travava seis horas** no job macOS: o rastreio novo (`AF_BENCH_TRACE`) provou o ponto de parada na primeira execução — o gerador de senha lia `/dev/urandom` para sempre e dependia de um `SIGPIPE` que naquele runner não chegava. Bancadas 725→731 e 211→218, cada guarda provada contra mutante — e a do gerador nasceu inútil duas vezes antes de valer |
+
+---
+
 ## 0.56.2
 
 | # | Plano | Escopo |
