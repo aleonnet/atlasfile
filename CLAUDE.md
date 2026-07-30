@@ -97,7 +97,7 @@ make reset-chat     # sessões de chat
 
 ## Arquitetura
 
-Monorepo com 5 serviços Docker: API (FastAPI :8000), MCP Server (FastMCP :8001), Frontend (Vite+React :5173), OpenSearch (:9200), Dashboards (:5601).
+Monorepo com 2 serviços Docker (3 com o profile opt-in `dashboards`): `atlasfile` (:8000 — um uvicorn serve a API REST/SSE em `/api/*`, o MCP em `/mcp` e o bundle de produção da UI em `/`), OpenSearch (:9200) e Dashboards (:5601, opt-in). Em desenvolvimento a UI roda no vite dev (:5173) com proxy para :8000.
 
 ### Backend (`backend/`)
 

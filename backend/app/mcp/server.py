@@ -1,29 +1,60 @@
 """
 MCP Server for AtlasFile. Exposes tools for document search, get, tags, metadata, review.
-Run: python -m app.mcp.server (or uv run python -m app.mcp.server)
+Served by the consolidated app at /mcp (uvicorn app.main:app) — see the Route
+wiring at the end of app/main.py.
 Uses ATLASFILE_API_BASE (default http://localhost:8000) to call the backend.
-Host/port for streamable-http: via FastMCP settings (env FASTMCP_HOST, FASTMCP_PORT) or defaults below.
 """
 from __future__ import annotations
 
+import functools
 import json
-import os
 from typing import Any
 
+import anyio.to_thread
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from .api_client import get, patch, post
 
-# host/port vêm de Settings (env FASTMCP_* ou defaults). run() não aceita host/port.
 mcp = FastMCP(
     "AtlasFile MCP",
     json_response=True,
-    host=os.environ.get("FASTMCP_HOST", "0.0.0.0"),
-    port=int(os.environ.get("FASTMCP_PORT", "8001")),
+    # Sem isto, o default host=127.0.0.1 auto-liga a proteção DNS-rebinding do
+    # SDK (allowlist localhost:*) e /mcp responde 421 para qualquer acesso que
+    # não seja localhost — TestClient e IP de LAN inclusive. O controle de
+    # acesso real do /mcp é o MCPAuthMiddleware (auth.py) + CORS do app.
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 
 
-@mcp.tool()
+def tool() -> Any:
+    """Registra a tool rodando a função síncrona no threadpool do anyio.
+
+    O SDK executa função sync INLINE no event loop (func_metadata.py:92-95,
+    mcp==1.26.0) — não há to_thread do lado servidor. No processo consolidado
+    isso é DEADLOCK: a tool bloqueia o loop, o HTTP loopback dela para o
+    próprio servidor nunca é atendido, e o processo inteiro fica surdo até o
+    timeout do api_client (medido na stack real: 60s por call, com /health e
+    até o 401 do /mcp mortos durante a janela). Na topologia antiga o defeito
+    era invisível porque a API vivia em outro processo.
+
+    O wrapper preserva a assinatura (functools.wraps): o FastMCP monta o
+    modelo de argumentos via inspect.signature, que segue __wrapped__.
+    Registra o wrapper async e devolve a função ORIGINAL — os testes chamam
+    as funções cruas de forma síncrona."""
+
+    def deco(fn: Any) -> Any:
+        @functools.wraps(fn)
+        async def runner(**kwargs: Any) -> Any:
+            return await anyio.to_thread.run_sync(functools.partial(fn, **kwargs))
+
+        mcp.tool()(runner)
+        return fn
+
+    return deco
+
+
+@tool()
 def list_documents(
     project_id: str | None = None,
     doc_kind: str | None = None,
@@ -46,7 +77,7 @@ def list_documents(
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def search_documents(
     query: str,
     project_id: str | None = None,
@@ -85,7 +116,7 @@ def search_documents(
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def semantic_search_chunks(
     query: str,
     project_id: str | None = None,
@@ -101,7 +132,7 @@ def semantic_search_chunks(
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def get_stats(project_id: str | None = None) -> str:
     """Get document statistics and counts. Returns total_documents and breakdowns by doc_kind (pdf, docx, xlsx, pptx, plain_text...), business_domain, document_type, extension, and tags. Each breakdown has key and count. Use this to answer quantity questions like 'how many PDFs?' or 'document distribution by domain'."""
     params: dict[str, Any] = {}
@@ -111,14 +142,14 @@ def get_stats(project_id: str | None = None) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def get_document(doc_id: str) -> str:
     """Get a document by doc_id. Returns metadata, content excerpt, and content_chunks (location + text) for evidence. For long documents the response may be truncated to fit the model context; when so, the JSON includes _truncated: true, _total_chunks, _returned_chunks, and _message explaining the truncation. Prefer search_documents with specific terms to retrieve targeted excerpts from very long documents."""
     data = get(f"/api/documents/{doc_id}")
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def get_document_chunks(doc_id: str, locations: list[str]) -> str:
     """Return only the requested chunks of a document. Pass doc_id and a list of chunk locations (e.g. from search_documents match_locations or evidences[].location). Returns JSON with document metadata and content_chunks containing only those locations (location + text). Use this after search_documents to get the full text of matched chunks without loading the full document."""
     if not locations:
@@ -131,14 +162,14 @@ def get_document_chunks(doc_id: str, locations: list[str]) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def spreadsheet_schema(doc_id: str) -> str:
     """Inspect the structure of a spreadsheet document (xlsx/xlsm/csv) BEFORE querying it. Returns JSON with tables (one per sheet): table name to use in SQL, sanitized column names, original column headers, row_count and 3 sample rows. Always call this first, then use spreadsheet_query with the returned table/column names. Use these tools whenever the user asks for counts, sums, group-by breakdowns or any exact aggregation over a spreadsheet — NEVER count rows from get_document text."""
     data = get(f"/api/documents/{doc_id}/spreadsheet/schema")
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def spreadsheet_query(doc_id: str, sql: str) -> str:
     """Run a read-only SQL SELECT (DuckDB dialect) against the original spreadsheet file of a document (xlsx/xlsm/csv). The aggregation is computed exactly by the database — use for counts, sums, averages, GROUP BY pivots and filters (e.g. SELECT empresa, situacao, COUNT(*) FROM aba GROUP BY 1, 2). Single SELECT statement only; results capped at 500 rows (aggregate or add LIMIT for large outputs). Get table and column names from spreadsheet_schema first. All columns are VARCHAR for xlsx — CAST(col AS DOUBLE) before SUM/AVG on numeric columns."""
     if not (sql or "").strip().lower().lstrip("(").startswith(("select", "with")):
@@ -147,7 +178,7 @@ def spreadsheet_query(doc_id: str, sql: str) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def apply_tags(
     doc_id: str,
     tags_to_add: list[str],
@@ -161,7 +192,7 @@ def apply_tags(
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def set_metadata(
     doc_id: str,
     document_type: str | None = None,
@@ -185,7 +216,7 @@ def set_metadata(
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def list_tags(project_id: str | None = None) -> str:
     """List all unique tags in the index, optionally filtered by project_id."""
     params = {}
@@ -195,7 +226,7 @@ def list_tags(project_id: str | None = None) -> str:
     return json.dumps(data, ensure_ascii=False)
 
 
-@mcp.tool()
+@tool()
 def create_review_marker(doc_id: str, kind: str = "legal_review") -> str:
     """Mark a document for review: applies tag REVIEW_LEGAL or REVIEW_FINANCE or REVIEW_REQUIRED and sets review_status. kind: legal_review | finance_review | needs_review."""
     tag_map = {
@@ -209,7 +240,7 @@ def create_review_marker(doc_id: str, kind: str = "legal_review") -> str:
     return json.dumps({"status": "ok", "doc_id": doc_id, "tag": tag, "review_status": kind})
 
 
-@mcp.tool()
+@tool()
 def submit_classification(
     document_type: str | None = None,
     tags: list[str] | None = None,
@@ -228,12 +259,3 @@ def submit_classification(
         "topics": topics or [],
         "explanation": explanation,
     })
-
-
-def run_server() -> None:
-    """Run MCP server with streamable HTTP transport. Host/port via mcp.settings (FASTMCP_HOST/FASTMCP_PORT)."""
-    mcp.run(transport="streamable-http")
-
-
-if __name__ == "__main__":
-    run_server()

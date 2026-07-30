@@ -10,32 +10,64 @@ from app.mcp.server import (
     get_document,
     get_document_chunks,
     list_documents,
-    run_server,
     search_documents,
     spreadsheet_query,
     spreadsheet_schema,
 )
 
+EXPECTED_TOOLS = {
+    "apply_tags",
+    "create_review_marker",
+    "get_document",
+    "get_document_chunks",
+    "get_stats",
+    "list_documents",
+    "list_tags",
+    "search_documents",
+    "semantic_search_chunks",
+    "set_metadata",
+    "spreadsheet_query",
+    "spreadsheet_schema",
+    "submit_classification",
+}
 
-def test_mcp_server_imports() -> None:
-    """MCP server module and FastMCP app can be imported."""
-    from app.mcp.server import mcp, run_server
 
-    assert mcp is not None
-    assert run_server is not None
-
-
-def test_mcp_server_has_tools() -> None:
-    """MCP server exposes expected tools (by name)."""
+async def test_mcp_server_registra_as_13_tools() -> None:
+    """As 13 tools registradas, por nome — o contrato que o /mcp expõe."""
     from app.mcp.server import mcp
 
-    # FastMCP exposes tools; we only check the app exists and has a name
-    assert getattr(mcp, "name", None) or True
-    # Tool list would come from mcp._tool_manager or similar internal API
-    # Minimal check: no import error and run_server is callable
-    from app.mcp.server import run_server
+    tools = await mcp.list_tools()
+    assert {t.name for t in tools} == EXPECTED_TOOLS
 
-    assert callable(run_server)
+
+def test_toda_tool_registrada_e_assincrona() -> None:
+    """O SDK (mcp==1.26.0, func_metadata.py:92-95) executa função sync INLINE
+    no event loop. No processo consolidado isso é DEADLOCK: a tool bloqueia o
+    loop e o loopback HTTP dela para o próprio servidor nunca é atendido
+    (medido na stack real: 60s por call, servidor inteiro surdo). Toda tool
+    tem de ser registrada via o wrapper @tool() que despacha ao threadpool."""
+    import inspect
+
+    from app.mcp.server import mcp
+
+    for registered in mcp._tool_manager.list_tools():
+        assert inspect.iscoroutinefunction(registered.fn), (
+            f"tool '{registered.name}' registrada como função síncrona — no app "
+            "consolidado ela rodaria no event loop e deadlockaria o processo; "
+            "use o decorator @tool() de app/mcp/server.py"
+        )
+
+
+def test_dns_rebinding_protection_explicitamente_desligada() -> None:
+    """Sem transport_security explícito, o default host=127.0.0.1 auto-liga a
+    proteção DNS-rebinding do SDK (allowlist localhost:*) e /mcp responde 421
+    fora de localhost — TestClient e acesso via IP de LAN inclusive. O controle
+    de acesso do /mcp é o MCPAuthMiddleware, não o Host header."""
+    from app.mcp.server import mcp
+
+    security = mcp.settings.transport_security
+    assert security is not None
+    assert security.enable_dns_rebinding_protection is False
 
 
 def test_get_document_chunks_empty_locations_returns_error_json() -> None:

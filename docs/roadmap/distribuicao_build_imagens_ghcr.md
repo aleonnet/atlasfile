@@ -262,6 +262,21 @@ confirmar o job vermelho; só então mergear.
 
 ## Fase 2 — Um app, um container
 
+> **EXECUTADA na v0.57.0 (2026-07-30)** — registro completo em
+> `docs/planos_concluidos/fase2_um_app_um_container_v0570.plan.md`. Três
+> correções de fato a esta seção, achadas na execução: (i) o mount em `/mcp`
+> não funciona como descrito abaixo — o Starlette interno do SDK registra a
+> própria rota em `/mcp` (viraria `/mcp/mcp`) e Mount responde 307 no path
+> exato; a forma final é `Route("/mcp")` delegando ao
+> `session_manager.handle_request` por request; (ii) remover `host="0.0.0.0"`
+> auto-liga a proteção DNS-rebinding do SDK (421 fora de localhost) — exige
+> `transport_security` explícito; (iii) **a premissa da armadilha nº 4 estava
+> errada**: o SDK executa tool síncrona INLINE no event loop, não no
+> threadpool — consolidado, cada tool call deadlockava o processo por 60s
+> (medido na stack real); as tools passaram a ser registradas via wrapper
+> async→to_thread, e só então o limiter de 100 passou a valer (50 calls
+> concorrentes em 1.2s, medido).
+
 Consolidar `api` + `mcp` + `web` num único processo uvicorn.
 
 ### Backend — `backend/app/main.py`

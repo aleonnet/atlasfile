@@ -546,6 +546,7 @@ function AppShell() {
             dashboardStats={dashboardStats}
             reconcileStatus={reconcileStatus}
             reconcilingNow={reconcilingNow}
+            dashboardsEnabled={setupStatusQuery.data?.dashboards_enabled ?? false}
             onReconcile={handleReconcileNow}
             onDecision={handleDecision}
             onStatus={handleStatus}

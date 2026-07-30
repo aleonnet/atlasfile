@@ -2432,8 +2432,8 @@ $script:TrilhoFechadoNoWsl = $true
 # Abrir o navegador e cortesia, nao resultado: numa sessao nao interativa o
 # Start-Process falha com "The operation attempted is not supported" e cuspia
 # erro DEPOIS de a instalacao ter dado certo (medido em bancada).
-try { Start-Process "http://localhost:5173" -ErrorAction Stop }
-catch { Write-Info "open http://localhost:5173 in your browser" }
+try { Start-Process "http://localhost:8000" -ErrorAction Stop }
+catch { Write-Info "open http://localhost:8000 in your browser" }
 
 # O install.sh JA imprimiu o painel com Interface/API/Dashboards, a senha do
 # OpenSearch e a chave de API. Repetir metade disso aqui era o mesmo defeito do

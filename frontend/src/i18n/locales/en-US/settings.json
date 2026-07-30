@@ -76,7 +76,7 @@
     "description": "Only required when the backend runs with <c>API_AUTH_ENABLED=true</c>. The key stays in this browser only (localStorage) and is sent as <c>Authorization: Bearer</c>.",
     "howtoTitle": "How to enable authentication",
     "howtoIntro": "Authentication is a deployment decision — for security, it cannot be turned on from this UI (an interface without auth must not be able to enable auth). The simplest path is to re-run the installer on the server, which generates the key, configures the <c>.env</c> and rebuilds the API while preserving your data:",
-    "howtoManual": "Or manually: keys in <c>config/api_keys.json</c>, <c>API_AUTH_ENABLED=true</c> in .env and <c>docker compose up -d --build api mcp</c>. At the end, the generated key is shown in the terminal — paste it above in every browser that accesses AtlasFile."
+    "howtoManual": "Or manually: keys in <c>config/api_keys.json</c>, <c>API_AUTH_ENABLED=true</c> in .env and <c>docker compose up -d atlasfile</c>. The keys file is bind-mounted, so later key changes apply without rebuild — paste the key above in every browser that accesses AtlasFile."
   },
   "language": {
     "title": "Language",

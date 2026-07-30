@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .config import settings
 
@@ -143,3 +145,36 @@ def enforce_project_scope(auth: AuthContext, project_id: str | None) -> None:
         return
     if not auth.can_access_project(pid):
         raise HTTPException(status_code=403, detail=f"API key '{auth.name}' sem acesso ao projeto '{pid}'")
+
+
+class MCPAuthMiddleware:
+    """ASGI puro na frente do transporte MCP.
+
+    Route/Mount NÃO herdam o ``dependencies=[Depends(require_auth)]`` do
+    FastAPI (aquilo só vale para APIRoute) — sem isto, /mcp nasceria aberto
+    com ``api_auth_enabled=true``. Reusa ``resolve_api_key``/``_extract_key``:
+    mesma key da API, mesmos três canais (Bearer, X-API-Key, ?api_key=).
+    Só autentica — escopo de projeto continua sendo aplicado pela API nos
+    hops HTTP internos das tools."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] != "http"
+            or not getattr(settings, "api_auth_enabled", False)
+            or scope["method"] == "OPTIONS"
+        ):
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope)  # headers e query bastam — sem consumir receive
+        context = resolve_api_key(_extract_key(request))
+        if context is None:
+            response = JSONResponse(
+                {"detail": "API key ausente ou inválida (Authorization: Bearer ou X-API-Key)"},
+                status_code=401,
+            )
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)

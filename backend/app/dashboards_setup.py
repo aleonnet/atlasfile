@@ -66,8 +66,12 @@ def _ensure_dark_theme_default(client: Any, base: str) -> None:
 
 
 def start_dashboards_import_background() -> threading.Thread | None:
-    """Agenda o import em background (o Dashboards sobe mais devagar que a API)."""
-    if not settings.dashboards_auto_import:
+    """Agenda o import em background (o Dashboards sobe mais devagar que a API).
+
+    Com Dashboards desligado (opt-in via profile do compose) não existe serviço
+    para importar — sem o curto-circuito, a thread gastaria 30 tentativas × 5s
+    contra um host inexistente a cada boot."""
+    if not settings.dashboards_enabled or not settings.dashboards_auto_import:
         return None
 
     def _run() -> None:

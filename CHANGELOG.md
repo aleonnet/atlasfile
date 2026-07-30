@@ -4,6 +4,34 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.57.0] - 2026-07-30
+
+### ⚠️ BREAKING — um app, um container (Fase 2 do plano de distribuição)
+
+Consolidação de `api` + `mcp` + `web` num único processo uvicorn no `:8000`. Duas quebras deliberadas, sem caminho de compatibilidade:
+
+- **Clientes MCP externos param**: o MCP saiu de `http://localhost:8001/mcp` para `http://localhost:8000/mcp` — e, com `API_AUTH_ENABLED=true`, o `/mcp` passa a exigir a MESMA API key da API (`Authorization: Bearer`). A porta 8001 não existe mais; o aviso antigo "porta 8001 não valida key" morreu junto com ela.
+- **A UI saiu de `http://localhost:5173` para `http://localhost:8000`**, agora como bundle de produção (vite build) servido por StaticFiles — o vite dev server (HMR aberto, sem minificação) deixou de ir para produção, e o acesso de outra máquina funciona porque a UI fala com a API pela própria origem (morreu o `VITE_API_URL=http://localhost:8000` hardcoded que mandava o browser remoto procurar a API no localhost dele).
+
+O que a consolidação corrige de uma vez: 5 containers → 2 (3 com Dashboards), servidor de desenvolvimento em produção, acesso remoto quebrado e o segredo assado na imagem. `docker compose up -d --build web` e o restart granular de web/mcp deixam de existir (um crash agora derruba API+MCP juntos — custo aceito do nível de consolidação).
+
+- **`backend/app/main.py`**: FastMCP montado como `Route("/mcp")` que delega ao `session_manager.handle_request` por request — não é `app.mount()`, porque o Starlette interno do SDK registra a própria rota em `/mcp` (mount viraria `/mcp/mcp`) e Mount responde 307 no path exato. O lifespan envolve o `yield` com `async with session_manager.run():` (mount não executa lifespan de sub-app) e recria o manager a cada ciclo (`run()` é single-use por instância). StaticFiles em `/` montado no FIM do arquivo, só quando o diretório existe (dev/CI seguem sem dist).
+- **`backend/app/auth.py` — `MCPAuthMiddleware`**: Route/Mount NÃO herdam o `dependencies=[Depends(require_auth)]` global do FastAPI — sem o middleware, `/mcp` nasceria aberto com auth ligado. Mesma key, mesmos três canais (`Bearer`, `X-API-Key`, `?api_key=`).
+- **`backend/app/mcp_client/client.py`**: o outro lado da mesma armadilha — fechar `/mcp` quebraria o orchestrator, que conectava sem credencial. Com `ATLASFILE_API_TOKEN` configurado, o client passa um `httpx.AsyncClient` autenticado ao SDK (`streamable_http_client` não aceita `headers=`) e o fecha no finally — o SDK não fecha client fornecido; sem o `aclose()`, vazaria 1 client por tool call.
+- **`backend/app/mcp/server.py`**: `transport_security` explicitamente sem DNS-rebinding — sem isso, remover o `host="0.0.0.0"` (que morreu com o standalone) auto-ligaria a proteção do SDK e `/mcp` responderia **421** fora de localhost. `run_server()`/`python -m app.mcp.server` removidos (o uvicorn consolidado serve o `/mcp`).
+- **Deadlock de event loop achado no E2E e corrigido — o defeito mais grave do ciclo**: o SDK (mcp==1.26.0, `func_metadata.py:92-95`) executa tool síncrona INLINE no event loop, não no threadpool como o plano supunha. Consolidado, cada tool call congelava o processo inteiro: a tool bloqueava o loop, o HTTP loopback dela para o próprio servidor nunca era atendido, e até o `/health` e o 401 do `/mcp` morriam até o timeout do api_client (**medido na stack real: 60.100ms por call, com erro interno "timed out"**). Na topologia antiga o defeito era invisível — a API vivia em outro processo. Correção: as tools são registradas via wrapper `@tool()` (`app/mcp/server.py`) que despacha a função síncrona ao `anyio.to_thread`, preservando assinatura; **60.100ms → 59ms**, e guarda nova impede registro sync direto.
+- **Threadpool dimensionado e MEDIDO**: as 13 tools e os 81 handlers síncronos dividem o mesmo threadpool do anyio (default 40), e cada tool call em voo segura 2 slots (tool + endpoint chamado por loopback) — ~20 chamadas saturariam. Limiter elevado para 100 no startup. Carga real na stack consolidada: 50 tool calls concorrentes (o teto de projeto) em 1.2s de parede, p95 ~1s, `/health` respondendo após cada degrau.
+- **`backend/Dockerfile` multi-stage**: estágio `node:22-alpine` roda `npm ci && npm run build` e o estágio final copia o `dist` para `/workspace/static` — a imagem passa a rodar bundle de produção, e `frontend/Dockerfile`/`frontend/.dockerignore` morreram.
+- **`docker-compose.yml`**: serviço único `atlasfile` (container `atlasfile`); **primeiros healthchecks do arquivo** (OpenSearch autenticado + `/health` do app) com `depends_on: service_healthy` — ordem de start deixou de ser confundida com prontidão; `config/api_keys.json` virou **bind mount** (trocar key não exige mais rebuild — o vetor "key numa camada de imagem" morreu). Dashboards virou **opt-in** (`profiles: [dashboards]` + `DASHBOARDS_ENABLED=true`): é ~1/3 do download de terceiros e o produto opera sem ele; a UI esconde o link de observabilidade quando desligado (senão seria um 502).
+- **Armadilha do bind mount, guardada**: arquivo ausente no host viraria um DIRETÓRIO criado pelo Docker — e o auth rejeitaria toda key em silêncio. `install.sh` e `make docker-up`/`docker-update` materializam `{"keys": []}` antes do `up`.
+- **`frontend/src/api.ts`**: `API_BASE` cai para `window.location.origin` (não string vazia: 11 call sites de `new URL()` exigem base absoluta). `VITE_API_URL` segue como escape hatch de dev.
+- **Instaladores**: painel final, pré-checagem de portas, doctor e open apontam para `:8000`; o passo opcional do Dashboards entrou nos next steps; `un_collect` casa a imagem consolidada **e** as legadas api/web/mcp (upgrade de 0.56.x não vaza imagem no uninstall) — com guarda nova na bancada.
+- **Migração de 0.56.x**: `git pull` + `make docker-update` com o `.env` antigo sobe sem edição (`extra="ignore"` no backend; envs órfãs só viram ruído inerte) e o volume `opensearch_data` sobrevive (nome vem do projeto compose, inalterado).
+
+### Guardas novas, cada uma provada com seu mutante
+
+`MCPAuthMiddleware` isolado (6 mutantes de auth), wiring real do `/mcp` (401 sem key; com key atravessa o middleware), handshake MCP E2E **duplo** no mesmo processo (mata "esqueceu o `session_manager.run()`" e "esqueceu o reset single-use"), guarda do DNS-rebinding (`transport_security` explícito), injeção e fechamento do client autenticado, curto-circuito do Dashboards desligado (feature off não pode custar), mount condicional do static (dir ausente não monta; presente serve), e a asserção de bancada do `un_collect`.
+
 ## Não versionado — Ferramental
 
 ### PoC: MarkItDown vs Extrator AtlasFile (`extractor-benchmark_mdxaf`)

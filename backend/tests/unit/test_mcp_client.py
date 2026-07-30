@@ -9,10 +9,30 @@ import pytest
 from app.mcp_client import call_tool, list_tools
 
 
-@asynccontextmanager
-async def _fake_streamable_http(url: str):
-    """Fake streamable_http_client(url) returning (read, write, get_id)."""
-    yield (MagicMock(), MagicMock(), lambda: None)
+def _make_fake_streamable_http(captured: dict | None = None):
+    """Fake com a assinatura REAL do SDK (url, *, http_client=None,
+    terminate_on_close=True) — o client passa http_client= quando há token,
+    e um fake posicional-only mascararia a regressão com TypeError silencioso
+    nos testes errados. Captura os kwargs para asserção."""
+
+    @asynccontextmanager
+    async def _fake(url: str, *, http_client=None, terminate_on_close: bool = True):
+        if captured is not None:
+            captured["url"] = url
+            captured["http_client"] = http_client
+        yield (MagicMock(), MagicMock(), lambda: None)
+
+    return _fake
+
+
+_fake_streamable_http = _make_fake_streamable_http()
+
+
+def _session_mock_with(fake_session: AsyncMock) -> MagicMock:
+    session_mock = MagicMock()
+    session_mock.return_value.__aenter__ = AsyncMock(return_value=fake_session)
+    session_mock.return_value.__aexit__ = AsyncMock(return_value=None)
+    return session_mock
 
 
 @pytest.mark.asyncio
@@ -72,3 +92,45 @@ async def test_call_tool_returns_text_from_mcp() -> None:
     assert "result line 1" in out
     assert "result line 2" in out
     fake_session.call_tool.assert_called_once_with("get_document", arguments={"doc_id": "abc"})
+
+
+def _fake_session_for_list_tools() -> AsyncMock:
+    fake_tools_result = MagicMock()
+    fake_tools_result.tools = []
+    fake_session = AsyncMock()
+    fake_session.initialize = AsyncMock()
+    fake_session.list_tools = AsyncMock(return_value=fake_tools_result)
+    return fake_session
+
+
+@pytest.mark.asyncio
+async def test_token_configurado_injeta_bearer_e_fecha_o_client(monkeypatch) -> None:
+    """Fase 2: com auth ligado o /mcp exige key; o SDK não aceita headers= —
+    o client fornece httpx.AsyncClient com Bearer e é responsável pelo aclose()
+    (o SDK NÃO fecha client fornecido: sem isso, vaza 1 client por tool call)."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "atlasfile_api_token", "tok-interno", raising=False)
+    captured: dict = {}
+    with patch(
+        "app.mcp_client.client.streamable_http_client", _make_fake_streamable_http(captured)
+    ), patch("app.mcp_client.client.ClientSession", _session_mock_with(_fake_session_for_list_tools())):
+        await list_tools()
+    http_client = captured["http_client"]
+    assert http_client is not None
+    assert http_client.headers["authorization"] == "Bearer tok-interno"
+    assert http_client.is_closed  # aclose() no finally, não no SDK
+
+
+@pytest.mark.asyncio
+async def test_sem_token_nao_cria_http_client(monkeypatch) -> None:
+    """Sem token o SDK cria e gerencia o client próprio (comportamento vigente)."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "atlasfile_api_token", "", raising=False)
+    captured: dict = {}
+    with patch(
+        "app.mcp_client.client.streamable_http_client", _make_fake_streamable_http(captured)
+    ), patch("app.mcp_client.client.ClientSession", _session_mock_with(_fake_session_for_list_tools())):
+        await list_tools()
+    assert captured["http_client"] is None

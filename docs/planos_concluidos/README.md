@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.57.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [fase2_um_app_um_container_v0570](fase2_um_app_um_container_v0570.plan.md) | Fase 2 do plano de distribuição — **um app, um container** (BREAKING: MCP `:8001/mcp`→`:8000/mcp` com a mesma API key; UI `:5173`→`:8000` como bundle de produção). Consolida api+mcp+web num uvicorn (Route `/mcp` por request — mount duplicaria o path e responderia 307; lifespan recria o session manager single-use; `MCPAuthMiddleware` porque Route não herda o require_auth global), primeiros healthchecks do compose, api_keys vira bind mount, Dashboards opt-in por profile. Das 7 armadilhas, 3 achadas fora do roadmap — e a mais grave no E2E: **o SDK executa tool síncrona inline no event loop** e cada tool call deadlockava o processo inteiro por 60s (medido; invisível na topologia antiga de 2 processos) → wrapper `@tool()` com to_thread, 60.100ms→59ms. 12 mutantes mortos, migração 0.56.6→0.57.0 provada na VM lima com `.env` intocado e volume vivo (47.7s, órfãos removidos), fluxo completo na UI real via Playwright e carga de 50 tool calls concorrentes em 1.2s |
+
+---
+
 ## 0.56.6
 
 | # | Plano | Escopo |

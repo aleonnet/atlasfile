@@ -58,6 +58,30 @@ def test_setup_status_accepts_valid_key(authed_client: TestClient) -> None:
     assert bad.status_code == 401
 
 
+def test_mcp_route_requires_key(authed_client: TestClient) -> None:
+    """Fase 2: /mcp é Route ASGI — NÃO herda o require_auth global do FastAPI.
+    A guarda é o MCPAuthMiddleware embrulhando o transporte: sem key, 401
+    antes de o request tocar o session manager."""
+    response = authed_client.post("/mcp", json={})
+    assert response.status_code == 401
+
+
+def test_mcp_route_with_key_crosses_middleware(monkeypatch) -> None:
+    """Com key válida o request ATRAVESSA o middleware (≠ 401). Sem lifespan o
+    session manager do MCP não está rodando → o transporte falha depois da
+    guarda (500), o que é exatamente a prova de que a rota real está embrulhada
+    no middleware, e não registrada nua."""
+    monkeypatch.setattr(auth_module.settings, "api_auth_enabled", True, raising=False)
+    monkeypatch.setattr(
+        auth_module,
+        "resolve_api_key",
+        lambda raw: AuthContext(name="teste", allowed_projects=("*",)) if raw == "atlas_sk_teste" else None,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.post("/mcp", json={}, headers={"Authorization": "Bearer atlas_sk_teste"})
+    assert response.status_code != 401
+
+
 def test_stream_endpoint_accepts_api_key_query_param(authed_client: TestClient) -> None:
     # EventSource não envia headers — streams autenticam via ?api_key=
     no_key = authed_client.get("/api/ingest/status")

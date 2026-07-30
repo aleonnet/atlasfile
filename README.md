@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
-The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:5173` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag — on Windows, `install.ps1 -Help`.
+The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:8000` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag — on Windows, `install.ps1 -Help`.
 
 **On Windows your documents live on the Windows side**, in your Documents folder (`…\Documents\AtlasFileProjects`), so they show up in Explorer like any other folder and survive a `wsl --unregister`. Only AtlasFile itself lives inside WSL. Use `-ProjectsRoot` to pick another folder, and `-InstallDeps` to install WSL2 and Docker Desktop without being asked anything.
 
@@ -179,11 +179,10 @@ For what each operational and technical script does, see `docs/11_scripts_and_op
 
 | Service | URL | Description |
 |---------|-----|-----------|
-| Frontend | http://localhost:5173 | Web interface (light/dark theme) |
-| API | http://localhost:8000 | FastAPI (REST + SSE) |
-| MCP Server | http://localhost:8001 | Tools for chat/classification |
+| AtlasFile | http://localhost:8000 | Web interface + FastAPI (REST + SSE) in one process |
+| MCP | http://localhost:8000/mcp | Tools for chat/classification (same API key as the API) |
 | OpenSearch | https://localhost:9200 | Search engine (admin / `OPENSEARCH_PASSWORD` from `.env`) |
-| Dashboards | http://localhost:5601 | OpenSearch Dashboards |
+| Dashboards | http://localhost:5601 | OpenSearch Dashboards (opt-in: `COMPOSE_PROFILES=dashboards` + `DASHBOARDS_ENABLED=true`) |
 
 ### Makefile
 

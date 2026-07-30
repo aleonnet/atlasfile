@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     opensearch_chat_sessions_index: str = "atlasfile_chat_sessions"
     opensearch_user: str = "admin"
     opensearch_password: str = "admin123"
+    # OpenSearch Dashboards é opt-in (profile "dashboards" no compose). False
+    # esconde o link de observabilidade na UI e pula o auto-import no boot —
+    # ligado sem o container de Dashboards, o link daria 502.
+    dashboards_enabled: bool = False
     # OpenSearch Dashboards: auto-import do conjunto "AtlasFile — Operação" no boot
     dashboards_url: str = "http://opensearch-dashboards:5601"
     dashboards_auto_import: bool = True
@@ -102,8 +106,9 @@ class Settings(BaseSettings):
     get_document_max_chars: int = 100_000
 
     # --- MCP e LLM (chat / classificação) ---
-    # URL do MCP server (streamable HTTP). Ex.: http://localhost:8001/mcp
-    mcp_server_url: str = "http://localhost:8001/mcp"
+    # URL do MCP server (streamable HTTP). O MCP é servido pelo próprio
+    # processo em /mcp — o default é o loopback do uvicorn consolidado.
+    mcp_server_url: str = "http://localhost:8000/mcp"
     # Provedor e modelo padrão (usado para chat e classificação se os específicos não forem definidos).
     default_llm_provider: str = "openai"
     default_llm_model: str = "gpt-4o-mini"
@@ -137,6 +142,16 @@ class Settings(BaseSettings):
     # JSON com as keys ({"keys": [{"key", "name", "projects": ["*"|ids]}]}).
     # Real fora do git; template em config/api_keys.example.json.
     api_keys_config_path: str = "/workspace/config/api_keys.json"
+    # Credencial que o processo usa consigo mesmo quando api_auth_enabled:
+    # o orchestrator a envia ao /mcp e as tools a devolvem à API no loopback
+    # (mesma env ATLASFILE_API_TOKEN que app/mcp/api_client.py lê). Precisa
+    # constar em api_keys.json com projects ["*"].
+    atlasfile_api_token: str = ""
+
+    # --- Frontend estático (um app, um container) ---
+    # Bundle do vite copiado pelo estágio webbuild do backend/Dockerfile.
+    # O mount em "/" só acontece se o diretório existir (dev/CI não têm dist).
+    static_dir: str = "/workspace/static"
 
     # --- Embeddings (camada semântica / RAG) ---
     # Habilita geração de embeddings por chunk (índice separado atlasfile_chunk_vectors).
