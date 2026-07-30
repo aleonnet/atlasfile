@@ -65,7 +65,7 @@ Não existe no nosso código nenhuma ferramenta `multi_tool_use.parallel` nem �
 **Arquivo:** `backend/app/mcp_client/client.py`
 
 - O backend chama `list_tools()` no início de cada `run_chat_loop`.
-- `list_tools()` abre uma sessão MCP via **streamable HTTP** para `settings.mcp_server_url` (ex.: `http://localhost:8001`).
+- `list_tools()` abre uma sessão MCP via **streamable HTTP** para `settings.mcp_server_url` (default `http://localhost:8000/mcp` — o MCP é servido pelo próprio processo).
 - Envia a requisição **MCP** equivalente a `tools/list` (via `session.list_tools()` do SDK).
 - A resposta MCP contém um objeto com uma lista de ferramentas; cada item no SDK Python tem atributos como `name`, `description`, `inputSchema`.
 

@@ -481,6 +481,27 @@ out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/n
   bash "$REPO_ROOT/install.sh" --uninstall --dir "${SANDBOX}/inst" --yes 2>&1 || true)"
 case "$out" in *"--purge-data"*) ok ;; *) no "did not demand an explicit data decision: [$out]" ;; esac
 
+# A consolidação renomeou o serviço para `atlasfile`: se o un_collect seguir
+# casando só api/web/mcp, o uninstall reporta sucesso e deixa a imagem nova
+# (~centenas de MB) no disco. Os nomes antigos continuam no plano porque um
+# upgrade de 0.56.x ainda os carrega.
+t "uninstall enxerga a imagem consolidada e as legadas de 0.56.x"
+make_sandbox
+mkdir -p "${SANDBOX}/inst"
+printf 'services: {}\n' > "${SANDBOX}/inst/docker-compose.yml"
+cat > "${SANDBOX}/bin/docker" <<EOF
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "image inspect")
+    case "\$3" in inst-atlasfile|inst-api) exit 0 ;; *) exit 1 ;; esac ;;
+esac
+exit 0
+EOF
+chmod +x "${SANDBOX}/bin/docker"
+out="$(run_case -- 'un_collect "$SANDBOX/inst"; printf "%s" "$UN_IMAGES"')"
+case "$out" in *inst-atlasfile*) ok ;; *) no "imagem consolidada fora do plano de remoção: [$out]" ;; esac
+case "$out" in *inst-api*) ok ;; *) no "imagem legada 0.56.x fora do plano de remoção: [$out]" ;; esac
+
 # ── UI: calha vertical, barra viva e trap que não vaza ─────────────────────
 make_sandbox
 t "toda mensagem pendura na calha vertical"

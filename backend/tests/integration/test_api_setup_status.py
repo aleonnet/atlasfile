@@ -53,6 +53,22 @@ def test_setup_status_expoe_dashboards_public_url(client: TestClient) -> None:
     assert r.json()["dashboards_public_url"] == "https://atlas.example.com/dashboards"
 
 
+def test_setup_status_expoe_dashboards_enabled(client: TestClient) -> None:
+    """Fase 2: Dashboards é opt-in — o campo diz à UI se o link de
+    observabilidade existe (False = sem container, link daria 502)."""
+    from app.config import settings
+
+    with patch("app.main.list_project_roots", return_value=[]):
+        r = client.get("/api/setup/status")
+    assert r.status_code == 200
+    assert r.json()["dashboards_enabled"] is False
+
+    with patch.object(settings, "dashboards_enabled", True):
+        with patch("app.main.list_project_roots", return_value=[]):
+            r = client.get("/api/setup/status")
+    assert r.json()["dashboards_enabled"] is True
+
+
 def test_setup_status_with_uninitialized_project(client: TestClient) -> None:
     roots = [_mock_root("proj_a")]
     with (

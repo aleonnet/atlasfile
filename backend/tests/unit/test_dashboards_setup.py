@@ -132,7 +132,23 @@ def test_dashboards_fora_do_ar_retorna_none_sem_postar(monkeypatch):
     client.post.assert_not_called()
 
 
+def test_dashboards_desligado_curto_circuita_sem_thread(monkeypatch):
+    """Fase 2: Dashboards é opt-in (profile no compose). Desligado não pode
+    custar: nem thread, nem 30 tentativas × 5s contra host inexistente."""
+    from unittest.mock import patch as _patch
+
+    from app import dashboards_setup
+
+    monkeypatch.setattr(settings, "dashboards_enabled", False, raising=False)
+    monkeypatch.setattr(settings, "dashboards_auto_import", True, raising=False)
+    thread_cls = MagicMock()
+    with _patch.object(dashboards_setup.threading, "Thread", thread_cls):
+        assert start_dashboards_import_background() is None
+    thread_cls.assert_not_called()
+
+
 def test_background_desiste_em_silencio_e_respeita_o_toggle(monkeypatch):
+    monkeypatch.setattr(settings, "dashboards_enabled", True, raising=False)
     monkeypatch.setattr(settings, "dashboards_auto_import", False, raising=False)
     assert start_dashboards_import_background() is None
 
@@ -154,6 +170,7 @@ def test_background_desiste_em_silencio_e_respeita_o_toggle(monkeypatch):
 
 
 def test_background_para_no_primeiro_sucesso(monkeypatch):
+    monkeypatch.setattr(settings, "dashboards_enabled", True, raising=False)
     monkeypatch.setattr(settings, "dashboards_auto_import", True, raising=False)
     monkeypatch.setattr("app.dashboards_setup.IMPORT_ATTEMPTS", 5)
     monkeypatch.setattr("app.dashboards_setup.IMPORT_DELAY_SECONDS", 0.0)

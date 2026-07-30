@@ -381,7 +381,7 @@ jobs:
           exit 0
 
   docker-build:
-    name: imagens · docker compose build
+    name: imagem · docker compose build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -395,7 +395,8 @@ jobs:
       - name: .env a partir do exemplo
         run: cp .env.example .env
 
-      # Constrói só api, mcp e web (os únicos com `build:`); as imagens do
-      # OpenSearch têm `image:` e não são baixadas aqui.
-      - name: Build das imagens
+      # Constrói só `atlasfile` (o único serviço com `build:` — multi-stage que
+      # inclui o vite build da UI); as imagens do OpenSearch têm `image:` e não
+      # são baixadas aqui.
+      - name: Build da imagem
         run: docker compose build

@@ -42,11 +42,13 @@ import { apiErrorFromResponse, apiErrorMessage } from "./lib/apiError";
 import { PROVIDER_KEY_HEADER, type ProviderId } from "./lib/providers";
 import { STORAGE_KEYS, storageGet, storageSet } from "./lib/storage";
 
+// Mesma origem: a UI é servida pelo próprio uvicorn (:8000) e o vite dev já
+// faz proxy de /api e /health. VITE_API_URL fica como escape hatch de dev
+// contra API remota. Origin (não string vazia): api.ts monta URLs com
+// `new URL(...)`, que exige base absoluta.
 const API_BASE =
   import.meta.env.VITE_API_URL ||
-  (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : "http://localhost:8000");
+  (typeof window !== "undefined" ? window.location.origin : "http://localhost:8000");
 export const API_URL = API_BASE;
 
 /* ── Autenticação (API key + escopo de projeto) ── */
@@ -128,6 +130,9 @@ export interface SetupStatus {
   projects_root_state?: "ok" | "unavailable" | "emptied";
   /** URL do Dashboards para o browser (vazio = derivar do host atual :5601). */
   dashboards_public_url?: string;
+  /** Dashboards é opt-in (profile no compose): false = sem container, o link
+   *  de observabilidade não deve nem ser exibido (daria 502). */
+  dashboards_enabled?: boolean;
 }
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {

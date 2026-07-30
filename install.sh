@@ -1210,7 +1210,9 @@ un_collect() { # <dir>
     UN_VOLUME="$(docker volume ls -q --filter "label=com.docker.compose.project=${UN_PROJECT}" 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')"
     # Exact service names only: a `${project}-` prefix match would also catch
     # `atlasfile-dev-*` when uninstalling the project named `atlasfile`.
-    for f in api web mcp; do
+    # `atlasfile` is the consolidated service; api/web/mcp stay for installs
+    # upgraded from 0.56.x that still carry the old images.
+    for f in atlasfile api web mcp; do
       if docker image inspect "${UN_PROJECT}-${f}" >/dev/null 2>&1; then
         UN_IMAGES="${UN_IMAGES}${UN_PROJECT}-${f} "
       fi
@@ -1883,7 +1885,7 @@ run_doctor() {
     doc_warn "the daemon does not answer — nothing to say about the stack"
   fi
   local porta
-  for porta in 5173 8000 9200; do
+  for porta in 8000 9200; do
     if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$porta" -sTCP:LISTEN >/dev/null 2>&1; then
       if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q "atlasfile.*:${porta}"; then
         doc_ok "port ${porta} is AtlasFile's own"
@@ -2468,13 +2470,15 @@ fi
 # Container names are fixed (atlasfile-*): even with distinct project names,
 # only one instance can exist at a time. If the containers belong to another
 # directory, that stack must be stopped and removed first.
-name_owner="$(docker inspect atlasfile-api --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || true)"
+name_owner="$(docker inspect atlasfile --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || true)"
+# Instância 0.56.x ainda no ar usa os nomes antigos — mesmo bloqueio.
+[ -n "${name_owner}" ] || name_owner="$(docker inspect atlasfile-api --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null || true)"
 if [ -n "${name_owner}" ] && [ "${name_owner}" != "${INSTALL_DIR}" ]; then
   info "the atlasfile-* containers belong to the instance at: ${name_owner}"
   fail "AtlasFile container names are fixed — stop and remove the other stack before installing here: cd ${name_owner} && docker compose down (its data stays safe in the volumes)."
 fi
 
-for port in 5173 8000 9200; do
+for port in 8000 9200; do
   if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
     if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q "atlasfile.*:${port}"; then
       info "port ${port} is used by AtlasFile itself (it will be updated)"
@@ -2611,8 +2615,10 @@ if [ -z "${cookie_current}" ] || [ "${cookie_current}" = "Troque-Esta-Senha-De-C
 fi
 
 # ── API authentication (opt-in via --enable-auth) ───────────────────────────
-# The key is baked into the image at build time (config/api_keys.json) and into
-# .env for the MCP server (ATLASFILE_API_TOKEN). Re-running preserves the key.
+# The keys file is BIND-MOUNTED into the container (compose), so key changes
+# apply without rebuild. ATLASFILE_API_TOKEN goes to .env: it is the app's
+# credential to itself (orchestrator→/mcp and tools→API). Re-running preserves
+# the key.
 if [ "${ENABLE_AUTH}" = "1" ]; then
   keys_file="config/api_keys.json"
   if [ -f "${keys_file}" ]; then
@@ -2631,6 +2637,14 @@ if [ "${ENABLE_AUTH}" = "1" ]; then
   set_env ATLASFILE_API_TOKEN "${API_KEY_VALUE}"
   ok "API authentication enabled"
 fi
+# Sem --enable-auth o arquivo também PRECISA existir antes do `up`: o compose o
+# monta como bind mount, e arquivo ausente vira um DIRETÓRIO criado pelo Docker
+# — com auth ligado depois, toda key passaria a ser rejeitada em silêncio.
+if [ ! -f config/api_keys.json ]; then
+  printf '{"keys": []}\n' > config/api_keys.json
+  manifest_set "$AF_MANIFEST" api_keys_file created
+  ok "api_keys.json created empty (compose bind mount)"
+fi
 
 # ── 4. Build + launch ───────────────────────────────────────────────────────
 title "4/4" "Building and starting the stack"
@@ -2643,11 +2657,13 @@ if [ "${CLONE_STATE}" = "created" ]; then
 else
   info "reusing the build cache — this is usually quick"
 fi
-run_step "building images (api, web, mcp)" docker compose build
-run_step "starting the 5 services" docker compose up -d
+run_step "building the app image" docker compose build
+# --remove-orphans: reinstalar por cima de um checkout 0.56.x precisa derrubar
+# os containers dos serviços antigos (api/mcp/web) — o api órfão segura a :8000.
+run_step "starting the 2 services" docker compose up -d --remove-orphans
 
 run_step "waiting for the API to become healthy" wait_http http://localhost:8000/health 90
-run_step "waiting for the interface" wait_http http://localhost:5173/ 30
+run_step "waiting for the interface" wait_http http://localhost:8000/ 30
 
 # ── 5. Done ─────────────────────────────────────────────────────────────────
 TOTAL_SECS=$(( $(step_now) - START_TS ))
@@ -2679,16 +2695,11 @@ box_row() {
   printf '  %s│%s  %s%-11s%s %-43s%s│%s\n' "$ORANGE" "$RESET" "$BOLD" "$label" "$RESET" "$value" "$ORANGE" "$RESET"
 }
 printf '  %s╭─────────────────────────────────────────────────────────╮%s\n' "$ORANGE" "$RESET"
-box_row "Interface" "http://localhost:5173"
+box_row "Interface" "http://localhost:8000"
 box_row "API" "http://localhost:8000/health"
-box_row "Dashboards" "http://localhost:5601"
+box_row "MCP" "http://localhost:8000/mcp"
 box_row "Projects" "${PROJECTS_ROOT}"
 printf '  %s╰─────────────────────────────────────────────────────────╯%s\n\n' "$ORANGE" "$RESET"
-os_pass_now="$(grep '^OPENSEARCH_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
-if [ -n "${os_pass_now}" ]; then
-  printf '  %s📊 OpenSearch Dashboards%s (operations dashboard "AtlasFile — Operação"):\n' "$BOLD" "$RESET"
-  printf '     login %sadmin%s · password %s%s%s\n\n' "$BOLD" "$RESET" "$ORANGE" "${os_pass_now}" "$RESET"
-fi
 if [ "${ENABLE_AUTH}" = "1" ] && [ -n "${API_KEY_VALUE}" ]; then
   printf '  %s🔑 API key%s (paste it in Settings → Access, in each browser):\n' "$BOLD" "$RESET"
   printf '     %s%s%s\n\n' "$ORANGE" "${API_KEY_VALUE}" "$RESET"
@@ -2715,6 +2726,10 @@ fi
 if [ "$OS_KIND" = "mac" ] && [ "$(host_get docker)" = "created" ]; then
   printf '    • Docker Desktop was installed now — keep it open for the stack to run\n'
 fi
+# Dashboards é opt-in desde a consolidação (1/3 do download de terceiros e o
+# produto opera sem ele) — o passo só aparece porque é decisão pós-instalação.
+printf '    • observability dashboard (optional): set %sDASHBOARDS_ENABLED=true%s and %sCOMPOSE_PROFILES=dashboards%s in .env, then %sdocker compose up -d%s\n' \
+  "$BOLD" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET"
 printf '    • logs:  cd %s && docker compose logs -f\n' "${INSTALL_DIR}"
 printf '    • stop:  cd %s && docker compose down\n' "${INSTALL_DIR}"
 printf '\n'
@@ -2739,7 +2754,7 @@ write_run_log
 printf '\n'
 
 if [ "${OPEN_BROWSER}" = "1" ]; then
-  if command -v open >/dev/null 2>&1; then open http://localhost:5173 || true
-  elif command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost:5173 || true
+  if command -v open >/dev/null 2>&1; then open http://localhost:8000 || true
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost:8000 || true
   fi
 fi

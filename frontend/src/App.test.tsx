@@ -16,6 +16,7 @@ vi.mock("./api", () => ({
       total_project_dirs: 1,
       initialized_projects: 1,
       onboarding_suggested: false,
+      dashboards_enabled: true,
     })
   ),
   fetchProjects: vi.fn(() =>
@@ -100,7 +101,7 @@ vi.mock("./api", () => ({
     Promise.resolve({ total: 0, page: 1, page_size: 20, total_pages: 0, hits: [] })
   ),
   getFileDownloadUrl: vi.fn((path: string) => `http://api/files?path=${path}`),
-  getObservabilityUrl: vi.fn(() => "http://localhost:8000/api/observability/open"),
+  getObservabilityUrl: vi.fn(() => "/api/observability/open"),
   fetchModels: vi.fn(() => Promise.resolve([{ provider: "openai", model: "gpt-4o-mini", label: "OpenAI gpt-4o-mini (base)" }])),
   initializeProject: vi.fn(() => Promise.resolve({ status: "ok", already_initialized: false })),
   runReconcile: vi.fn(() => Promise.resolve({ status: "started" })),
@@ -264,12 +265,33 @@ describe("App", () => {
     // v0.45.0 apontava direto para :5601 e o usuário caía na tela de login (a
     // senha mora no .env). v0.51.0: o link vai para a API, que loga pela rede
     // interna e devolve o cookie de sessão no redirect — ela também decide o
-    // destino final, inclusive quando não há SSO possível.
+    // destino final, inclusive quando não há SSO possível. Fase 2 (mesma
+    // origem): o caminho é relativo — a UI e a API saem do mesmo uvicorn.
     await mockReconcileIdle();
     render(<App />);
     const link = await screen.findByRole("link", { name: /Observabilidade/i }, { timeout: 5000 });
-    expect(link).toHaveAttribute("href", "http://localhost:8000/api/observability/open");
+    expect(link).toHaveAttribute("href", "/api/observability/open");
     expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("link Observabilidade some quando Dashboards está desligado (opt-in da Fase 2)", async () => {
+    // Sem o container de Dashboards (profile desativado), o link daria 502 —
+    // o payload de setup/status manda dashboards_enabled=false e a UI o esconde.
+    const { fetchSetupStatus } = await import("./api");
+    vi.mocked(fetchSetupStatus).mockResolvedValue({
+      app_env: "dev",
+      projects_root: "/projects",
+      total_project_dirs: 1,
+      initialized_projects: 1,
+      onboarding_suggested: false,
+      dashboards_enabled: false,
+    });
+    await mockReconcileIdle();
+    render(<App />);
+    // Âncora do mesmo rodapé do card: garante que o Painel renderizou antes
+    // de afirmar a ausência do link.
+    await screen.findByRole("button", { name: /Reconciliar agora/i }, { timeout: 5000 });
+    expect(screen.queryByRole("link", { name: /Observabilidade/i })).toBeNull();
   });
 
   it.each(["unavailable", "emptied"] as const)(

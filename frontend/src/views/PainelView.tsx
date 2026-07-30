@@ -45,6 +45,9 @@ type Props = {
   dashboardStats: StatsResponse | null;
   reconcileStatus: ReconcileStatus | null;
   reconcilingNow: boolean;
+  /** Dashboards é opt-in (profile no compose): false esconde o link de
+   *  observabilidade — sem o container, o link daria 502. */
+  dashboardsEnabled: boolean;
   onReconcile: () => void;
   onDecision: (item: TriageItem, action: "approve" | "correct" | "reject") => void;
   onStatus: (msg: string, severity?: StatusSeverity) => void;
@@ -254,6 +257,7 @@ export function PainelView({
   dashboardStats,
   reconcileStatus,
   reconcilingNow,
+  dashboardsEnabled,
   onReconcile,
   onDecision,
   onStatus,
@@ -493,16 +497,18 @@ export function PainelView({
                     {t("painel:card.orphans")} <strong className="text-foreground">{reconcileStatus!.summary.orphan_docs_deleted}</strong>
                   </span>
                 )}
-                <a
-                  href={dashboardsHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={t("painel:card.observabilityHint")}
-                  className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-accent hover:underline"
-                >
-                  <ExternalLink className="size-3.5" aria-hidden />
-                  {t("painel:card.observability")}
-                </a>
+                {dashboardsEnabled && (
+                  <a
+                    href={dashboardsHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={t("painel:card.observabilityHint")}
+                    className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-accent hover:underline"
+                  >
+                    <ExternalLink className="size-3.5" aria-hidden />
+                    {t("painel:card.observability")}
+                  </a>
+                )}
               </div>
             </div>
           )}

@@ -1,6 +1,6 @@
 {
   "name": "atlasfile-frontend",
-  "version": "0.56.6",
+  "version": "0.57.0",
   "private": true,
   "type": "module",
   "scripts": {

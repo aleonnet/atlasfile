@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
-O instalador clona o projeto, configura o `.env`, sobe a stack Docker e abre `http://localhost:5173` — o assistente de primeiros passos guia a criação do primeiro projeto. Instalação manual e detalhes: [INSTALL.md](INSTALL.md). Rode `install.sh --help` para ver todas as flags — no Windows, `install.ps1 -Help`.
+O instalador clona o projeto, configura o `.env`, sobe a stack Docker e abre `http://localhost:8000` — o assistente de primeiros passos guia a criação do primeiro projeto. Instalação manual e detalhes: [INSTALL.md](INSTALL.md). Rode `install.sh --help` para ver todas as flags — no Windows, `install.ps1 -Help`.
 
 **No Windows seus documentos ficam do lado Windows**, na sua pasta Documentos (`…\Documents\AtlasFileProjects`), então aparecem no Explorer como qualquer outra pasta e sobrevivem a um `wsl --unregister`. Só o AtlasFile mora dentro do WSL. Use `-ProjectsRoot` para escolher outra pasta e `-InstallDeps` para instalar WSL2 e Docker Desktop sem perguntar nada.
 
@@ -178,11 +178,10 @@ Para a função de cada script operacional e técnico, veja `docs/11_scripts_and
 
 | Serviço | URL | Descrição |
 |---------|-----|-----------|
-| Frontend | http://localhost:5173 | Interface web (tema claro/escuro) |
-| API | http://localhost:8000 | FastAPI (REST + SSE) |
-| MCP Server | http://localhost:8001 | Tools para chat/classificação |
+| AtlasFile | http://localhost:8000 | Interface web + FastAPI (REST + SSE) num processo só |
+| MCP | http://localhost:8000/mcp | Tools para chat/classificação (mesma API key da API) |
 | OpenSearch | https://localhost:9200 | Motor de busca (admin / `OPENSEARCH_PASSWORD` do `.env`) |
-| Dashboards | http://localhost:5601 | OpenSearch Dashboards |
+| Dashboards | http://localhost:5601 | OpenSearch Dashboards (opt-in: `COMPOSE_PROFILES=dashboards` + `DASHBOARDS_ENABLED=true`) |
 
 ### Makefile
 

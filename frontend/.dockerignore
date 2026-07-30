@@ -1,6 +1,0 @@
-# O build context do serviço `web` é ./frontend (docker-compose.yml), então o
-# .dockerignore da raiz NÃO se aplica aqui — sem este arquivo, o node_modules
-# do host entra no `COPY . .` e sobrescreve o install nativo do container.
-node_modules
-dist
-coverage

@@ -19,10 +19,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from anyio.to_thread import current_default_thread_limiter
 from fastapi import Depends, FastAPI, File as FastAPIFile, Header, HTTPException, Query, Request, Response, UploadFile
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.routing import Route
 
 from .api.layout import router as layout_router
 from .api.profile import router as profile_router
@@ -86,7 +89,8 @@ from .models import (
     TrainingUsageSummary,
 )
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
-from .auth import AuthContext, enforce_project_scope, require_auth
+from .auth import AuthContext, MCPAuthMiddleware, enforce_project_scope, require_auth
+from .mcp.server import mcp as mcp_server
 from .event_journal import append_event, delete_session as journal_delete_session, save_session as journal_save_session
 from .opensearch_client import ensure_chat_sessions_index, ensure_chat_usage_index, ensure_classification_usage_index, ensure_index, ensure_training_usage_index, get_client
 from .search_hybrid import (
@@ -523,22 +527,39 @@ async def lifespan(app: FastAPI):
 
     _maybe_refresh_catalog_on_startup()
 
-    if settings.channels_enabled:
-        channel_manager = ChannelManager(on_message=_handle_channel_message)
-        channel_manager.register(TelegramChannel(on_message=channel_manager.dispatch))
-        try:
-            await channel_manager.start_all(_build_channel_config())
-            _logger.info("Channels started")
-        except Exception:
-            _logger.exception("Channel startup failed (non-fatal)")
+    # Consolidados, as 13 tools síncronas do MCP e os handlers síncronos dividem
+    # o MESMO threadpool do anyio (default 40 threads) — e cada tool call em voo
+    # segura 2 slots (a thread da tool + a do endpoint que ela chama de volta por
+    # loopback HTTP), então ~20 chamadas saturariam. 100 tokens ≈ teto de ~50
+    # tool calls simultâneas. Precisa de event loop rodando → aqui, não no módulo.
+    current_default_thread_limiter().total_tokens = 100
 
-    yield
+    # session_manager.run() é single-use por instância: manager NOVO a cada ciclo
+    # de lifespan (reload/testes), senão o segundo startup morre em RuntimeError.
+    # streamable_http_app() é chamado só pelo lazy-init do manager (o Starlette
+    # retornado é descartado — o transporte real é a Route /mcp no fim do arquivo,
+    # que resolve a property por request e nunca guarda manager stale).
+    mcp_server._session_manager = None
+    mcp_server.streamable_http_app()
+    async with mcp_server.session_manager.run():
+        if settings.channels_enabled:
+            channel_manager = ChannelManager(on_message=_handle_channel_message)
+            channel_manager.register(TelegramChannel(on_message=channel_manager.dispatch))
+            try:
+                await channel_manager.start_all(_build_channel_config())
+                _logger.info("Channels started")
+            except Exception:
+                _logger.exception("Channel startup failed (non-fatal)")
 
-    if channel_manager:
-        await channel_manager.stop_all()
-    _reconcile_stop.set()
-    if _auto_ingest_manager is not None:
-        _auto_ingest_manager.stop()
+        yield
+
+        # Shutdown DENTRO do run(): o manager do MCP encerra por último,
+        # espelhando a ordem do startup.
+        if channel_manager:
+            await channel_manager.stop_all()
+        _reconcile_stop.set()
+        if _auto_ingest_manager is not None:
+            _auto_ingest_manager.stop()
 
 
 def _cors_origins() -> list[str]:
@@ -1245,6 +1266,9 @@ def setup_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
         # v0.45.0: URL do Dashboards para o BROWSER (vazio = frontend deriva
         # do host atual; dashboards_url interno da rede Docker não serve aqui)
         "dashboards_public_url": settings.dashboards_public_url,
+        # Dashboards é opt-in (profile no compose): False esconde o link de
+        # observabilidade na UI — sem o container, o link daria 502.
+        "dashboards_enabled": settings.dashboards_enabled,
     }
 
 
@@ -4738,3 +4762,38 @@ def benchmark_search(
         "p95_latency_ms": p95_ms,
         "results": results,
     }
+
+
+# ---------------------------------------------------------------------------
+# Montagens finais (um app, um container). A ORDEM importa: o roteamento do
+# Starlette é sequencial e StaticFiles(html=True) em "/" casa tudo que não
+# casou antes — este bloco fica DEPOIS da última rota, e o mount em "/" por
+# último. /health e /api/* são APIRoutes registradas acima: vencem sempre.
+
+
+class _MCPTransport:
+    """Transporte ASGI do /mcp. Resolve o session manager POR REQUEST (é
+    property): o lifespan recria o manager a cada startup, porque run() é
+    single-use. Não montar mcp_server.streamable_http_app() aqui — a Route
+    interna dele também é /mcp, então o mount duplicaria o path (/mcp/mcp)
+    e o Mount ainda responderia 307 no path exato."""
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        await mcp_server.session_manager.handle_request(scope, receive, send)
+
+
+# Route, não Mount: casa /mcp exato, todos os métodos, sem redirect. O
+# middleware é obrigatório — Route não herda o require_auth global (ver auth.py).
+app.router.routes.append(Route("/mcp", endpoint=MCPAuthMiddleware(_MCPTransport())))
+
+
+def _mount_static(target: FastAPI, directory: str) -> bool:
+    """Monta o bundle do frontend em "/" quando ele existe. Dev e CI não têm
+    dist (a UI vem do vite dev) — montar diretório ausente quebraria o boot."""
+    if not Path(directory).is_dir():
+        return False
+    target.mount("/", StaticFiles(directory=directory, html=True), name="static")
+    return True
+
+
+_mount_static(app, settings.static_dir)

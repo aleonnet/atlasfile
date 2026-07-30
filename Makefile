@@ -3,7 +3,7 @@
 # O smoke funcional completo do ciclo (ingestão, triagem, busca/highlight e assistente)
 # fica documentado em docs/plano_teste_e2e_v0.36.0.md.
 
-.PHONY: test test-backend test-frontend test-installer docker-build docker-up docker-update docker-smoke-init reset-index reset-chat ensure-dashboards-cookie uninstall
+.PHONY: test test-backend test-frontend test-installer docker-build docker-up docker-update docker-smoke-init reset-index reset-chat ensure-dashboards-cookie ensure-api-keys-file uninstall
 
 test: test-backend test-frontend test-installer
 	@echo "All tests passed."
@@ -41,31 +41,46 @@ ensure-dashboards-cookie:
 	  echo "DASHBOARDS_COOKIE_PASSWORD gerada no .env (chave de cookie por instalação)"; \
 	fi
 
-# Sobe todos os serviços (opensearch, api, mcp, web). Não roda test antes.
+# O compose monta ./config/api_keys.json como bind mount; se o arquivo não
+# existir no host, o Docker cria um DIRETÓRIO no destino e o auth passa a
+# rejeitar toda key (com API_AUTH_ENABLED=true). Materializa vazio antes do up.
+ensure-api-keys-file:
+	@if [ ! -f config/api_keys.json ]; then \
+	  printf '{"keys": []}\n' > config/api_keys.json; \
+	  echo "config/api_keys.json criado vazio (bind mount do compose)"; \
+	fi
+
+# Sobe os serviços (opensearch + atlasfile; Dashboards entra com
+# COMPOSE_PROFILES=dashboards no .env). Não roda test antes.
 # Faxina automática pós-build: o build cache cresce a cada rebuild e NUNCA deve
 # ser tarefa do usuário (caso real 2026-07-25: 36GB acumulados derrubaram a
 # ingestão por disco cheio). Teto de 2GB ≈ 2 ciclos completos de build (um ciclo
 # medido gera ~1GB) — mantém rebuilds rápidos sem crescer sem limite.
-docker-up: ensure-dashboards-cookie
-	docker compose up -d --build
+# --remove-orphans: a consolidação renomeou os serviços — sem isso, um checkout
+# vindo de 0.56.x mantém os containers antigos (api/mcp/web) vivos e o
+# atlasfile-api órfão segura a porta 8000 contra o serviço novo.
+docker-up: ensure-dashboards-cookie ensure-api-keys-file
+	docker compose up -d --build --remove-orphans
 	docker image prune -f
 	docker builder prune -f --keep-storage=2GB
 
-# Roda test, depois sobe opensearch + dashboards + api + mcp + web com rebuild. Remove imagens <none>.
-# O smoke embutido aqui é curto: template -> initialize -> profile.
+# Roda test, depois sobe opensearch + atlasfile com rebuild (Dashboards entra
+# com COMPOSE_PROFILES=dashboards no .env — por isso o up sem lista de
+# serviços: nomear um serviço com profile o ligaria mesmo desativado).
+# Remove imagens <none>. O smoke embutido aqui é curto: template -> initialize -> profile.
 # Por padrão NÃO reseta índices. Opções:
 #   make docker-update RESET_INDEX=1        → reseta índice de documentos
 #   make docker-update RESET_CHAT=1         → reseta índice de sessões de chat
 #   make docker-update RESET_INDEX=1 RESET_CHAT=1  → reseta ambos
-docker-update: test ensure-dashboards-cookie
+docker-update: test ensure-dashboards-cookie ensure-api-keys-file
 	@if [ -n "$${RESET_INDEX}" ] && [ -n "$${RESET_CHAT}" ]; then ./scripts/reset-opensearch-index.sh all; \
 	elif [ -n "$${RESET_INDEX}" ]; then $(MAKE) reset-index; \
 	elif [ -n "$${RESET_CHAT}" ]; then $(MAKE) reset-chat; fi
-	docker compose up -d --build opensearch opensearch-dashboards api mcp web
+	docker compose up -d --build --remove-orphans
 	$(MAKE) docker-smoke-init
 	docker image prune -f
 	docker builder prune -f --keep-storage=2GB
-	@echo "OpenSearch, Dashboards, API, MCP e Web atualizados."
+	@echo "OpenSearch e AtlasFile atualizados."
 
 docker-smoke-init:
 	@bash ./scripts/smoke-project-init.sh

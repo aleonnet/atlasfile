@@ -148,17 +148,20 @@ cd backend && .venv/bin/python scripts/backfill_embeddings.py --force   # re-emb
 
 ```bash
 # Autenticação por API key (default: desligada)
-# Caminho simples — re-execute o instalador com a flag (gera key, configura .env,
-# rebuilda a API e preserva dados; a key aparece no final):
+# Caminho simples — re-execute o instalador com a flag (gera key, configura .env
+# e preserva dados; a key aparece no final):
 curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --enable-auth
 
 # Manual, se preferir:
 # API_AUTH_ENABLED=true
-# 1) Crie config/api_keys.json a partir de config/api_keys.example.json (fica fora do git)
-# 2) Coloque a key do MCP em ATLASFILE_API_TOKEN no .env (precisa existir no json)
-# 3) Rebuild do container api (as keys entram na imagem no build)
+# 1) Crie config/api_keys.json a partir de config/api_keys.example.json (fica
+#    fora do git; é bind mount no container — trocar key NÃO exige rebuild)
+# 2) Coloque a key do próprio app em ATLASFILE_API_TOKEN no .env (precisa existir
+#    no json com projects ["*"]) — é a credencial do orchestrator→/mcp e das tools→API
+# 3) docker compose up -d atlasfile (recria o container com o .env novo)
 # 4) No frontend: Config → Acesso → cole a key do navegador
-# Obs.: a porta 8001 (MCP) não valida key — mantenha-a interna/fechada na rede.
+# Obs.: o /mcp (mesma porta 8000) valida a MESMA key — clientes MCP externos
+# precisam enviá-la (Authorization: Bearer).
 ```
 
 Veja `.env.example` para a lista completa de variáveis (CORS, OpenSearch, reconciliação, embeddings, auth, etc.).
@@ -241,10 +244,8 @@ docker compose ps
 | Container | Serviço | Porta |
 |-----------|---------|-------|
 | `atlasfile-opensearch` | OpenSearch 2.17 | 9200 |
-| `atlasfile-dashboards` | OpenSearch Dashboards | 5601 |
-| `atlasfile-api` | Backend FastAPI | 8000 |
-| `atlasfile-mcp` | MCP Server (tools para LLM) | 8001 |
-| `atlasfile-web` | Frontend React | 5173 |
+| `atlasfile` | App consolidado: UI + API + MCP num uvicorn | 8000 |
+| `atlasfile-dashboards` | OpenSearch Dashboards (opt-in: `COMPOSE_PROFILES=dashboards`) | 5601 |
 
 ---
 
@@ -252,7 +253,7 @@ docker compose ps
 
 ### Frontend
 
-Abra <http://localhost:5173> — a interface deve carregar com o seletor de projetos no header.
+Abra <http://localhost:8000> — a interface deve carregar com o seletor de projetos no header.
 
 O idioma da interface (PT-BR ou EN-US) é detectado pelo navegador no primeiro acesso; para trocar manualmente, use **Configuração → Preferências → Idioma** (ou o alternador no rodapé da tela de API key / onboarding). A escolha persiste no navegador.
 
@@ -347,7 +348,7 @@ Isso grava snapshots estáveis e atualiza `PROJECTS_HOST_ROOT/_ATLASFILE/classif
 
 1. Copie um arquivo para `<PROJECTS_HOST_ROOT>/meu_projeto/_INBOX_DROP/`
 
-2. Na UI (<http://localhost:5173>), selecione o projeto e clique em **Processar INBOX** no card "Ingestão e triagem".
+2. Na UI (<http://localhost:8000>), selecione o projeto e clique em **Processar INBOX** no card "Ingestão e triagem".
 
 3. Resultado esperado:
    - Arquivo roteado para `02_AREAS/{business_domain}/{document_type}/` (se confiança alta), ou
@@ -395,13 +396,12 @@ make docker-update RESET_CHAT=1
 # Resetar ambos os índices
 make docker-update RESET_INDEX=1 RESET_CHAT=1
 
-# Rebuild completo (todas as imagens, do zero)
+# Rebuild completo (do zero)
 docker compose down
 docker compose up -d --build
 
-# Rebuild de um serviço específico
-docker compose up -d --build api
-docker compose up -d --build web
+# Rebuild só do app (backend + UI saem da mesma imagem multi-stage)
+docker compose up -d --build atlasfile
 ```
 
 ---
@@ -468,17 +468,20 @@ Para recriar índices com mapping atualizado (ex.: após upgrade):
 
 | Serviço | URL | Credenciais |
 |---------|-----|-------------|
-| Frontend | http://localhost:5173 | — |
-| Backend API | http://localhost:8000 | — |
-| MCP Server | http://localhost:8001 | — |
+| AtlasFile (UI + API) | http://localhost:8000 | — |
+| MCP | http://localhost:8000/mcp | mesma API key da API (quando auth ligado) |
+| Vite dev server (só desenvolvimento) | http://localhost:5173 | — |
 | OpenSearch | https://localhost:9200 | admin / `OPENSEARCH_PASSWORD` do seu `.env` |
-| Dashboards | http://localhost:5601 | admin / `OPENSEARCH_PASSWORD` do seu `.env` |
+| Dashboards (opt-in) | http://localhost:5601 | admin / `OPENSEARCH_PASSWORD` do seu `.env` |
 
 > A senha é única por instalação (gerada pelo install.sh na criação do `.env`).
 
 ---
 
 ## 16) Dashboard programático (OpenSearch Dashboards)
+
+> Dashboards é **opt-in**: exige `COMPOSE_PROFILES=dashboards` e
+> `DASHBOARDS_ENABLED=true` no `.env` (ver seção 4) antes destes passos.
 
 Os saved objects estão em `dashboards/atlasfile.ndjson`.
 

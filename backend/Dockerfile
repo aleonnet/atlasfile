@@ -1,3 +1,22 @@
+# Estágio 1 — bundle de produção da UI (tsc + vite build). O contexto do build
+# é a raiz do repo e o .dockerignore exclui frontend/node_modules e
+# frontend/dist do host: o install é sempre nativo do container e o dist é
+# sempre recompilado aqui (nada pré-buildado do host entra).
+FROM node:22-alpine AS webbuild
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
+# Estágio 2 — app consolidado: uvicorn serve API (/api/*, /health), MCP (/mcp)
+# e a UI estática (/) num único processo. 1 worker por desenho: sessões do MCP
+# streamable HTTP vivem em memória por worker e os watchers (auto-reconcile,
+# auto-ingest, channels) não podem rodar N vezes — escalar exigiria
+# stateless_http e extrair os background jobs.
 FROM python:3.12-slim
 
 WORKDIR /workspace/backend
@@ -20,6 +39,9 @@ RUN pip install --no-cache-dir -r requirements.lock.txt
 
 COPY backend/app ./app
 COPY config /workspace/config
+# UI de produção no caminho que settings.static_dir aponta — o mount em "/"
+# (fim de app/main.py) só acontece quando este diretório existe.
+COPY --from=webbuild /app/dist /workspace/static
 
 EXPOSE 8000
 
