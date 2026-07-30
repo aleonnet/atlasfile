@@ -1,4 +1,7 @@
 # Provider local de embeddings (opcional): fastembed/ONNX, sem torch.
 # Instalar apenas se embedding_provider=fastembed:
 #   cd backend && .venv/bin/pip install -r requirements-local-embeddings.txt
-fastembed>=0.4.0
+# Pin deliberado (2026-07-29): 0.8.0 era o resolve do dia; o extra não tem
+# bancada própria, então bump exige teste manual do provider. Resolve provado
+# limpo por cima do requirements.lock.txt em python:3.12-slim.
+fastembed==0.8.0

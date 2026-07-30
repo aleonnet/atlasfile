@@ -13,8 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/unrar-free /usr/bin/unrar
 
-COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# O lock trava o resolve inteiro (transitivos inclusive); requirements.txt
+# segue como fonte dos top-level e insumo para regenerar o lock.
+COPY backend/requirements.lock.txt ./requirements.lock.txt
+RUN pip install --no-cache-dir -r requirements.lock.txt
 
 COPY backend/app ./app
 COPY config /workspace/config

@@ -28,6 +28,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             backend/requirements.txt
+            backend/requirements.lock.txt
             backend/requirements-dev.txt
 
       # Mesma lista de binários do backend/Dockerfile.
@@ -42,8 +43,9 @@ jobs:
       - name: Guarda contra skip silencioso do OCR
         run: command -v tesseract
 
-      # requirements-dev.txt traz pytest/pytest-asyncio e faz `-r requirements.txt`.
-      # Instalar só o requirements.txt dava "No module named pytest" (medido).
+      # requirements-dev.txt traz pytest/pytest-asyncio e faz
+      # `-r requirements.lock.txt` — o MESMO resolve que a imagem do produto
+      # instala. Instalar só o requirements dava "No module named pytest" (medido).
       - name: Dependências
         run: pip install -r backend/requirements-dev.txt
 
@@ -80,6 +82,19 @@ jobs:
       - name: Testes
         working-directory: frontend
         run: npm run test
+
+  pins:
+    name: reprodutibilidade · pisos abertos
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # 9 deps do backend com `>=` sem teto e `lucide-react: "latest"` fizeram
+      # o artefato instalado divergir do testado até a v0.56.5 (Fase 1 do
+      # plano de distribuição). O script é o mesmo da bancada local.
+      - name: Pins fechados (requirements ==, package.json sem latest/*)
+        run: bash scripts/check_pins.sh
 
   installers-macos:
     name: instaladores · bash 3.2 (macOS)
