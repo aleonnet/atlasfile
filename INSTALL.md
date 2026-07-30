@@ -175,7 +175,7 @@ make test
 
 Ou individualmente:
 
-- Backend: `cd backend && python -m pytest tests/ -v` (requer virtualenv com `pip install -r requirements.txt`)
+- Backend: `cd backend && python -m pytest tests/ -v` (requer virtualenv com `pip install -r requirements-dev.txt` — instala o mesmo resolve pinado do produto, via `requirements.lock.txt`, mais o pytest)
 - Frontend: `cd frontend && npm run test`
 
 ---

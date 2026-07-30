@@ -17,7 +17,10 @@
 >
 > A fonte de verdade e `install.sh --help` / `install.ps1 -Help`, e o registro
 > das decisoes esta em `docs/planos_concluidos/installer_*.plan.md`.
-> Mantido aqui, e nao movido, porque o CHANGELOG referencia este caminho.
+> Movido de `docs/roadmap/` para ca em 2026-07-29, por decisao do autor
+> (revertendo o "marcar superado, nao mover" da auditoria v0.56.1); as
+> mencoes do CHANGELOG ao caminho antigo seguem validas como registro
+> historico.
 
 ## Objetivo
 

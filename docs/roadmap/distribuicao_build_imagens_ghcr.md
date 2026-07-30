@@ -1,20 +1,25 @@
 # AtlasFile — distribuir a build em vez de compilar na máquina do usuário
 
 > **Status: plano refinado, nada executado.** Medições e referências de linha
-> valem para a `master` em 2026-07-29 (v0.56.2). Toda afirmação é **fato
-> verificado no código**, salvo onde marcada como inferência ou desconhecido.
+> valem para a `main` em 2026-07-29 (**v0.56.5**). O documento foi escrito
+> contra a v0.56.2 e **recalibrado no mesmo dia contra a v0.56.5**, depois que
+> os PRs #7–#9 tocaram `install.sh`, `install.ps1`, `win/run.ps1` e `ci.yml`
+> (itens já resolvidos estão marcados; números remedidos). Toda afirmação é
+> **fato verificado no código**, salvo onde marcada como inferência ou
+> desconhecido.
 >
 > Quando alguma fase for executada, o registro vai para
 > `docs/planos_concluidos/` com o checklist do `CLAUDE.md`. Enquanto não for,
-> o lugar deste documento no repositório é `docs/roadmap/` — convenção
-> verificada em `plan_one_line_installer.md`.
+> o lugar deste documento no repositório é `docs/roadmap/` (o rascunho
+> `plan_one_line_installer.md`, superado, foi movido para
+> `docs/planos_concluidos/` em 2026-07-29).
 
 ---
 
 ## Context
 
 O `install.sh` hoje clona o repositório e roda `docker compose build` na máquina
-do usuário (`install.sh:2447-2449` e `install.sh:2586`). A pergunta que originou
+do usuário (`install.sh:2488-2502` e `install.sh:2646`). A pergunta que originou
 este plano era se distribuir a build pronta não seria mais simples. Medi antes de
 responder, e a resposta mudou de forma com os dados: **o ganho não é tempo, é o
 artefato**.
@@ -22,14 +27,15 @@ artefato**.
 ### O argumento fraco: tempo de compilação
 
 94s a frio num runner x86 (CI run 30406119732, step "Build das imagens") e 48s
-numa VM ARM64 (`docs/ROADMAP.md:53`). Ninguém está esperando 15 minutos.
+numa VM ARM64 e 1m05s num Windows 11 real (medições registradas em
+`install.sh:242-243`). Ninguém está esperando 15 minutos.
 
-**Correção de fato ao rascunho:** a string "~15 min" **não existe em
-`INSTALL.md`** — verifiquei o arquivo inteiro (541 linhas). A ocorrência
-user-facing é `install.ps1:2267` (`"the Linux installer takes over from here -
-first run builds images (~15 min)"`); há cópias em comentário em
-`install.ps1:2286` e `install.sh:242`. O item 5 do `docs/ROADMAP.md` atribui a
-frase ao `INSTALL.md` — a atribuição está errada e deve ser corrigida junto.
+**Resolvido na v0.56.5:** a questão do "~15 min" morreu antes deste plano
+executar. O roadmap item 5 recalibrou os textos com medições reais (build
+1m05s num Windows 11 real, 48s numa VM ARM64, 94s no runner x86) — hoje
+`install.ps1:2386` diz `"first run builds images (~1-2 min)"` e **não existe
+mais "15 min" em nenhum dos dois instaladores**. O que resta para as Fases
+4a/4b é trocar a semântica ("builds/compiles" → "pulls"), não o número.
 
 ### O argumento forte: o artefato instalado nunca é o artefato testado
 
@@ -37,24 +43,28 @@ frase ao `INSTALL.md` — a atribuição está errada e deve ser corrigida junto
 
 - `backend/requirements.txt` tem **9 de 25** deps com piso `>=` e nenhum teto
   (linhas 9, 12, 16, 17, 18, 19, 20, 24, 25).
-- **`mcp>=1.0.0` (`requirements.txt:17`) é um piso falso, e isso é um defeito
-  provado, não hipotético.** `backend/app/mcp_client/client.py:7` importa
-  `streamable_http_client` de `mcp.client.streamable_http`. Verifiquei contra o
-  código-fonte do SDK: em **v1.20.0 esse símbolo não existe** (só
-  `streamablehttp_client`); em **v1.26.0 ele existe**, com
-  `streamablehttp_client` já marcado `@deprecated`. Um resolve limpo no piso
-  declarado dá `ImportError` no import do módulo. A suíte não pega:
-  `backend/tests/unit/test_mcp_client.py:39,68` fazem
+- **`mcp>=1.0.0` (`requirements.txt:17`) é um piso falso — fragilidade real,
+  não defeito ativo** (narrativa recalibrada na v0.56.5).
+  `backend/app/mcp_client/client.py:7` importa `streamable_http_client` de
+  `mcp.client.streamable_http`. Fatos verificados: o venv de referência
+  (`backend/.venv`, **Python 3.11**, `mcp` **1.26.0**) tem o símbolo, e um
+  `pip install` fresco resolve para o topo do índice e funciona — o
+  `streamablehttp_client` antigo é que está `@deprecated` no 1.26.0. A versão
+  quebrada não chega por resolve limpo; chega por **ambiente que já satisfaz o
+  piso com um `mcp` antigo** (o site-packages global do pyenv desta máquina
+  tem `mcp` 1.9.3, onde o símbolo novo não existe — exatamente o cenário que o
+  stub de `backend/tests/conftest.py:11-21` mitiga). E a suíte não provaria o
+  contrário: `backend/tests/unit/test_mcp_client.py:39,68` fazem
   `patch("app.mcp_client.client.streamable_http_client", ...)` — patch por
-  atributo num módulo já importado, que só falharia se o import falhasse, e não
-  há teste afirmando que o símbolo real resolve.
+  atributo num módulo já importado — e não há teste afirmando que o símbolo
+  real resolve.
 - `backend/requirements-dev.txt` **contradiz** `requirements.txt`: redeclara
   `httpx>=0.24.0` contra `httpx>=0.27.0` (`requirements.txt:18`) e duplica
   `scikit-learn==1.8.0`. Ou seja, a bancada roda com um piso mais baixo que o
   produto.
 - `frontend/package.json:31` declara `"lucide-react": "latest"` — **o único
   outlier entre 39 dependências**, todas as outras com caret. O lockfile trava
-  `0.576.0` (`package-lock.json:4913-4919`). O CI usa `npm ci` (`ci.yml:71` → lê
+  `0.576.0` (`package-lock.json:4913-4914`). O CI usa `npm ci` (`ci.yml:73` → lê
   o lock), mas `frontend/Dockerfile:6` usa `npm install` (dist-tag → re-resolve e
   **reescreve o lockfile dentro da imagem**). **Divergência provada entre bancada
   e produto**, e o `Makefile:52,67` faz `docker builder prune --keep-storage=2GB`
@@ -69,17 +79,17 @@ frase ao `INSTALL.md` — a atribuição está errada e deve ser corrigida junto
   antiga, o build quebra em vez de divergir.
 - `FROM python:3.12-slim` (`backend/Dockerfile:1`) e `node:22-alpine`
   (`frontend/Dockerfile:1`) são tags móveis, sem digest.
-- **Ninguém testa a imagem.** O job `docker-build` (`ci.yml:336-353`) roda
+- **Ninguém testa a imagem.** O job `docker-build` (`ci.yml:368-386`) roda
   exatamente `cp .env.example .env` e `docker compose build`. Não sobe container,
   não faz request, não tagueia, não empurra, não escaneia, não usa cache de
   buildx (apesar do `setup-buildx-action`), não é multi-arch.
 - **Zero testes tocam uma stack real.** Verificado: nenhuma ocorrência de
   `localhost:9200`, `opensearch:9200` ou testcontainers em `backend/tests/`
-  (94 arquivos); `conftest.py:1` declara o mock, e `ci.yml:49-51` documenta que a
+  (93 arquivos); `conftest.py:1` declara o mock, e `ci.yml:50-52` documenta que a
   ausência de `services:` é deliberada. O incidente do circuit breaker registrado
   em `docker-compose.yml:8-9` é exatamente a classe de falha que esse mock não
   pode pegar.
-- **O CI nem instala `unrar-free`** (`ci.yml:36-37` lista 3 dos 4 pacotes apt do
+- **O CI nem instala `unrar-free`** (`ci.yml:36-38` lista 3 dos 4 pacotes apt do
   Dockerfile), então o caminho `rarfile==4.2` é inexercitado.
 
 Mesmo com pin perfeito, **build reprodutível ≠ artefato testado**: o CI compila em
@@ -90,7 +100,7 @@ o usuário rodar **o mesmo bit** que passou na bancada.
 
 | Defeito | Evidência |
 |---|---|
-| Servidor de desenvolvimento em produção | `frontend/Dockerfile:12` → `CMD ["npm","run","dev"]`; `vite --host 0.0.0.0` (`package.json:7`). Sem minificação, HMR aberto, source maps. O `vite build` só roda no CI (`ci.yml:74-76`) — a imagem nunca o executa. |
+| Servidor de desenvolvimento em produção | `frontend/Dockerfile:12` → `CMD ["npm","run","dev"]`; `vite --host 0.0.0.0` (`package.json:7`). Sem minificação, HMR aberto, source maps. O `vite build` só roda no CI (`ci.yml:75-78`) — a imagem nunca o executa. |
 | Acesso remoto quebrado | `docker-compose.yml:122` fixa `VITE_API_URL=http://localhost:8000` (hardcoded, sem `${…:-}`), anulando o fallback de `frontend/src/api.ts:45-49`. Abrir de outra máquina faz o browser dela procurar a API no `localhost` dela. Assimetria: o irmão `DASHBOARDS_PUBLIC_URL` **é** parametrizado (`docker-compose.yml:62`). |
 | 5 containers para 2 | `api` e `mcp` têm blocos `build:` idênticos (`docker-compose.yml:46-48` e `100-102`), diferindo só no `command:` (`:105`). |
 | Segredo assado na imagem | `backend/Dockerfile:20` faz `COPY config /workspace/config`; `config.py:139` lê `/workspace/config/api_keys.json`. O comentário `docker-compose.yml:85-86` admite: "mudou key, rebuild do api". A key mora numa camada de imagem. |
@@ -107,7 +117,7 @@ o usuário rodar **o mesmo bit** que passou na bancada.
 
 Dashboards é **um terço do download de terceiros** e o acoplamento é raso: um link
 em `frontend/src/views/PainelView.tsx:497` (via `getObservabilityUrl()`,
-`api.ts:110`), o endpoint `/api/observability/open` (`main.py:1210-1240`) e o
+`api.ts:109`), o endpoint `/api/observability/open` (`main.py:1251-1281`) e o
 auto-import em background já gated por `dashboards_auto_import`
 (`dashboards_setup.py:70`) → vira opt-in barato.
 
@@ -137,7 +147,7 @@ k-NN é obrigatório (`config.py:154`, `opensearch_chunk_vectors_index`).
   Paperless-ngx e Immich — ambos `docker compose pull`, sem `build:` no compose,
   com o Immich pinando deps de terceiros por digest SHA256.
 - **App nativo sem Docker.** 8 arquivos importam `opensearchpy`, 112 chamadas ao
-  client, 101 ocorrências de sintaxe de query só em `main.py` (4.699 linhas),
+  client, 101 ocorrências de sintaxe de query só em `main.py` (4.740 linhas),
   sobre 20.163 linhas de backend — mais busca híbrida RRF, k-NN, highlight e
   aggs. **Gatilho para reavaliar:** o OpenSearch virar gargalo medido de adoção
   (usuário desistir por RAM/disco), não antes.
@@ -180,7 +190,6 @@ browser :5173 ─┐                        browser :8000 ─┐
 ```mermaid
 graph LR
   F1["Fase 1<br/>reprodutibilidade<br/>da aplicação"] --> F2["Fase 2<br/>um app,<br/>um container"]
-  R1["roadmap #1<br/>--dry-run"] -.independente.-> F1
   F2 --> F3["Fase 3<br/>publicar +<br/>provar a imagem"]
   F3 --> F4a["Fase 4a<br/>install.sh<br/>sem clone"]
   F3 --> F4b["Fase 4b<br/>install.ps1<br/>sem clone"]
@@ -192,14 +201,15 @@ graph LR
 
 **Refinamento estrutural em relação ao rascunho:** a Fase 4 **se divide em 4a
 (Linux) e 4b (Windows)**, e só a 4b é bloqueada pelo item 4 do roadmap.
-Justificativa medida: `tests/installer/win/run.ps1` (997 linhas, 195 callsites
-`Assert-*`) tem **zero linhas** mencionando `clone`, `compose build` ou `git` —
-contra **80 linhas** em `tests/installer/run.sh`. Isso não é só uma lacuna: é
+Justificativa medida (remedida na v0.56.5): `tests/installer/win/run.ps1`
+(1.076 linhas, 206 callsites `Assert-*`) tem **zero linhas** mencionando
+`clone`, `compose build` ou `git` — contra **94 linhas** em
+`tests/installer/run.sh`. Isso não é só uma lacuna: é
 consequência de arquitetura — o `install.ps1` delega clone e build ao
 `install.sh` dentro do WSL via `--delegated`, então a bancada Windows não tem o
 que asseverar sobre eles. Logo, o lado Linux (com 80 linhas de cobertura **mais**
 E2E real em VM lima) pode andar antes; o lado Windows, que muda flags, painel
-final e a string de `install.ps1:2267`, é o que depende de enxergar a bancada.
+final e a string de `install.ps1:2386`, é o que depende de enxergar a bancada.
 
 ---
 
@@ -215,14 +225,18 @@ problema num lugar novo.
 **Arquivos e mudanças**
 
 - `backend/requirements.txt` — trocar os 9 `>=` (linhas 9, 12, 16, 17, 18, 19,
-  20, 24, 25) por `==` na versão que o ambiente já roda. **O piso do `mcp` tem de
-  ser ≥ a versão que exporta `streamable_http_client`** (v1.26.0 exporta;
-  v1.20.0 não) — pinar abaixo disso reintroduz o `ImportError`.
-- **Novo `backend/requirements.lock.txt`** via `pip freeze` no venv de referência,
-  travando transitivos (`numpy`, `scipy`, `httpcore`, `starlette`…). Gerar a
-  partir de um venv limpo criado **só** de `requirements.txt`, não de
-  `requirements-dev.txt` — senão o lock do produto herda `pytest` e o piso baixo
-  de `httpx`.
+  20, 24, 25) por `==` na versão que o ambiente já roda. **Para o `mcp`, pinar
+  na versão que exporta `streamable_http_client`** — o venv de referência roda
+  1.26.0, que exporta (e deprecia o nome antigo); pinar numa versão antiga
+  (ex.: 1.9.x) reintroduz o `ImportError`.
+- **Novo `backend/requirements.lock.txt`** travando transitivos (`numpy`,
+  `scipy`, `httpcore`, `starlette`…). **Gerar dentro de `python:3.12-slim`**
+  (ex.: `docker run --rm -v ...` com venv limpo criado **só** de
+  `requirements.txt`) — armadilha achada na recalibração: o venv de referência
+  local é **Python 3.11** e a imagem do produto é 3.12, então `pip freeze` no
+  venv local herdaria resolução de outra versão de Python. E não partir de
+  `requirements-dev.txt` — senão o lock do produto herda `pytest` e o piso
+  baixo de `httpx`.
 - `backend/requirements-dev.txt` — remover a redeclaração de `httpx` e a
   duplicata de `scikit-learn`; passar a fazer `-r requirements.lock.txt`.
 - `backend/Dockerfile:16-17` — instalar a partir do lock.
@@ -264,20 +278,20 @@ sub-app**. E a property `session_manager` levanta
 streamable_http_app()")` se acessada antes. Portanto a ordem é obrigatória:
 
 1. chamar `mcp.streamable_http_app()` em escopo de módulo (guardando o app);
-2. dentro do lifespan existente (`main.py:490-531`), envolver o `yield` com
+2. dentro do lifespan existente (`main.py:490-541`), envolver o `yield` com
    `async with mcp.session_manager.run():`.
 
 Sem isso o erro é `Task group is not initialized`, em runtime, não no boot.
 
 **Armadilha nº 2 — buraco de auth (dois lados, o rascunho via só um).**
-`main.py:549` cria o app com `dependencies=[Depends(require_auth)]` **global**, e
+`main.py:553` cria o app com `dependencies=[Depends(require_auth)]` **global**, e
 sub-apps montados via `app.mount()` **não herdam** dependencies do FastAPI.
 
 - *Lado externo:* montar o MCP sem tratamento próprio deixa `/mcp` aberto quando
   `API_AUTH_ENABLED=true`. Precisa de middleware de auth próprio no app do MCP,
   reusando `resolve_api_key` (`auth.py:93-105`) — não reimplementar comparação de
   key; ela usa `secrets.compare_digest` sem early-return de propósito
-  (`auth.py:101`).
+  (`auth.py:102`).
 - *Lado interno, que o rascunho não previu:* fechar `/mcp` **quebra o
   orchestrator**. `backend/app/mcp_client/client.py:17,34` chama
   `streamable_http_client(url)` sem header nenhum, e a assinatura verificada é
@@ -291,8 +305,8 @@ isso acontece automaticamente pelo mesmo motivo: mount não herda dependencies.
 
 **Armadilha nº 3 — ordem do mount.** `StaticFiles(directory=..., html=True)` em
 `/` casa tudo que não casou antes, e o roteamento do Starlette é ordenado. O
-mount tem de ficar **no fim de `main.py`** (arquivo de 4.699 linhas, com rotas
-espalhadas até a última), não junto do `FastAPI()` na linha 549.
+mount tem de ficar **no fim de `main.py`** (arquivo de 4.740 linhas, com rotas
+espalhadas até a última), não junto do `FastAPI()` na linha 553.
 
 **Não precisa de catch-all SPA — verificado, e o motivo é mais forte que "não usa
 react-router".** A navegação é por **hash**
@@ -328,8 +342,8 @@ se a medição sob carga mostrar contenção.
 - **Nova `dashboards_enabled: bool = False`.** Necessária porque com Dashboards
   opt-in o botão de observabilidade passaria a 502. O import em background já é
   gated por `dashboards_auto_import` (`dashboards_setup.py:70`), mas o **link não
-  é** — expor a flag no payload de settings (`main.py:1193-1207`, ao lado de
-  `dashboards_public_url` na linha 1206) e esconder o link em
+  é** — expor a flag no payload do `/api/setup/status` (`main.py:1233-1248`, ao
+  lado de `dashboards_public_url` na linha 1247) e esconder o link em
   `PainelView.tsx:497`.
 
 ### Frontend
@@ -339,9 +353,12 @@ se a medição sob carga mostrar contenção.
   juntos. **Isso alinha prod com dev**: `frontend/vite.config.ts:9-13` já faz
   proxy de `/api` e `/health` para `localhost:8000` justamente para permitir
   `VITE_API_URL` same-origin em dev.
-- `frontend/src/App.test.tsx:264-271` afirma
-  `href="http://localhost:8000/api/observability/open"` — **quebra e tem de ser
-  atualizado** para o caminho relativo.
+- `frontend/src/App.test.tsx:263-273` afirma
+  `href="http://localhost:8000/api/observability/open"` (asserção na `:271`) —
+  **quebra e tem de ser atualizado** para o caminho relativo. Nuance achada na
+  recalibração: a asserção valida um **mock** de `getObservabilityUrl`
+  (`App.test.tsx:103`), então mock e asserção mudam juntos — e a derivação real
+  de `api.ts:45-49` continua sem teste próprio.
 - `frontend/Dockerfile` deixa de existir como imagem própria; `npm ci &&
   npm run build` vira estágio do `backend/Dockerfile` multi-stage que copia o
   `dist`. Efeito colateral bom: o contexto passa a ser a raiz, então o
@@ -412,13 +429,13 @@ Job novo que sobe a stack **pela imagem publicada** e exerce o fluxo crítico:
    sem key (a guarda do buraco da Fase 2), e que o orchestrator interno
    **continua funcionando** (o outro lado da mesma armadilha).
 
-Reusar o que existe: `scripts/smoke-project-init.sh` (129 linhas) já cobre health,
+Reusar o que existe: `scripts/smoke-project-init.sh` (130 linhas) já cobre health,
 template, initialize, profile com os 11 domínios e 9 tipos, e a árvore
 materializada; o roteiro do fluxo completo está em
 `docs/plano_teste_e2e_v0.36.0.md`.
 
 **Ganho colateral:** o CI passa a exercitar OpenSearch de verdade pela primeira
-vez — o `ci.yml:49-51` documenta que hoje isso é mockado de propósito.
+vez — o `ci.yml:50-52` documenta que hoje isso é mockado de propósito.
 
 ### `docker-compose.yml`
 
@@ -460,25 +477,28 @@ funcional, assumindo compromisso público de estabilidade).
 
 ## Fase 4a — `install.sh` sem clone (Linux/macOS)
 
-Desbloqueada. Cobertura existente: 80 linhas de `tests/installer/run.sh`
-(1.394 linhas, ~201 asserções) tocando clone/build/git, mais E2E real em VM lima.
+Desbloqueada. Cobertura existente (remedida na v0.56.5): 94 linhas de
+`tests/installer/run.sh` (1.488 linhas, 60 callsites estáticos de `assert_*`;
+o contador de PASS em runtime passa de 200 por causa dos loops) tocando
+clone/build/git, mais E2E real em VM lima.
 
-**`install.sh`** (2.685 linhas, 67 menções a git)
+**`install.sh`** (2.745 linhas, 66 menções a git)
 
-- `git clone` (`:2447-2449`) e `af_update_clone` (`:2236-2254`) → baixar e extrair
+- `git clone` (`:2488-2502`) e `af_update_clone` (`:2288-2306`) → baixar e extrair
   o bundle da tag.
-- `docker compose build` (`:2586`) → `docker compose pull`.
+- `docker compose build` (`:2646`) → `docker compose pull`.
 - Grava `ATLASFILE_VERSION` no `.env`; materializa `config/api_keys.json` antes do
   `up` (ver armadilha do bind mount na Fase 2).
-- Reescreve a linha do café (`:2586`, *"first run downloads images and compiles"*)
-  com número real de pull.
-- Aposenta: `ensure_git()` (`:705-727`), a dirty-guard do uninstall
-  (`:1237-1243`), a detecção de sujeira em `un_collect` (`:1170-1178`),
-  `af_own_pathspec()` (`:1440-1447`), `un_dirty_lines()` (`:1423-1434`), e o
+- A linha do café **já morreu na v0.56.5** — a mensagem virou dependente de
+  estado (`:2640-2644`); o que resta é trocar *"first run downloads images and
+  compiles"* (`:2641`) pela semântica de pull, com número real.
+- Aposenta: `ensure_git()` (`:706-729`), a dirty-guard do uninstall
+  (`:1260-1262`), a detecção de sujeira em `un_collect` (`:1193-1201`),
+  `af_own_pathspec()` (`:1463-1470`), `un_dirty_lines()` (`:1446-1456`), e o
   prompt do Xcode Command Line Tools no macOS.
 - **Armadilha que causaria vazamento silencioso:** `un_collect()` casa imagens por
   nome exato `${UN_PROJECT}-${f}` para `for f in api web mcp`
-  (`install.sh:1187-1195` — o comentário ali explica que o match exato é
+  (`install.sh:1211-1218` — o comentário ali explica que o match exato é
   deliberado, para não pegar `atlasfile-dev-*`). Com uma imagem só vinda do GHCR
   isso **para de casar** — o uninstall reportaria sucesso e deixaria ~275 MB no
   disco. Muda junto, com guarda de bancada que reprove sem a correção.
@@ -486,19 +506,20 @@ Desbloqueada. Cobertura existente: 80 linhas de `tests/installer/run.sh`
 
 **Bancada** — `tests/installer/run.sh` e `check_consistency.py`: as asserções de
 clone/build viram asserções de bundle/pull. Atenção: `check_consistency.py` roda
-**14 checks**, não os 3 do docstring — incluindo `check_flags` (paridade
+**13 checks**, não os 3 do docstring — incluindo `check_flags` (paridade
 help↔parser **nos dois sentidos**, com `# hidden` para flags ocultas) e
 `check_assertions` (toda asserção da bancada sobre output tem de casar, como
-regex, o fonte). Flags novas exigem tocar `usage()` (`:89-149`) **e**
-`Show-Usage` do PowerShell (`install.ps1:82-137`) no mesmo commit.
+regex, o fonte). Flags novas exigem tocar `usage()` (`:89-150`) **e**
+`Show-Usage` do PowerShell (`install.ps1:82-136`) no mesmo commit.
 
 ---
 
 ## Fase 4b — `install.ps1` sem clone (Windows)
 
-**Bloqueada até o item 4 do roadmap.** `tests/installer/win/run.ps1` (997 linhas,
-195 callsites `Assert-*`) tem **zero linhas** mencionando clone/build/git — contra
-80 em `run.sh`. Some a isso as 6 asserções de fechamento de trilho que já falham
+**Bloqueada até o item 4 do roadmap.** `tests/installer/win/run.ps1`
+(1.076 linhas, 206 callsites `Assert-*`) tem **zero linhas** mencionando
+clone/build/git — contra 94 em `run.sh`. Some a isso as 6 asserções de
+fechamento de trilho que já falham
 sob `prlctl exec` (`docs/ROADMAP.md:52`, hipótese não provada: `nt authority\
 system` com output redirecionado derruba `$AfTrueColor`). Reescrever painel e
 flags com a bancada nesse estado é trial-and-error por definição.
@@ -506,11 +527,14 @@ flags com a bancada nesse estado é trial-and-error por definição.
 - Mesmo tratamento do lado WSL (o `install.ps1` delega via `--delegated`).
 - `-RepoUrl` (item 2 do roadmap) **não deve ser implementado como está** — vira
   `-Version` / `-Registry`. Sem clone não há repo URL.
-- Corrigir `install.ps1:2337-2340` — as duas únicas ocorrências de `wsl -e` que
-  hardcodam o usuário default; todas as outras 7 chamadas splicam
-  `$script:WslUser` (`@("-u","root")`). Item 3 do roadmap; o painel é reescrito
-  aqui de qualquer jeito.
-- Atualizar a string de tempo em `install.ps1:2267`.
+- Corrigir `install.ps1:2457-2458` — as duas únicas ocorrências de `wsl -e` sem
+  o usuário; todas as outras 7 chamadas reais splicam `$script:WslUser`
+  (`@("-u","root")`). Nuance da recalibração: são **strings de instrução** que o
+  painel imprime para o usuário colar (`logs`/`stop`), não invocações do
+  script — o defeito é o comando ensinado falhar, não o instalador falhar.
+  Item 3 do roadmap; o painel é reescrito aqui de qualquer jeito.
+- ~~Atualizar a string de tempo em `install.ps1:2267`~~ — **resolvido na
+  v0.56.5** (hoje `:2386`, "~1-2 min"); aqui só muda a semântica build→pull.
 
 ---
 
@@ -524,7 +548,7 @@ A Fase 2 quebra compatibilidade **por desenho**.
 | MCP de `:8001/mcp` → `:8000/mcp` | **Clientes MCP externos param.** Nota de release destacada; é o item mais visível para o autor |
 | `docker compose up -d --build web` (`INSTALL.md:398-405`) | Deixa de existir; documentar o substituto |
 | Restart granular de web/mcp | Some. Um crash derruba API+MCP juntos — aceito ao escolher o nível de consolidação |
-| `App.test.tsx:264-271` | Asserção de URL absoluta quebra; atualizar |
+| `App.test.tsx:263-273` | Asserção de URL absoluta quebra; atualizar (mock em `:103` e asserção em `:271` mudam juntos) |
 
 Riscos **não** intencionais, a tratar na mesma mudança:
 
@@ -559,7 +583,7 @@ Riscos **não** intencionais, a tratar na mesma mudança:
 | Multi-arch | `docker manifest inspect` confirmando amd64 + arm64 |
 | Migração | Instalação 0.56.x real → `git pull` → `make docker-update` continua buildando local, e o `.env` antigo sobe sem edição |
 | Instaladores | E2E do `install.sh` na VM lima (roteiro em `planos_concluidos/uninstall_linux_stack_real_v0562.plan.md`), os 5 caminhos do `--uninstall` e o ciclo `--keep-data` |
-| Uninstall não vaza imagem | Guarda que reprova se `un_collect` (`install.sh:1187-1195`) não casar o nome do GHCR |
+| Uninstall não vaza imagem | Guarda que reprova se `un_collect` (`install.sh:1211-1218`) não casar o nome do GHCR |
 | Números do plano | Medir o pull real e substituir `~275 MB` / `~1.010 MB` por medição |
 
 ---
@@ -572,14 +596,16 @@ Riscos **não** intencionais, a tratar na mesma mudança:
    valiosa" e sem gatilho. Passa a ser **bloqueante da Fase 4b** (não da 4a):
    `win/run.ps1` tem 0 linhas sobre clone/build, e é justamente o caminho a
    reescrever, com 6 falhas não explicadas por cima.
-2. **Item 3 — `wsl -e` sem `-u root` no painel final** (`install.ps1:2337-2340`).
+2. **Item 3 — `wsl -e` sem `-u root` no painel final** (`install.ps1:2457-2458`).
    Correção pequena, quebra assim que alguém completar o assistente de conta do
    Ubuntu, e o painel é reescrito na Fase 4b de qualquer jeito. Vai junto.
 
 **Sai da fila**
 
-3. **Item 1 — `--dry-run` do `install.sh` se contradiz.** ~1 linha em
-   `run_dry_run`. Independente de tudo isto; não há razão para segurar.
+3. ~~**Item 1 — `--dry-run` do `install.sh` se contradiz.**~~ **Resolvido na
+   v0.56.3** — e não era a correção de ~1 linha que este plano supunha: eram
+   duas fontes de verdade (ver
+   `planos_concluidos/tres_correcoes_naming_reconcile_dryrun_v0563.plan.md`).
 
 **Congela até a Fase 4b definir a forma**
 
@@ -588,14 +614,13 @@ Riscos **não** intencionais, a tratar na mesma mudança:
    repo URL, há registry e versão. `-NoOpen` e `-NoOllama` são ortogonais e podem
    ir a qualquer momento.
 
-**Resolvido de graça — e com a atribuição corrigida**
+**Resolvido antes deste plano executar**
 
-5. **Item 5 — estimativa de tempo desatualizada.** O gatilho era "medir em mais
-   uma máquina". Deixa de existir: sem build, o tempo é dominado pelo pull, que é
-   previsível. **Correção obrigatória no próprio item:** ele diz que os ~15 min
-   estão no `INSTALL.md`; não estão. Estão em `install.ps1:2267` (user-facing) e
-   em comentário em `install.ps1:2286` e `install.sh:242`. `INSTALL.md` não
-   precisa de edição por esse motivo.
+5. ~~**Item 5 — estimativa de tempo desatualizada.**~~ **Resolvido na v0.56.5**
+   pela terceira medição (Windows 11 real): textos recalibrados para "~1-2 min"
+   e a mensagem do café virou dependente de estado. Zero "15 min" no repositório
+   hoje. O que este plano ainda muda é a **semântica** (build→pull) nas Fases
+   4a/4b, não o número.
 6. **E2E `install.ps1` com stack real** — segue bloqueado por virtualização
    aninhada, mas o **lado Linux** entra em CI na Fase 3, o que hoje não cabia por
    causa dos 94s de build somados ao boot.
@@ -603,23 +628,32 @@ Riscos **não** intencionais, a tratar na mesma mudança:
 **Sem relação**
 
 7. Item 6 (site publica `--with-ollama`) — fora deste repositório, mas o site
-   também passa a ensinar o one-liner novo e as portas novas.
+   também passa a ensinar o one-liner novo e as portas novas. Medido na
+   recalibração (`atlasfile-website` @ `f7057d2`): 4 comandos publicados
+   recomendam `--with-ollama`/`-WithOllama` (`index.html:220`,
+   `install.html:72,80`, `js/terminal.js:7`) e `install.html:108` promete
+   *"also install Ollama + a local model"* — **promessa falsa desde a v0.55.0**
+   (flag aceita e ignorada). Drift extra: `js/terminal.js:15-22` simula
+   `[1/5]…[5/5]` contra o `1/4…4/4` real; "five Docker services" em 6 lugares e
+   "60 seconds/58s" em 8 — tudo isso muda nas Fases 2–4a. Os comandos ficam
+   fora do i18n (5 edições em 3 arquivos); as descrições são 35 pares EN/PT em
+   `js/i18n.js`.
 8. "Durabilidade de chats e eventos de custo" — gatilho é "antes da próxima minor
    com mudanças de índice"; a Fase 2 não mexe em índice. Segue no roadmap.
 
-**Achado lateral, sem custo:** `tests/installer/win/run.ps1:993` diz "uma bancada
-de 123 assertivas" e o arquivo tem 195 — número obsoleto num comentário, que o
-`check_consistency.py` não pega por não ser asserção. Corrigir quando a Fase 4b
-tocar o arquivo.
+**Achado lateral, sem custo:** `tests/installer/win/run.ps1:1073` diz "uma
+bancada de 123 assertivas" e o arquivo tem 206 callsites — número obsoleto num
+comentário (e envelhecendo: eram 195 na v0.56.2), que o `check_consistency.py`
+não pega por não ser asserção. Corrigir quando a Fase 4b tocar o arquivo.
 
 ### Ordem recomendada
 
 ```
-Fase 1 → roadmap #1 e #3 → Fase 2 → Fase 3 → Fase 4a (Linux)
-                                              ↘ roadmap #4 → Fase 4b (Windows)
+Fase 1 → Fase 2 → Fase 3 → Fase 4a (Linux)
+                            ↘ roadmap #4 → Fase 4b (Windows, leva o roadmap #3)
 ```
 
-A Fase 1 é barata e corrige um defeito provado hoje. As Fases 2 e 3 entregam 33%
+A Fase 1 é barata e fecha uma fragilidade real hoje. As Fases 2 e 3 entregam 33%
 do download, 100% do tempo de compilação e a primeira prova funcional que o
 projeto já teve, sem tocar em instalador. A Fase 4a reduz muito código e está
 desbloqueada. A 4b espera a bancada Windows enxergar.

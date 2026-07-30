@@ -15,6 +15,34 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## [0.56.6] - 2026-07-29
+
+### O artefato instalado passa a ser resolvível ao artefato testado (Fase 1 do plano de distribuição)
+
+Primeira fase de `docs/roadmap/distribuicao_build_imagens_ghcr.md`: fechar a camada de aplicação. Nove dependências do backend tinham piso `>=` sem teto e o frontend declarava `lucide-react: "latest"` — dois builds da mesma versão em datas diferentes podiam instalar coisas diferentes, e nenhum teste provaria.
+
+- **`backend/requirements.txt`**: os 9 pisos abertos (`pymupdf`, `Pillow`, `duckdb`, `mcp`, `httpx`, `openai`, `anthropic`, `aiogram`, `matplotlib`) viraram `==` na versão que o ambiente de referência já roda.
+- **Novo `backend/requirements.lock.txt`**: o resolve inteiro (99 pacotes, transitivos inclusive) travado. Gerado **dentro de `python:3.12-slim`** — a mesma base da imagem — porque o venv local é Python 3.11 e um `pip freeze` nele herdaria resolução de outra versão; a proveniência e o comando de regeneração estão no cabeçalho do arquivo. O `backend/Dockerfile` agora instala do lock.
+- **`backend/requirements-dev.txt` parou de contradizer o produto**: redeclarava `httpx>=0.24.0` (contra `>=0.27.0` do produto) e duplicava `scikit-learn` — a bancada rodava com piso mais baixo do que o que ia para a imagem. Agora faz `-r requirements.lock.txt`: a bancada instala o MESMO resolve do produto, mais o pytest.
+- **`frontend/package.json`**: `lucide-react` de `"latest"` (único outlier entre 39 deps) para `^0.576.0`, a versão que o lockfile já resolvia. E `frontend/Dockerfile` trocou `npm install` por `npm ci` — o `npm install` re-resolvia o dist-tag e **reescrevia o lockfile dentro da imagem**, invisível para o CI que usa `npm ci`.
+- **Novo `frontend/.dockerignore`**: o build context do `web` é `./frontend`, onde o `.dockerignore` da raiz não vale — numa máquina com `npm install` local, o `node_modules` do host entrava no `COPY . .` por cima do install nativo do container. Medido após a correção: transferência de contexto instantânea.
+
+### Guarda nova, provada com mutante antes de valer
+
+`scripts/check_pins.sh` reprova range aberto (`>=`, `~=`, `<`, `>`) nos requirements do backend (produto e extra opcional) e `"latest"`/`"*"` em qualquer `package.json` — o mesmo script roda no CI (job `pins`) e na máquina local. Provada nos dois sentidos antes de entrar: reintroduzir `openai>=1.0.0` reprova, reintroduzir `lucide-react: "latest"` reprova, e o próprio `fastembed>=0.4.0` real serviu de mutante natural — a guarda estendida reprovou o arquivo antes do pin. `fastembed` pinado em `==0.8.0` (o resolve do dia; não havia versão instalada para herdar), com `pip check` limpo por cima do lock em container 3.12.
+
+E o teste que faltava: `test_mcp_client_import.py` importa `app.mcp_client.client` **sem patch** e afirma que `streamable_http_client` resolve de verdade. Os testes existentes patcham o símbolo por atributo e nunca pegariam um `mcp` antigo. Prova de mutante em container 3.12 real: com `mcp==1.9.3` (que o piso `>=1.0.0` aceitava) o teste reprova com a mensagem desenhada; com o lock (`mcp==1.26.0`), passa.
+
+### O plano de distribuição foi recalibrado para a v0.56.5
+
+O plano tinha sido escrito contra a v0.56.2, e os PRs #7–#9 mexeram exatamente nos arquivos que ele referencia. Recalibração completa contra o código: a narrativa do "piso falso do mcp" corrigida (fragilidade real, não `ImportError` provado — um resolve limpo pega o topo, não o piso), itens já resolvidos marcados (o "~15 min" morreu na v0.56.5; o `--dry-run` na v0.56.3), números remedidos (bancadas, linhas, offsets) e o drift do site registrado (4 comandos publicados recomendam `--with-ollama`, que é no-op depreciado desde a v0.55.0 — a promessa "also install Ollama" é falsa hoje). O rascunho superado `plan_one_line_installer.md` foi movido para `docs/planos_concluidos/`, por decisão do autor.
+
+### O que esta fase NÃO fecha
+
+Registrado no próprio plano: apt sem versão no Dockerfile, imagem base em tag móvel e a ausência de prova funcional da imagem ficam para as Fases 2–3. Terminar a Fase 1 não autoriza a frase "reprodutibilidade resolvida".
+
+---
+
 ## [0.56.5] - 2026-07-29
 
 ### O instalador rodou num Windows 11 real, e achou quatro defeitos

@@ -4,6 +4,22 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 0.56.6
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [fase1_reprodutibilidade_pins_lock_v0566](fase1_reprodutibilidade_pins_lock_v0566.plan.md) | Fase 1 do plano de distribuição: o artefato instalado passa a ser resolvível ao testado. 9 pisos `>=` viram `==`, lock de 99 pacotes gerado **dentro de `python:3.12-slim`** (o venv local é 3.11 — armadilha achada na recalibração), dev instala o MESMO resolve do produto, `lucide-react` sai de `"latest"`, `npm ci` no Dockerfile e `.dockerignore` novo no frontend. Guarda `check_pins.sh` (CI job `pins` + local) provada com dois mutantes antes de valer, e o teste que faltava: import real do `mcp_client` reprova com `mcp==1.9.3` em container 3.12 e passa com o lock. Inclui a recalibração completa do plano de distribuição (v0.56.2 → v0.56.5, ~90 afirmações revalidadas: a narrativa do "piso falso" estava superdimensionada — pip resolve o topo, não o piso) |
+
+---
+
+## 0.56.5
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [e2e_windows_real_e_modos_readonly_v0565](e2e_windows_real_e_modos_readonly_v0565.plan.md) | Primeiro E2E do `install.ps1` **num Windows 11 real** (instalação do zero em 15m56s, reinstalação idempotente em 26s, `-Uninstall -DryRun` e `-KeepData`) — achou 4 defeitos que nenhum outro canal via: `wsl --list` também dispara o instalador do WSL (curto-circuito no `Test-WslUsable`), o reset .bat com o mesmo defeito recém-corrigido, o winget que sai 0 sem achar o pacote ("código de saída não é sinal, a mensagem é"), e o plano de uninstall ignorando `-KeepData` já decidido. De quebra: documentos deixam de nascer dentro do OneDrive e as estimativas de tempo foram recalibradas (11 dos 15 min eram o download do Docker Desktop, não o build). Cobre também a v0.56.4 (PR #8: `-DryRun`/`-Doctor` disparavam o instalador do WSL). _Entrada adicionada retroativamente na v0.56.6 — o plano existia sem constar deste índice_ |
+
+---
+
 ## 0.56.3
 
 | # | Plano | Escopo |
@@ -378,3 +394,11 @@ Registro dos planos de implementação executados, organizados por versão.
 | 5 | [atlasfile_profile_v2_cutover](atlasfile_profile_v2_cutover_58945536.plan.md) | Migração para Profile v2 com schema Pydantic; validação; histórico |
 | 6 | [profile_v2_e_layout_llm](profile_v2_e_layout_llm_5b350c4b.plan.md) | Layout plan/apply; editor de profile; seções colapsáveis |
 | 7 | [nested_chunks_inner_hits](nested_chunks_inner_hits_a1b2c3d4.plan.md) | Nested chunks com inner_hits; localização por chunk; highlight por trecho |
+
+---
+
+## Históricos (rascunhos superados)
+
+| Documento | O que é |
+|-----------|---------|
+| [plan_one_line_installer](plan_one_line_installer.md) | Rascunho original do instalador one-liner (estilo OpenClaw), anterior à v0.21.0. **Superado**: o que foi entregue entre a v0.21.0 e a v0.56.0 diverge em URLs, flags e arquitetura — o banner do documento traz a tabela rascunho × entregue. Movido de `docs/roadmap/` em 2026-07-29; o CHANGELOG referencia o caminho antigo como registro histórico |

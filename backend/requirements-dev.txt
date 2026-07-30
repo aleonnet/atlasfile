@@ -1,7 +1,7 @@
 # Test and dev dependencies; install with: pip install -r requirements-dev.txt
--r requirements.txt
+# A bancada instala o MESMO resolve do produto (lock) + ferramentas de teste —
+# sem redeclarar deps do produto aqui (um piso divergente ja escondeu drift).
+-r requirements.lock.txt
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
 pytest-cov>=4.0.0
-httpx>=0.24.0
-scikit-learn==1.8.0
