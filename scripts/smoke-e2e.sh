@@ -120,14 +120,22 @@ found=0
 for _ in $(seq 1 15); do
   res="$(acurl --get --data-urlencode "q=${SENTINELA}" --data-urlencode "project_id=${PROJ}" "${API_URL}/api/search")"
   if python3 - "${res}" <<'PY'
-import json, sys
+import json, re, sys
+
+# Exigir os TRES termos de conteudo MARCADOS pelo highlighter (<em>), nao a
+# substring no snippet: mutante provou que a busca lexical casa token parcial
+# e o snippet carrega o resto da frase do documento — asserir "SENTINELA" no
+# texto passava ate com query errada. O que o highlighter marcou e o que a
+# query de fato encontrou.
 d = json.loads(sys.argv[1])
-hits = d.get("hits") or []
-for h in hits:
+need = {"SENTINELA", "QUARENTA", "DOIS"}
+for h in d.get("hits") or []:
     blobs = list(h.get("highlights") or [])
     blobs += [e.get("snippet", "") for e in (h.get("evidences") or [])]
-    joined = " ".join(blobs).upper()
-    if "SENTINELA" in joined and "<em>".upper() in joined.upper():
+    marked: set = set()
+    for frag in re.findall(r"<em>(.*?)</em>", " ".join(blobs), flags=re.I):
+        marked.update(w.upper() for w in re.findall(r"\w+", frag))
+    if need <= marked:
         print("highlight OK:", h.get("original_filename"))
         sys.exit(0)
 sys.exit(1)

@@ -105,14 +105,61 @@
 - Assimetria do rc: sidebar `v1.0.0` (bundle) × `/api/setup/status`
   `1.0.0-rc.1` (tag) — esperada, documentada no CHANGELOG.
 
-## Validação (roteiro executado/a executar)
+## Validação executada (2026-07-30)
 
-1. Local: `make test` completo; `compose config` (3 cenários: overlay, versão,
-   `:?`); mutantes acima; smoke completo na VM lima contra `atlasfile-local:dev`.
-2. PR + CI verde → merge (decisão do autor).
-3. `git tag -a v1.0.0-rc.1` (disparo do autor) → run verde → flip do pacote
-   GHCR para público → pull anônimo, `imagetools inspect` (2 archs),
-   `gh attestation verify`, medição do pull real.
-4. Migração na VM lima: `git pull` + `make docker-update` (build local, `.env`
-   antigo ganha a var, volume e dados sobrevivem) + uninstall sem vazar imagem.
-5. `git tag -a v1.0.0` (disparo do autor) → mesma validação → Release final.
+1. **Local**: `make test` completo verde (backend + 253 frontend + 223
+   instalador + consistência + parse ps1); `compose config` nos 3 cenários
+   (overlay OK, versão resolve, `:?` com mensagem clara, `ATLASFILE_IMAGE`
+   lazy provado); imagem buildada pelo overlay com ENV de versão correto.
+2. **PR #12 com CI 7/7 verde** — inclusive `docker-build` com overlay, job
+   `pins` com a guarda de digest e backend rodando o teste de OCR real.
+3. **VM lima (atlas-e2e, Ubuntu 24.04 ARM64, recriada do zero)**:
+   - Instalação REAL da 0.57.0 pelo one-liner de main (2m15s, auth ligado) +
+     seed (projeto, PDF ingerido, triagem aprovada, busca com 1 hit).
+   - **Migração real pelo instalador** (`--branch fase3-publicar-imagem`):
+     build pelo overlay em 51s, `.env` antigo preservado ganhando
+     `ATLASFILE_VERSION=1.0.0` (1 ocorrência), container `atlasfile-local:dev`
+     healthy, `/api/setup/status.version == 1.0.0` (o ARG atravessou
+     instalador→overlay→imagem), **dado semeado sobreviveu** (busca 1 hit).
+   - **Smoke E2E completo verde** na stack migrada: versão, 2 uploads, scan
+     determinístico, 2 triagens aprovadas, highlight da sentinela OCR, busca
+     do nativo, `/mcp` 401→sessão→`get_stats` sem `isError`.
+   - **3 mutantes do smoke reprovaram**: versão errada, key errada e —
+     depois de endurecer a guarda — sentinela errada (ver achado 2).
+   - **Uninstall sem vazamento**: com `atlasfile-local:dev` E a legada
+     `atlasfile-atlasfile:latest` no disco, `--uninstall --yes --purge-data`
+     removeu containers, volume e AS DUAS imagens; documentos intocados.
+
+## Achados da validação (fatos novos)
+
+1. **`af_update_clone` não faz update cross-branch** (pré-existente): o clone
+   nasce `--depth 1 --branch main`, a refspec do remote só cobre `main`, e
+   `git fetch origin <outra-branch>` não cria `origin/<branch>` — merge e
+   reset falham ("not something we can merge" / "unknown revision"). O
+   caminho real do usuário (re-executar na MESMA branch) não é afetado; o
+   teste contornou com `remote.origin.fetch` wildcard na VM. **Corrigir na
+   Fase 4a** (o update é reescrito lá; a correção é fetch com refspec
+   explícita `+refs/heads/<b>:refs/remotes/origin/<b>`).
+2. **Mutante derrubou a 1ª versão da guarda de highlight**: asserir a
+   substring "SENTINELA" no snippet passava até com query errada — a busca
+   lexical casa token parcial e o snippet carrega o resto da frase do
+   documento. Guarda corrigida para exigir os TRÊS termos de conteúdo
+   MARCADOS pelo highlighter (`<em>`); mutante re-rodado reprova e o smoke
+   verdadeiro passa. Exatamente o motivo da regra "guarda se prova com
+   mutante".
+3. **Uninstall pós-update preserva o clone** (pré-existente): a re-execução
+   do instalador grava `repo_clone=updated` no manifesto por cima do
+   `created` original, e o uninstall — por desenho — só remove clone
+   `created`. Sub-remoção conservadora (o `.env` e a key são removidos);
+   revisitar na Fase 4a junto do update.
+
+## Sequência restante (disparos do autor)
+
+1. Merge do PR #12.
+2. `git tag -a v1.0.0-rc.1 -m "Ensaio do pipeline de release" && git push origin v1.0.0-rc.1`
+   → run verde → **flip do pacote GHCR para público** (manual, único) →
+   validação externa: pull anônimo, `imagetools inspect` (2 archs),
+   `gh attestation verify oci://ghcr.io/aleonnet/atlasfile:1.0.0-rc.1 -R aleonnet/atlasfile`,
+   medição do pull real (substituir ~275 MB/~1.010 MB do roadmap).
+3. `git tag -a v1.0.0 -m "Primeira release publicada" && git push origin v1.0.0`
+   → mesma validação → Release final. O rc.1 fica como prerelease no histórico.
