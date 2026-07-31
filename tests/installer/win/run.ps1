@@ -9,6 +9,20 @@
 #
 #   pwsh -File tests/installer/win/run.ps1
 $ErrorActionPreference = "Stop"
+# O canal prlctl (VM Parallels) abre o console em codepage 437: o PowerShell
+# 5.1 decodifica a saida CAPTURADA dos processos-filho com essa codepage, e
+# cada glifo UTF-8 multibyte do trilho (U+2570, U+2502) vira tres bytes de
+# lixo — eram exatamente as 6 assercoes do grupo "fechamento de trilho" que
+# falhavam SO nesse canal (item 4 do ROADMAP; a hipotese anterior, queda de
+# $AfTrueColor, estava ERRADA: a saida capturada mostra o desenho perfeito).
+# UTF-8 explicito decodifica igual em qualquer canal; em host sem console o
+# setter pode recusar, e ai nao ha o que corrigir.
+try {
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+    $OutputEncoding = New-Object System.Text.UTF8Encoding $false
+} catch {
+    Write-Verbose "sem console para configurar encoding: $($_.Exception.Message)"
+}
 $script:Pass = 0
 $script:Fail = 0
 # GetFullPath e nao Resolve-Path: em caminho UNC (\\servidor\share) o
