@@ -42,7 +42,7 @@ def public_dashboards_url(request_host: str) -> str:
     if configured:
         return configured.rstrip("/")
     host = (request_host or "localhost").split(":")[0]
-    return f"http://{host}:5601"
+    return f"http://{host}:{settings.dashboards_public_port}"
 
 
 def sso_applicable(request_host: str) -> bool:

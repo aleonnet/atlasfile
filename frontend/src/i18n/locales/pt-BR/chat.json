@@ -92,7 +92,7 @@
   "session": {
     "autoTitle": "Conversa {{date}}",
     "saveFailed": "Falha ao salvar sessão automaticamente",
-    "networkError": "Erro de rede. Verifique se a API está rodando (ex.: http://localhost:8000) e se o backend está acessível.",
+    "networkError": "Erro de rede. Verifique se a API está rodando no endereço desta página e se o backend está acessível.",
     "chatError": "Erro no chat",
     "historyLoadFailed": "Falha ao carregar histórico de sessões",
     "sessionLoadFailed": "Falha ao carregar sessão"

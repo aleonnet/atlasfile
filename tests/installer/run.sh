@@ -1881,6 +1881,93 @@ env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null AF_
   bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/nada" >/dev/null 2>&1 || true
 grep -q 'releases' "$CALLS" && no "o --doctor tocou a rede de releases: $(cat "$CALLS")" || ok
 
+# ── Porta configuravel (ATLASFILE_PORT e familia) ───────────────────────────
+# O binding era literal no compose e nao havia mecanismo nenhum de override:
+# conflito de porta = beco sem saida. A porta efetiva resolve por precedencia
+# flag > env > .env > default, e TODA URL impressa deriva dela.
+t "--port passa pelo parser e exige valor valido"
+bash "$REPO_ROOT/install.sh" --port 8090 --help >/dev/null 2>&1 && ok || no "--port 8090 recusado pelo parser"
+out="$(bash "$REPO_ROOT/install.sh" --port 2>&1)" && no "--port sem valor passou" || ok
+case "$out" in *"--port"*) ok ;; *) no "erro de --port sem mensagem acionavel: [$out]" ;; esac
+out="$(bash "$REPO_ROOT/install.sh" --port abc --help 2>&1)" && no "--port abc passou" || ok
+out="$(bash "$REPO_ROOT/install.sh" --port 0 --help 2>&1)" && no "--port 0 passou (fora de 1-65535)" || ok
+out="$(bash "$REPO_ROOT/install.sh" --port 70000 --help 2>&1)" && no "--port 70000 passou (fora de 1-65535)" || ok
+
+t "af_resolve_app_port: precedencia flag > env > .env > default"
+make_sandbox
+mkdir -p "${SANDBOX}/inst"
+printf 'ATLASFILE_PORT=7777\n' > "${SANDBOX}/inst/.env"
+out="$(run_case -- 'INSTALL_DIR="$SANDBOX/inst"; AF_PORT_FLAG=8090; ATLASFILE_PORT=9999 af_resolve_app_port; printf "%s" "$AF_PORT"')"
+assert_eq "$out" "8090"
+out="$(run_case ATLASFILE_PORT=9999 -- 'INSTALL_DIR="$SANDBOX/inst"; AF_PORT_FLAG=""; af_resolve_app_port; printf "%s" "$AF_PORT"')"
+assert_eq "$out" "9999"
+out="$(run_case -- 'INSTALL_DIR="$SANDBOX/inst"; AF_PORT_FLAG=""; af_resolve_app_port; printf "%s" "$AF_PORT"')"
+assert_eq "$out" "7777"
+out="$(run_case -- 'INSTALL_DIR="$SANDBOX/vazio"; AF_PORT_FLAG=""; af_resolve_app_port; printf "%s" "$AF_PORT"')"
+assert_eq "$out" "8000"
+
+t "e um .env corrompido nao propaga lixo para a porta"
+printf 'ATLASFILE_PORT=abc;rm\n' > "${SANDBOX}/inst/.env"
+out="$(run_case -- 'INSTALL_DIR="$SANDBOX/inst"; AF_PORT_FLAG=""; af_resolve_app_port; printf "%s" "$AF_PORT"')"
+assert_eq "$out" "8000"
+
+# Fiacao REAL da guarda: o script inteiro roda, o lsof do sandbox declara a
+# porta ocupada, e a falha tem de citar a porta EFETIVA (do .env) e ensinar a
+# saida (--port). Antes desta fase a mensagem era so "free it before
+# installing" — beco sem saida.
+t "conflito na porta do .env falha citando a porta efetiva e ensinando --port"
+make_sandbox
+mkdir -p "${SANDBOX}/inst"
+printf 'services: {}\n' > "${SANDBOX}/inst/docker-compose.yml"
+printf 'ATLASFILE_PORT=8090\n' > "${SANDBOX}/inst/.env"
+cat > "${SANDBOX}/bin/lsof" <<EOF
+#!/usr/bin/env bash
+echo "lsof \$*" >> "${CALLS}"
+exit 0
+EOF
+# ss tambem: a guarda prefere ss (Linux; o lsof sem root nao enxerga socket de
+# outro usuario — achado do E2E na lima). No macOS nao ha ss e o lsof responde.
+cat > "${SANDBOX}/bin/ss" <<EOF
+#!/usr/bin/env bash
+echo "ss \$*" >> "${CALLS}"
+printf 'LISTEN 0 4096 0.0.0.0:8000 0.0.0.0:*\nLISTEN 0 4096 0.0.0.0:8090 0.0.0.0:*\nLISTEN 0 4096 0.0.0.0:8123 0.0.0.0:*\nLISTEN 0 4096 127.0.0.1:9200 0.0.0.0:*\n'
+EOF
+chmod +x "${SANDBOX}/bin/lsof" "${SANDBOX}/bin/ss"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --yes --no-open --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"port 8090 is already in use"*) ok ;; *) no "nao citou a porta efetiva do .env: [$out]" ;; esac
+case "$out" in *"--port"*) ok ;; *) no "a falha nao ensina a saida (--port): [$out]" ;; esac
+grep -qE 'ss -ltn|lsof -iTCP:8090' "$CALLS" && ok || no "a guarda nao consultou ss/lsof: $(grep -E 'ss |lsof ' "$CALLS")"
+
+t "e a porta do flag vence a do .env na guarda"
+: > "$CALLS"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --yes --no-open --port 8123 --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"port 8123 is already in use"*) ok ;; *) no "o flag nao venceu o .env: [$out]" ;; esac
+
+t "af_persist_port grava a porta explicita no .env e nao pina o default"
+make_sandbox
+mkdir -p "${SANDBOX}/inst"; printf 'X=1\n' > "${SANDBOX}/inst/.env"
+out="$(run_case -- 'cd "$SANDBOX/inst"; AF_MANIFEST="$SANDBOX/inst/mf"; ENV_STATE=preexisting
+  AF_PORT=8090; AF_PORT_EXPLICIT=1; af_persist_port >/dev/null
+  grep "^ATLASFILE_PORT=" .env')"
+assert_eq "$out" "ATLASFILE_PORT=8090"
+out="$(run_case -- 'cd "$SANDBOX/inst"; AF_MANIFEST="$SANDBOX/inst/mf"; ENV_STATE=preexisting
+  AF_PORT=8000; AF_PORT_EXPLICIT=0; af_persist_port >/dev/null
+  grep -c "^ATLASFILE_PORT=8000" .env || true')"
+case "$out" in *0*) ok ;; *) no "pinou o default 8000 sem o usuario pedir" ;; esac
+
+# Guarda de FONTE (precedente do /dev/urandom acima): as URLs de painel,
+# espera e browser tem de DERIVAR da porta efetiva. A tela nao alcanca o
+# painel na bancada (exigiria a stack no ar), entao a propriedade e provada
+# na fonte: nenhum http://localhost:8000 literal em codigo executavel.
+t "nenhuma URL literal de localhost:8000 sobrevive em codigo do install.sh"
+hardcoded="$(grep -n 'http://localhost:8000' "$REPO_ROOT/install.sh" | grep -v '^[0-9]*:[[:space:]]*#' || true)"
+[ -z "$hardcoded" ] && ok || no "URL com porta literal em codigo: $hardcoded"
+t "e o mesmo para a porta 9200 do OpenSearch na guarda e no doctor"
+hardcoded="$(grep -nE 'in 8000 9200|iTCP:"?9200' "$REPO_ROOT/install.sh" | grep -v '^[0-9]*:[[:space:]]*#' || true)"
+[ -z "$hardcoded" ] && ok || no "porta 9200 literal na guarda/doctor: $hardcoded"
+
 # Achado do E2E da 4a numa VM real: um uninstall parcial anterior (pasta suja
 # preservada) remove o .env; a re-execucao com --force morria na interpolacao
 # de QUALQUER variavel `:?` do compose — a v1.0.0 so cobria ATLASFILE_VERSION.

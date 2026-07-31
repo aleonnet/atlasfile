@@ -97,7 +97,7 @@ make reset-chat     # sessões de chat
 
 ## Arquitetura
 
-Monorepo com 2 serviços Docker (3 com o profile opt-in `dashboards`): `atlasfile` (:8000 — um uvicorn serve a API REST/SSE em `/api/*`, o MCP em `/mcp` e o bundle de produção da UI em `/`), OpenSearch (:9200) e Dashboards (:5601, opt-in). Em desenvolvimento a UI roda no vite dev (:5173) com proxy para :8000.
+Monorepo com 2 serviços Docker (3 com o profile opt-in `dashboards`): `atlasfile` (:8000 — um uvicorn serve a API REST/SSE em `/api/*`, o MCP em `/mcp` e o bundle de produção da UI em `/`), OpenSearch (127.0.0.1:9200 por default) e Dashboards (:5601, opt-in). Portas de host configuráveis via `.env` (`ATLASFILE_PORT`/`OPENSEARCH_PORT`+`OPENSEARCH_BIND`/`DASHBOARDS_PORT`; instalador: `--port`/`-Port`). Em desenvolvimento a UI roda no vite dev (:5173) com proxy para :8000.
 
 ### Backend (`backend/`)
 

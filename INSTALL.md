@@ -260,6 +260,8 @@ docker compose ps
 | `atlasfile` | App consolidado: UI + API + MCP num uvicorn | 8000 |
 | `atlasfile-dashboards` | OpenSearch Dashboards (opt-in: `COMPOSE_PROFILES=dashboards`) | 5601 |
 
+> **Portas configuráveis via `.env`**: `ATLASFILE_PORT` (app, default 8000 — o instalador aceita `--port`/`-Port` e grava a chave), `OPENSEARCH_PORT` + `OPENSEARCH_BIND` (default `127.0.0.1:9200` — o índice **não** aparece na rede local; `OPENSEARCH_BIND=0.0.0.0` restaura a exposição) e `DASHBOARDS_PORT` (5601). A porta 9600 (performance analyzer) deixou de ser publicada.
+
 ---
 
 ## 7) Verificação de saúde
@@ -488,6 +490,7 @@ Para recriar índices com mapping atualizado (ex.: após upgrade):
 | Dashboards (opt-in) | http://localhost:5601 | admin / `OPENSEARCH_PASSWORD` do seu `.env` |
 
 > A senha é única por instalação (gerada pelo install.sh na criação do `.env`).
+> As portas acima são os defaults — remapeáveis via `ATLASFILE_PORT`/`OPENSEARCH_PORT`/`DASHBOARDS_PORT` no `.env` (o OpenSearch nasce em `127.0.0.1`).
 
 ---
 

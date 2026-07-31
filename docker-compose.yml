@@ -15,9 +15,13 @@ services:
       memlock:
         soft: -1
         hard: -1
+    # 127.0.0.1 por default: consenso dos apps self-hosted (n8n/Immich/
+    # Paperless/Sentry nao publicam o banco no host) e o Docker publica portas
+    # POR CIMA do firewall do host. Localhost segue funcionando (make
+    # reset-index, curl das docs); rede local exige OPENSEARCH_BIND=0.0.0.0
+    # no .env. A 9600 (performance analyzer) saiu: zero consumidores.
     ports:
-      - "9200:9200"
-      - "9600:9600"
+      - "${OPENSEARCH_BIND:-127.0.0.1}:${OPENSEARCH_PORT:-9200}:9200"
     volumes:
       - opensearch_data:/usr/share/opensearch/data
     # Ordem de start não é ordem de prontidão: o app só sobe quando o cluster
@@ -53,7 +57,10 @@ services:
       # Permite header securitytenant no import (tenant Global); conexão segue das env acima.
       - ./config/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml:ro
     ports:
-      - "5601:5601"
+      # Porta de host configuravel; o backend recebe DASHBOARDS_PUBLIC_PORT
+      # para o link "Observabilidade" acompanhar. Sem 127.0.0.1: o SSO deriva
+      # http://<host>:<porta> para acesso remoto a UI.
+      - "${DASHBOARDS_PORT:-5601}:5601"
     depends_on:
       - opensearch
 
@@ -85,6 +92,9 @@ services:
       # URL do Dashboards para o BROWSER (proxy/acesso remoto); vazio = o
       # backend deriva do host da request
       - DASHBOARDS_PUBLIC_URL=${DASHBOARDS_PUBLIC_URL:-}
+      # Porta de HOST do Dashboards, para o link derivado nao apontar para um
+      # :5601 que o usuario remapeou (DASHBOARDS_PUBLIC_URL segue soberana)
+      - DASHBOARDS_PUBLIC_PORT=${DASHBOARDS_PORT:-5601}
       # Caminho do host montado em /projects — informativo, para a UI mostrar
       # ao usuário onde os arquivos ficam fisicamente
       - PROJECTS_HOST_ROOT=${PROJECTS_HOST_ROOT:-}
@@ -129,7 +139,9 @@ services:
       # materializam {"keys": []} antes do up.
       - ./config/api_keys.json:/workspace/config/api_keys.json
     ports:
-      - "8000:8000"
+      # ATLASFILE_PORT no .env (ou --port do instalador). Em todas as
+      # interfaces por decisao: a UI e acessivel da rede local.
+      - "${ATLASFILE_PORT:-8000}:8000"
     depends_on:
       opensearch:
         condition: service_healthy

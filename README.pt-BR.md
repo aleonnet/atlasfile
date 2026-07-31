@@ -186,6 +186,8 @@ Para a função de cada script operacional e técnico, veja `docs/11_scripts_and
 | OpenSearch | https://localhost:9200 | Motor de busca (admin / `OPENSEARCH_PASSWORD` do `.env`) |
 | Dashboards | http://localhost:5601 | OpenSearch Dashboards (opt-in: `COMPOSE_PROFILES=dashboards` + `DASHBOARDS_ENABLED=true`) |
 
+As portas de host são configuráveis no `.env` (`ATLASFILE_PORT`, `OPENSEARCH_PORT`, `DASHBOARDS_PORT`); o instalador aceita `--port` (`-Port` no Windows). O OpenSearch nasce em `127.0.0.1`.
+
 ### Makefile
 
 | Target | O que faz |
