@@ -4,12 +4,6 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
-## Não lançado (série 1.0.0 interna — entra na próxima release, ao fechar o plano de distribuição)
-
-- **fix(api): `upload_to_inbox` neutraliza path traversal no filename do multipart** — pré-existente desde a criação do endpoint (flagado na Fase 3): `dest = inbox / filename` cru permitia que um multipart com `../../x` ou caminho absoluto escrevesse FORA da inbox. Agora só o componente final é usado, com rejeição explícita de `''`/`.`/`..` (pathlib só descarta `.` — `Path("..").name` devolve `..`, medido no teste: virava `..__2` no dedup). Mesmo padrão de guarda do `delete_inbox_file`; 3 testes nascidos vermelhos, suíte backend 755 passed.
-
----
-
 ## Instalador — 2026-07-31 (Fase 4a; sem bump — a versão do app segue 1.0.0)
 
 > Decisão registrada: mudança de instalador não altera a versão do App. O
@@ -36,6 +30,14 @@ O caminho padrão do `install.sh` deixa de clonar o repositório e compilar a im
 ---
 
 ## [1.0.0] - 2026-07-30
+
+_A 1.0.0 é release interna até o fechamento do plano de distribuição e segue
+recebendo correções sem bump (decisão de 2026-07-31); a imagem pública será
+re-emitida com elas quando o plano fechar._
+
+### Adicionado em 2026-07-31 (pós-tag inicial)
+
+- **fix(api): `upload_to_inbox` neutraliza path traversal no filename do multipart** — pré-existente desde a criação do endpoint (flagado na Fase 3): `dest = inbox / filename` cru permitia que um multipart com `../../x` ou caminho absoluto escrevesse FORA da inbox. Agora só o componente final é usado, com rejeição explícita de `''`/`.`/`..` (pathlib só descarta `.` — `Path("..").name` devolve `..`, medido no teste: virava `..__2` no dedup). Mesmo padrão de guarda do `delete_inbox_file`; 3 testes nascidos vermelhos, suíte backend 755 passed.
 
 ### A primeira imagem publicada — e provada (Fase 3 do plano de distribuição)
 
