@@ -2165,7 +2165,14 @@ async def upload_to_inbox(
 
     uploaded: list[dict[str, str]] = []
     for upload_file in files:
-        original_name = upload_file.filename or "unnamed"
+        # So o componente final do nome: um multipart com filename ../../x ou
+        # caminho absoluto escreveria FORA da inbox (o delete abaixo ja se
+        # protege; o upload nasceu sem a guarda). `..` precisa de rejeicao
+        # EXPLICITA: pathlib so descarta `.` — Path("..").name devolve ".."
+        # (medido: virava "..__2" no dedup, porque o pai sempre "existe").
+        original_name = Path(upload_file.filename or "unnamed").name
+        if original_name in ("", ".", ".."):
+            original_name = "unnamed"
         dest = inbox / original_name
         if dest.exists():
             stem = Path(original_name).stem
