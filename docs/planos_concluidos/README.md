@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 1.0.0 — portas configuráveis (subplano pós-4b, 2026-07-31, sem bump)
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [portas_configuraveis_env_flag](portas_configuraveis_env_flag.plan.md) | **Portas de host configuráveis** com o padrão de mercado (benchmark de 8 produtos): `${ATLASFILE_PORT:-8000}`/`${OPENSEARCH_BIND:-127.0.0.1}:${OPENSEARCH_PORT:-9200}`/`${DASHBOARDS_PORT:-5601}` no compose, `--port`/`-Port` nos instaladores (validação cedo, precedência flag>env>.env>default, persistência só do que o usuário pediu), URLs de painel/espera/browser derivadas da porta efetiva (no Windows, lida do `.env` via WSL), `DASHBOARDS_PUBLIC_PORT` no backend (matava o `:5601` hardcoded do SSO). **OpenSearch sai da rede local** (127.0.0.1 default) e a 9600 morre. Dois defeitos reais achados pelos testes de forma real: `af_env_lookup` matando o instalador em silêncio (pipefail) e a guarda de portas cega sem root (lsof→`af_port_busy` com ss). Prova: sh 291→310/0, win 235/0 por nome, pytest 756, **8/8 mutantes mortos**, E2E real na lima com `--port 8090` (painel/health/bindings/idempotência/conflito sshd barrado/uninstall limpo) |
+
+---
+
 ## 1.0.0 — instalador (Fase 4b, 2026-07-31, sem bump de versão do app)
 
 | # | Plano | Escopo |

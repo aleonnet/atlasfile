@@ -45,6 +45,7 @@ AF_API_BASE="${ATLASFILE_API_BASE:-https://api.github.com}"
 AF_DOWNLOAD_BASE="${ATLASFILE_DOWNLOAD_BASE:-https://github.com}"
 FROM_SOURCE=0
 AF_PIN_VERSION=""
+AF_PORT_FLAG=""
 AF_TARGET_VERSION=""
 AF_SOURCE_PATH=0
 AF_FRESH_INSTALL=0
@@ -118,6 +119,9 @@ for you. curl and tar are required too, but not installed for you.
 Install options:
   --dir PATH            Where to install                 (default: ~/AtlasFile)
   --projects-root PATH  Where your documents live        (default: ~/Documents/AtlasFileProjects)
+  --port N              Host port for the interface/API  (default: 8000; the
+                        .env key is ATLASFILE_PORT — OPENSEARCH_PORT and
+                        DASHBOARDS_PORT live there too)
   --version X.Y.Z       Install this release instead of the latest stable one
                         (prereleases like 1.1.0-rc.1 are accepted)
   --from-source         Contributor path: clone the repository and build the
@@ -183,6 +187,20 @@ while [ $# -gt 0 ]; do
         echo "--version needs a release number, e.g. --version 1.0.0 (see https://github.com/aleonnet/atlasfile/releases)"; exit 1
       fi
       AF_PIN_VERSION="$2"; shift 2 ;;
+    # Mesma disciplina do --version: consome valor, valida o shape AQUI (o
+    # valor flui para lsof, curl e sed — lixo nao pode virar argumento) e a
+    # falha custa segundos, nao uma instalacao. Via grep, e nao case aninhado:
+    # o fechamento de um case interno (ate escrito por extenso num comentario)
+    # encerra a fatia do parser que o check_flags analisa — armadilha que o
+    # comentario do --version ja registra.
+    --port)
+      if [ -z "${2:-}" ] || [ "${2#-}" != "${2:-}" ]; then
+        echo "--port needs a port number, e.g. --port 8090"; exit 1
+      fi
+      if ! printf '%s' "$2" | LC_ALL=C grep -qE '^[0-9]{1,5}$' || [ "$2" -lt 1 ] || [ "$2" -gt 65535 ]; then
+        echo "--port \"$2\" is not a valid TCP port (1-65535)"; exit 1
+      fi
+      AF_PORT_FLAG="$2"; shift 2 ;;
     --from-source) FROM_SOURCE=1; shift ;;
     --dir) INSTALL_DIR="$2"; shift 2 ;;
     --projects-root) PROJECTS_ROOT="$2"; shift 2 ;;
@@ -1055,6 +1073,86 @@ backup_env_once() {
   AF_ENV_BACKED_UP=1
   info "your previous .env was copied to ${nome}"
   return 0
+}
+
+# set_env VAR VALUE — replace or append in .env. Vivia no meio da fase 3 e
+# ficou ABAIXO do gate de biblioteca: a bancada nao a enxergava e nenhuma
+# funcao testavel podia usa-la. Mora aqui, junto do backup_env_once que ela
+# chama.
+set_env() {
+  backup_env_once
+  if grep -q "^$1=" .env; then
+    tmp_env="$(mktemp)"
+    sed "s|^$1=.*|$1=$2|" .env > "${tmp_env}" && mv "${tmp_env}" .env
+  else
+    printf '%s=%s\n' "$1" "$2" >> .env
+  fi
+}
+
+# ── Porta configuravel (ATLASFILE_PORT e familia) ───────────────────────────
+# O compose interpola ${ATLASFILE_PORT:-8000}; estes resolvedores existem para
+# a guarda de porta, as esperas e as URLs impressas falarem da MESMA porta que
+# o compose vai usar. Precedencia: flag > env > .env > default. Shape estrito
+# porque o valor flui para lsof, curl e para o sed do set_env.
+af_valid_port() { # <valor>
+  case "${1:-}" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+
+af_env_lookup() { # <chave> — valor da chave no .env do INSTALL_DIR, se houver
+  [ -f "${INSTALL_DIR}/.env" ] || return 0
+  # `|| true` porque chave AUSENTE e resultado normal: sem ele, o rc 1 do grep
+  # atravessa o pipefail, a atribuicao `x="$(...)"` falha e o set -e mata o
+  # instalador SEM UMA LINHA — pego pela bancada de forma real, nao pelos
+  # testes de funcao (que so cobriam chave presente).
+  grep "^$1=" "${INSTALL_DIR}/.env" 2>/dev/null | head -1 | cut -d= -f2- || true
+}
+
+af_resolve_app_port() {
+  AF_PORT_EXPLICIT=0
+  local cand
+  for cand in "${AF_PORT_FLAG:-}" "${ATLASFILE_PORT:-}"; do
+    if [ -n "$cand" ]; then
+      af_valid_port "$cand" || fail "ATLASFILE_PORT \"$cand\" is not a valid TCP port (1-65535)"
+      AF_PORT="$cand"; AF_PORT_EXPLICIT=1; return 0
+    fi
+  done
+  # Valor herdado de instalacao anterior: um .env corrompido nao pode propagar
+  # lixo — fora do shape, o default assume em silencio (a fonte nao e o
+  # comando que o usuario acabou de digitar).
+  cand="$(af_env_lookup ATLASFILE_PORT)"
+  if af_valid_port "$cand"; then AF_PORT="$cand"; else AF_PORT=8000; fi
+  return 0
+}
+
+af_resolve_os_port() {
+  if af_valid_port "${OPENSEARCH_PORT:-}"; then AF_OS_PORT="${OPENSEARCH_PORT}"
+  else
+    AF_OS_PORT="$(af_env_lookup OPENSEARCH_PORT)"
+    af_valid_port "$AF_OS_PORT" || AF_OS_PORT=9200
+  fi
+  return 0
+}
+
+# Alguem escuta nesta porta? `ss` primeiro: no Linux o lsof SEM root nao
+# enxerga socket de outro usuario — medido no E2E da VM lima, onde a guarda
+# deixou a porta 22 (sshd) passar e o conflito so apareceu no bind do Docker.
+# O ss lista todos os listeners sem privilegio; o lsof fica de fallback (macOS
+# nao tem ss, e la o lsof enxerga).
+af_port_busy() { # <porta>
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn 2>/dev/null | grep -qE "[:.]$1[[:space:]]"
+    return $?
+  fi
+  command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+# So persiste o que o usuario PEDIU (flag/env): pinar o default 8000 no .env
+# impediria um default futuro de valer em quem nunca escolheu porta.
+af_persist_port() {
+  [ "${AF_PORT_EXPLICIT:-0}" = "1" ] || return 0
+  set_env ATLASFILE_PORT "$AF_PORT"
+  ok "ATLASFILE_PORT=${AF_PORT} written to .env (the host port the stack binds)"
 }
 
 
@@ -2023,8 +2121,10 @@ run_doctor() {
     doc_warn "the daemon does not answer — nothing to say about the stack"
   fi
   local porta
-  for porta in 8000 9200; do
-    if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$porta" -sTCP:LISTEN >/dev/null 2>&1; then
+  af_resolve_app_port
+  af_resolve_os_port
+  for porta in "$AF_PORT" "$AF_OS_PORT"; do
+    if af_port_busy "$porta"; then
       if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q "atlasfile.*:${porta}"; then
         doc_ok "port ${porta} is AtlasFile's own"
       else
@@ -2843,12 +2943,25 @@ if [ -n "${name_owner}" ] && [ "${name_owner}" != "${INSTALL_DIR}" ]; then
   fail "AtlasFile container names are fixed — stop and remove the other stack before installing here: cd ${name_owner} && docker compose down (its data stays safe in the volumes)."
 fi
 
-for port in 8000 9200; do
-  if command -v lsof >/dev/null 2>&1 && lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+# Portas EFETIVAS (flag > env > .env > default) — a mesma conta que o compose
+# fara na interpolacao. Resolvidas aqui porque tudo daqui em diante (guarda,
+# esperas, painel, browser) tem de falar da mesma porta.
+af_resolve_app_port
+af_resolve_os_port
+for port in "$AF_PORT" "$AF_OS_PORT"; do
+  if af_port_busy "$port"; then
     if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q "atlasfile.*:${port}"; then
       info "port ${port} is used by AtlasFile itself (it will be updated)"
     else
-      fail "port ${port} is already in use by another process — free it before installing"
+      # Conflito com saida ensinada, nao beco: era "free it before installing"
+      # e pronto — benchmark de 8 produtos self-hosted: nenhum auto-incrementa
+      # (quebra URL/bookmark/idempotencia); o estado da arte e falhar cedo com
+      # o remedio na mensagem.
+      if [ "$port" = "$AF_PORT" ]; then
+        fail "port ${port} is already in use by another process — free it, or install on another port: re-run with --port N (the .env key is ATLASFILE_PORT)"
+      else
+        fail "port ${port} is already in use by another process — free it, or set OPENSEARCH_PORT in the .env and re-run"
+      fi
     fi
   fi
 done
@@ -2947,17 +3060,8 @@ else
   info ".env already exists — preserved"
 fi
 
-# set_env VAR VALUE — replace or append in .env. Definida ANTES do pin de
-# versao: o update do bundle path a usa logo abaixo.
-set_env() {
-  backup_env_once
-  if grep -q "^$1=" .env; then
-    tmp_env="$(mktemp)"
-    sed "s|^$1=.*|$1=$2|" .env > "${tmp_env}" && mv "${tmp_env}" .env
-  else
-    printf '%s=%s\n' "$1" "$2" >> .env
-  fi
-}
+# set_env vive na zona de funcoes (junto do backup_env_once): aqui embaixo do
+# gate de biblioteca a bancada nao a enxergava.
 
 # v1.0.0: compose selects the app image by ATLASFILE_VERSION (no default on
 # purpose — an implicit `latest` would make two installs drift apart).
@@ -2984,6 +3088,10 @@ else
     fi
   fi
 fi
+
+# A porta pedida pelo usuario (flag/env) persiste no .env — e o que faz o
+# re-run e o compose falarem da mesma porta sem repetir a flag.
+af_persist_port
 
 current_root="$(grep '^PROJECTS_HOST_ROOT=' .env | head -1 | cut -d= -f2- || true)"
 # .env.example placeholders do not count as user configuration
@@ -3111,8 +3219,8 @@ fi
 # api órfão segura a :8000.
 af_stack_up
 
-run_step "waiting for the API to become healthy" wait_http http://localhost:8000/health 90
-run_step "waiting for the interface" wait_http http://localhost:8000/ 30
+run_step "waiting for the API to become healthy" wait_http "http://localhost:${AF_PORT}/health" 90
+run_step "waiting for the interface" wait_http "http://localhost:${AF_PORT}/" 30
 
 # ── 5. Done ─────────────────────────────────────────────────────────────────
 TOTAL_SECS=$(( $(step_now) - START_TS ))
@@ -3144,9 +3252,9 @@ box_row() {
   printf '  %s│%s  %s%-11s%s %-43s%s│%s\n' "$ORANGE" "$RESET" "$BOLD" "$label" "$RESET" "$value" "$ORANGE" "$RESET"
 }
 printf '  %s╭─────────────────────────────────────────────────────────╮%s\n' "$ORANGE" "$RESET"
-box_row "Interface" "http://localhost:8000"
-box_row "API" "http://localhost:8000/health"
-box_row "MCP" "http://localhost:8000/mcp"
+box_row "Interface" "http://localhost:${AF_PORT}"
+box_row "API" "http://localhost:${AF_PORT}/health"
+box_row "MCP" "http://localhost:${AF_PORT}/mcp"
 box_row "Projects" "${PROJECTS_ROOT}"
 printf '  %s╰─────────────────────────────────────────────────────────╯%s\n\n' "$ORANGE" "$RESET"
 if [ "${ENABLE_AUTH}" = "1" ] && [ -n "${API_KEY_VALUE}" ]; then
@@ -3203,7 +3311,7 @@ write_run_log
 printf '\n'
 
 if [ "${OPEN_BROWSER}" = "1" ]; then
-  if command -v open >/dev/null 2>&1; then open http://localhost:8000 || true
-  elif command -v xdg-open >/dev/null 2>&1; then xdg-open http://localhost:8000 || true
+  if command -v open >/dev/null 2>&1; then open "http://localhost:${AF_PORT}" || true
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "http://localhost:${AF_PORT}" || true
   fi
 fi

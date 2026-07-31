@@ -19,6 +19,7 @@
 #   -FromSource    contributor path: clone the repository and build locally
 #   -RepoUrl URL   repository to clone (only with -FromSource)
 #   -Branch NAME   branch to clone (only with -FromSource; default: main)
+#   -Port N        host port for the interface/API (default: 8000)
 #   -NoOpen        do not open the browser at the end
 #   -Yes           non-interactive (accept defaults; does NOT install deps)
 #   -InstallDeps   authorize installing missing prerequisites without prompting
@@ -53,6 +54,7 @@ param(
     [string]$Version = "",
     [switch]$FromSource,
     [string]$RepoUrl = "",
+    [string]$Port = "",
     [switch]$NoOpen,
     # Depreciadas: aceitas e IGNORADAS. O site publica -WithOllama ha meses e
     # PowerShell recusa parametro desconhecido com erro terminante - quem colar
@@ -122,6 +124,8 @@ Install options:
                   as --repo-url
   -Branch NAME    Branch to clone (only with -FromSource; default: main).
                   Forwarded as --branch
+  -Port N         Host port for the interface/API (default: 8000). Forwarded
+                  as --port; the .env key on the WSL side is ATLASFILE_PORT
   -NoOpen         Do not open the browser at the end
   -Yes            Non-interactive. On its own it NEVER installs system
                   dependencies - see -InstallDeps
@@ -1630,6 +1634,13 @@ if ($RepoUrl -and -not $FromSource) {
     Write-Fail "-RepoUrl only makes sense with -FromSource (the release path has no repository to clone)."
     Stop-Installer 1; return
 }
+# Porta fora do shape so explodiria DENTRO do WSL, depois das fases 1 e 2 -
+# mesma classe do -Version. O regex limita os digitos ANTES do cast: [int]
+# de um numero gigante e excecao, nao validacao.
+if ($Port -and ($Port -notmatch '^[0-9]{1,5}$' -or [int]$Port -lt 1 -or [int]$Port -gt 65535)) {
+    Write-Fail "-Port `"$Port`" is not a valid TCP port (1-65535)."
+    Stop-Installer 1; return
+}
 
 # --- O WSL da para USAR? read-only de verdade -------------------------------
 # So `--status` e `-l -q`. NUNCA `wsl -e`, e e essa a razao de existir.
@@ -2478,6 +2489,7 @@ if ($raizProjetos) { $shFlags += " --projects-root $(ConvertTo-AfShArg $raizProj
 if ($Version) { $shFlags += " --version $Version" }
 if ($FromSource) { $shFlags += " --from-source" }
 if ($RepoUrl) { $shFlags += " --repo-url $RepoUrl" }
+if ($Port) { $shFlags += " --port $Port" }
 # A divisoria do handover, logo antes de entregar: daqui em diante quem escreve
 # na tela e o outro instalador, e isso precisa ficar visivel. A calha continua,
 # entao o trilho atravessa a fronteira em vez de recomecar do outro lado.
@@ -2504,13 +2516,24 @@ $script:TrilhoFechadoNoWsl = $true
 # -Skip por parametro, e nao lendo $NoOpen de dentro: o PSReviewUnusedParameter
 # do PSScriptAnalyzer nao enxerga escopo de funcao aninhada e acusava o
 # parametro como nao usado (falso positivo medido no CI).
-function Open-AfBrowser([switch]$Skip) {
-    if ($Skip) { return }
-    Write-Info "opening http://localhost:8000 in your browser"
-    try { Start-Process "http://localhost:8000" -ErrorAction Stop }
-    catch { Write-Info "open http://localhost:8000 in your browser" }
+# A porta REAL da instalacao: -Port quando dado; senao a que o .env do outro
+# lado ja carrega (instalacao anterior com porta custom); senao 8000. Sem isto
+# o browser abriria a porta errada exatamente para quem mais precisa dela -
+# quem remapeou por conflito.
+$portaApp = $Port
+if (-not $portaApp) {
+    $dirEnv = if ($script:AfDir) { $script:AfDir } else { "~/AtlasFile" }
+    $linhaPorta = Invoke-NativeCapture wsl (@($script:WslUser) + @("-e", "bash", "-c", "grep '^ATLASFILE_PORT=' $(ConvertTo-AfShArg $dirEnv)/.env"))
+    if ($linhaPorta -match 'ATLASFILE_PORT=([0-9]+)') { $portaApp = $Matches[1] }
 }
-Open-AfBrowser -Skip:$NoOpen
+if (-not $portaApp) { $portaApp = "8000" }
+function Open-AfBrowser([switch]$Skip, [string]$Porta) {
+    if ($Skip) { return }
+    Write-Info "opening http://localhost:$Porta in your browser"
+    try { Start-Process "http://localhost:$Porta" -ErrorAction Stop }
+    catch { Write-Info "open http://localhost:$Porta in your browser" }
+}
+Open-AfBrowser -Skip:$NoOpen -Porta $portaApp
 
 # O install.sh JA imprimiu o painel com Interface/API/Dashboards, a senha do
 # OpenSearch e a chave de API. Repetir metade disso aqui era o mesmo defeito do

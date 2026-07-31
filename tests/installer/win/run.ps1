@@ -146,6 +146,10 @@ if "%AF_WSL_NO_DISTRO%"=="1" exit /b 1
 if "%AF_WSL_DEAD_DISTRO%"=="1" exit /b 1
 if "%AF_WSL_UNINIT%"=="1" exit /b 1
 if "%2"=="wslpath" goto wslpath
+REM Leitura do .env pelo orquestrador (porta instalada): o grep real sai 1
+REM sem match, e so responde a linha quando a bancada define a porta.
+echo %*|findstr /c:"ATLASFILE_PORT" >nul
+if not errorlevel 1 goto envport
 if "%2"=="echo" echo atlasfile_wsl_ok
 echo %*|findstr /c:"--plan-only" >nul
 if not errorlevel 1 goto planonly
@@ -154,6 +158,10 @@ if not errorlevel 1 goto unexec
 exit /b 0
 :wslpath
 echo /mnt/c/Users/tester/Documents/AtlasFileProjects
+exit /b 0
+:envport
+if "%AF_WSL_ENV_PORT%"=="" exit /b 1
+echo ATLASFILE_PORT=%AF_WSL_ENV_PORT%
 exit /b 0
 :planonly
 echo.
@@ -526,10 +534,33 @@ Write-Host "== H5. o browser tem anuncio observavel e -NoOpen o desliga =="
 # ANTES da tentativa e independe do canal.
 $sb = New-Sandbox
 $out = Run-Installer @("-Yes")
-Assert-Match "sem -NoOpen o instalador anuncia a abertura" $out "opening http://localhost:8000"
+Assert-Match "sem -NoOpen o instalador anuncia a abertura" $out "opening http://localhost:"
+Assert-True "e sem porta custom o anuncio e da 8000" ($out -match "opening http://localhost:8000 ") "anunciou outra porta sem ninguem pedir"
 $sb = New-Sandbox
 $out = Run-Installer @("-Yes", "-NoOpen")
-Assert-NoMatch "com -NoOpen nao ha anuncio nem abertura" $out "opening http://localhost:8000"
+Assert-NoMatch "com -NoOpen nao ha anuncio nem abertura" $out "opening http://localhost:"
+
+Write-Host "== H8. -Port viaja, valida cedo, e o browser abre a porta REAL =="
+# A porta e a do usuario: -Port quando dado; senao a que o .env da instalacao
+# anterior carrega (lida via wsl grep); senao 8000.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-Port", "8090", "-NoOpen")
+$calls = Calls
+Assert-Match "-Port viaja como --port" $calls "--port 8090"
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes")
+$calls = Calls
+Assert-NoMatch "sem -Port nao ha --port" $calls "--port"
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-Port", "abc")
+Assert-Match "porta fora do shape e recusada" $out "is not a valid TCP port"
+Assert-True "e nenhuma ferramenta chegou a ser chamada" (-not ((Calls) -match '\S')) "houve chamada de ferramenta apos -Port invalido"
+$sb = New-Sandbox
+$env:AF_WSL_ENV_PORT = "8123"
+$out = Run-Installer @("-Yes")
+$calls = Calls
+Assert-Match "sem -Port o instalador consulta o .env do outro lado" $calls "ATLASFILE_PORT"
+Assert-True "e o anuncio abre a porta da instalacao, nao a default" ($out -match "opening http://localhost:8123 ") "anuncio nao acompanhou a porta do .env"
 
 Write-Host "== H6. a ajuda conta a historia da release, nao a do clone =="
 # O gap declarado da 4a: o help prometia clone que o outro lado ja nao faz por

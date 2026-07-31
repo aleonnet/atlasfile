@@ -51,6 +51,12 @@ _A 1.0.0 é release interna até o fechamento do plano de distribuição e segue
 recebendo correções sem bump (decisão de 2026-07-31); a imagem pública será
 re-emitida com elas quando o plano fechar._
 
+### Adicionado em 2026-07-31 — portas de host configuráveis (subplano pós-4b)
+
+- **`ATLASFILE_PORT`** (default 8000), **`OPENSEARCH_PORT`** + **`OPENSEARCH_BIND`** e **`DASHBOARDS_PORT`** interpoladas no compose (`${VAR:-default}` — padrão de mercado medido em 8 produtos self-hosted; nenhum faz auto-increment de porta, e o AtlasFile também não: conflito continua falhando cedo, agora com o remédio na mensagem). O instalador ganhou `--port N` (`-Port` no Windows), com validação cedo nos dois lados; a porta pedida persiste no `.env` e o re-run a honra sem repetir a flag. Guarda de portas, doctor, esperas de health, painel final e abertura do browser falam da porta EFETIVA (flag > env > `.env` > default) — no Windows, o browser lê a porta da instalação pelo `.env` de dentro do WSL.
+- **MUDANÇA DE COMPORTAMENTO**: o OpenSearch passa a nascer em `127.0.0.1:9200` (consenso dos apps self-hosted: banco/índice fora da rede; o Docker publica portas por cima do firewall do host) — localhost continua funcionando (`make reset-index`, curls das docs); rede local exige `OPENSEARCH_BIND=0.0.0.0` no `.env`. A porta **9600** (performance analyzer) deixou de ser publicada: zero consumidores. O link "Observabilidade" passou a derivar a porta do Dashboards de `DASHBOARDS_PUBLIC_PORT` (era um `:5601` fixo no backend que quebraria em silêncio com binding custom).
+- De carona, um defeito real pego pela bancada de forma real: `af_env_lookup` com chave ausente matava o instalador em silêncio (`set -euo pipefail` + rc do grep atravessando a atribuição). E `set_env` mudou para a zona de funções (vivia abaixo do gate de biblioteca, invisível para a bancada).
+
 ### Adicionado em 2026-07-31 (pós-tag inicial)
 
 - **fix(api): `upload_to_inbox` neutraliza path traversal no filename do multipart** — pré-existente desde a criação do endpoint (flagado na Fase 3): `dest = inbox / filename` cru permitia que um multipart com `../../x` ou caminho absoluto escrevesse FORA da inbox. Agora só o componente final é usado, com rejeição explícita de `''`/`.`/`..` (pathlib só descarta `.` — `Path("..").name` devolve `..`, medido no teste: virava `..__2` no dedup). Mesmo padrão de guarda do `delete_inbox_file`; 3 testes nascidos vermelhos, suíte backend 755 passed.

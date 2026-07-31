@@ -31,6 +31,20 @@ def test_url_publica_respeita_config_e_deriva_do_host(monkeypatch) -> None:
     assert sso.public_dashboards_url("meu-host:8000") == "https://obs.exemplo.com"
 
 
+def test_url_publica_deriva_da_porta_configurada(monkeypatch) -> None:
+    """DASHBOARDS_PORT custom no compose: o link tem de acompanhar — era um
+    :5601 hardcoded que quebrava o SSO em silêncio com binding custom."""
+    monkeypatch.setattr(sso.settings, "dashboards_public_url", "")
+    monkeypatch.setattr(sso.settings, "dashboards_public_port", 6601)
+    assert sso.public_dashboards_url("meu-host:8000") == "http://meu-host:6601"
+    # a URL explícita segue soberana, porta inclusa
+    monkeypatch.setattr(sso.settings, "dashboards_public_url", "https://obs.exemplo.com/")
+    assert sso.public_dashboards_url("meu-host:8000") == "https://obs.exemplo.com"
+    # e o sso continua aplicável no mesmo host, seja qual for a porta
+    monkeypatch.setattr(sso.settings, "dashboards_public_url", "")
+    assert sso.sso_applicable("meu-host:8000") is True
+
+
 class _FakeCookies(dict):
     """httpx.Cookies expõe .items(); dict basta para o que o código usa."""
 
