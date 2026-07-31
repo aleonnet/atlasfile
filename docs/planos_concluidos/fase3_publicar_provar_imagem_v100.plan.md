@@ -153,13 +153,39 @@
    `created`. Sub-remoção conservadora (o `.env` e a key são removidos);
    revisitar na Fase 4a junto do update.
 
+## O ensaio rc.1 fez o seu trabalho (2026-07-30, run 30596195322)
+
+O primeiro disparo do `release.yml` (`v1.0.0-rc.1`) **reprovou no smoke das
+duas archs** — e o invariante segurou exatamente como desenhado: `publish`
+nunca rodou, **nenhuma tag foi aplicada no GHCR**, sobraram só dois digests
+sem tag (invisíveis a pull). Três defeitos reais no `smoke-project-init.sh`,
+corrigidos e revalidados na VM (cenário exato do CI + mutante sem key + e2e
+completo, tudo verde):
+
+4. **O patch de auth definia `auth_curl` mas não trocava os call sites** —
+   `initialize`/`profile` seguiam com `curl` puro e levavam 401. A lacuna era
+   MINHA cobertura: na VM eu validei o `smoke-e2e.sh` ao vivo, mas nunca
+   executei o init script sob auth. O rc pegou o que a bancada não cobriu.
+5. **`python` vs `python3`** nos heredocs host-side: os runners do GitHub têm
+   `python`, o Ubuntu 24.04 da VM não — trocado para `python3` (os
+   `docker exec ... python` ficam: rodam dentro do container).
+6. **Expectativa de taxonomia congelada na v0.7.0**: o template mudou na
+   v0.39.0 (`364d4cc`, 14→10 tipos — `fato_relevante` saiu,
+   `apresentacao/planilha/email` viraram faceta `doc_kind`) e o script ainda
+   exigia o conjunto antigo. Latente porque só `make docker-update` roda este
+   smoke (o `docker-up` não). Atualizado para os 10 vigentes.
+
+A tag `v1.0.0-rc.1` fica no histórico como o ensaio que reprovou (sem release
+e sem tag de imagem); o ensaio seguinte é `v1.0.0-rc.2`.
+
 ## Sequência restante (disparos do autor)
 
-1. Merge do PR #12.
-2. `git tag -a v1.0.0-rc.1 -m "Ensaio do pipeline de release" && git push origin v1.0.0-rc.1`
+1. ~~Merge do PR #12~~ — feito em 2026-07-30 (`dc34e8d`); o fix do rc.1 entra
+   pelo PR seguinte.
+2. `git tag -a v1.0.0-rc.2 -m "Ensaio do pipeline de release (2)" && git push origin v1.0.0-rc.2`
    → run verde → **flip do pacote GHCR para público** (manual, único) →
    validação externa: pull anônimo, `imagetools inspect` (2 archs),
-   `gh attestation verify oci://ghcr.io/aleonnet/atlasfile:1.0.0-rc.1 -R aleonnet/atlasfile`,
+   `gh attestation verify oci://ghcr.io/aleonnet/atlasfile:1.0.0-rc.2 -R aleonnet/atlasfile`,
    medição do pull real (substituir ~275 MB/~1.010 MB do roadmap).
 3. `git tag -a v1.0.0 -m "Primeira release publicada" && git push origin v1.0.0`
    → mesma validação → Release final. O rc.1 fica como prerelease no histórico.

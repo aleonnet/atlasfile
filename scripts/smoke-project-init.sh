@@ -51,8 +51,8 @@ echo "[smoke-init] Criando diretório de projeto de smoke (${SMOKE_PROJECT_ID}).
 docker exec "${API_CONTAINER}" mkdir -p "${PROJECTS_ROOT_IN_CONTAINER}/${SMOKE_PROJECT_ID}"
 
 echo "[smoke-init] Chamando initialize com template default..."
-init_json="$(curl -sS -X POST "${API_URL}/api/projects/${SMOKE_PROJECT_ID}/initialize?template=default")"
-python - "${init_json}" <<'PY'
+init_json="$(auth_curl -sS -X POST "${API_URL}/api/projects/${SMOKE_PROJECT_ID}/initialize?template=default")"
+python3 - "${init_json}" <<'PY'
 import json
 import sys
 
@@ -66,8 +66,8 @@ print("Initialize OK")
 PY
 
 echo "[smoke-init] Validando endpoint de profile..."
-profile_json="$(curl -sS "${API_URL}/api/projects/${SMOKE_PROJECT_ID}/profile")"
-python - "${profile_json}" <<'PY'
+profile_json="$(auth_curl -sS "${API_URL}/api/projects/${SMOKE_PROJECT_ID}/profile")"
+python3 - "${profile_json}" <<'PY'
 import json
 import sys
 
@@ -101,7 +101,10 @@ if missing_domains:
     raise SystemExit(f"business_domains ausentes: {missing_domains}")
 document_types = classification.get("document_types") or []
 document_type_keys = {str(item.get("key") or "").strip() for item in document_types}
-expected_document_types = {"contrato", "aditivo", "fato_relevante", "relatorio", "apresentacao", "planilha", "email", "edital", "plano"}
+# v1.0.0: atualizado para a taxonomia da v0.39.0 (14→10: fato_relevante saiu
+# do default e apresentacao/planilha/email viraram faceta doc_kind) — a lista
+# antiga era da v0.7.0 e só não reprovava porque docker-up não roda este smoke.
+expected_document_types = {"aditivo", "ata", "contrato", "edital", "especificacao", "nota_fiscal", "parecer", "plano", "procuracao", "relatorio"}
 missing_document_types = sorted(expected_document_types - document_type_keys)
 if missing_document_types:
     raise SystemExit(f"document_types ausentes: {missing_document_types}")
