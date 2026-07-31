@@ -101,6 +101,56 @@ def test_upload_no_files(client: TestClient, _project):
     assert resp.status_code == 422
 
 
+def test_upload_path_traversal_is_neutralized(client: TestClient, _project, tmp_path: Path):
+    """Filename com ../ vindo do cliente nao pode escapar da inbox.
+
+    Pre-existente desde a criacao do endpoint: `dest = inbox / original_name`
+    com o filename cru — um multipart com filename `../../escapou.txt`
+    escrevia FORA da inbox (flagado na Fase 3, corrigido aqui).
+    """
+    project_root, profile = _project
+    inbox = project_root / profile["paths"]["inbox"]
+
+    resp = client.post(
+        "/api/ingest/upload/proj",
+        files=[("files", ("../../escapou.txt", b"malicia", "text/plain"))],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["uploaded"][0]["saved_as"] == "escapou.txt"
+    assert (inbox / "escapou.txt").read_bytes() == b"malicia"
+    # nada escrito fora da inbox — nem na raiz do projeto, nem acima dela
+    assert not (project_root / "escapou.txt").exists()
+    assert not (tmp_path / "escapou.txt").exists()
+
+
+def test_upload_absolute_path_is_neutralized(client: TestClient, _project, tmp_path: Path):
+    project_root, profile = _project
+    inbox = project_root / profile["paths"]["inbox"]
+
+    alvo_fora = tmp_path / "abs_escapou.txt"
+    resp = client.post(
+        "/api/ingest/upload/proj",
+        files=[("files", (str(alvo_fora), b"malicia", "text/plain"))],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["uploaded"][0]["saved_as"] == "abs_escapou.txt"
+    assert (inbox / "abs_escapou.txt").exists()
+    assert not alvo_fora.exists()
+
+
+def test_upload_dot_dot_name_falls_back_to_unnamed(client: TestClient, _project):
+    project_root, profile = _project
+    inbox = project_root / profile["paths"]["inbox"]
+
+    resp = client.post(
+        "/api/ingest/upload/proj",
+        files=[("files", ("..", b"x", "application/octet-stream"))],
+    )
+    assert resp.status_code == 200
+    assert resp.json()["uploaded"][0]["saved_as"] == "unnamed"
+    assert (inbox / "unnamed").exists()
+
+
 def test_delete_inbox_file(client: TestClient, _project, tmp_path: Path):
     project_root, profile = _project
     inbox = project_root / profile["paths"]["inbox"]
