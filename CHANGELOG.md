@@ -4,6 +4,22 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## Instalador — 2026-07-31 (Fase 4b; sem bump — a versão do app segue 1.0.0)
+
+### `install.ps1` alinhado à release: flags novas, ajuda sem promessa de clone, painel com o dono real (Fase 4b)
+
+- **`-Version X.Y.Z` (novo)** — pina a release, com **validação cedo no próprio ps1** (mesmo shape aceito pelo `install.sh`): um typo falha em segundos, antes de instalar WSL e Docker Desktop. Fato medido na bancada: antes da guarda, `-Version banana` via `powershell -File` rodava a instalação **inteira** — o encaixe posicional engolia o parâmetro desconhecido (a crença "PowerShell recusa parâmetro desconhecido com erro terminante" só vale sob `iex`).
+- **`-FromSource` (novo)** — correção de regressão da 4a: desde o merge do PR #15 o Windows não tinha como pedir o caminho de contribuidor (clone + build) — um `-Branch` de trabalho virava warn+ignore do outro lado. **`-RepoUrl` (novo)** vale só com `-FromSource` e fecha a dor do item 2 do ROADMAP (testar um fork de ponta a ponta no Windows). `-Version` com `-FromSource` é **recusado** na entrada: o `.sh` ignoraria a versão em silêncio, e ignorar o que o usuário digitou é mentira.
+- **`-NoOpen` (novo)** — e o browser ganhou seam observável: `Open-AfBrowser` **anuncia** a abertura antes de tentá-la (a mensagem antiga só existia no `catch`, ou seja, só na falha — um sinal que só aparece na falha não prova nada numa bancada).
+- **Painel final** (item 3 do ROADMAP) — os comandos ensinados de `logs`/`stop` carregam o dono real da instalação: `wsl -u root -e` quando a distro roda como root; contrapositivo na bancada garante `wsl -e` para instalação de usuário padrão.
+- **Ajuda e header sem promessa de clone incondicional** — `-Branch` re-documentado ("only with -FromSource"); o texto do uninstall segue falando de clone porque instalação fonte/legada É um clone. A fase 3 anuncia pull da imagem publicada (~290 MB, sem promessa de minutos — espelha a decisão da 4a).
+- **Guarda ressuscitada** — a metade "header" do `check_flags` era **morta**: as linhas do cabeçalho começam com `#` e a âncora nunca casava (extração devolvia conjunto vazio). Consertada em `check_consistency.py` e provada com mutante (flag `-Fake` no header reprova).
+- **Bancada Windows 206→228** no canal prlctl/SYSTEM, comparada por **nome de asserção** (zero regressão da baseline), com 16 vermelhos naturais registrados antes da implementação e **7 mutantes na VM + 1 local**, cada um matando exatamente a guarda-alvo. Cenários de instalação completa agora passam `-NoOpen` — a bancada abria um Edge de verdade a cada rodada.
+- **O que deliberadamente NÃO nasceu**: `-NoOllama` (flag já-depreciada que nunca existiu no ps1) e `-Registry` (o `install.sh` não tem `--registry`; o override de imagem é `ATLASFILE_IMAGE` no compose, via de smoke, não alavanca de usuário).
+- Docs: `INSTALL.md`, `README.md`, `README.pt-BR.md` e ROADMAPs atualizados. **Errata da 4a**: o registro daquela fase afirmava que o `install.ps1` encaminhava `--repo-url` — falso; até esta fase o ps1 não tinha a flag.
+
+---
+
 ## Instalador — 2026-07-31 (Fase 4a; sem bump — a versão do app segue 1.0.0)
 
 > Decisão registrada: mudança de instalador não altera a versão do App. O

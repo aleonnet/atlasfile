@@ -561,27 +561,32 @@ regex, o fonte). Flags novas exigem tocar `usage()` (`:89-150`) **e**
 
 ---
 
-## Fase 4b — `install.ps1` sem clone (Windows)
+## Fase 4b — `install.ps1` sem clone (Windows) — **ENTREGUE 2026-07-31**
 
-**Bloqueada até o item 4 do roadmap.** `tests/installer/win/run.ps1`
-(1.076 linhas, 206 callsites `Assert-*`) tem **zero linhas** mencionando
-clone/build/git — contra 94 em `run.sh`. Some a isso as 6 asserções de
-fechamento de trilho que já falham
-sob `prlctl exec` (`docs/ROADMAP.md:52`, hipótese não provada: `nt authority\
-system` com output redirecionado derruba `$AfTrueColor`). Reescrever painel e
-flags com a bancada nesse estado é trial-and-error por definição.
+Registro completo:
+`planos_concluidos/fase4b_installps1_release_flags_painel.plan.md`. Sem bump
+(regra do instalador). Baseline 206/0 no canal prlctl/SYSTEM → 228/0 com as
+asserções novas; guardas provadas por mutante.
 
-- Mesmo tratamento do lado WSL (o `install.ps1` delega via `--delegated`).
-- `-RepoUrl` (item 2 do roadmap) **não deve ser implementado como está** — vira
-  `-Version` / `-Registry`. Sem clone não há repo URL.
-- Corrigir `install.ps1:2457-2458` — as duas únicas ocorrências de `wsl -e` sem
-  o usuário; todas as outras 7 chamadas reais splicam `$script:WslUser`
-  (`@("-u","root")`). Nuance da recalibração: são **strings de instrução** que o
-  painel imprime para o usuário colar (`logs`/`stop`), não invocações do
-  script — o defeito é o comando ensinado falhar, não o instalador falhar.
-  Item 3 do roadmap; o painel é reescrito aqui de qualquer jeito.
-- ~~Atualizar a string de tempo em `install.ps1:2267`~~ — **resolvido na
-  v0.56.5** (hoje `:2386`, "~1-2 min"); aqui só muda a semântica build→pull.
+- ~~Mesmo tratamento do lado WSL~~ — já valia por construção (o ps1 delega via
+  `--delegated`); a fase acrescentou as flags que faltavam para DIRIGIR o outro
+  lado: `-Version`, `-FromSource`, `-RepoUrl`, `-NoOpen`.
+- A previsão "`-RepoUrl` vira `-Version`/`-Registry`" foi **recalibrada na
+  entrega**: `-Registry` não nasceu — o `install.sh` não tem `--registry`
+  (o override de imagem é `ATLASFILE_IMAGE` no compose, via de smoke, não
+  alavanca de usuário) e criá-lo reabriria a 4a. E "sem clone não há repo URL"
+  só vale para o caminho release: com `--from-source` vivo, `-RepoUrl` nasceu
+  válido só com `-FromSource` — é o que fecha a dor real do item 2 (testar
+  fork E2E no Windows).
+- ~~Corrigir as strings de instrução do painel~~ — entregue: prefixo decidido
+  pelo dono real da instalação (`wsl -u root -e` quando root), item 3.
+- ~~Semântica build→pull na fase 3~~ — entregue, sem promessa de minutos
+  (espelha a decisão da 4a: tamanho medido, tempo depende da conexão).
+- Extra medido na fase: `-Version banana` via `powershell -File` **rodava a
+  instalação inteira** (encaixe posicional; a crença "PowerShell recusa
+  parâmetro desconhecido" só vale sob `iex`) — nasceu validação cedo no ps1,
+  antes de fase 1/2. E a metade "header" da guarda `check_flags` era morta
+  (extração vazia por causa do `#`); consertada e provada com mutante.
 
 ---
 
