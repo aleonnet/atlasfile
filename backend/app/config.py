@@ -148,6 +148,12 @@ class Settings(BaseSettings):
     # constar em api_keys.json com projects ["*"].
     atlasfile_api_token: str = ""
 
+    # --- Versão do artefato ---
+    # Vem do ARG de build do backend/Dockerfile (release.yml passa a tag);
+    # "dev" = build local/CI sem versão. Exposta em /api/setup/status para o
+    # smoke de release afirmar "a imagem publicada é a versão X".
+    atlasfile_version: str = "dev"
+
     # --- Frontend estático (um app, um container) ---
     # Bundle do vite copiado pelo estágio webbuild do backend/Dockerfile.
     # O mount em "/" só acontece se o diretório existir (dev/CI não têm dist).

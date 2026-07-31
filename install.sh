@@ -1217,6 +1217,13 @@ un_collect() { # <dir>
         UN_IMAGES="${UN_IMAGES}${UN_PROJECT}-${f} "
       fi
     done
+    # v1.0.0: a stack roda a imagem publicada (ghcr.io/aleonnet/atlasfile:<v>)
+    # ou a do overlay de build local (atlasfile-local:<tag>). `down --rmi
+    # local` NÃO remove imagem com `image:` nomeado no compose — sem listar
+    # aqui, o uninstall reportaria sucesso deixando ~700 MB no disco.
+    for ref in $(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -E '^(ghcr\.io/aleonnet/atlasfile|atlasfile-local):' || true); do
+      UN_IMAGES="${UN_IMAGES}${ref} "
+    done
     # Anything AtlasFile-shaped that does NOT belong to this project keeps the
     # shared system dependencies (Docker above all) off the removal list.
     UN_OTHER_ARTIFACTS="$(docker volume ls -q 2>/dev/null | grep -i atlasfile | grep -v "^${UN_PROJECT}_" | tr '\n' ' ' | sed 's/ *$//' || true)"
@@ -1232,7 +1239,7 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
 
   # ── the stack (unambiguously ours) ──
   if [ "$UN_COMPOSE_FILE" = "1" ]; then
-    un_add_remove "stack '${UN_PROJECT}': containers, network and the images built here (${UN_CONTAINERS} container(s))"
+    un_add_remove "stack '${UN_PROJECT}': containers, network and the app images (${UN_CONTAINERS} container(s))"
     un_act "compose-down"
   else
     un_add_keep "no docker-compose.yml in ${UN_DIR} — the stack cannot be removed from here"
@@ -1515,7 +1522,30 @@ un_compose_down() {
   # Run from the install dir so compose resolves the project itself (it reads
   # COMPOSE_PROJECT_NAME from .env). Never remove containers by name: the
   # atlasfile-* names are fixed and may belong to a different install.
-  ( cd "$UN_DIR" && docker compose down $args )
+  # v1.0.0: compose interpolates ATLASFILE_VERSION even for `down` — an .env
+  # from before v1.0.0 lacks it and the :? guard would abort the down (and the
+  # uninstall stops on purpose when the stack does not come down). The
+  # placeholder only satisfies interpolation; a `down` never pulls anything.
+  ( cd "$UN_DIR" && \
+    if grep -q '^ATLASFILE_VERSION=' .env 2>/dev/null; then \
+      docker compose down $args; \
+    else \
+      ATLASFILE_VERSION="0.0.0" docker compose down $args; \
+    fi )
+}
+
+un_remove_images() {
+  # v1.0.0: `down --rmi local` só remove imagem SEM `image:` nomeado no
+  # compose — a publicada (ghcr.io/...) e a do overlay (atlasfile-local)
+  # ficariam para trás. Remove só o que o un_collect listou; imagem que o
+  # --rmi já levou não é erro.
+  local img
+  for img in $UN_IMAGES; do
+    if docker image inspect "$img" >/dev/null 2>&1; then
+      docker rmi "$img" >/dev/null 2>&1 || return 1
+    fi
+  done
+  return 0
 }
 
 un_execute() {
@@ -1539,6 +1569,12 @@ un_execute() {
           info "nothing else was touched: the clone and the manifest are exactly what you need to retry"
           info "check 'docker ps'; on Linux a fresh login applies your docker group, then run the uninstall again"
           return 0
+        fi
+        # v1.0.0: images with a named `image:` survive `down --rmi local` —
+        # explicit removal, as its own step so the screen accounts for it
+        # (mesma regra do purge-volume: a ação acontece e a tela conta).
+        if [ -n "$UN_IMAGES" ]; then
+          un_step "removing the app images (${UN_IMAGES% })" un_remove_images
         fi ;;
       purge-volume)
         # `compose down --volumes` ja leva o volume junto quando a stack sai do
@@ -2534,6 +2570,17 @@ else
   info ".env already exists — preserved"
 fi
 
+# v1.0.0: compose selects the app image by ATLASFILE_VERSION (no default on
+# purpose — an implicit `latest` would make two installs drift apart). Pin the
+# version of the checkout we just cloned; preexisting .env from an older
+# install gains the var here without a reinstall. Source of truth is
+# frontend/package.json (the repo's only version record); BSD-safe sed, no jq.
+if ! grep -q '^ATLASFILE_VERSION=' .env; then
+  AF_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' frontend/package.json | head -1)"
+  printf 'ATLASFILE_VERSION=%s\n' "${AF_VERSION}" >> .env
+  ok "ATLASFILE_VERSION=${AF_VERSION} written to .env (the image tag this stack runs)"
+fi
+
 current_root="$(grep '^PROJECTS_HOST_ROOT=' .env | head -1 | cut -d= -f2- || true)"
 # .env.example placeholders do not count as user configuration
 case "${current_root}" in
@@ -2657,10 +2704,12 @@ if [ "${CLONE_STATE}" = "created" ]; then
 else
   info "reusing the build cache — this is usually quick"
 fi
-run_step "building the app image" docker compose build
+# v1.0.0: o compose base consome a imagem publicada; o overlay devolve o
+# build local. O instalador segue compilando da fonte até a Fase 4a (pull).
+run_step "building the app image" docker compose -f docker-compose.yml -f docker-compose.build.yml build
 # --remove-orphans: reinstalar por cima de um checkout 0.56.x precisa derrubar
 # os containers dos serviços antigos (api/mcp/web) — o api órfão segura a :8000.
-run_step "starting the 2 services" docker compose up -d --remove-orphans
+run_step "starting the 2 services" docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --remove-orphans
 
 run_step "waiting for the API to become healthy" wait_http http://localhost:8000/health 90
 run_step "waiting for the interface" wait_http http://localhost:8000/ 30

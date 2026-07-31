@@ -485,7 +485,11 @@ case "$out" in *"--purge-data"*) ok ;; *) no "did not demand an explicit data de
 # casando só api/web/mcp, o uninstall reporta sucesso e deixa a imagem nova
 # (~centenas de MB) no disco. Os nomes antigos continuam no plano porque um
 # upgrade de 0.56.x ainda os carrega.
-t "uninstall enxerga a imagem consolidada e as legadas de 0.56.x"
+# v1.0.0: a stack passou a rodar imagem NOMEADA (ghcr.io/aleonnet/atlasfile
+# ou atlasfile-local do overlay de build) — `down --rmi local` não remove
+# imagem com `image:` no compose, então elas TÊM de entrar no UN_IMAGES; as
+# upstream (opensearchproject/*) continuam fora (compartilhadas, só keep-note).
+t "uninstall enxerga a imagem consolidada, as legadas de 0.56.x e as nomeadas da v1.0.0"
 make_sandbox
 mkdir -p "${SANDBOX}/inst"
 printf 'services: {}\n' > "${SANDBOX}/inst/docker-compose.yml"
@@ -494,6 +498,8 @@ cat > "${SANDBOX}/bin/docker" <<EOF
 case "\$1 \$2" in
   "image inspect")
     case "\$3" in inst-atlasfile|inst-api) exit 0 ;; *) exit 1 ;; esac ;;
+  "images --format")
+    printf 'ghcr.io/aleonnet/atlasfile:1.0.0\natlasfile-local:dev\nopensearchproject/opensearch:2.17.1\n' ;;
 esac
 exit 0
 EOF
@@ -501,6 +507,9 @@ chmod +x "${SANDBOX}/bin/docker"
 out="$(run_case -- 'un_collect "$SANDBOX/inst"; printf "%s" "$UN_IMAGES"')"
 case "$out" in *inst-atlasfile*) ok ;; *) no "imagem consolidada fora do plano de remoção: [$out]" ;; esac
 case "$out" in *inst-api*) ok ;; *) no "imagem legada 0.56.x fora do plano de remoção: [$out]" ;; esac
+case "$out" in *"ghcr.io/aleonnet/atlasfile:1.0.0"*) ok ;; *) no "imagem publicada (GHCR) fora do plano de remoção: [$out]" ;; esac
+case "$out" in *"atlasfile-local:dev"*) ok ;; *) no "imagem do overlay de build fora do plano de remoção: [$out]" ;; esac
+case "$out" in *opensearchproject*) no "imagem upstream compartilhada entrou indevidamente no plano de remoção: [$out]" ;; *) ok ;; esac
 
 # ── UI: calha vertical, barra viva e trap que não vaza ─────────────────────
 make_sandbox

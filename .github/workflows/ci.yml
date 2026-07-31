@@ -63,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Versão espelhada de frontend/Dockerfile (node:22-alpine).
+      # Mesma major do estágio webbuild de backend/Dockerfile (node:22-alpine).
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -392,11 +392,15 @@ jobs:
       # Sem .env o compose nem interpola (medido: falha em
       # OPENSEARCH_INITIAL_ADMIN_PASSWORD). Os placeholders do exemplo bastam
       # para construir — nada aqui sobe serviço nem usa credencial real.
+      # v1.0.0: ATLASFILE_VERSION entra porque o `image:` do compose base a
+      # exige na interpolação MESMO com o overlay de build presente.
       - name: .env a partir do exemplo
-        run: cp .env.example .env
+        run: |
+          cp .env.example .env
+          echo 'ATLASFILE_VERSION=dev' >> .env
 
-      # Constrói só `atlasfile` (o único serviço com `build:` — multi-stage que
-      # inclui o vite build da UI); as imagens do OpenSearch têm `image:` e não
-      # são baixadas aqui.
+      # Constrói só `atlasfile` via overlay de build (o compose base passou a
+      # consumir a imagem publicada — v1.0.0); as imagens do OpenSearch têm
+      # `image:` pinado por digest e não são baixadas aqui.
       - name: Build da imagem
-        run: docker compose build
+        run: docker compose -f docker-compose.yml -f docker-compose.build.yml build

@@ -19,6 +19,12 @@ RUN npm run build
 # stateless_http e extrair os background jobs.
 FROM python:3.12-slim
 
+# Versão do artefato, injetada no build (release.yml passa a tag; o overlay de
+# dev passa "dev"). Vira env porque .dockerignore exclui .git — não há como
+# derivar a versão de dentro do build — e o settings a expõe em /api/setup/status.
+ARG ATLASFILE_VERSION=dev
+ENV ATLASFILE_VERSION=${ATLASFILE_VERSION}
+
 WORKDIR /workspace/backend
 
 ENV PYTHONDONTWRITEBYTECODE=1

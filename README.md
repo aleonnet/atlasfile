@@ -169,9 +169,12 @@ cp .env.example .env
 # Set PROJECTS_HOST_ROOT to the absolute path of your projects
 # Recommended default: $HOME/Documents/AtlasFileProjects  (same as the installer's)
 
-# 2. Bring up the stack
+# 2. Bring up the stack (builds locally via the build overlay and writes
+#    ATLASFILE_VERSION to your .env automatically)
 make docker-update
 ```
+
+The official image is **`ghcr.io/aleonnet/atlasfile`** (multi-arch amd64+arm64, provenance-attested; published by tag through `.github/workflows/release.yml`). The base `docker-compose.yml` consumes it pinned by `ATLASFILE_VERSION`; contributors build from source through `docker-compose.build.yml` (image `atlasfile-local:dev`), which is exactly what the `make` targets and the installer do. Raw `docker compose up -d` without the overlay pulls the published image instead of building.
 
 For what each operational and technical script does, see `docs/11_scripts_and_operations.md`.
 
@@ -259,6 +262,7 @@ The placeholders supported by the active contract are `date`, `project`, `busine
 
 | Variable | Description | Default |
 |----------|-----------|---------|
+| `ATLASFILE_VERSION` | Tag of `ghcr.io/aleonnet/atlasfile` this stack runs | (required; written by the installer/`make`) |
 | `PROJECTS_HOST_ROOT` | Absolute path of the projects on the host | (required) |
 | `CLASSIFIER_DATASETS_ROOT` | Operational root of the classifier datasets | `/projects/_ATLASFILE/classifier/datasets` |
 | `OPENAI_API_KEY` | OpenAI key (chat + classification) | — |

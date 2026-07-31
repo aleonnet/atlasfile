@@ -117,6 +117,22 @@ def test_setup_status_mixed_projects(client: TestClient) -> None:
     assert data["onboarding_suggested"] is False
 
 
+def test_setup_status_expoe_version(client: TestClient) -> None:
+    """v1.0.0: versão do artefato (ARG de build da imagem; "dev" fora de
+    release) — é o gate do smoke de release: imagem publicada == tag."""
+    from app.config import settings
+
+    with patch("app.main.list_project_roots", return_value=[]):
+        r = client.get("/api/setup/status")
+    assert r.status_code == 200
+    assert r.json()["version"] == "dev"
+
+    with patch.object(settings, "atlasfile_version", "9.9.9"):
+        with patch("app.main.list_project_roots", return_value=[]):
+            r = client.get("/api/setup/status")
+    assert r.json()["version"] == "9.9.9"
+
+
 def test_setup_status_returns_projects_root_and_app_env(client: TestClient) -> None:
     with patch("app.main.list_project_roots", return_value=[]):
         r = client.get("/api/setup/status")

@@ -116,6 +116,8 @@ export function getObservabilityUrl(): string {
 
 export interface SetupStatus {
   app_env: string;
+  /** Versão do artefato (ARG de build da imagem; "dev" fora de release). */
+  version?: string;
   projects_root: string;
   /** Caminho físico no host montado em /projects (vazio se desconhecido). */
   projects_host_root?: string;
