@@ -4,16 +4,22 @@
 #
 # Strategy: AtlasFile runs in Linux containers; on Windows the supported path is
 # WSL2 + Docker Desktop (WSL backend). This script checks prerequisites - and
-# OFFERS to install what is missing (wsl --install, Docker Desktop via winget,
-# then delegates to install.sh inside the default WSL distro:
-# one real installer, no duplicated logic.
+# OFFERS to install what is missing (wsl --install, Docker Desktop via winget) -
+# then delegates to install.sh inside the default WSL distro, which installs the
+# latest RELEASE: it downloads the release bundle and pulls the published image.
+# No compiler, no git. Clone and build live only behind -FromSource.
+# One real installer, no duplicated logic.
 #
 # Parameters (when saved and run as a file; under `iex` the prompts cover it).
 # This list is a summary - `-Help` is the complete one:
 #   -Dir PATH      where AtlasFile lives inside WSL (default: ~/AtlasFile)
 #   -ProjectsRoot PATH
 #                  where YOUR DOCUMENTS live (default: your Windows Documents)
-#   -Branch NAME   branch to clone (default: main)
+#   -Version X.Y.Z install this release instead of the latest stable one
+#   -FromSource    contributor path: clone the repository and build locally
+#   -RepoUrl URL   repository to clone (only with -FromSource)
+#   -Branch NAME   branch to clone (only with -FromSource; default: main)
+#   -NoOpen        do not open the browser at the end
 #   -Yes           non-interactive (accept defaults; does NOT install deps)
 #   -InstallDeps   authorize installing missing prerequisites without prompting
 #   -EnableAuth    enable API authentication (forwarded to install.sh)
@@ -44,6 +50,10 @@ param(
     [string]$Dir = "",
     [string]$ProjectsRoot = "",
     [string]$Branch = "",
+    [string]$Version = "",
+    [switch]$FromSource,
+    [string]$RepoUrl = "",
+    [switch]$NoOpen,
     # Depreciadas: aceitas e IGNORADAS. O site publica -WithOllama ha meses e
     # PowerShell recusa parametro desconhecido com erro terminante - quem colar
     # o comando do site nao veria nem o banner.
@@ -91,6 +101,10 @@ AtlasFile runs in Linux containers, so on Windows the supported path is
 WSL2 + Docker Desktop. This script prepares the Windows side and then runs the
 real installer inside WSL.
 
+With no options: installs the latest release inside WSL (the Linux installer
+downloads the release bundle and pulls the published image - no compiler, no
+git). Contributors clone and build with -FromSource.
+
 Install options:
   -Dir PATH       Where AtlasFile lives inside WSL (default: ~/AtlasFile).
                   Forwarded to install.sh as --dir, install and uninstall alike
@@ -98,7 +112,17 @@ Install options:
                   Where YOUR DOCUMENTS live (default: your Windows Documents
                   folder, so they show up in Explorer). Give it a Windows path
                   or a WSL one; forwarded to install.sh as --projects-root
-  -Branch NAME    Branch to clone (default: main). Forwarded as --branch
+  -Version X.Y.Z  Install this release instead of the latest stable one
+                  (prereleases like 1.1.0-rc.1 are accepted). Forwarded
+                  as --version; not valid with -FromSource
+  -FromSource     Contributor path: clone the repository and build the image
+                  locally instead of using the published release. Forwarded
+                  as --from-source
+  -RepoUrl URL    Repository to clone (only with -FromSource). Forwarded
+                  as --repo-url
+  -Branch NAME    Branch to clone (only with -FromSource; default: main).
+                  Forwarded as --branch
+  -NoOpen         Do not open the browser at the end
   -Yes            Non-interactive. On its own it NEVER installs system
                   dependencies - see -InstallDeps
   -InstallDeps    Authorize installing WSL2 and Docker Desktop
@@ -1582,6 +1606,31 @@ if ($WithOllama -or $OllamaModel) {
     Write-Info "this run continues normally; the final panel shows how to enable a local model afterwards"
 }
 
+# --- Validacao CEDO do que so explodiria DENTRO do WSL --------------------
+# Um typo em -Version passaria pela fase 1 (WSL) e pela fase 2 (Docker
+# Desktop, ~600 MB) para so entao morrer na validacao do install.sh - medido
+# na bancada: antes desta guarda, `-Version banana` rodava a INSTALACAO
+# INTEIRA, porque o `powershell -File` ainda encaixava o par posicionalmente.
+# Mesmo shape aceito la (af_validate_version); a mensagem ensina o formato.
+if ($Version -and $Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$') {
+    Write-Fail "-Version `"$Version`" is not a release number - use e.g. -Version 1.0.0 (the list lives at https://github.com/aleonnet/atlasfile/releases)"
+    Stop-Installer 1; return
+}
+# O install.sh IGNORA --version no caminho fonte (a versao vem da branch
+# clonada), e ignorar em silencio uma flag que o usuario digitou e mentira.
+# Recusar aqui custa segundos; descobrir la custaria a instalacao.
+if ($Version -and $FromSource) {
+    Write-Fail "-Version pins a release and -FromSource builds from a branch - they cannot be combined. Drop one of them."
+    Stop-Installer 1; return
+}
+# Espelho da regra do install.sh (--repo-url so com --from-source). La e
+# warn+ignore para nao quebrar linha de comando publicada; -RepoUrl nasce
+# AGORA, sem base instalada - pode nascer estrito.
+if ($RepoUrl -and -not $FromSource) {
+    Write-Fail "-RepoUrl only makes sense with -FromSource (the release path has no repository to clone)."
+    Stop-Installer 1; return
+}
+
 # --- O WSL da para USAR? read-only de verdade -------------------------------
 # So `--status` e `-l -q`. NUNCA `wsl -e`, e e essa a razao de existir.
 #
@@ -1774,7 +1823,7 @@ if ($DryRun -and -not $Uninstall) {
     Write-Rule "Install plan (Windows side)"
     # SEM Ollama. A fase 3 que o instalava saiu, e um dry run que promete instalar
     # o que o instalador nao instala mais mente sobre o proprio trabalho - o
-    # `--dry-run` do install.sh lista so o que ele de fato instalaria (git, Docker,
+    # `--dry-run` do install.sh lista so o que ele de fato instalaria (Docker,
     # plugin do compose). O -Doctor continua reportando o Ollama, e ali esta
     # certo: la a pergunta e "o que existe nesta maquina", nao "o que eu faria".
     # Test-WslUsable e nao `Get-Tool wsl`: wsl.exe vem com o Windows 11 mesmo com
@@ -2383,7 +2432,16 @@ Write-Ok "Docker and WSL are talking to each other"
 # versoes anteriores - o manifesto daquelas instalacoes segue valendo.
 
 Write-Phase 3 "Installing AtlasFile inside WSL"
-Write-Info "the Linux installer takes over from here - first run builds images (~1-2 min)"
+# Sem promessa de minutos no caminho release: o install.sh removeu a dele na 4a
+# (o tamanho e medido, o tempo depende da conexao) e o usuario do Windows ve as
+# duas telas - duas promessas diferentes seriam o defeito antigo de novo.
+if ($FromSource) {
+    # Curta o bastante para UMA linha do trilho: o Write-Wrapped quebra na
+    # largura e uma assercao nao casa needle partido por quebra de linha.
+    Write-Info "the Linux installer takes over from here - it clones and builds locally"
+} else {
+    Write-Info "the Linux installer takes over from here - published image pull (~290 MB); time depends on your connection"
+}
 # A barra vive pinada na ultima linha, e daqui em diante quem escreve e o outro
 # instalador: sem apaga-la, a linha dela fica encalhada no meio da saida dele,
 # sem calha. Medido num Windows 11 real.
@@ -2391,10 +2449,10 @@ Clear-AfBar
 # --delegated: o banner ja foi desenhado por este script segundos atras. Dois
 # banners seguidos leem como dois produtos - e eles nem eram o mesmo desenho.
 #
-# --no-ollama NAO existe mais e nao pode ser passado: o Ollama saiu dos dois
-# instaladores, e uma flag desconhecida faz o install.sh sair com "Unknown flag".
-# O defeito que ela existia para conter (a pergunta reaparecendo dentro da
-# distro) deixou de existir por construcao.
+# --no-ollama nao e passado: o Ollama saiu dos dois instaladores. (O install.sh
+# ainda ACEITA e ignora a flag, por ser linha de comando publicada - mas passar
+# uma flag depreciada de proposito seria ensinar o que se desaprovou.) O defeito
+# que ela existia para conter deixou de existir por construcao.
 # Gravado ANTES de delegar: uma instalacao que morra no meio ainda precisa deixar
 # para tras onde ela estava sendo feita, senao o uninstall nao sabe onde olhar.
 Set-AfState "install_dir" $(if ($Dir) { $Dir } else { "~/AtlasFile" })
@@ -2413,6 +2471,13 @@ if ($Branch) { $shFlags += " --branch $Branch" }
 # so, senao as duas divergem na primeira alteracao.
 $raizProjetos = if ($ProjectsRoot) { ConvertTo-AfWslPath $ProjectsRoot } else { Get-AfProjectsRoot }
 if ($raizProjetos) { $shFlags += " --projects-root $(ConvertTo-AfShArg $raizProjetos)" }
+# Fase 4b, DEPOIS do bloco acima de proposito: a bancada assere a sequencia
+# literal `--no-open --delegated --yes --enable-auth` e inserir algo no meio
+# dela reprovaria codigo correto. Nus como o --branch: a validacao cedo ja
+# garantiu o shape da versao, e URL viaja sem espaco.
+if ($Version) { $shFlags += " --version $Version" }
+if ($FromSource) { $shFlags += " --from-source" }
+if ($RepoUrl) { $shFlags += " --repo-url $RepoUrl" }
 # A divisoria do handover, logo antes de entregar: daqui em diante quem escreve
 # na tela e o outro instalador, e isso precisa ficar visivel. A calha continua,
 # entao o trilho atravessa a fronteira em vez de recomecar do outro lado.
@@ -2429,17 +2494,35 @@ if ($script:NativeExitCode -ne 0) {
 # o Windows real mostrou entre "run report:" e "AtlasFile is up in".
 $script:TrilhoFechadoNoWsl = $true
 
-# Abrir o navegador e cortesia, nao resultado: numa sessao nao interativa o
-# Start-Process falha com "The operation attempted is not supported" e cuspia
-# erro DEPOIS de a instalacao ter dado certo (medido em bancada).
-try { Start-Process "http://localhost:8000" -ErrorAction Stop }
-catch { Write-Info "open http://localhost:8000 in your browser" }
+# Abrir o navegador e cortesia, nao resultado - e cortesia RECUSAVEL (-NoOpen,
+# espelho do --no-open que este script ja passa ao outro lado). O ANUNCIO sai
+# antes da tentativa e independe de ela funcionar: a mensagem do catch so
+# aparece na FALHA do Start-Process, e um sinal que so existe na falha nao
+# prova nada na bancada (era o unico observavel que havia). Numa sessao nao
+# interativa o Start-Process falha com "The operation attempted is not
+# supported" - dai o catch continuar existindo.
+# -Skip por parametro, e nao lendo $NoOpen de dentro: o PSReviewUnusedParameter
+# do PSScriptAnalyzer nao enxerga escopo de funcao aninhada e acusava o
+# parametro como nao usado (falso positivo medido no CI).
+function Open-AfBrowser([switch]$Skip) {
+    if ($Skip) { return }
+    Write-Info "opening http://localhost:8000 in your browser"
+    try { Start-Process "http://localhost:8000" -ErrorAction Stop }
+    catch { Write-Info "open http://localhost:8000 in your browser" }
+}
+Open-AfBrowser -Skip:$NoOpen
 
 # O install.sh JA imprimiu o painel com Interface/API/Dashboards, a senha do
 # OpenSearch e a chave de API. Repetir metade disso aqui era o mesmo defeito do
 # veredito duplicado do uninstall: duas conclusoes para um trabalho so. Este
 # painel diz apenas o que e do lado Windows.
 $dirWsl = if ($script:AfDir) { $script:AfDir } else { "~/AtlasFile" }
+# O comando ENSINADO tem de ser o que funciona NESTA instalacao: feita como
+# root (distro nao inicializada), um `wsl -e` sem usuario entra como o usuario
+# padrao da distro e o comando colado falharia (item 3 do ROADMAP). String
+# unica, e nao join do array $script:WslUser - o array vazio viraria espaco
+# duplo no meio do comando.
+$wslCmd = if ($script:WslUser.Count -gt 0) { "wsl -u root -e" } else { "wsl -e" }
 
 # FECHAR o trilho antes de qualquer coisa do relatorio. A caixa saia com o
 # trilho ainda aberto e o `+--` vinha DEPOIS dela, deixando uma calha solta no
@@ -2454,8 +2537,8 @@ $durTexto = if ($dur -ge 60) { "{0}m{1:d2}s" -f [int]($dur / 60), ($dur % 60) } 
 if ($script:TrilhoFechadoNoWsl) { Write-Host "" } else { Close-AfRail }
 Write-Note ("AtlasFile is up in {0}" -f $durTexto)
 Write-Panel @(
-    "logs   wsl -e bash -c 'cd $dirWsl && docker compose logs -f'",
-    "stop   wsl -e bash -c 'cd $dirWsl && docker compose down'"
+    "logs   $wslCmd bash -c 'cd $dirWsl && docker compose logs -f'",
+    "stop   $wslCmd bash -c 'cd $dirWsl && docker compose down'"
 )
 # Sem contador, como no install.sh: a tela acima ja mostra as fases com seus
 # tempos, e um numero novo aqui so compete com ela. Falha continua aparecendo,

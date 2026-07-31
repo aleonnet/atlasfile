@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
-The installer downloads the latest release (a ~10 KB bundle plus the published ~290 MB app image pulled from ghcr.io — no compiler, no git), configures the `.env`, brings up the Docker stack, and opens `http://localhost:8000` — the first-steps assistant guides you through creating your first project. Contributors can keep the old clone-and-build path with `--from-source`. Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag — on Windows, `install.ps1 -Help`.
+The installer downloads the latest release (a ~10 KB bundle plus the published ~290 MB app image pulled from ghcr.io — no compiler, no git), configures the `.env`, brings up the Docker stack, and opens `http://localhost:8000` — the first-steps assistant guides you through creating your first project. Contributors can keep the old clone-and-build path with `--from-source` (`-FromSource` on Windows). Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag — on Windows, `install.ps1 -Help`.
 
 **On Windows your documents live on the Windows side**, in your Documents folder (`…\Documents\AtlasFileProjects`), so they show up in Explorer like any other folder and survive a `wsl --unregister`. Only AtlasFile itself lives inside WSL. Use `-ProjectsRoot` to pick another folder, and `-InstallDeps` to install WSL2 and Docker Desktop without being asked anything.
 

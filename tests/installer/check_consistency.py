@@ -79,10 +79,15 @@ def option_flags(text):
 
     Sem essa ancora, o regex varre a prosa e colhe 'curl -fsSL', 'Write-Host',
     'non-interactive' como se fossem flags.
+
+    O `#?` existe pelo CABECALHO do install.ps1: as linhas dele comecam com
+    `#` e a ancora antiga (`\s{2,}` no inicio) nunca casava nenhuma — medido
+    na Fase 4b: header_block_ps devolvia um conjunto VAZIO e a metade "ajuda
+    cita flag que nao existe" do check_flags era guarda morta para o header.
     """
     found = set()
     for line in text.splitlines():
-        m = re.match(r'\s{2,}(-{1,2}[A-Za-z][A-Za-z-]*)((?:,\s*-{1,2}[A-Za-z][A-Za-z-]*)*)', line)
+        m = re.match(r'\s*#?\s{2,}(-{1,2}[A-Za-z][A-Za-z-]*)((?:,\s*-{1,2}[A-Za-z][A-Za-z-]*)*)', line)
         if m:
             found.add(m.group(1))
             found.update(re.findall(r'-{1,2}[A-Za-z][A-Za-z-]*', m.group(2) or ""))

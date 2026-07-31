@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 1.0.0 — instalador (Fase 4b, 2026-07-31, sem bump de versão do app)
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [fase4b_installps1_release_flags_painel](fase4b_installps1_release_flags_painel.plan.md) | Fase 4b do plano de distribuição — **o `install.ps1` conta a história da release**: nascem `-Version` (com validação cedo no ps1 — medido que `-Version banana` via `-File` rodava a instalação inteira por encaixe posicional), `-FromSource` (correção de regressão da 4a: o caminho contribuidor estava inacessível do Windows), `-RepoUrl` (só com `-FromSource`; fecha o item 2 do ROADMAP) e `-NoOpen` (com seam `Open-AfBrowser` — anúncio observável em vez de sinal que só existe na falha). Painel ensina `logs`/`stop` com o dono real (`wsl -u root -e` quando root — item 3), ajuda sem promessa de clone incondicional, fase 3 anuncia pull. Guarda do header do `check_flags` ressuscitada (extração devolvia vazio). Bancada 206→228 no canal prlctl/SYSTEM com baseline por NOME, vermelho natural registrado (212/16), 7 mutantes na VM + 1 local matando exatamente as guardas-alvo. `-Registry` e `-NoOllama` deliberadamente não nascem. Errata da 4a registrada (ps1 nunca encaminhou `--repo-url`). Plano revisado ANTES por 3 revisores adversariais locais (~40 achados; guarda morta do header, falso-verde do browser e a reclassificação da regressão vieram deles) |
+
+---
+
 ## 1.0.0 — instalador (Fase 4a, 2026-07-31, sem bump de versão do app)
 
 | # | Plano | Escopo |

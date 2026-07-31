@@ -7,7 +7,7 @@
 # quebrada por pipe, stderr virando erro terminante. Os stubs reproduzem
 # exatamente essas formas.
 #
-#   pwsh -File tests/installer/win/run.ps1
+#   powershell -File tests/installer/win/run.ps1   (5.1, o mesmo do CI e da VM)
 $ErrorActionPreference = "Stop"
 # O canal prlctl (VM Parallels) abre o console em codepage 437: o PowerShell
 # 5.1 decodifica a saida CAPTURADA dos processos-filho com essa codepage, e
@@ -296,11 +296,15 @@ Write-Host "== A4. distro instalada mas NAO inicializada: segue como root, sem a
 # caminho a instalacao desatendida travaria no assistente de criacao de conta.
 $sb = New-Sandbox
 $env:AF_WSL_UNINIT = "1"
-$out = Run-Installer @("-Yes")
+$out = Run-Installer @("-Yes", "-NoOpen")
 Assert-Match "reconhece o WSL como utilizavel" $out "WSL2 available"
 Assert-Match "rodou wsl --update antes da verificacao" (Calls) "wsl --update"
 Assert-Match "avisa que vai usar root" $out "using root for this install"
 Assert-Match "delegou ao WSL com -u root" (Calls) "wsl -u root -e bash"
+# Item 3 do ROADMAP: o comando ENSINADO pelo painel tem de ser o que funciona
+# nesta instalacao - feita como root, um `wsl -e` sem usuario cai no usuario
+# padrao da distro e o comando colado falharia.
+Assert-Match "o painel ensina o comando com -u root" $out "wsl -u root -e"
 
 Write-Host "== A5. distro listada que NAO responde: nao trava e aponta virtualizacao =="
 # Relato real: o usuario teve que dar Ctrl+C porque `wsl -e` ficou pendurado, na
@@ -447,7 +451,7 @@ Write-Host "== H. o script entregue ao WSL chega INTEIRO, nao partido em palavra
 # nao pegava porque o stub registrava a chamada e devolvia 0 sem NUNCA conferir
 # se o argumento tinha chegado inteiro.
 $sb = New-Sandbox
-$out = Run-Installer @("-Yes", "-EnableAuth", "-Dir", "/root/Outro")
+$out = Run-Installer @("-Yes", "-EnableAuth", "-Dir", "/root/Outro", "-NoOpen")
 $calls = Calls
 # Ancorada na PROPRIEDADE (a aspa que abre logo depois do -c), e nao no que vem
 # dentro: a largura do trilho passou a viajar antes do curl e a versao anterior,
@@ -466,13 +470,81 @@ Assert-Match "-Dir viaja para o outro lado" $calls '--dir /root/Outro'
 # a ponta no Windows: o .ps1 da branch buscaria o .sh do main.
 $sb = New-Sandbox
 $env:ATLASFILE_SH_URL = "https://exemplo.invalido/branch/install.sh"
-$out = Run-Installer @("-Yes", "-Branch", "minha-branch")
+$out = Run-Installer @("-Yes", "-Branch", "minha-branch", "-NoOpen")
 $calls = Calls
 Assert-Match "a URL do install.sh vem do ambiente" $calls "exemplo.invalido/branch/install.sh"
 Assert-Match "e o -Branch viaja junto" $calls "--branch minha-branch"
 # O curl endurecido (mesma dureza do mac-env-setup): um solucao de rede nao pode
 # virar instalacao pela metade.
 Assert-Match "download com retry e protocolo pinado" $calls "--proto '=https' --tlsv1.2 --retry 3"
+
+Write-Host "== H2. -Version viaja como --version; sem a flag, nada viaja =="
+# Fase 4b: o caminho padrao instala a RELEASE. Os contrapositivos existem
+# porque um encaminhamento incondicional (o mutante obvio) passaria em
+# qualquer assercao so de presenca.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-Version", "1.2.3", "-NoOpen")
+$calls = Calls
+Assert-Match "-Version viaja como --version" $calls "--version 1.2.3"
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-NoOpen")
+$calls = Calls
+Assert-NoMatch "sem -Version nao ha --version" $calls "--version"
+Assert-NoMatch "sem -FromSource nao ha --from-source" $calls "--from-source"
+Assert-NoMatch "sem -RepoUrl nao ha --repo-url" $calls "--repo-url"
+
+Write-Host "== H3. -FromSource mantem o caminho de contribuidor vivo no Windows =="
+# Regressao da 4a: o install.sh passou a instalar a release por padrao e o ps1
+# ficou sem como pedir o caminho fonte - um -Branch de fork virou warn+ignore
+# do outro lado. As tres flags viajam juntas.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-FromSource", "-RepoUrl", "https://github.com/fulano/atlasfile", "-Branch", "minha-branch", "-NoOpen")
+$calls = Calls
+Assert-Match "-FromSource viaja como --from-source" $calls "--from-source"
+Assert-Match "-RepoUrl viaja como --repo-url" $calls "--repo-url https://github.com/fulano/atlasfile"
+Assert-Match "-Branch viaja no caminho fonte" $calls "--branch minha-branch"
+Assert-Match "a fase 3 anuncia build local no caminho fonte" $out "clones and builds locally"
+
+Write-Host "== H4. o que mentiria falha CEDO, antes de tocar a maquina =="
+# Um typo em -Version so explodiria DENTRO do WSL, depois das fases 1 e 2
+# (minutos, gigabytes). E o install.sh IGNORA --version no caminho fonte -
+# ignorar em silencio o que o usuario digitou e mentira.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-Version", "banana")
+Assert-Match "versao fora do shape e recusada" $out "is not a release number"
+Assert-True "e nenhuma ferramenta chegou a ser chamada" (-not ((Calls) -match '\S')) "houve chamada de ferramenta apos -Version invalida"
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-Version", "1.2.3", "-FromSource")
+Assert-Match "-Version com -FromSource e recusado" $out "cannot be combined"
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-RepoUrl", "https://exemplo.invalido/x")
+Assert-Match "-RepoUrl sem -FromSource e recusado" $out "only makes sense with -FromSource"
+
+Write-Host "== H5. o browser tem anuncio observavel e -NoOpen o desliga =="
+# O Start-Process nao passa por stub e a mensagem do catch so aparece quando
+# ele FALHA - um sinal que so existe na falha nao prova nada. O anuncio sai
+# ANTES da tentativa e independe do canal.
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes")
+Assert-Match "sem -NoOpen o instalador anuncia a abertura" $out "opening http://localhost:8000"
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-NoOpen")
+Assert-NoMatch "com -NoOpen nao ha anuncio nem abertura" $out "opening http://localhost:8000"
+
+Write-Host "== H6. a ajuda conta a historia da release, nao a do clone =="
+# O gap declarado da 4a: o help prometia clone que o outro lado ja nao faz por
+# padrao. -Force segue falando de clone (uninstall de instalacao fonte/legada,
+# que E um clone) - por isso a assercao ancora na linha do -Branch.
+$sb = New-Sandbox
+$out = Run-Installer @("-Help")
+Assert-Match "a ajuda documenta -Version" $out "-Version X.Y.Z"
+Assert-Match "a ajuda documenta -FromSource" $out "-FromSource"
+Assert-Match "a ajuda documenta -NoOpen" $out "-NoOpen"
+Assert-Match "-Branch virou caminho de contribuidor" $out "only with -FromSource"
+# A forma INCONDICIONAL antiga ("Branch to clone (default: main)") e o que nao
+# pode voltar; "Branch to clone (only with -FromSource...)" e honesto - no
+# caminho fonte e um clone mesmo, e o positivo acima cobra o qualificador.
+Assert-True "-Branch nao promete mais clone por padrao" ($out -notmatch "Branch to clone \(default") "a linha do -Branch ainda promete clone incondicional"
 
 Write-Host "== K. o caminho ANIMADO executa e termina no quadro final =="
 # Sem o ATLASFILE_FORCE_ANIM este caminho seria intestavel: redirecionado, o
@@ -482,7 +554,7 @@ $sb = New-Sandbox
 $env:ATLASFILE_FORCE_ANIM = "1"
 $env:WT_SESSION = "harness"    # o truecolor e a outra metade da guarda de animacao
 Remove-Item env:COLORTERM -ErrorAction SilentlyContinue
-$out = Run-Installer @("-Yes")
+$out = Run-Installer @("-Yes", "-NoOpen")
 Remove-Item env:WT_SESSION -ErrorAction SilentlyContinue
 Assert-Match "o wordmark chega ao quadro final" $out "AtlasFile"
 Assert-Match "a frase de chamada chega inteira" $out "Your documents have gravity"
@@ -497,7 +569,7 @@ Write-Host "== L. sem Windows Terminal: habilitar VT nao pode quebrar nada =="
 $sb = New-Sandbox
 $env:ATLASFILE_FORCE_ANIM = "1"
 Remove-Item env:WT_SESSION, env:COLORTERM -ErrorAction SilentlyContinue
-$out = Run-Installer @("-Yes")
+$out = Run-Installer @("-Yes", "-NoOpen")
 Assert-Match "o banner sai de qualquer jeito" $out "AtlasFile"
 Assert-Match "a frase de chamada sai de qualquer jeito" $out "Your documents have gravity"
 Assert-NoMatch "sem erro de Add-Type nem de tipo ausente" $out "Add-Type|Unable to find type|Nao foi possivel encontrar o tipo|CompilationErrors"
@@ -508,7 +580,7 @@ Write-Host "== J. saida de terceiro vai para o LOG, nunca para a tela =="
 # Sem esta checagem, "padronizamos a UI" seria afirmacao, nao propriedade.
 $sb = New-Sandbox
 Remove-Stub docker
-$out = Run-Installer @("-Yes", "-InstallDeps")
+$out = Run-Installer @("-Yes", "-InstallDeps", "-NoOpen")
 $log = (Get-Content $env:ATLASFILE_LOG -Raw -ErrorAction SilentlyContinue)
 Assert-NoMatch "o texto do winget NAO chega na tela" $out "Successfully installed"
 Assert-Match "no lugar dele, o nosso rotulo" $out "downloading and installing Docker Desktop"
@@ -634,12 +706,18 @@ Write-Host "== T. o relatorio final sai FORA do trilho, como no install.sh =="
 # O `[N/N]` nao e um estagio de trabalho e o resumo nao pode ficar pendurado na
 # calha depois que o trilho fecha. Mesmo desenho dos dois lados.
 $sb = New-Sandbox
-$out = Run-Installer @("-Yes", "-EnableAuth")
+$out = Run-Installer @("-Yes", "-EnableAuth", "-NoOpen")
 Assert-Match "o trilho fecha antes do resumo" $out ([string][char]0x2570)
 Assert-Match "e o resumo aparece" $out "AtlasFile is up in"
 # a calha nao pode preceder o resumo: o trilho ja fechou
 Assert-True "o resumo sai sem a calha" ($out -match ("(?m)^  AtlasFile is up in")) "o resumo veio com a calha na frente"
 Assert-NoMatch "nada de resumo pendurado na calha" $out ("(?m)^" + [string][char]0x2502 + " .*AtlasFile is up")
+# Contrapositivo do painel root (cenario A4): instalacao de usuario padrao
+# ensina `wsl -e` SEM `-u root`. Assert-True porque a string e montada em
+# tempo de execucao e nao existe contigua no fonte.
+Assert-True "o painel ensina wsl -e sem -u root para usuario padrao" ($out -match [regex]::Escape("logs   wsl -e bash -c 'cd")) "painel sem o comando esperado para usuario padrao"
+# Fase 4b: a unica frase que ainda prometia BUILD ao usuario do Windows.
+Assert-Match "a fase 3 anuncia pull da imagem publicada" $out "published image pull"
 
 Write-Host "== R. -Doctor diagnostica os DOIS lados e nao muda nada =="
 $sb = New-UninstallSandbox @("docker`tcreated", "wsl`tcreated")
@@ -799,7 +877,7 @@ function Get-BuracosNaCalha([string]$Saida) {
 }
 
 $sb = New-Sandbox
-$out = Run-Installer @("-Yes", "-EnableAuth")
+$out = Run-Installer @("-Yes", "-EnableAuth", "-NoOpen")
 $buracos = Get-BuracosNaCalha $out
 Assert-True "instalacao: nenhuma linha vazia ENTRE duas linhas de calha" ($buracos.Count -eq 0) ("depois de: " + ($buracos -join " | "))
 
@@ -871,7 +949,7 @@ Write-Host "== X. os documentos ficam no disco do WINDOWS, nao dentro da distro 
 # /root/Documents/AtlasFileProjects: fora de qualquer pasta do Explorer e
 # refens de um `wsl --unregister` que o nosso --uninstall nao controla.
 $sb = New-Sandbox
-$out = Run-Installer @("-Yes", "-EnableAuth")
+$out = Run-Installer @("-Yes", "-EnableAuth", "-NoOpen")
 $calls = Calls
 Assert-Match "a delegacao carrega a raiz de projetos" $calls "--projects-root"
 Assert-Match "e ela aponta para um disco do Windows" $calls '--projects-root /mnt/'
@@ -879,7 +957,7 @@ Assert-NoMatch "nunca para dentro da distro" $calls '--projects-root .{0,2}/root
 
 # Caminho do Windows dado a mao tambem e convertido - o help promete os dois.
 $sb = New-Sandbox
-$out = Run-Installer @("-Yes", "-ProjectsRoot", "D:\Meus Documentos\Atlas")
+$out = Run-Installer @("-Yes", "-ProjectsRoot", "D:\Meus Documentos\Atlas", "-NoOpen")
 $calls = Calls
 # Este caminho TEM espaco ("D:\Meus Documentos\Atlas"), entao ele vem citado.
 Assert-Match "converte o caminho que o usuario deu" $calls '--projects-root \\"/mnt/d/'
@@ -1039,7 +1117,7 @@ New-Item -ItemType Directory -Path $dirCfg -Force | Out-Null
 '{ "enableIntegrationWithDefaultWslDistro": false, "outraChave": 1 }' |
     Set-Content (Join-Path $dirCfg "settings-store.json") -Encoding UTF8
 $env:ATLASFILE_DOCKER_SETTINGS_DIR = $dirCfg
-$out = Run-Installer @("-Yes")
+$out = Run-Installer @("-Yes", "-NoOpen")
 $depois = Get-Content (Join-Path $dirCfg "settings-store.json") -Raw | ConvertFrom-Json
 Assert-True "ligou a integracao no arquivo do Docker" ($depois.enableIntegrationWithDefaultWslDistro -eq $true) "ficou $($depois.enableIntegrationWithDefaultWslDistro)"
 Assert-True "preservando o resto do arquivo" ($depois.outraChave -eq 1) "perdeu outraChave"
@@ -1056,7 +1134,7 @@ $sb = New-Sandbox
 $env:AF_WSL_NO_DOCKER = "1"
 $dirCfg = Join-Path $sb "dockercfg0"
 $env:ATLASFILE_DOCKER_SETTINGS_DIR = $dirCfg   # nem o diretorio existe
-$out = Run-Installer @("-Yes")
+$out = Run-Installer @("-Yes", "-NoOpen")
 $arqCriado = Join-Path $dirCfg "settings-store.json"
 Assert-True "cria o arquivo de preferencias que faltava" (Test-Path $arqCriado) "nao criou $arqCriado"
 if (Test-Path $arqCriado) {
@@ -1084,7 +1162,7 @@ Write-Host "$script:Pass passaram, $script:Fail falharam"
 # e o $LASTEXITCODE que o CI le e o do ULTIMO comando nativo executado — ou seja,
 # o do instalador do cenario final. Bastou o ultimo cenario passar a exercitar um
 # caminho de RECUSA (onde sair com 1 e o comportamento correto) para o CI
-# reprovar uma bancada de 123 assertivas e 0 falhas. O contrato da bancada nao
+# reprovar uma bancada inteira sem falha nenhuma. O contrato da bancada nao
 # pode vazar o codigo de saida do que ela testa.
 if ($script:Fail -gt 0) { exit 1 }
 exit 0
