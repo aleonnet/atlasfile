@@ -178,14 +178,32 @@ completo, tudo verde):
 A tag `v1.0.0-rc.1` fica no histórico como o ensaio que reprovou (sem release
 e sem tag de imagem); o ensaio seguinte é `v1.0.0-rc.2`.
 
+## Ensaio rc.2 — verde de ponta a ponta + validação externa (2026-07-30)
+
+Run 30596928207: build 2 archs → smoke 2 archs pela imagem publicada →
+publish completo. Release `v1.0.0-rc.2` como prerelease com bundle +
+SHA256SUMS. Validação externa:
+
+| Prova | Resultado |
+|---|---|
+| Pull anônimo real (VM sem login no GHCR) | ✔ 18,7s |
+| Multi-arch no index | ✔ linux/arm64 + linux/amd64 |
+| Download comprimido da app | 274,7 MiB (288 MB) arm64 / 279,8 MiB (293 MB) amd64 — estimativa ~275 MB do roadmap cravou |
+| Proveniência | ✔ `gh attestation verify oci://…:1.0.0-rc.2` exit 0 |
+| Bundle | ✔ sha256 confere; compose + `.env.example` já pinado `ATLASFILE_VERSION=1.0.0-rc.2` + 2 configs |
+
+**Correção de fato ao plano**: "o 1º push cria o pacote GHCR privado" (vinha
+da documentação, via revisão) **não se confirmou** — o pacote nasceu PÚBLICO
+já no rc.1 (pacote criado por `GITHUB_TOKEN` em workflow de repo público
+herdou a visibilidade do repo). O passo manual de flip não existiu; o job
+`smoke` mantém o login mesmo assim (custo zero e blinda contra mudança de
+default do GitHub).
+
 ## Sequência restante (disparos do autor)
 
 1. ~~Merge do PR #12~~ — feito em 2026-07-30 (`dc34e8d`); o fix do rc.1 entra
    pelo PR seguinte.
-2. `git tag -a v1.0.0-rc.2 -m "Ensaio do pipeline de release (2)" && git push origin v1.0.0-rc.2`
-   → run verde → **flip do pacote GHCR para público** (manual, único) →
-   validação externa: pull anônimo, `imagetools inspect` (2 archs),
-   `gh attestation verify oci://ghcr.io/aleonnet/atlasfile:1.0.0-rc.2 -R aleonnet/atlasfile`,
-   medição do pull real (substituir ~275 MB/~1.010 MB do roadmap).
+2. ~~Ensaio rc.2 + validação externa~~ — **feito em 2026-07-30** (seção acima);
+   o flip manual não foi necessário (pacote nasceu público).
 3. `git tag -a v1.0.0 -m "Primeira release publicada" && git push origin v1.0.0`
    → mesma validação → Release final. O rc.1 fica como prerelease no histórico.

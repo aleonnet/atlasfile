@@ -129,7 +129,7 @@ k-NN é obrigatório (`config.py:154`, `opensearch_chunk_vectors_index`).
 
 | | Hoje | Depois |
 |---|---:|---:|
-| Download total | ~1.648 MB | **~1.010 MB** |
+| Download total | ~1.648 MB | **~1.023 MB** (medido no rc.2: app 288 MB arm64 / 293 MB amd64 + OpenSearch 735 MB) |
 | CPU de compilação no host | 94s | **0** |
 | Build cache no disco | ~1 GB/ciclo | **0** |
 | Containers | 5 | **2** (3 com Dashboards) |
@@ -617,7 +617,7 @@ Riscos **não** intencionais, a tratar na mesma mudança:
 | Migração | Instalação 0.56.x real → `git pull` → `make docker-update` continua buildando local, e o `.env` antigo sobe sem edição |
 | Instaladores | E2E do `install.sh` na VM lima (roteiro em `planos_concluidos/uninstall_linux_stack_real_v0562.plan.md`), os 5 caminhos do `--uninstall` e o ciclo `--keep-data` |
 | Uninstall não vaza imagem | Guarda que reprova se `un_collect` (`install.sh:1211-1218`) não casar o nome do GHCR |
-| Números do plano | Medir o pull real e substituir `~275 MB` / `~1.010 MB` por medição |
+| Números do plano | ~~Medir o pull real~~ **MEDIDO no rc.2 (2026-07-30)**: imagem da app 274,7 MiB (288 MB) arm64 / 279,8 MiB (293 MB) amd64 comprimidos; pull anônimo real em 18,7s na VM — as estimativas `~275 MB`/`~1.010 MB` cravaram |
 
 ---
 
