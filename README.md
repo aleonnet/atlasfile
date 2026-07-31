@@ -8,7 +8,7 @@ Local, per-project document organization system with a classifier operational cy
 
 ## Quick install
 
-No prerequisites to prepare: the installer detects what is missing (Docker, git) and offers to install it for you — pass `--install-deps` to authorize it without prompts. A 100% local model is a step **after** the install: pulling one is several GB and would make the install take an unpredictable amount of time.
+No prerequisites to prepare: the installer detects what is missing (Docker) and offers to install it for you — pass `--install-deps` to authorize it without prompts. A 100% local model is a step **after** the install: pulling one is several GB and would make the install take an unpredictable amount of time.
 
 **macOS / Linux:**
 
@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
-The installer clones the project, configures the `.env`, brings up the Docker stack, and opens `http://localhost:8000` — the first-steps assistant guides you through creating your first project. Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag — on Windows, `install.ps1 -Help`.
+The installer downloads the latest release (a ~10 KB bundle plus the published ~290 MB app image pulled from ghcr.io — no compiler, no git), configures the `.env`, brings up the Docker stack, and opens `http://localhost:8000` — the first-steps assistant guides you through creating your first project. Contributors can keep the old clone-and-build path with `--from-source`. Manual installation and details: [INSTALL.md](INSTALL.md). Run `install.sh --help` for every flag — on Windows, `install.ps1 -Help`.
 
 **On Windows your documents live on the Windows side**, in your Documents folder (`…\Documents\AtlasFileProjects`), so they show up in Explorer like any other folder and survive a `wsl --unregister`. Only AtlasFile itself lives inside WSL. Use `-ProjectsRoot` to pick another folder, and `-InstallDeps` to install WSL2 and Docker Desktop without being asked anything.
 

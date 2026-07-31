@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
-O instalador verifica pré-requisitos, clona em `~/AtlasFile`, cria o `.env` (perguntando só a pasta de projetos), sobe a stack e abre a interface — o onboarding guia o resto. Flags úteis: `--dir`, `--projects-root`, `--yes` (não-interativo), `--no-open`, `--install-deps` (instala Docker e git que faltarem, sem perguntar). Re-executar atualiza a instalação. **A lista completa está em `install.sh --help`.**
+O instalador verifica pré-requisitos, baixa o **bundle da última release** em `~/AtlasFile` (~10 KB; a imagem da app, ~290 MB comprimida, vem por `docker compose pull` do ghcr.io — sem compilador, sem git), cria o `.env` (perguntando só a pasta de projetos), sobe a stack e abre a interface — o onboarding guia o resto. Flags úteis: `--dir`, `--projects-root`, `--version X.Y.Z` (pina uma release), `--from-source` (caminho de contribuidor: clone + build local), `--yes` (não-interativo), `--no-open`, `--install-deps` (instala o Docker que faltar, sem perguntar). Re-executar atualiza a instalação para a última release — instalações feitas por clone continuam no caminho de clone. **A lista completa está em `install.sh --help`.**
 
 No **Windows** o AtlasFile é instalado dentro do WSL, mas **seus documentos ficam no disco do Windows**, na sua pasta Documentos (`…\Documents\AtlasFileProjects`) — visíveis no Explorer e independentes da distro. Flags do `install.ps1`: `-Dir`, `-ProjectsRoot`, `-Branch`, `-Yes`, `-EnableAuth`, `-InstallDeps` (instala WSL2 e Docker Desktop sem perguntar), `-Verbose`, e as de diagnóstico e desinstalação descritas abaixo. **A lista completa está em `install.ps1 -Help`.** O Docker Desktop é instalado em silêncio, com o contrato de licença aceito na instalação, e a integração com o WSL é ligada automaticamente.
 
@@ -53,7 +53,7 @@ Para uma visão consolidada dos scripts do repositório e de quando cada um entr
 
 ## 1) Pré-requisitos
 
-**O instalador cuida deles**: quando falta Docker ou git, o `install.sh` detecta e **oferece instalar** (macOS: Homebrew + cask do Docker Desktop, abrindo o app e aguardando o daemon; Linux: script oficial get.docker.com + apt/dnf, com sudo só após confirmação). Itens já instalados aparecem com ✔ e versão; upgrades disponíveis viram aviso informativo. Política do modo não-interativo: `--yes` sozinho **não** instala dependências de sistema (falha com instrução) — a flag `--install-deps` autoriza o bootstrap sem perguntas. O Ollama **saiu do instalador**: puxar um modelo são vários GB e transformava uma instalação de minutos em algo sem duração previsível — o painel final ensina a habilitá-lo depois, em um comando. Um Ollama instalado por versões anteriores continua sendo revertido pelo `--uninstall --remove-deps`. No Windows, o `install.ps1` oferece `wsl --install` e o Docker Desktop via winget.
+**O instalador cuida deles**: quando falta Docker, o `install.sh` detecta e **oferece instalar** (macOS: Homebrew + cask do Docker Desktop, abrindo o app e aguardando o daemon; Linux: script oficial get.docker.com + apt/dnf, com sudo só após confirmação). `curl` e `tar` são exigidos mas nunca instalados (todo sistema suportado os traz); git só é necessário — e só é oferecido — no caminho `--from-source`. Itens já instalados aparecem com ✔ e versão; upgrades disponíveis viram aviso informativo. Política do modo não-interativo: `--yes` sozinho **não** instala dependências de sistema (falha com instrução) — a flag `--install-deps` autoriza o bootstrap sem perguntas. O Ollama **saiu do instalador**: puxar um modelo são vários GB e transformava uma instalação de minutos em algo sem duração previsível — o painel final ensina a habilitá-lo depois, em um comando. Um Ollama instalado por versões anteriores continua sendo revertido pelo `--uninstall --remove-deps`. No Windows, o `install.ps1` oferece `wsl --install` e o Docker Desktop via winget.
 
 ### Instalação manual dos pré-requisitos (se preferir)
 
@@ -525,7 +525,7 @@ O instalador sabe se desinstalar, e reverte **apenas o que ele criou** — o que
 # a partir da instalação
 bash ~/AtlasFile/install.sh --uninstall
 
-# ou, se o clone já não existir
+# ou, se a pasta da instalação já não existir
 curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --uninstall --dir ~/AtlasFile
 
 # a partir do repositório
@@ -548,7 +548,7 @@ make uninstall
 | Containers, rede e imagens do app | `docker compose down --rmi local` rodado de dentro da instalação (o compose resolve o projeto sozinho), mais remoção explícita das imagens nomeadas (`ghcr.io/aleonnet/atlasfile:*` e `atlasfile-local:*` — `--rmi local` não remove imagem com `image:` no compose). Nunca por nome de container (os nomes `atlasfile-*` são fixos e podem ser de outra instalação) |
 | Volume do OpenSearch (o índice) | **Sem default**: ele pergunta. `--purge-data` apaga, `--keep-data` mantém. Modo headless exige uma das duas. Seus documentos e o journal em `_ATLASFILE/` ficam em disco e não são afetados — o índice se reconstrói com Reconciliar |
 | Imagens `opensearchproject/*` | Preservadas (podem ser compartilhadas com outros stacks); o resumo mostra como liberar o espaço |
-| Pasta da instalação | Removida **só** se o manifesto disser que o instalador a criou e não houver alterações locais (`--force` para forçar). Um clone de desenvolvimento é sempre preservado |
+| Pasta da instalação | Removida **só** se o manifesto disser que o instalador a criou (clone `created` ou bundle) e não houver trabalho seu dentro — alterações locais no clone, ou arquivos que o instalador não pôs numa instalação bundle (`--force` para forçar). Um clone de desenvolvimento é sempre preservado |
 | Pasta de projetos | **Nunca apagada.** A única exceção é uma pasta que o instalador criou e que continua vazia |
 | Docker, git, Ollama, plugin do compose, grupo docker | Revertidos apenas com `--remove-deps` **e** apenas se o manifesto disser `created`. O Docker ainda é preservado se sobrar qualquer outro artefato AtlasFile na máquina |
 | Homebrew | **Nunca** removido automaticamente — o plano imprime o comando oficial |

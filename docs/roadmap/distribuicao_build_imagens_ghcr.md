@@ -510,6 +510,20 @@ funcional, assumindo compromisso público de estabilidade).
 
 ## Fase 4a — `install.sh` sem clone (Linux/macOS)
 
+> **EXECUTADA em 2026-07-31 (sem bump de versão — o app segue 1.0.0; o
+> install.sh chega pelo raw/main no merge)** — registro em
+> `docs/planos_concluidos/fase4a_installsh_sem_clone_bundle_pull.plan.md`.
+> Correções de fato encontradas na execução: os números de linha abaixo estão
+> defasados (o arquivo cresceu para 2809 linhas); NÃO existe prompt do Xcode
+> CLT a aposentar; o braço GHCR do `un_collect` já existia desde a v1.0.0
+> (faltava a guarda do caso "imagem única"); e o código git NÃO foi deletado —
+> vive atrás de `--from-source` e do auto-despacho por `.git`, porque o
+> uninstall de instalações clonadas continua precisando dele.
+> **Endurecimentos anotados para o futuro** (fora do escopo da 4a): digest
+> pinning/attestation da imagem no instalador (`gh attestation verify` já é
+> publicado pela release) e checksum do próprio `install.sh` servido por
+> raw.githubusercontent.com.
+
 Desbloqueada. Cobertura existente (remedida na v0.56.5): 94 linhas de
 `tests/installer/run.sh` (1.488 linhas, 60 callsites estáticos de `assert_*`;
 o contador de PASS em runtime passa de 200 por causa dos loops) tocando
