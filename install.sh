@@ -1599,16 +1599,33 @@ un_compose_down() {
   # Run from the install dir so compose resolves the project itself (it reads
   # COMPOSE_PROJECT_NAME from .env). Never remove containers by name: the
   # atlasfile-* names are fixed and may belong to a different install.
-  # v1.0.0: compose interpolates ATLASFILE_VERSION even for `down` — an .env
-  # from before v1.0.0 lacks it and the :? guard would abort the down (and the
-  # uninstall stops on purpose when the stack does not come down). The
-  # placeholder only satisfies interpolation; a `down` never pulls anything.
-  ( cd "$UN_DIR" && \
-    if grep -q '^ATLASFILE_VERSION=' .env 2>/dev/null; then \
-      docker compose down $args; \
-    else \
-      ATLASFILE_VERSION="0.0.0" docker compose down $args; \
-    fi )
+  # v1.0.0 supria so ATLASFILE_VERSION; o E2E da 4a provou a CLASSE numa VM
+  # real, em DOIS tempos: (1) um uninstall parcial anterior (pasta suja
+  # preservada) remove o .env, e a re-execucao com --force morria na
+  # interpolacao de OUTRA variavel `:?` (OPENSEARCH_INITIAL_ADMIN_PASSWORD)
+  # com zero containers no ar — a barreira parava por erro de interpolacao,
+  # nao por stack viva; (2) a primeira correcao, por export, passou na bancada
+  # e MORREU na VM: ali o docker roda atras do shim de sudo (grupo docker
+  # ainda nao vale na sessao) e o sudo limpa o ambiente. A entrega e por
+  # --env-file — o arquivo viaja com o comando e sobrevive ao sudo: copia do
+  # .env (se houver) mais placeholder do que faltar. A do Dashboards interpola
+  # mesmo com o profile desligado; um `down` nunca sobe nem puxa nada.
+  # PROJECTS_HOST_ROOT entra na lista (3o tempo do mesmo E2E): nao e `:?`, mas
+  # sem valor a spec do bind vira `:/projects` e o down morre em "invalid
+  # spec". O placeholder dele e um CAMINHO — "0.0.0" seria lido como volume
+  # nomeado inexistente e trocaria um erro por outro.
+  ( cd "$UN_DIR" || exit 1
+    local v envtmp rc_down
+    envtmp="$(mktemp)"
+    cat .env > "$envtmp" 2>/dev/null || true
+    for v in ATLASFILE_VERSION OPENSEARCH_INITIAL_ADMIN_PASSWORD DASHBOARDS_COOKIE_PASSWORD; do
+      grep -q "^${v}=" "$envtmp" || printf '%s=0.0.0\n' "$v" >> "$envtmp"
+    done
+    grep -q '^PROJECTS_HOST_ROOT=' "$envtmp" || printf 'PROJECTS_HOST_ROOT=/tmp\n' >> "$envtmp"
+    rc_down=0
+    docker compose --env-file "$envtmp" down $args || rc_down=$?
+    rm -f "$envtmp"
+    exit "$rc_down" )
 }
 
 un_remove_images() {

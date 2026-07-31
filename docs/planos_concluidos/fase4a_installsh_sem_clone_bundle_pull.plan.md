@@ -48,7 +48,7 @@ por clone permanece no caminho de clone no re-run, com aviso.
   fase 3; fase 4 build-vs-pull; braços `bundle` em `un_collect`,
   `un_build_plan` e `run_doctor`; refspec explícita no `af_update_clone`
   (cross-branch, achado 1 da Fase 3); dry-run/doctor/mensagens.
-- **`tests/installer/run.sh`** (253 → 288 PASS): fixture de release LOCAL
+- **`tests/installer/run.sh`** (253 → 291 PASS): fixture de release LOCAL
   (tar.gz + SHA256SUMS reais + stub de curl URL→arquivo, tar REAL de
   propósito), 35 casos novos cobrindo validação, resolução, fetch (integridade,
   tar hostil, symlink, 404), contrato de update sem clobber, despacho,
@@ -86,7 +86,7 @@ por clone permanece no caminho de clone no re-run, com aviso.
 
 Runner: `mutantes_fase4a.py` (scratchpad da sessão) — aplica cada mutação numa
 cópia, roda a bancada INTEIRA e exige que o caso-alvo reprove; restaura sempre.
-**10/10 mortos em 2026-07-31**, cada um reprovando exatamente no alvo:
+**10/10 mortos em 2026-07-31** (+M11 do achado do E2E, morto na sequência = 11), cada um reprovando exatamente no alvo:
 
 | Mutante | Alvo que reprovou |
 |---|---|
@@ -112,7 +112,7 @@ Mutação em arquivo compartilhado e suíte concorrente não coexistem.
   `install.sh` da main (34 FAIL medidos, zero regressão nos 253 antigos) e
   ficaram verdes com a implementação; +1 asserção de ordem (tar wrapper) = 288.
 - **`make test` completo verde** (2026-07-31, pós-mutantes, arquivo
-  restaurado): backend pytest + frontend vitest + `test-installer` 288 PASS +
+  restaurado): backend pytest + frontend vitest + `test-installer` 288 PASS (291 com o achado do E2E) +
   `check_consistency.py` + parse do `install.ps1`. (Um primeiro `make test`
   rodou CONCORRENTE ao runner de mutantes e reprovou com o M6' aplicado —
   descartado como contaminado, ver nota na seção de mutantes.)
@@ -127,15 +127,73 @@ Mutação em arquivo compartilhado e suíte concorrente não coexistem.
 - **`check_consistency.py` trabalhou duas vezes**: reprovou o `case` aninhado
   do arm `--version` e depois a palavra de fechamento citada em comentário —
   as duas cortavam a fatia do parser do `check_flags`.
-- **E2E na VM lima `atlas-e2e`**: <!-- PREENCHER: roteiro com estado-zero,
-  install bundle real v1.0.0, medições, uninstall keep/purge, --from-source
-  cross-branch, captura do erro real de pull -->
-- **Smoke Windows (D9)**: <!-- PREENCHER -->
+- **E2E na VM lima `atlas-e2e`** (Ubuntu 24.04 ARM64, 4 vCPU/8 GiB,
+  2026-07-31, TODO o roteiro executado e verde; critério de espera: "Install
+  finished" no log DA execução):
+  1. **Estado-zero**: uninstall NOVO sobre a instalação legada clonada da main
+     — 6s; a guarda de sujeira pegou um caso real (`scripts/smoke-project-init.sh`
+     alterado pelo E2E da fase 3 → pasta preservada NOMEANDO o arquivo);
+     `--force` na sequência revelou o **achado 1 do E2E** (abaixo).
+  2. **Install bundle REAL contra a release v1.0.0 pública**: 1m07s total —
+     resolução via API real, bundle baixado e verificado (checksum ok), pull
+     da imagem 17s (rc.2 tinha medido 18,7s — consistente), health 4s.
+     Manifesto: `repo_clone=bundle`, `bundle_files` e `bundle_sha` com os 4
+     hashes; `.env` pinado 1.0.0; sem `.git` no dir.
+  3. **Fluxo real**: smoke-project-init + smoke-e2e da fase 3 contra a stack
+     instalada pelo bundle — OCR do tesseract DA IMAGEM, triagem aprovada,
+     busca com highlight, `/mcp` recusando sem key e fechando o loop com key.
+  4. **Re-run idempotente** (mesma versão): 33s, bundle re-verificado, `.env`
+     preservado, zero backups de bundle, "images already on this machine are
+     reused", pull 2s.
+  5. **Ciclo `--keep-data`**: volume preservado com senha registrada →
+     reinstalação reivindica o volume, restaura a senha, stack healthy em 54s
+     e **o índice sobreviveu** (a sentinela do OCR do passo 3 respondeu à
+     busca pós-ciclo).
+  6. **`--from-source` real**: clone da main via `file://` (repo do host
+     montado), build local 11s, 1m02s total; **re-run cross-branch**
+     main → `fase4a-install-sem-clone` atualizou o clone raso em 1s (o cenário
+     que morria em "unknown revision" antes da refspec).
+  7. **Erros reais de pull capturados**: DNS quebrado emite
+     `dial tcp: lookup … no such host` (casa com os padrões vigentes do
+     `af_falha_de_rede` — classificado como rede ✔); tag inexistente emite
+     `not found` (corretamente NÃO classificado como rede). Medido → nenhuma
+     edição de padrão necessária.
+  8. **Purge final**: dir removido, volume apagado, `atlasfile-local:dev`
+     removida, só `opensearchproject/*` preservada (por desenho) — VM limpa.
+- **Smoke Windows (D9)**: via seam `ATLASFILE_SH_URL` (`install.ps1:297`)
+  apontando para o raw da branch — <!-- PREENCHER após o smoke -->
 
-## Medições
+## Achados do E2E (fatos novos)
 
-<!-- PREENCHER no E2E: tempo de resolução+download do bundle, pull real,
-install total na VM, contagens do uninstall -->
+1. **`un_compose_down` morria com `.env` removido — em três tempos.** Um
+   uninstall parcial (pasta suja preservada) remove o `.env`; a re-execução
+   com `--force` morria na interpolação de `OPENSEARCH_INITIAL_ADMIN_PASSWORD`
+   (`:?`) com ZERO containers no ar — a barreira parava por interpolação, não
+   por stack viva (a v1.0.0 só supria `ATLASFILE_VERSION`). A 1ª correção
+   (export) passou na bancada e MORREU na VM: o docker roda atrás do shim de
+   sudo e o sudo limpa o ambiente. A 2ª (`--env-file`, o arquivo viaja com o
+   comando) passou — e o 3º tempo pegou `PROJECTS_HOST_ROOT`, que não é `:?`
+   mas quebra o down com spec `:/projects` inválida (placeholder de CAMINHO,
+   `/tmp` — "0.0.0" viraria volume nomeado inexistente). Guarda de bancada com
+   stub que LÊ o env-file recebido + mutante M11 (reverter à forma v1.0.0
+   reprova exato); asserções negativas `compose down` da bancada atualizadas
+   para `compose.*down` (com o formato novo elas cegariam).
+2. **A guarda de sujeira do clone provou valor em produção de teste**: pegou
+   um arquivo modificado real e o nomeou na tela — o contrato "preserva e diz
+   o quê" funcionando fora da bancada.
+
+## Medições (VM lima, ARM64)
+
+| O quê | Medido |
+|---|---|
+| Uninstall da instalação legada (novo installer) | 6s |
+| Install bundle completo (resolve+download+verify+pull+up+health) | 1m07s |
+| Pull da imagem do app (283 MB comprimida, arm64) | 17s |
+| Re-run idempotente | 33s |
+| Ciclo keep-data (uninstall+reinstall com volume reusado) | 54s (reinstall) |
+| Install --from-source (clone file:// + build local) | 1m02s (build 11s) |
+| Re-run cross-branch (main → branch da fase) | 37s (update 1s, build 1s) |
+| Smoke E2E completo (OCR+triagem+busca+MCP) | 4,9s |
 
 ## Pendências que ficam
 

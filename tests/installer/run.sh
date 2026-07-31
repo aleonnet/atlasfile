@@ -1202,7 +1202,7 @@ case "$out" in *"nothing was touched"*) ok ;; *) no "nao declarou que nada foi t
 # As linhas de maquina sao do PROTOCOLO entre os dois instaladores; na tela de
 # quem digitou --dry-run elas sao ruido.
 case "$out" in *ATLASFILE_FACT*|*ATLASFILE_UNINSTALL*) no "vazou linha de protocolo para o usuario" ;; *) ok ;; esac
-assert_not_contains "$CALLS" "compose down"
+assert_not_contains "$CALLS" "compose.*down"
 
 make_uninstall_sandbox
 : > "${SANDBOX}/tty_in"
@@ -1212,7 +1212,7 @@ case "$out" in *"Removal plan"*) ok ;; *) no "não imprimiu o plano: [$out]" ;; 
 case "$out" in *"ATLASFILE_UNINSTALL: plan-only"*) ok ;; *) no "sem a sentinela de plan-only" ;; esac
 case "$out" in *"Execute the plan above?"*) no "perguntou no modo que existe para não perguntar" ;; *) ok ;; esac
 case "$out" in *"still your call"*) ok ;; *) no "escondeu que a decisão do volume segue aberta" ;; esac
-assert_not_contains "$CALLS" "compose down"
+assert_not_contains "$CALLS" "compose.*down"
 
 # O defeito que motivou tudo: responder "n" devolvia 0, e o install.ps1 leu isso
 # como sucesso e apagou o Docker Desktop de uma máquina cujo dono tinha dito não.
@@ -1223,7 +1223,7 @@ rc=0; out="$(run_uninstaller --delegated)" || rc=$?
 assert_eq "$rc" "10"
 case "$out" in *"ATLASFILE_UNINSTALL: cancelled"*) ok ;; *) no "sem a sentinela de cancelamento: [$out]" ;; esac
 case "$out" in *"nothing was touched"*) ok ;; *) no "não disse que nada foi tocado" ;; esac
-assert_not_contains "$CALLS" "compose down"
+assert_not_contains "$CALLS" "compose.*down"
 
 make_uninstall_sandbox
 : > "${SANDBOX}/tty_in"
@@ -1231,7 +1231,7 @@ t "execução confirmada emite a sentinela que o orquestrador exige"
 rc=0; out="$(run_uninstaller --yes --keep-data --delegated)" || rc=$?
 assert_eq "$rc" "0"
 case "$out" in *"ATLASFILE_UNINSTALL: confirmed"*) ok ;; *) no "sem a sentinela de confirmação: [$out]" ;; esac
-assert_contains "$CALLS" "compose down"
+assert_contains "$CALLS" "compose --env-file.*down"
 
 # Dois banners e dois vereditos na mesma execução: o primeiro veredito era falso,
 # porque o lado Windows ainda tinha pacotes para remover.
@@ -1437,7 +1437,7 @@ out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/n
 case "$out" in *"Prerequisites"*) ok ;; *) no "sem a secao de pre-requisitos: [$out]" ;; esac
 case "$out" in *"Install manifest"*) ok ;; *) no "sem a secao do manifesto" ;; esac
 case "$out" in *"Diagnosis"*) ok ;; *) no "sem o placar do diagnostico" ;; esac
-assert_not_contains "$CALLS" "compose down"
+assert_not_contains "$CALLS" "compose.*down"
 assert_not_contains "$CALLS" "clone"
 
 t "--doctor devolve != 0 quando algo esta quebrado"
@@ -1880,6 +1880,47 @@ stub_curl_release
 env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null AF_FAKE_RELEASES="${SANDBOX}/releases" \
   bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/nada" >/dev/null 2>&1 || true
 grep -q 'releases' "$CALLS" && no "o --doctor tocou a rede de releases: $(cat "$CALLS")" || ok
+
+# Achado do E2E da 4a numa VM real: um uninstall parcial anterior (pasta suja
+# preservada) remove o .env; a re-execucao com --force morria na interpolacao
+# de QUALQUER variavel `:?` do compose — a v1.0.0 so cobria ATLASFILE_VERSION.
+# O stub grava o AMBIENTE que enxerga: e a unica forma de provar o placeholder
+# sem rodar o docker compose real (a interpolacao acontece dentro dele).
+# A entrega tem de ser por --env-file, nunca por export: na VM real o docker
+# roda atras do shim de sudo (grupo docker ainda nao vale na sessao) e o sudo
+# LIMPA o ambiente — o placeholder exportado nunca chegava ao compose. O
+# arquivo viaja com o comando e sobrevive ao sudo; o stub le o env-file que
+# recebeu, exatamente como o compose faria.
+t "un_compose_down sem .env supre TODAS as variaveis :? via --env-file"
+make_sandbox
+mkdir -p "${SANDBOX}/semenv"
+printf 'services: {}\n' > "${SANDBOX}/semenv/docker-compose.yml"
+cat > "${SANDBOX}/bin/docker" <<EOF
+#!/usr/bin/env bash
+tudo="\$*"; envfile=""
+while [ \$# -gt 0 ]; do case "\$1" in --env-file) envfile="\$2"; shift 2 ;; *) shift ;; esac; done
+AV=vazio; OP=vazio; DC=vazio; PH=vazio
+if [ -n "\$envfile" ] && [ -f "\$envfile" ]; then
+  AV="\$(grep '^ATLASFILE_VERSION=' "\$envfile" | cut -d= -f2-)"; AV="\${AV:-vazio}"
+  OP="\$(grep '^OPENSEARCH_INITIAL_ADMIN_PASSWORD=' "\$envfile" | cut -d= -f2-)"; OP="\${OP:-vazio}"
+  DC="\$(grep '^DASHBOARDS_COOKIE_PASSWORD=' "\$envfile" | cut -d= -f2-)"; DC="\${DC:-vazio}"
+  PH="\$(grep '^PROJECTS_HOST_ROOT=' "\$envfile" | cut -d= -f2-)"; PH="\${PH:-vazio}"
+fi
+echo "docker \$tudo [AV=\$AV|OP=\$OP|DC=\$DC|PH=\$PH]" >> "${CALLS}"
+exit 0
+EOF
+chmod +x "${SANDBOX}/bin/docker"
+rc=0; run_case -- 'UN_DIR="$SANDBOX/semenv"; UN_ACTIONS=""; un_compose_down' >/dev/null 2>&1 || rc=$?
+assert_eq "$rc" "0"
+if grep -q 'compose --env-file.*down' "$CALLS" && ! grep -q 'vazio' "$CALLS"; then ok
+else no "variavel :? nao chegou pelo env-file ao compose down: $(cat "$CALLS")"; fi
+
+t "e com .env completo, os valores do usuario viajam no env-file, sem placeholder"
+printf 'ATLASFILE_VERSION=1.0.0\nOPENSEARCH_INITIAL_ADMIN_PASSWORD=MinhaSenha\nDASHBOARDS_COOKIE_PASSWORD=MeuCookie\n' > "${SANDBOX}/semenv/.env"
+: > "$CALLS"
+run_case -- 'UN_DIR="$SANDBOX/semenv"; UN_ACTIONS=""; un_compose_down' >/dev/null 2>&1
+if grep -q 'OP=MinhaSenha' "$CALLS" && ! grep -q '0\.0\.0' "$CALLS"; then ok
+else no "placeholder atropelou (ou perdeu) o valor do usuario: $(cat "$CALLS")"; fi
 
 # Update cross-branch do caminho fonte — achado 1 da fase 3: o clone raso nasce
 # com refspec so de main, e `--branch outra` morria em "unknown revision".
