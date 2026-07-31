@@ -160,8 +160,18 @@ Mutação em arquivo compartilhado e suíte concorrente não coexistem.
      edição de padrão necessária.
   8. **Purge final**: dir removido, volume apagado, `atlasfile-local:dev`
      removida, só `opensearchproject/*` preservada (por desenho) — VM limpa.
-- **Smoke Windows (D9)**: via seam `ATLASFILE_SH_URL` (`install.ps1:297`)
-  apontando para o raw da branch — <!-- PREENCHER após o smoke -->
+- **Smoke Windows (D9)**: a VM Parallels NÃO pode executá-lo — limitação
+  reconfirmada empiricamente (virtualização aninhada não chega a guest
+  Windows/ARM: `VirtualizationFirmwareEnabled=False` mesmo com nested-virt on,
+  VMP habilitado via dism e cold boot; erros `WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED`
+  e `HCS_E_HYPERV_NOT_INSTALLED` no caminho). ERRO DE PLANEJAMENTO registrado:
+  a memória de referência das VMs JÁ documentava essa limitação e o plano
+  designou a VM mesmo assim — os E2E Windows da v0.56.x rodaram na máquina
+  FÍSICA. O smoke D9 roda na máquina Windows 11 real, via seam
+  `ATLASFILE_SH_URL` (`install.ps1:297`) apontando para o raw da branch
+  (pré-merge) ou raw/main (pós-merge). Subprodutos úteis da tentativa: o ps1
+  diagnosticou corretamente cada estado ruim do WSL (sem distro, sem elevação,
+  distro muda, WSL1) com as mensagens da v0.56.5 — telas reais exercitadas.
 
 ## Achados do E2E (fatos novos)
 
