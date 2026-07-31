@@ -2501,13 +2501,16 @@ $script:TrilhoFechadoNoWsl = $true
 # prova nada na bancada (era o unico observavel que havia). Numa sessao nao
 # interativa o Start-Process falha com "The operation attempted is not
 # supported" - dai o catch continuar existindo.
-function Open-AfBrowser {
-    if ($NoOpen) { return }
+# -Skip por parametro, e nao lendo $NoOpen de dentro: o PSReviewUnusedParameter
+# do PSScriptAnalyzer nao enxerga escopo de funcao aninhada e acusava o
+# parametro como nao usado (falso positivo medido no CI).
+function Open-AfBrowser([switch]$Skip) {
+    if ($Skip) { return }
     Write-Info "opening http://localhost:8000 in your browser"
     try { Start-Process "http://localhost:8000" -ErrorAction Stop }
     catch { Write-Info "open http://localhost:8000 in your browser" }
 }
-Open-AfBrowser
+Open-AfBrowser -Skip:$NoOpen
 
 # O install.sh JA imprimiu o painel com Interface/API/Dashboards, a senha do
 # OpenSearch e a chave de API. Repetir metade disso aqui era o mesmo defeito do
