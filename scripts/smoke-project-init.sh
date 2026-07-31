@@ -6,6 +6,18 @@ API_URL="${ATLASFILE_SMOKE_API_URL:-http://localhost:8000}"
 API_CONTAINER="${ATLASFILE_SMOKE_API_CONTAINER:-atlasfile}"
 PROJECTS_ROOT_IN_CONTAINER="${ATLASFILE_SMOKE_PROJECTS_ROOT:-/projects}"
 SMOKE_PROJECT_ID="smoke_init_$(date +%Y%m%d_%H%M%S)_$RANDOM"
+# v1.0.0: com API_AUTH_ENABLED=true (smoke de release) toda rota exceto
+# /health exige key — via HEADER, nunca query string (?api_key= pararia no
+# access log). Vazio = sem auth, fluxo local de hoje segue igual.
+API_KEY="${ATLASFILE_SMOKE_API_KEY:-}"
+
+auth_curl() {
+  if [ -n "${API_KEY}" ]; then
+    curl -H "X-API-Key: ${API_KEY}" "$@"
+  else
+    curl "$@"
+  fi
+}
 
 cleanup() {
   docker exec "${API_CONTAINER}" rm -rf "${PROJECTS_ROOT_IN_CONTAINER}/${SMOKE_PROJECT_ID}" >/dev/null 2>&1 || true

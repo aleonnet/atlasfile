@@ -3,7 +3,12 @@
 # O smoke funcional completo do ciclo (ingestão, triagem, busca/highlight e assistente)
 # fica documentado em docs/plano_teste_e2e_v0.36.0.md.
 
-.PHONY: test test-backend test-frontend test-installer docker-build docker-up docker-update docker-smoke-init reset-index reset-chat ensure-dashboards-cookie ensure-api-keys-file uninstall
+.PHONY: test test-backend test-frontend test-installer docker-build docker-up docker-update docker-smoke-init reset-index reset-chat ensure-dashboards-cookie ensure-api-keys-file ensure-atlasfile-version uninstall
+
+# v1.0.0: o compose base consome a imagem do GHCR; o overlay devolve o build
+# local (contribuidor). Todos os alvos de stack deste Makefile compilam da
+# fonte — consumir a imagem publicada é papel do instalador/bundle.
+COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.build.yml
 
 test: test-backend test-frontend test-installer
 	@echo "All tests passed."
@@ -29,8 +34,8 @@ test-backend:
 test-frontend:
 	cd frontend && npm run test
 
-docker-build: test
-	docker compose build
+docker-build: test ensure-atlasfile-version
+	$(COMPOSE_DEV) build
 
 # DASHBOARDS_COOKIE_PASSWORD é por instalação (cookie de instância anterior
 # causa 500 com a chave default); quem atualiza via git pull sem reinstalar
@@ -50,6 +55,17 @@ ensure-api-keys-file:
 	  echo "config/api_keys.json criado vazio (bind mount do compose)"; \
 	fi
 
+# v1.0.0: o image: do compose exige ATLASFILE_VERSION (sem default, para
+# `latest` implícito não existir) e a interpolação roda MESMO com o overlay de
+# build — quem atualiza via git pull ganha a var aqui, sem reinstalar. Fonte:
+# frontend/package.json (única fonte de versão do repo). sed BSD-safe, sem jq.
+ensure-atlasfile-version:
+	@if [ -f .env ] && ! grep -q '^ATLASFILE_VERSION=' .env; then \
+	  v="$$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' frontend/package.json | head -1)"; \
+	  printf 'ATLASFILE_VERSION=%s\n' "$$v" >> .env; \
+	  echo "ATLASFILE_VERSION=$$v gravada no .env (versao do frontend/package.json)"; \
+	fi
+
 # Sobe os serviços (opensearch + atlasfile; Dashboards entra com
 # COMPOSE_PROFILES=dashboards no .env). Não roda test antes.
 # Faxina automática pós-build: o build cache cresce a cada rebuild e NUNCA deve
@@ -59,8 +75,8 @@ ensure-api-keys-file:
 # --remove-orphans: a consolidação renomeou os serviços — sem isso, um checkout
 # vindo de 0.56.x mantém os containers antigos (api/mcp/web) vivos e o
 # atlasfile-api órfão segura a porta 8000 contra o serviço novo.
-docker-up: ensure-dashboards-cookie ensure-api-keys-file
-	docker compose up -d --build --remove-orphans
+docker-up: ensure-dashboards-cookie ensure-api-keys-file ensure-atlasfile-version
+	$(COMPOSE_DEV) up -d --build --remove-orphans
 	docker image prune -f
 	docker builder prune -f --keep-storage=2GB
 
@@ -72,11 +88,11 @@ docker-up: ensure-dashboards-cookie ensure-api-keys-file
 #   make docker-update RESET_INDEX=1        → reseta índice de documentos
 #   make docker-update RESET_CHAT=1         → reseta índice de sessões de chat
 #   make docker-update RESET_INDEX=1 RESET_CHAT=1  → reseta ambos
-docker-update: test ensure-dashboards-cookie ensure-api-keys-file
+docker-update: test ensure-dashboards-cookie ensure-api-keys-file ensure-atlasfile-version
 	@if [ -n "$${RESET_INDEX}" ] && [ -n "$${RESET_CHAT}" ]; then ./scripts/reset-opensearch-index.sh all; \
 	elif [ -n "$${RESET_INDEX}" ]; then $(MAKE) reset-index; \
 	elif [ -n "$${RESET_CHAT}" ]; then $(MAKE) reset-chat; fi
-	docker compose up -d --build --remove-orphans
+	$(COMPOSE_DEV) up -d --build --remove-orphans
 	$(MAKE) docker-smoke-init
 	docker image prune -f
 	docker builder prune -f --keep-storage=2GB

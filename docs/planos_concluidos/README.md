@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 1.0.0
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [fase3_publicar_provar_imagem_v100](fase3_publicar_provar_imagem_v100.plan.md) | Fase 3 do plano de distribuição — **a primeira imagem publicada e provada**: `ghcr.io/aleonnet/atlasfile` multi-arch (amd64+arm64 em runners nativos), `release.yml` por tag com o invariante "tags só depois do smoke E2E nas 2 archs contra os digests já publicados" (smoke vermelho deixa só manifests sem tag), proveniência atestada, bundle ~10 KB no Release, versão consultável (`/api/setup/status.version == tag`), compose vira consumo (digests de terceiros pinados, `ATLASFILE_VERSION` sem default) com build local no overlay `atlasfile-local:dev`. Plano revisado ANTES por 3 revisores adversariais locais: derrubaram a premissa "triagem indexa" (0,7598 < 0,85 provado no classificador real → o smoke aprova a triagem), e anteciparam da 4a o mínimo do `install.sh` (var no `.env`, overlay, uninstall com fallback + remoção explícita de imagens nomeadas — `--rmi local` não remove `image:` nomeado). Mutantes: check_pins (digest), bancada do un_collect (2 FAILs exatos → 223 PASS), sentinela/key/versão no smoke. Primeira tag `v1.0.0` precedida do ensaio `v1.0.0-rc.1` (pacote GHCR nasce privado; flip manual antes da final) |
+
+---
+
 ## 0.57.0
 
 | # | Plano | Escopo |

@@ -168,9 +168,12 @@ cp .env.example .env
 # Edite PROJECTS_HOST_ROOT com o path absoluto dos seus projetos
 # Default recomendado: $HOME/Documents/AtlasFileProjects  (o mesmo do instalador)
 
-# 2. Suba o stack
+# 2. Suba o stack (builda local via overlay de build e grava
+#    ATLASFILE_VERSION no seu .env automaticamente)
 make docker-update
 ```
+
+A imagem oficial é **`ghcr.io/aleonnet/atlasfile`** (multi-arch amd64+arm64, com proveniência atestada; publicada por tag via `.github/workflows/release.yml`). O `docker-compose.yml` base a consome pinada por `ATLASFILE_VERSION`; contribuidor builda da fonte pelo `docker-compose.build.yml` (imagem `atlasfile-local:dev`) — é o que os alvos `make` e o instalador fazem. Um `docker compose up -d` cru, sem o overlay, puxa a imagem publicada em vez de buildar.
 
 Para a função de cada script operacional e técnico, veja `docs/11_scripts_and_operations.md`.
 
@@ -258,6 +261,7 @@ Os placeholders suportados no contrato ativo sao `date`, `project`, `business_do
 
 | Variável | Descrição | Default |
 |----------|-----------|---------|
+| `ATLASFILE_VERSION` | Tag de `ghcr.io/aleonnet/atlasfile` que este stack roda | (obrigatória; gravada pelo instalador/`make`) |
 | `PROJECTS_HOST_ROOT` | Path absoluto dos projetos no host | (obrigatório) |
 | `CLASSIFIER_DATASETS_ROOT` | Root operacional dos datasets do classificador | `/projects/_ATLASFILE/classifier/datasets` |
 | `OPENAI_API_KEY` | Chave OpenAI (chat + classificação) | — |

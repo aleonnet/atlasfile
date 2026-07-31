@@ -36,6 +36,11 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 
 `--doctor` relata pré-requisitos com versão, o manifesto do que o instalador criou nesta máquina, o estado da instalação e da stack, as portas e a pasta de documentos — e sai com código diferente de zero se algo estiver quebrado. `--dry-run` é *mostre, não faça*: sozinho relata o que uma instalação encontraria e faria aqui; combinado com `--uninstall`, o plano de remoção. `--verbose` mostra a saída das ferramentas em vez de escondê-la no log.
 
+**Duas trilhas a partir da v1.0.0** — o guia distingue explicitamente:
+
+- **Usuário**: o one-liner acima. A stack roda a **imagem publicada** `ghcr.io/aleonnet/atlasfile` (multi-arch, com proveniência atestada), selecionada por `ATLASFILE_VERSION` no `.env` — o instalador grava a versão; atualizar é ato deliberado, nunca um `latest` implícito.
+- **Desenvolvedor/contribuidor**: clone + `make` (seções 5, 12 e 13). O build local usa o overlay `docker-compose.build.yml` e produz a imagem `atlasfile-local:dev` — bits caseiros nunca usam o nome da imagem oficial.
+
 O restante deste guia cobre a **instalação manual** e a operação completa.
 
 ---
@@ -158,7 +163,8 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 #    fora do git; é bind mount no container — trocar key NÃO exige rebuild)
 # 2) Coloque a key do próprio app em ATLASFILE_API_TOKEN no .env (precisa existir
 #    no json com projects ["*"]) — é a credencial do orchestrator→/mcp e das tools→API
-# 3) docker compose up -d atlasfile (recria o container com o .env novo)
+# 3) docker compose -f docker-compose.yml -f docker-compose.build.yml up -d atlasfile
+#    (recria o container com o .env novo; o overlay mantém o build local)
 # 4) No frontend: Config → Acesso → cole a key do navegador
 # Obs.: o /mcp (mesma porta 8000) valida a MESMA key — clientes MCP externos
 # precisam enviá-la (Authorization: Bearer).
@@ -231,8 +237,15 @@ Isso roda os testes, faz build das imagens, sobe todos os serviços e executa o 
 
 ### Alternativa manual
 
+Duas trilhas desde a v1.0.0 — o compose base consome a **imagem publicada** (`ghcr.io/aleonnet/atlasfile`, selecionada por `ATLASFILE_VERSION` no `.env`); o build local vive no overlay `docker-compose.build.yml`:
+
 ```bash
-docker compose up -d --build
+# Usuário: rodar a imagem publicada (requer ATLASFILE_VERSION no .env —
+# o instalador e o make gravam automaticamente)
+docker compose up -d
+
+# Desenvolvedor/contribuidor: buildar da fonte (imagem atlasfile-local:dev)
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 ### Serviços esperados
@@ -396,12 +409,12 @@ make docker-update RESET_CHAT=1
 # Resetar ambos os índices
 make docker-update RESET_INDEX=1 RESET_CHAT=1
 
-# Rebuild completo (do zero)
+# Rebuild completo (do zero) — build local exige o overlay desde a v1.0.0
 docker compose down
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 # Rebuild só do app (backend + UI saem da mesma imagem multi-stage)
-docker compose up -d --build atlasfile
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build atlasfile
 ```
 
 ---
@@ -432,7 +445,7 @@ docker compose up -d --build atlasfile
 ### API não sobe
 
 ```bash
-docker compose logs api --tail=200
+docker compose logs atlasfile --tail=200
 ```
 
 ### OpenSearch não sobe
@@ -445,7 +458,7 @@ docker compose logs opensearch --tail=200
 
 ```bash
 docker compose down
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 ### Limpar ambiente local (containers + rede + volumes)
@@ -532,7 +545,7 @@ make uninstall
 
 | Item | Comportamento |
 |---|---|
-| Containers, rede e imagens construídas | Removidos via `docker compose down --rmi local` rodado de dentro da instalação, para o compose resolver o projeto sozinho. Nunca por nome de container (os nomes `atlasfile-*` são fixos e podem ser de outra instalação) |
+| Containers, rede e imagens do app | `docker compose down --rmi local` rodado de dentro da instalação (o compose resolve o projeto sozinho), mais remoção explícita das imagens nomeadas (`ghcr.io/aleonnet/atlasfile:*` e `atlasfile-local:*` — `--rmi local` não remove imagem com `image:` no compose). Nunca por nome de container (os nomes `atlasfile-*` são fixos e podem ser de outra instalação) |
 | Volume do OpenSearch (o índice) | **Sem default**: ele pergunta. `--purge-data` apaga, `--keep-data` mantém. Modo headless exige uma das duas. Seus documentos e o journal em `_ATLASFILE/` ficam em disco e não são afetados — o índice se reconstrói com Reconciliar |
 | Imagens `opensearchproject/*` | Preservadas (podem ser compartilhadas com outros stacks); o resumo mostra como liberar o espaço |
 | Pasta da instalação | Removida **só** se o manifesto disser que o instalador a criou e não houver alterações locais (`--force` para forçar). Um clone de desenvolvimento é sempre preservado |

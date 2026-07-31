@@ -1,0 +1,23 @@
+# Overlay de BUILD LOCAL (dev/contribuidor/CI) — v1.0.0.
+# O docker-compose.yml base consome a imagem publicada do GHCR; este arquivo
+# devolve o `build:` para quem compila da fonte:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+# (é o que make docker-build/docker-up/docker-update e o install.sh fazem).
+#
+# `image: atlasfile-local:dev` DE PROPÓSITO, não o nome do GHCR:
+# - bits locais nunca usurpam o nome oficial (um `up` sem overlay não pode
+#   "achar" um build caseiro e pular o pull);
+# - o COPY config do Dockerfile assa o config/ do dev — essa imagem não pode
+#   se apresentar como a publicada;
+# - tag fixa: cada rebuild sobrescreve e a anterior vira <none>, que o
+#   `docker image prune -f` dos alvos make continua reclamando (o compose só
+#   interpola o modelo mesclado; a var ATLASFILE_VERSION segue exigida pelo
+#   base — make ensure-atlasfile-version a grava no .env).
+services:
+  atlasfile:
+    image: atlasfile-local:dev
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        ATLASFILE_VERSION: ${ATLASFILE_VERSION:-dev}

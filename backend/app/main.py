@@ -1254,6 +1254,9 @@ def setup_status(auth: AuthContext = Depends(require_auth)) -> dict[str, Any]:
     root_state = _projects_root_state()
     return {
         "app_env": settings.app_env,
+        # v1.0.0: versão do artefato (ARG de build; "dev" fora de release) —
+        # gate do smoke de release: imagem publicada == tag
+        "version": settings.atlasfile_version,
         "projects_root": settings.projects_root,
         "projects_host_root": settings.projects_host_root,
         "total_project_dirs": len(roots),

@@ -407,6 +407,24 @@ se a medição sob carga mostrar contenção.
 
 ## Fase 3 — Publicar e provar a imagem
 
+> **EXECUTADA na v1.0.0 (2026-07-30)** — registro completo em
+> `docs/planos_concluidos/fase3_publicar_provar_imagem_v100.plan.md`. Decisão
+> da primeira tag: **v1.0.0**, com ensaio `v1.0.0-rc.1`. Correções de fato a
+> este documento, achadas na revisão adversarial pré-execução: (i) **doc em
+> triagem NÃO é indexado** — `index_document` só roda com `decision == "auto"`
+> (`ingestion.py:820-822`) e o passo 4 do smoke ("esperar a classificação,
+> buscar") só funciona **aprovando a triagem** antes (a fixture recomendada
+> abaixo classifica a 0,7598 < 0,85); (ii) o aviso sobre `Makefile:64` listar
+> 5 serviços ficou obsoleto — o Makefile pós-Fase 2 não nomeia serviços;
+> (iii) parte do que este documento aloca na **Fase 4a** teve de vir para a 3:
+> `install.sh` grava `ATLASFILE_VERSION`, builda pelo overlay e o `un_collect`
+> casa as imagens nomeadas — sem isso o one-liner e o uninstall quebrariam no
+> merge da Fase 3 (o `down` também interpola o `:?`, e `--rmi local` não
+> remove imagem com `image:` nomeado); (iv) o smoke exigiu duas envs novas no
+> compose (`EMBEDDING_ENABLED`, `AUTO_INGEST_ENABLED`) e
+> `DASHBOARDS_COOKIE_PASSWORD` no `.env` do CI — a interpolação roda antes do
+> filtro de profiles.
+
 ### Novo — `.github/workflows/release.yml`, disparado por tag `v*`
 
 - Build multi-arch **nativo** em dois runners: `ubuntu-latest` (amd64) +

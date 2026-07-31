@@ -27,6 +27,16 @@ for req in backend/requirements.txt backend/requirements-local-embeddings.txt; d
   done < "$req"
 done
 
+# 1b) Imagens de terceiros do compose pinadas por digest (Fase 3): a tag é
+#     legibilidade, o digest é o que garante o mesmo bit. Só terceiros — a
+#     imagem própria (ghcr.io/aleonnet/atlasfile) é selecionada por versão.
+while IFS= read -r line; do
+  if ! printf '%s' "$line" | grep -q '@sha256:'; then
+    echo "FAIL docker-compose.yml: imagem de terceiro sem digest: $line"
+    fail=1
+  fi
+done < <(grep -E '^[[:space:]]*image:[[:space:]]*opensearchproject/' docker-compose.yml)
+
 # 2) Nenhum package.json com dependência em "latest" ou "*".
 for pj in $(git ls-files '*package.json'); do
   hits="$(grep -nE '":[[:space:]]*"(latest|\*)"' "$pj" || true)"
