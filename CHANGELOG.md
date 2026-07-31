@@ -4,6 +4,29 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## Instalador — 2026-07-31 (Fase 4a; sem bump — a versão do app segue 1.0.0)
+
+> Decisão registrada: mudança de instalador não altera a versão do App. O
+> `install.sh` é servido por `raw.githubusercontent.com/main` e não faz parte
+> do bundle da release — o merge na main entrega a mudança a todo usuário novo
+> sem precisar de tag.
+
+### Instalar sem clone: bundle da release + pull da imagem publicada (Fase 4a)
+
+O caminho padrão do `install.sh` deixa de clonar o repositório e compilar a imagem: resolve a última release estável (ou a pinada por `--version X.Y.Z`), baixa o bundle (~10 KB) com verificação de SHA256, valida o conteúdo antes de tocar o disco e sobe a stack por `docker compose pull` da imagem publicada no ghcr.io. git deixa de ser pré-requisito do caminho padrão; `tar` entra (exigido, nunca instalado — como o curl).
+
+- **`--from-source` (novo)** — o caminho de contribuidor é o de sempre: clone + build local pelo overlay. Instalações existentes com `.git` **permanecem no caminho de clone** no re-run (auto-detecção com aviso): migrar para bundle é decisão do usuário (`--uninstall --keep-data` + instalação nova), nunca efeito colateral. `--repo-url`/`--branch` continuam aceitos e só valem com `--from-source` (aviso + ignore no caminho bundle — o `install.ps1` os encaminha quando usados).
+- **`--version X.Y.Z` (novo)** — pina a release (prereleases `X.Y.Z-rc.N` aceitas). O valor — digitado ou resolvido da API — passa por validação estrita de shape antes de tocar URL, `.env` ou compose. Sem o flag, a última release estável via API do GitHub, com mensagem acionável em caso de rate-limit (60/h anônimo) apontando o contorno e a lista de releases. **Downgrade** é detectado e exige confirmação interativa (`--yes` não pula essa).
+- **Integridade e conteúdo do bundle** — SHA256 verificado **antes** de o tar ser aberto (provado na bancada com wrapper que grava a ordem); pós-extração, o conteúdo tem de ser exatamente os 4 arquivos esperados — entrada estranha ou symlink recusa a instalação sem tocar o dir. Declarado no plano: o checksum mitiga download truncado/corrompido, não comprometimento do host (a raiz de confiança é o TLS do GitHub, a mesma do próprio `curl | bash`).
+- **Update sem clobber** — os 4 arquivos do bundle são do instalador e são substituídos no update, mas "nosso" se prova: o hash gravado no manifesto (`bundle_sha`) diz se o arquivo em disco ainda é o entregue; divergiu, ganha cópia datada ao lado (`docker-compose.yml.backup.<ts>`, registrada em `bundle_backups`) com aviso nomeando o arquivo. `.env`, `config/api_keys.json` e qualquer arquivo do usuário nunca são tocados. Re-executar o instalador É o ato deliberado de update: o pin `ATLASFILE_VERSION` é atualizado com backup automático do `.env`.
+- **Uninstall no mundo bundle** — `repo_clone=bundle` marca dir criado pelo instalador no caminho novo, removível com as MESMAS guardas do clone `created`: o `install_dir` do manifesto tem de bater, e arquivo que o instalador não pôs lá (respondido pelo manifesto, já que não há git) preserva a pasta nomeando os intrusos. `--doctor` ganhou o braço correspondente (sem ele, diria que o `--uninstall` preserva exatamente o que o plano remove). Guarda nova de bancada: a imagem GHCR entra no plano de remoção mesmo quando é a ÚNICA imagem da instalação.
+- **Update cross-branch do clone corrigido** (achado 1 da Fase 3, prometido "corrigir na 4a"): `af_update_clone` passa a buscar com refspec explícita (`+refs/heads/<b>:refs/remotes/origin/<b>`) — o clone raso nasce com refspec só de `main` e `--branch outra` morria em "unknown revision".
+- **Guard de volume no re-run**: a detecção de "instalação nova" passou de `.git` para "sem `.git` E sem manifesto" — sem isso, o re-run de uma instalação bundle com volume existente seria barrado como instância estrangeira.
+- **Mensagens honestas** — fase 4 no bundle path: "first run downloads the app image (~290 MB)…" (tamanho medido no rc.2; nenhuma promessa de segundos); erro de rede agora cita os registries reais (ghcr.io e Docker Hub) e o host de redirect (`objects.githubusercontent.com`) para allowlists corporativas. `--dry-run` segue read-only: no bundle path não toca a API, e mostra "would be INSTALLED from the release bundle".
+- **Bancada**: 35 casos novos (253 → 288 PASS), incluindo release LOCAL real (tar.gz + SHA256SUMS de verdade servidos por stub de curl), e **10 mutantes** provando as guardas novas (cada um reprova exatamente no caso-alvo). Seams de teste: `ATLASFILE_API_BASE` / `ATLASFILE_DOWNLOAD_BASE`.
+
+---
+
 ## [1.0.0] - 2026-07-30
 
 ### A primeira imagem publicada — e provada (Fase 3 do plano de distribuição)

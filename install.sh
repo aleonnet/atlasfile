@@ -3,20 +3,23 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash
 #
-# Host requirements: Docker (with Compose v2) and git — if either is missing,
-# the installer OFFERS to install it for you (Homebrew/cask on macOS, official
-# get.docker.com + apt/dnf on Linux). curl is also required, but it is NOT
-# installed for you: it is what fetches this script, and every supported system
-# ships it. No make/node/python needed.
-# Idempotent: re-running updates the clone and restarts the stack.
+# Host requirements: Docker (with Compose v2) — if it is missing, the
+# installer OFFERS to install it for you (Homebrew/cask on macOS, official
+# get.docker.com + apt/dnf on Linux). curl and tar are also required but NOT
+# installed for you: every supported system ships them. git is only needed for
+# --from-source. No make/node/python needed.
+# Idempotent: re-running updates the install to the latest release and
+# restarts the stack.
 #
 # Ollama is NOT part of the install: pulling a model is several GB and made the
 # install take an unpredictable amount of time. The final panel shows how to
 # enable a local model afterwards, in one command.
 #
 # Flags (this list is a summary — `--help` is the complete one):
-#   --repo-url URL        (default: https://github.com/aleonnet/atlasfile.git; env ATLASFILE_REPO_URL)
-#   --branch NAME         (default: main)
+#   --version X.Y.Z       (default: the latest stable release)
+#   --from-source         contributor path: clone the repo and build locally
+#   --repo-url URL        (only with --from-source; env ATLASFILE_REPO_URL)
+#   --branch NAME         (only with --from-source; default: main)
 #   --dir PATH            (default: ~/AtlasFile)
 #   --projects-root PATH  (default: ~/Documents/AtlasFileProjects)
 #   --yes                 non-interactive (accepts defaults; does NOT install
@@ -34,6 +37,17 @@ set -euo pipefail
 
 REPO_URL="${ATLASFILE_REPO_URL:-https://github.com/aleonnet/atlasfile.git}"
 BRANCH="main"
+# Fase 4a: o caminho padrao baixa o bundle da release e faz pull da imagem
+# publicada. As duas bases sao costuras de teste (a bancada serve uma release
+# LOCAL por elas), no mesmo espirito de ATLASFILE_REPO_URL — dois seams porque
+# sao dois endpoints: a API que resolve a versao e o host que serve o asset.
+AF_API_BASE="${ATLASFILE_API_BASE:-https://api.github.com}"
+AF_DOWNLOAD_BASE="${ATLASFILE_DOWNLOAD_BASE:-https://github.com}"
+FROM_SOURCE=0
+AF_PIN_VERSION=""
+AF_TARGET_VERSION=""
+AF_SOURCE_PATH=0
+AF_FRESH_INSTALL=0
 INSTALL_DIR="${HOME}/AtlasFile"
 PROJECTS_ROOT_DEFAULT="${HOME}/Documents/AtlasFileProjects"
 PROJECTS_ROOT=""
@@ -94,17 +108,23 @@ Usage:
   bash install.sh [options]
   curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- [options]
 
-With no options: installs into ~/AtlasFile, asks where your documents should
-live and starts the stack. Re-running updates the clone and restarts it — the
-installer is idempotent. Docker (with Compose v2) and git are detected and,
-with your confirmation, installed for you. curl is required too, but it is not
-installed for you: it is what fetched this script.
+With no options: installs the latest release into ~/AtlasFile (downloads the
+release bundle and pulls the published image — no compiler, no git), asks
+where your documents should live and starts the stack. Re-running updates the
+install to the latest release and restarts it — the installer is idempotent.
+Docker (with Compose v2) is detected and, with your confirmation, installed
+for you. curl and tar are required too, but not installed for you.
 
 Install options:
   --dir PATH            Where to install                 (default: ~/AtlasFile)
   --projects-root PATH  Where your documents live        (default: ~/Documents/AtlasFileProjects)
-  --repo-url URL        Repository to clone              (env ATLASFILE_REPO_URL)
-  --branch NAME         Branch to clone                  (default: main)
+  --version X.Y.Z       Install this release instead of the latest stable one
+                        (prereleases like 1.1.0-rc.1 are accepted)
+  --from-source         Contributor path: clone the repository and build the
+                        image locally instead of using the published release
+                        (needs git; existing git installs stay on this path)
+  --repo-url URL        Repository to clone (only with --from-source; env ATLASFILE_REPO_URL)
+  --branch NAME         Branch to clone     (only with --from-source; default: main)
   --yes, -y             Non-interactive: accept defaults. On its own it NEVER
                         installs system dependencies — see --install-deps
   --install-deps        Authorize installing missing prerequisites without
@@ -143,8 +163,9 @@ Diagnostics:
 Other:
   -h, --help            This help
 
-Environment: ATLASFILE_REPO_URL, ATLASFILE_OLLAMA_MODEL, NO_COLOR, CI,
-             COLORTERM, DOCKER_APP_PATH, BREW_BIN, TTY_DEV
+Environment: ATLASFILE_REPO_URL, ATLASFILE_API_BASE, ATLASFILE_DOWNLOAD_BASE,
+             ATLASFILE_OLLAMA_MODEL, NO_COLOR, CI, COLORTERM, DOCKER_APP_PATH,
+             BREW_BIN, TTY_DEV
 Log of this run: ${LOG_FILE}
 EOF
 }
@@ -153,6 +174,16 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --repo-url) REPO_URL="$2"; shift 2 ;;
     --branch) BRANCH="$2"; shift 2 ;;
+    # `--version` consome um VALOR; sem esta guarda, `--version --help` engoliria
+    # a flag seguinte e um `--version` solto morreria num erro mudo do shift.
+    # (if, e nao um case aninhado: o fechamento de um case interno — ate citado
+    # em comentario — encerraria a fatia do parser que o check_flags analisa.)
+    --version)
+      if [ -z "${2:-}" ] || [ "${2#-}" != "${2:-}" ]; then
+        echo "--version needs a release number, e.g. --version 1.0.0 (see https://github.com/aleonnet/atlasfile/releases)"; exit 1
+      fi
+      AF_PIN_VERSION="$2"; shift 2 ;;
+    --from-source) FROM_SOURCE=1; shift ;;
     --dir) INSTALL_DIR="$2"; shift 2 ;;
     --projects-root) PROJECTS_ROOT="$2"; shift 2 ;;
     --yes|-y) ASSUME_YES=1; shift ;;
@@ -309,7 +340,7 @@ fail_with_log() {
   # frase, e lembra que reexecutar e seguro — o instalador e idempotente.
   if af_falha_de_rede "$LOG_FILE"; then
     warn "this looks like a NETWORK problem, not a problem with your machine:"
-    info "the images are downloaded from Docker Hub, and the connection failed"
+    info "the images are downloaded from the registries (ghcr.io and Docker Hub), and the connection failed"
     info "check your internet (VPN, proxy or firewall are the usual suspects), then run the same command again"
     info "nothing was left half-done: re-running continues from where it stopped"
   fi
@@ -1038,6 +1069,7 @@ UN_CLONE_STATE="unknown"; UN_DIR_DIRTY=0; UN_DIRTY_LIST=""; UN_ENV=0
 # registrado") não existia no código. `env_file`/`api_keys_file` idem, e o
 # segundo guarda uma CHAVE DE API viva.
 UN_DIR_RECORDED=""; UN_ENV_CREATED=""; UN_APIKEYS_CREATED=""; UN_ENV_BACKUP=""
+UN_BUNDLE_FILES=""; UN_BUNDLE_BACKUPS=""
 UN_CONTAINERS=0; UN_VOLUME=""; UN_IMAGES=""
 UN_PROJECTS_ROOT=""; UN_PROJECTS_CREATED="preexisting"; UN_PROJECTS_FILES=0
 UN_OTHER_ARTIFACTS=""; UN_OLLAMA_PRESENT=0
@@ -1200,6 +1232,22 @@ un_collect() { # <dir>
     fi
   fi
 
+  # Instalacao bundle nao tem .git para responder "o que aqui nao e nosso?".
+  # O manifesto responde: a lista dos arquivos da release (bundle_files) mais
+  # os artefatos que o instalador escreve; qualquer OUTRO arquivo e trabalho do
+  # usuario e trava a remocao da pasta — a mesma conserva do clone sujo.
+  UN_BUNDLE_FILES="$(manifest_get "$mf" bundle_files)"
+  UN_BUNDLE_BACKUPS="$(manifest_get "$mf" bundle_backups)"
+  if [ ! -d "${dir}/.git" ] && [ "$UN_CLONE_STATE" = "bundle" ]; then
+    UN_DIR_DIRTY=0
+    local estranhos
+    estranhos="$(un_bundle_strange "$dir")"
+    if [ -n "$estranhos" ]; then
+      UN_DIR_DIRTY=1
+      UN_DIRTY_LIST="$estranhos"
+    fi
+  fi
+
   # Measured, not assumed: the plan may only speak about an Ollama that is
   # actually here. Same rule the mac-env-setup uninstaller follows — it asks
   # `brew list --cask X` before promising to remove anything.
@@ -1258,20 +1306,32 @@ un_build_plan() { # <purge_data> <remove_deps> <force>
   fi
   [ -n "$UN_IMAGES" ] && un_add_keep "shared upstream images (opensearchproject/*) — remove them by hand if you want the disk back"
 
-  # ── the clone ──
-  if [ "$UN_CLONE_STATE" = "created" ] && [ -n "$UN_DIR_RECORDED" ] && [ "$UN_DIR_RECORDED" != "$UN_DIR" ]; then
+  # ── the clone (ou o dir do bundle — as guardas sao as MESMAS) ──
+  # `bundle` e o dir que o proprio instalador criou no caminho sem clone: tao
+  # removivel quanto o `created`, com as duas mesmas provas — o install_dir do
+  # manifesto tem de bater, e trabalho do usuario dentro trava a remocao.
+  if { [ "$UN_CLONE_STATE" = "created" ] || [ "$UN_CLONE_STATE" = "bundle" ]; } \
+     && [ -n "$UN_DIR_RECORDED" ] && [ "$UN_DIR_RECORDED" != "$UN_DIR" ]; then
     # A garantia que o CHANGELOG anunciava desde a v0.54.0 e que o código não
     # tinha: a pasta só é apagada se ela for a MESMA que o manifesto registrou.
     # Um manifesto copiado, um --dir apontado para o lugar errado ou uma pasta
     # renomeada deixavam de ser detectáveis.
     un_add_keep "${UN_DIR} — NOT removed: the manifest here records the install at ${UN_DIR_RECORDED}, not this folder"
-  elif [ "$UN_CLONE_STATE" = "created" ]; then
+  elif [ "$UN_CLONE_STATE" = "created" ] || [ "$UN_CLONE_STATE" = "bundle" ]; then
     if [ "$UN_DIR_DIRTY" = "1" ] && [ "$force" != "1" ]; then
-      un_add_keep "${UN_DIR} has local changes — NOT removed (re-run with --force to remove it anyway)"
+      if [ "$UN_CLONE_STATE" = "bundle" ]; then
+        un_add_keep "${UN_DIR} has files this installer did not put there — NOT removed (re-run with --force to remove it anyway)"
+      else
+        un_add_keep "${UN_DIR} has local changes — NOT removed (re-run with --force to remove it anyway)"
+      fi
       UN_PLAN_KEEP="${UN_PLAN_KEEP}$(un_dirty_lines)
 "
     else
-      un_add_remove "install directory ${UN_DIR} (clone created by this installer, with its .env)"
+      if [ "$UN_CLONE_STATE" = "bundle" ]; then
+        un_add_remove "install directory ${UN_DIR} (installed from the release bundle by this installer, with its .env)"
+      else
+        un_add_remove "install directory ${UN_DIR} (clone created by this installer, with its .env)"
+      fi
       un_act "rm-clone"
     fi
   elif [ "$UN_COMPOSE_FILE" = "1" ]; then
@@ -1476,6 +1536,23 @@ af_own_pathspec() { # <dir>
     [ -n "$n" ] && saida="${saida} :(exclude)${n}"
   done
   printf '%s' "$saida"
+}
+
+# O equivalente do af_own_pathspec para o mundo bundle, onde nao ha git para
+# perguntar: a lista dos artefatos NOSSOS, um por linha — os 4 arquivos da
+# release (bundle_files, gravado na instalacao), o .env, o manifesto, a chave
+# de API e os backups dos dois manifestos. Tudo fora dela e do usuario.
+un_bundle_own_list() {
+  printf '%s\n' ".env" "$AF_MANIFEST_NAME" "config/api_keys.json"
+  printf '%s\n' "$UN_BUNDLE_FILES" | tr ',' '\n'
+  printf '%s\n' "$UN_ENV_BACKUP" | tr ',' '\n'
+  printf '%s\n' "$UN_BUNDLE_BACKUPS" | tr ',' '\n'
+}
+
+un_bundle_strange() { # <dir> — arquivos do dir que NAO sao artefatos nossos
+  local dir="$1"
+  ( cd "$dir" 2>/dev/null && find . -mindepth 1 \( -type f -o -type l \) | LC_ALL=C sed 's|^\./||' ) \
+    | grep -vxF -f <(un_bundle_own_list | grep -v '^$') || true
 }
 
 un_env_backups() {
@@ -1847,9 +1924,13 @@ doc_prereqs() {
   doc_head "Prerequisites"
   local v
   DOC_MISSING=""; DOC_BLOCKERS=""
-  if v="$(doc_version git --version)"; then doc_ok "$v"; else doc_fail "git not found"; DOC_MISSING="${DOC_MISSING}git "; fi
+  # git deixou de ser pre-requisito do caminho padrao (fase 4a): so o
+  # --from-source precisa dele, entao a ausencia e aviso, nunca bloqueio.
+  if v="$(doc_version git --version)"; then doc_ok "$v"; else doc_warn "git not found (only needed for --from-source installs)"; fi
   # curl nao entra em DOC_MISSING: nao ha ensure_curl — o instalador nao o instala.
   if command -v curl >/dev/null 2>&1; then doc_ok "curl"; else doc_fail "curl not found"; DOC_BLOCKERS="${DOC_BLOCKERS}curl "; fi
+  # tar abre o bundle da release; como o curl, exigido e nunca instalado.
+  if command -v tar >/dev/null 2>&1; then doc_ok "tar"; else doc_fail "tar not found"; DOC_BLOCKERS="${DOC_BLOCKERS}tar "; fi
   if v="$(doc_version docker --version)"; then
     doc_ok "$v"
     if docker info >/dev/null 2>&1; then
@@ -1900,6 +1981,10 @@ run_doctor() {
     [ "$UN_ENV" = "1" ] && doc_ok ".env present" || doc_warn ".env missing — the stack has no configuration"
     case "$UN_CLONE_STATE" in
       created) doc_ok "the clone was created by this installer (it may be removed by --uninstall)" ;;
+      # Sem este braco o doctor diria que o --uninstall PRESERVA exatamente o
+      # dir que o plano de remocao considera removivel — diagnostico mentindo
+      # sobre a acao.
+      bundle)  doc_ok "installed from the release bundle by this installer (it may be removed by --uninstall)" ;;
       *)       doc_warn "the clone was NOT created by this installer — --uninstall preserves it" ;;
     esac
     if [ "$UN_DIR_DIRTY" = "1" ]; then
@@ -1963,8 +2048,16 @@ run_dry_run() {
   # coluna; nao passa pelo af_wrap porque ele junta as palavras com um espaco so
   # e comeria justamente esse alinhamento.
   af_plan_row() { printf '%s  • %-13s%s\n' "$GUT" "$1" "$2"; }
-  af_plan_row "repository" "${REPO_URL} (${BRANCH})"
-  af_plan_row "install dir" "${INSTALL_DIR}$([ -d "${INSTALL_DIR}/.git" ] && printf ' (exists — would be UPDATED)' || printf ' (would be CLONED)')"
+  # O dry-run e READ-ONLY: no caminho bundle ele NAO resolve a release na API
+  # (isso seria tocar a rede num modo que promete so olhar) — diz de onde ela
+  # viria e qual pino foi pedido, se algum.
+  if af_source_mode; then
+    af_plan_row "repository" "${REPO_URL} (${BRANCH})"
+    af_plan_row "install dir" "${INSTALL_DIR}$([ -d "${INSTALL_DIR}/.git" ] && printf ' (exists — would be UPDATED)' || printf ' (would be CLONED)')"
+  else
+    af_plan_row "release" "${AF_PIN_VERSION:-latest} — from github.com/aleonnet/atlasfile/releases"
+    af_plan_row "install dir" "${INSTALL_DIR}$([ -d "${INSTALL_DIR}" ] && printf ' (exists — would be UPDATED from the release bundle)' || printf ' (would be INSTALLED from the release bundle)')"
+  fi
   af_plan_row "documents" "${PROJECTS_ROOT:-$PROJECTS_ROOT_DEFAULT}"
   af_plan_row "options" "auth=$([ "$ENABLE_AUTH" = "1" ] && printf on || printf off) open-browser=$([ "$OPEN_BROWSER" = "1" ] && printf on || printf off)"
   # Sem linha de calha solta aqui: o doc_head abaixo ja abre com uma, e as duas
@@ -2325,7 +2418,11 @@ print_banner() {
 AF_RESET_MARK=""
 af_update_clone() { # <dir> <branch>
   local dir="$1" branch="$2" sujo
-  git -C "$dir" fetch --prune origin "$branch" || return 1
+  # Refspec EXPLICITA: o clone raso nasce com refspec so de main, e `git fetch
+  # origin outra-branch` NAO cria origin/outra-branch — o merge e o reset
+  # abaixo morriam em "unknown revision" quando o update mirava outra branch
+  # (achado 1 da Fase 3, medido na VM lima; a correcao prometida ficou para ca).
+  git -C "$dir" fetch --prune origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || return 1
   git -C "$dir" merge --ff-only "origin/${branch}" && return 0
   # shellcheck disable=SC2046,SC2086
   sujo="$(git -C "$dir" status --porcelain -- . $(af_own_pathspec "$dir") 2>/dev/null || true)"
@@ -2341,6 +2438,208 @@ af_update_clone() { # <dir> <branch>
   # defina volta para o shell principal: a marca em disco e o canal.
   [ -n "$AF_RESET_MARK" ] && : > "$AF_RESET_MARK"
   return 0
+}
+
+# ── Fase 4a: bundle da release + pull da imagem publicada ───────────────────
+# O caminho padrao nao clona nem compila: resolve a versao, baixa o bundle da
+# release (4 arquivos, ~10 KB), verifica o SHA256, valida o conteudo e faz
+# `docker compose pull`. O clone continua vivo atras de --from-source (e do
+# auto-despacho para instalacoes existentes com .git — a instancia de quem
+# instalou por clone nunca e arrastada para o bundle).
+
+# A versao tem o MESMO shape que o release.yml aceita numa tag. O valor flui
+# para a URL do download, para o sed do set_env (que quebra com `|` e newline)
+# e para a ref de imagem do pull: nada fora do shape passa deste portao — nem o
+# que o usuario digitou em --version, nem o que a API devolveu.
+af_validate_version() { # <valor>
+  printf '%s' "$1" | LC_ALL=C grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+}
+
+# 0 quando a < b. So a parte X.Y.Z (sufixo de prerelease fora da conta): o uso
+# e detectar DOWNGRADE, e 1.1.0-rc.1 -> 1.1.0 nao e downgrade.
+af_version_lt() { # <a> <b>
+  local a="${1%%-*}" b="${2%%-*}" a1 a2 a3 b1 b2 b3
+  IFS=. read -r a1 a2 a3 <<EOF
+$a
+EOF
+  IFS=. read -r b1 b2 b3 <<EOF
+$b
+EOF
+  [ "$a1" != "$b1" ] && { [ "$a1" -lt "$b1" ]; return; }
+  [ "$a2" != "$b2" ] && { [ "$a2" -lt "$b2" ]; return; }
+  [ "$a3" -lt "$b3" ]
+}
+
+# Ultima release ESTAVEL, via API do GitHub (releases/latest nunca devolve
+# prerelease). O parse por sed e deliberadamente burro; a defesa real contra
+# casar campo errado (ou um 403 de rate-limit) e a validacao de shape acima.
+af_resolve_version() { # -> ecoa X.Y.Z, ou rc!=0 sem ecoar nada
+  local json tag
+  json="$(curl -fsSL "${AF_API_BASE}/repos/aleonnet/atlasfile/releases/latest" 2>/dev/null)" || return 1
+  tag="$(printf '%s' "$json" | LC_ALL=C sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v\{0,1\}\([^"]*\)".*/\1/p' | head -1)"
+  af_validate_version "$tag" || return 1
+  printf '%s' "$tag"
+}
+
+# sha256 de UM arquivo, portavel (Linux: sha256sum; macOS: shasum -a 256).
+af_file_sha() { # <arquivo>
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" 2>/dev/null | awk '{print $1}'
+  else
+    shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
+  fi
+}
+
+# Confere o arquivo contra a linha correspondente do SHA256SUMS (pelo nome).
+# O que isto mitiga DE FATO: download truncado e asset trocado por engano. O
+# que NAO mitiga: comprometimento da release ou MITM no host — o SHA256SUMS vem
+# do MESMO host que o bundle; a raiz de confianca e o TLS do GitHub, a mesma ja
+# aceita para este proprio script chegar por curl | bash.
+af_sha256_check() { # <arquivo> <SHA256SUMS>
+  local nome esperado real
+  nome="$(basename "$1")"
+  esperado="$(awk -v n="$nome" '$NF == n || $NF == "*"n { print $1 }' "$2" 2>/dev/null | head -1)"
+  [ -n "$esperado" ] || return 1
+  real="$(af_file_sha "$1")"
+  [ -n "$real" ] && [ "$real" = "$esperado" ]
+}
+
+# Decide o caminho da fase 2: fonte (clone+build) ou bundle (download+pull).
+# `.git` presente = a instancia foi instalada por clone e ASSIM PERMANECE no
+# re-run — migrar para bundle e decisao do usuario (--uninstall --keep-data +
+# instalacao nova), nunca um efeito colateral de re-executar o instalador.
+af_source_mode() {
+  [ "$FROM_SOURCE" = "1" ] && return 0
+  [ -d "${INSTALL_DIR}/.git" ] && return 0
+  return 1
+}
+
+# 0 quando o dir NAO carrega uma instalacao nossa (nem .git, nem manifesto).
+# O guard do volume orfao usava so `.git` como sinal de "instalacao existente";
+# no mundo bundle o re-run nao tem .git e seria barrado como instancia
+# estrangeira — o manifesto e o sinal que sobrevive aos dois mundos.
+af_fresh_install_dir() { # <dir>
+  [ -d "${1}/.git" ] && return 1
+  [ -f "${1}/${AF_MANIFEST_NAME}" ] && return 1
+  return 0
+}
+
+# Downgrade e decisao do usuario, nunca um default (mesma familia da escolha do
+# volume no uninstall): headless FALHA em vez de adivinhar, e --yes nao pula
+# esta confirmacao especifica — o indice do OpenSearch escrito pela versao mais
+# nova pode ser incompativel com a app antiga.
+af_downgrade_gate() { # <versao alvo> <versao instalada>
+  local alvo="$1" atual="$2"
+  af_version_lt "$alvo" "$atual" || return 0
+  warn "downgrade: this install is at ${atual} and you asked for ${alvo}"
+  info "data written by the newer version (the OpenSearch index) may be incompatible with the older app"
+  if [ "$ASSUME_YES" = "1" ] || [ ! -r "$TTY_DEV" ]; then
+    fail "downgrades need an interactive confirmation — re-run without --yes in a real terminal"
+  fi
+  af_read_line "$(ask "Downgrade to ${alvo}? ${DIM}[y/N]${RESET} ")"
+  case "$AF_LINE" in
+    y|Y|yes|YES|s|S) return 0 ;;
+    *) fail "downgrade cancelled — nothing was changed" ;;
+  esac
+}
+
+# Baixa, verifica, valida e instala os arquivos do bundle em <dir>. Roda no
+# shell PRINCIPAL (nao sob run_step): os erros saem por AF_FETCH_ERR com a
+# causa exata, e o chamador decide a mensagem. Ordem inegociavel: o SHA e
+# verificado ANTES de o tar ser aberto — tar de origem nao verificada nunca e
+# extraido, e o conteudo extraido e validado ANTES de tocar o dir de
+# instalacao (exatamente os 4 arquivos esperados, nenhum symlink, nada fora da
+# raiz — um tar hostil nao pode escrever atraves do move).
+AF_FETCH_ERR=""
+af_fetch_bundle() { # <versao> <dir>
+  local v="$1" dir="$2" tmp nome base rc raiz f alvo links inesperado
+  local mf shas registrado hash_atual backups backup agora novos_shas subdir
+  AF_FETCH_ERR=""
+  tmp="$(mktemp -d)" || { AF_FETCH_ERR="could not create a temporary folder"; return 1; }
+  nome="atlasfile-${v}-bundle.tar.gz"
+  base="${AF_DOWNLOAD_BASE}/aleonnet/atlasfile/releases/download/v${v}"
+  rc=0
+  curl -fsSL -o "${tmp}/${nome}" "${base}/${nome}" >>"$LOG_FILE" 2>&1 || rc=$?
+  if [ "$rc" = "22" ]; then
+    # curl -f devolve 22 para HTTP >= 400: a release (ou o asset) nao existe.
+    AF_FETCH_ERR="release v${v} was not found — pick one that exists: https://github.com/aleonnet/atlasfile/releases"
+    rm -rf "$tmp"; return 1
+  elif [ "$rc" != "0" ]; then
+    AF_FETCH_ERR="could not download the release bundle from ${base} — the download redirects to objects.githubusercontent.com, so a proxy or allowlist must permit that host too; check your connection and re-run"
+    rm -rf "$tmp"; return 1
+  fi
+  curl -fsSL -o "${tmp}/SHA256SUMS" "${base}/SHA256SUMS" >>"$LOG_FILE" 2>&1 \
+    || { AF_FETCH_ERR="could not download SHA256SUMS from ${base} — check your connection and re-run"; rm -rf "$tmp"; return 1; }
+  if ! af_sha256_check "${tmp}/${nome}" "${tmp}/SHA256SUMS"; then
+    AF_FETCH_ERR="checksum mismatch on ${nome} — the download is corrupt or truncated; nothing was extracted, re-running downloads it again"
+    rm -rf "$tmp"; return 1
+  fi
+  mkdir -p "${tmp}/x"
+  tar -xzf "${tmp}/${nome}" -C "${tmp}/x" >>"$LOG_FILE" 2>&1 \
+    || { AF_FETCH_ERR="could not extract ${nome} (details: ${LOG_FILE})"; rm -rf "$tmp"; return 1; }
+  raiz="${tmp}/x/atlasfile-${v}"
+  links="$( (cd "${tmp}/x" && find . -type l | head -3) 2>/dev/null )"
+  if [ -n "$links" ]; then
+    AF_FETCH_ERR="the bundle contains symlinks ($(printf '%s' "$links" | tr '\n' ' ')) — refusing to install it"
+    rm -rf "$tmp"; return 1
+  fi
+  inesperado="$( (cd "${tmp}/x" && find . -mindepth 1 | LC_ALL=C sed 's|^\./||') \
+    | grep -vxF -e "atlasfile-${v}" -e "atlasfile-${v}/config" \
+        -e "atlasfile-${v}/docker-compose.yml" -e "atlasfile-${v}/.env.example" \
+        -e "atlasfile-${v}/config/opensearch_dashboards.yml" \
+        -e "atlasfile-${v}/config/api_keys.example.json" || true)"
+  if [ -n "$inesperado" ]; then
+    AF_FETCH_ERR="the bundle contains unexpected entries ($(printf '%s' "$inesperado" | head -3 | tr '\n' ' ')) — refusing to install it"
+    rm -rf "$tmp"; return 1
+  fi
+  for f in docker-compose.yml .env.example config/opensearch_dashboards.yml config/api_keys.example.json; do
+    [ -f "${raiz}/${f}" ] || { AF_FETCH_ERR="the bundle is missing ${f} — refusing to install it"; rm -rf "$tmp"; return 1; }
+  done
+  # Instalacao arquivo a arquivo. Os 4 arquivos sao NOSSOS e sao substituidos
+  # no update — mas "nosso" se prova, nao se presume: o hash gravado na
+  # instalacao anterior diz se o arquivo em disco ainda e o que entregamos.
+  # Divergiu (ou nao ha registro), o arquivo pode carregar trabalho do usuario:
+  # ganha copia datada ao lado ANTES da substituicao, com aviso nomeando-o.
+  # `.env`, api_keys.json, manifesto e qualquer outro arquivo nunca sao tocados.
+  mf="${dir}/${AF_MANIFEST_NAME}"
+  shas="$(manifest_get "$mf" bundle_sha)"
+  backups="$(manifest_get "$mf" bundle_backups)"
+  agora="$(date +%Y%m%d%H%M%S)"
+  novos_shas=""
+  mkdir -p "${dir}/config" || { AF_FETCH_ERR="could not write in ${dir}"; rm -rf "$tmp"; return 1; }
+  for f in docker-compose.yml .env.example config/opensearch_dashboards.yml config/api_keys.example.json; do
+    alvo="${dir}/${f}"
+    if [ -f "$alvo" ] && ! cmp -s "${raiz}/${f}" "$alvo"; then
+      registrado="$(printf '%s' "$shas" | tr ',' '\n' | awk -F= -v k="$f" '$1 == k { print $2 }')"
+      hash_atual="$(af_file_sha "$alvo")"
+      if [ -z "$registrado" ] || [ "$registrado" != "$hash_atual" ]; then
+        subdir="$(dirname "$f")"
+        if [ "$subdir" = "." ]; then backup="${f}.backup.${agora}"; else backup="${subdir}/$(basename "$f").backup.${agora}"; fi
+        cp "$alvo" "${dir}/${backup}" 2>/dev/null || true
+        warn "you edited ${f} — your version was copied to ${backup} before the update replaced it"
+        if [ -n "$backups" ]; then backups="${backups},${backup}"; else backups="$backup"; fi
+      fi
+    fi
+    mv -f "${raiz}/${f}" "$alvo" || { AF_FETCH_ERR="could not write ${alvo}"; rm -rf "$tmp"; return 1; }
+    novos_shas="${novos_shas:+${novos_shas},}${f}=$(af_file_sha "$alvo")"
+  done
+  [ -n "$backups" ] && manifest_set "$mf" bundle_backups "$backups"
+  manifest_set "$mf" bundle_sha "$novos_shas"
+  rm -rf "$tmp"
+  return 0
+}
+
+# A fase 4 em funcao, para a bancada alcancar a decisao build-vs-pull: o
+# caminho bundle NUNCA compila, o caminho fonte NUNCA faz pull.
+af_stack_up() {
+  if [ "$AF_SOURCE_PATH" = "1" ]; then
+    # o compose base consome a imagem publicada; o overlay devolve o build local
+    run_step "building the app image" docker compose -f docker-compose.yml -f docker-compose.build.yml build
+    run_step "starting the 2 services" docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --remove-orphans
+  else
+    run_step "pulling the app image (published on ghcr.io)" docker compose -f docker-compose.yml pull
+    run_step "starting the 2 services" docker compose -f docker-compose.yml up -d --remove-orphans
+  fi
 }
 
 # ── Test-library guard: `ATLASFILE_INSTALL_LIB=1 source install.sh` stops here ─
@@ -2383,23 +2682,33 @@ if [ "$DRY_RUN" = "1" ]; then
   exit 0
 fi
 
+# O despacho fonte-vs-bundle e decidido UMA vez, aqui, e vale para o resto da
+# execucao: os pre-requisitos (git so no caminho fonte), a fase 2 (clone vs
+# bundle) e a fase 4 (build vs pull) leem a mesma decisao.
+if af_source_mode; then AF_SOURCE_PATH=1; else AF_SOURCE_PATH=0; fi
+
 # ── 1. Prerequisites ────────────────────────────────────────────────────────
 title "1/4" "Checking and preparing prerequisites"
 detect_os
 
-# git — offer to install when missing
-if ! command -v git >/dev/null 2>&1; then
-  if confirm "git not found — install it now?"; then
-    ensure_git || fail "could not install git — install it manually: https://git-scm.com"
+# git — so no caminho fonte (o bundle path nao toca git em momento nenhum)
+if [ "$AF_SOURCE_PATH" = "1" ]; then
+  if ! command -v git >/dev/null 2>&1; then
+    if confirm "git not found — install it now?"; then
+      ensure_git || fail "could not install git — install it manually: https://git-scm.com"
+    else
+      fail "git not found — install it from https://git-scm.com (or re-run with --install-deps)"
+    fi
   else
-    fail "git not found — install it from https://git-scm.com (or re-run with --install-deps)"
+    host_set git preexisting
   fi
-else
-  host_set git preexisting
+  check "git $(git --version 2>/dev/null | awk '{print $3}')" command -v git \
+    || fail "git not found — install it from https://git-scm.com"
 fi
-check "git $(git --version 2>/dev/null | awk '{print $3}')" command -v git \
-  || fail "git not found — install it from https://git-scm.com"
 check "curl" command -v curl || fail "curl not found"
+# tar abre o bundle da release; como o curl, e exigido e nunca instalado — todo
+# sistema suportado o traz de fabrica.
+check "tar" command -v tar || fail "tar not found — install it with your package manager and re-run"
 
 # Docker — offer to install when missing
 if ! command -v docker >/dev/null 2>&1; then
@@ -2486,7 +2795,10 @@ if [ -n "${other_dir}" ]; then
   info "existing instance found at: ${other_dir}"
   fail "the directory ${INSTALL_DIR} would produce the same docker project name ('${compose_project}') as the instance above — they would share containers and volumes. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the other instance first."
 fi
-if [ ! -d "${INSTALL_DIR}/.git" ] && docker volume ls -q 2>/dev/null | grep -qx "${compose_project}_opensearch_data"; then
+# `af_fresh_install_dir` e nao `.git`: uma instalacao bundle re-executada nao
+# tem .git, e so o manifesto prova que o volume encontrado e DESTA instalacao —
+# sem isso o re-run seria barrado como se adotasse a instancia de outro.
+if af_fresh_install_dir "${INSTALL_DIR}" && docker volume ls -q 2>/dev/null | grep -qx "${compose_project}_opensearch_data"; then
   # O volume pode ser NOSSO, guardado de propósito por um `--uninstall
   # --keep-data` neste mesmo diretório. Sem essa distinção o plano prometia "a
   # future reinstall reuses it" e a instalação seguinte recusava o dado como se
@@ -2526,24 +2838,72 @@ done
 
 # ── 2. Code ─────────────────────────────────────────────────────────────────
 title "2/4" "Getting AtlasFile"
-if [ -d "${INSTALL_DIR}/.git" ]; then
-  CLONE_STATE="preexisting"
-  AF_RESET_MARK="${LOG_FILE}.reset"
-  run_step "updating existing install (${INSTALL_DIR})" \
-    af_update_clone "${INSTALL_DIR}" "${BRANCH}"
-  if [ -f "$AF_RESET_MARK" ]; then
-    rm -f "$AF_RESET_MARK"
-    info "the local history had diverged from origin/${BRANCH} — realigned to it (nothing of yours was here)"
+if [ "$AF_SOURCE_PATH" = "1" ]; then
+  if [ "$FROM_SOURCE" != "1" ]; then
+    # .git no dir e a instancia de quem instalou por clone: o re-run fica no
+    # caminho fonte e diz isso, em vez de migrar a instalacao em silencio.
+    info "existing git install detected — staying on the source path (clone + local build)"
+  fi
+  if [ -d "${INSTALL_DIR}/.git" ]; then
+    CLONE_STATE="preexisting"
+    AF_RESET_MARK="${LOG_FILE}.reset"
+    run_step "updating existing install (${INSTALL_DIR})" \
+      af_update_clone "${INSTALL_DIR}" "${BRANCH}"
+    if [ -f "$AF_RESET_MARK" ]; then
+      rm -f "$AF_RESET_MARK"
+      info "the local history had diverged from origin/${BRANCH} — realigned to it (nothing of yours was here)"
+    fi
+  else
+    CLONE_STATE="created"
+    run_step "cloning ${REPO_URL} (${BRANCH})" \
+      git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${INSTALL_DIR}"
   fi
 else
-  CLONE_STATE="created"
-  run_step "cloning ${REPO_URL} (${BRANCH})" \
-    git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${INSTALL_DIR}"
+  # Caminho bundle (o padrao): resolve a versao, avisa sobre flags que so valem
+  # com --from-source, baixa e verifica o bundle. Nada de git daqui em diante.
+  if [ -n "$AF_PIN_VERSION" ]; then
+    af_validate_version "$AF_PIN_VERSION" \
+      || fail "--version \"${AF_PIN_VERSION}\" is not a release number — use e.g. --version 1.0.0 (the list lives at https://github.com/aleonnet/atlasfile/releases)"
+    AF_TARGET_VERSION="$AF_PIN_VERSION"
+  else
+    AF_TARGET_VERSION="$(af_resolve_version || true)"
+    [ -n "$AF_TARGET_VERSION" ] \
+      || fail "could not resolve the latest release from ${AF_API_BASE} — GitHub limits anonymous API calls (60/h per IP); pin one with --version X.Y.Z (the list lives at https://github.com/aleonnet/atlasfile/releases) and re-run"
+  fi
+  [ "$BRANCH" != "main" ] \
+    && warn "--branch is only used with --from-source — ignored (installing release v${AF_TARGET_VERSION})"
+  [ "$REPO_URL" != "https://github.com/aleonnet/atlasfile.git" ] \
+    && warn "--repo-url is only used with --from-source — ignored (installing release v${AF_TARGET_VERSION})"
+  cur_env_version="$(grep '^ATLASFILE_VERSION=' "${INSTALL_DIR}/.env" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  if [ -n "$cur_env_version" ] && af_validate_version "$cur_env_version"; then
+    af_downgrade_gate "$AF_TARGET_VERSION" "$cur_env_version"
+  fi
+  # `bundle` marca dir CRIADO por nos (removivel no uninstall, com as mesmas
+  # guardas do clone `created`); dir preexistente segue `preexisting` — o
+  # uninstall nunca remove pasta que nao pode provar que criou. Um re-run
+  # sobre instalacao bundle relê o proprio valor para nao rebaixa-lo.
+  AF_FRESH_INSTALL=0
+  if [ ! -d "${INSTALL_DIR}" ]; then
+    CLONE_STATE="bundle"
+    AF_FRESH_INSTALL=1
+    mkdir -p "${INSTALL_DIR}" || fail "could not create ${INSTALL_DIR} — check permissions and re-run"
+  elif [ "$(manifest_get "${INSTALL_DIR}/${AF_MANIFEST_NAME}" repo_clone)" = "bundle" ]; then
+    CLONE_STATE="bundle"
+  else
+    CLONE_STATE="preexisting"
+  fi
+  if ! af_fetch_bundle "$AF_TARGET_VERSION" "$INSTALL_DIR"; then
+    fail "$AF_FETCH_ERR"
+  fi
+  ok "release bundle v${AF_TARGET_VERSION} downloaded and verified (checksum ok)"
 fi
 cd "${INSTALL_DIR}"
 AF_MANIFEST="${INSTALL_DIR}/${AF_MANIFEST_NAME}"
 manifest_set "$AF_MANIFEST" repo_clone "$CLONE_STATE"
 manifest_set "$AF_MANIFEST" install_dir "$INSTALL_DIR"
+if [ "$AF_SOURCE_PATH" != "1" ]; then
+  manifest_set "$AF_MANIFEST" bundle_files "docker-compose.yml,.env.example,config/opensearch_dashboards.yml,config/api_keys.example.json"
+fi
 
 # ── 3. Configuration (.env) ─────────────────────────────────────────────────
 title "3/4" "Configuring"
@@ -2570,15 +2930,42 @@ else
   info ".env already exists — preserved"
 fi
 
+# set_env VAR VALUE — replace or append in .env. Definida ANTES do pin de
+# versao: o update do bundle path a usa logo abaixo.
+set_env() {
+  backup_env_once
+  if grep -q "^$1=" .env; then
+    tmp_env="$(mktemp)"
+    sed "s|^$1=.*|$1=$2|" .env > "${tmp_env}" && mv "${tmp_env}" .env
+  else
+    printf '%s=%s\n' "$1" "$2" >> .env
+  fi
+}
+
 # v1.0.0: compose selects the app image by ATLASFILE_VERSION (no default on
-# purpose — an implicit `latest` would make two installs drift apart). Pin the
-# version of the checkout we just cloned; preexisting .env from an older
-# install gains the var here without a reinstall. Source of truth is
-# frontend/package.json (the repo's only version record); BSD-safe sed, no jq.
-if ! grep -q '^ATLASFILE_VERSION=' .env; then
-  AF_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' frontend/package.json | head -1)"
-  printf 'ATLASFILE_VERSION=%s\n' "${AF_VERSION}" >> .env
-  ok "ATLASFILE_VERSION=${AF_VERSION} written to .env (the image tag this stack runs)"
+# purpose — an implicit `latest` would make two installs drift apart).
+# Caminho fonte: pina a versao do checkout (frontend/package.json, o unico
+# registro de versao do repo; sed BSD-safe, sem jq), so quando ausente.
+# Caminho bundle: o .env.example da release ja chega pinado; num re-run o pin
+# e ATUALIZADO para a versao resolvida — re-executar o instalador E o ato
+# deliberado de update, e o set_env preserva o resto do .env com backup.
+if [ "$AF_SOURCE_PATH" = "1" ]; then
+  if ! grep -q '^ATLASFILE_VERSION=' .env; then
+    AF_VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' frontend/package.json | head -1)"
+    printf 'ATLASFILE_VERSION=%s\n' "${AF_VERSION}" >> .env
+    ok "ATLASFILE_VERSION=${AF_VERSION} written to .env (the image tag this stack runs)"
+  fi
+else
+  if ! grep -q '^ATLASFILE_VERSION=' .env; then
+    printf 'ATLASFILE_VERSION=%s\n' "${AF_TARGET_VERSION}" >> .env
+    ok "ATLASFILE_VERSION=${AF_TARGET_VERSION} written to .env (the image tag this stack runs)"
+  else
+    cur_env_version="$(grep '^ATLASFILE_VERSION=' .env | head -1 | cut -d= -f2-)"
+    if [ "$cur_env_version" != "$AF_TARGET_VERSION" ]; then
+      set_env ATLASFILE_VERSION "$AF_TARGET_VERSION"
+      ok "updating from ${cur_env_version} to ${AF_TARGET_VERSION} (ATLASFILE_VERSION in .env)"
+    fi
+  fi
 fi
 
 current_root="$(grep '^PROJECTS_HOST_ROOT=' .env | head -1 | cut -d= -f2- || true)"
@@ -2636,17 +3023,6 @@ else
 fi
 ok "projects at: ${BOLD}${PROJECTS_ROOT}${RESET}"
 
-# set_env VAR VALUE — replace or append in .env
-set_env() {
-  backup_env_once
-  if grep -q "^$1=" .env; then
-    tmp_env="$(mktemp)"
-    sed "s|^$1=.*|$1=$2|" .env > "${tmp_env}" && mv "${tmp_env}" .env
-  else
-    printf '%s=%s\n' "$1" "$2" >> .env
-  fi
-}
-
 # ── Dashboards session-cookie key (one per install) ─────────────────────────
 # The default encryption key is identical across installs, so a session cookie
 # from a previous instance decrypts fine but points to a session that does not
@@ -2693,23 +3069,30 @@ if [ ! -f config/api_keys.json ]; then
   ok "api_keys.json created empty (compose bind mount)"
 fi
 
-# ── 4. Build + launch ───────────────────────────────────────────────────────
-title "4/4" "Building and starting the stack"
-# A frase depende do ESTADO, e não é decorativa: ela saía igual na reinstalação,
-# onde o build reaproveita o cache e levou 3s — prometer café para uma espera de
-# três segundos é ruído. Medido no Windows 11 real (2026-07-29): 1m05s no
-# primeiro build, 3s no segundo.
-if [ "${CLONE_STATE}" = "created" ]; then
-  info "first run downloads images and compiles — takes a minute or two"
+# ── 4. Images + launch ──────────────────────────────────────────────────────
+# A frase depende do ESTADO, e não é decorativa: prometer café para uma espera
+# curta é ruído (medido: 1m05s no primeiro build, 3s no segundo; pull da app
+# 18,7s no rc.2). No bundle path não há promessa de segundos — o tamanho é
+# medido (288/293 MB comprimidos no rc.2), o tempo depende da conexão.
+if [ "$AF_SOURCE_PATH" = "1" ]; then
+  title "4/4" "Building and starting the stack"
+  if [ "${CLONE_STATE}" = "created" ]; then
+    info "first run downloads images and compiles — takes a minute or two"
+  else
+    info "reusing the build cache — this is usually quick"
+  fi
 else
-  info "reusing the build cache — this is usually quick"
+  title "4/4" "Getting the images and starting the stack"
+  if [ "${AF_FRESH_INSTALL}" = "1" ]; then
+    info "first run downloads the app image (~290 MB) and the OpenSearch images — time depends on your connection"
+  else
+    info "images already on this machine are reused — this is usually quick"
+  fi
 fi
-# v1.0.0: o compose base consome a imagem publicada; o overlay devolve o
-# build local. O instalador segue compilando da fonte até a Fase 4a (pull).
-run_step "building the app image" docker compose -f docker-compose.yml -f docker-compose.build.yml build
-# --remove-orphans: reinstalar por cima de um checkout 0.56.x precisa derrubar
-# os containers dos serviços antigos (api/mcp/web) — o api órfão segura a :8000.
-run_step "starting the 2 services" docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --remove-orphans
+# --remove-orphans (dentro do af_stack_up): reinstalar por cima de um checkout
+# 0.56.x precisa derrubar os containers dos serviços antigos (api/mcp/web) — o
+# api órfão segura a :8000.
+af_stack_up
 
 run_step "waiting for the API to become healthy" wait_http http://localhost:8000/health 90
 run_step "waiting for the interface" wait_http http://localhost:8000/ 30

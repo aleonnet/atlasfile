@@ -38,7 +38,10 @@ make_sandbox() {
   CALLS="${SANDBOX}/calls.log"; : > "$CALLS"
   mkdir -p "${SANDBOX}/bin"
   # stub factory: records invocation, exits per STUB_RC_<name>
-  for name in brew docker git sudo apt-get dnf systemctl open ollama; do
+  # curl entrou na fase 4a (o instalador baixa o bundle da release); tar fica
+  # FORA de proposito — a extracao do bundle usa o tar real, e stubar o tar
+  # transformaria a fixture de release em teatro.
+  for name in brew docker git sudo apt-get dnf systemctl open ollama curl; do
     cat > "${SANDBOX}/bin/${name}" <<EOF
 #!/usr/bin/env bash
 echo "${name} \$*" >> "${CALLS}"
@@ -1513,6 +1516,386 @@ case "$out" in
   *"everything needed is already here"*) ok ;;
   *) no "sumiu com a frase em vez de torna-la verdadeira: [$out]" ;;
 esac
+
+# ── Fase 4a: bundle da release + pull (sem clone) ───────────────────────────
+# O caminho padrao deixa de clonar e compilar: baixa o bundle da release (4
+# arquivos) e faz `docker compose pull`. A "release" da bancada e LOCAL: um
+# tar.gz real com SHA256SUMS real, servido por um stub de curl que mapeia a URL
+# para o arquivo — a extracao e a verificacao usam tar e sha de verdade.
+
+af_release_local() { # <versao> — monta uma release local em $SANDBOX/releases
+  local v="$1" R="${SANDBOX}/releases" raiz="${SANDBOX}/bundle_src/atlasfile-${1}"
+  mkdir -p "$R" "${raiz}/config"
+  printf 'services: {}\n# bundle v%s\n' "$v" > "${raiz}/docker-compose.yml"
+  printf 'PROJECTS_HOST_ROOT=/path/to/Projects\nOPENSEARCH_PASSWORD=Troque-Esta!Senha123\nOPENSEARCH_INITIAL_ADMIN_PASSWORD=Troque-Esta!Senha123\nDASHBOARDS_COOKIE_PASSWORD=x\nATLASFILE_VERSION=%s\n' "$v" > "${raiz}/.env.example"
+  printf '# dashboards v%s\n' "$v" > "${raiz}/config/opensearch_dashboards.yml"
+  printf '{"keys": []}\n' > "${raiz}/config/api_keys.example.json"
+  tar -czf "${R}/atlasfile-${v}-bundle.tar.gz" -C "${SANDBOX}/bundle_src" "atlasfile-${v}"
+  ( cd "$R" && { command -v sha256sum >/dev/null 2>&1 \
+      && sha256sum atlasfile-*-bundle.tar.gz || shasum -a 256 atlasfile-*-bundle.tar.gz; } > SHA256SUMS )
+  printf '{\n  "tag_name": "v%s",\n  "name": "v%s"\n}\n' "$v" "$v" > "${R}/latest"
+}
+
+stub_curl_release() { # stub de curl: URL -> arquivo em $AF_FAKE_RELEASES, gravando em $CALLS
+  cat > "${SANDBOX}/bin/curl" <<EOF
+#!/usr/bin/env bash
+echo "curl \$*" >> "${CALLS}"
+[ "\${STUB_RC_curl:-0}" != "0" ] && exit "\${STUB_RC_curl}"
+out=""; url=""
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    -o) out="\$2"; shift 2 ;;
+    http*) url="\$1"; shift ;;
+    *) shift ;;
+  esac
+done
+src="\${AF_FAKE_RELEASES}/\$(basename "\$url")"
+[ -f "\$src" ] || exit 22
+if [ -n "\$out" ]; then cp "\$src" "\$out"; else cat "\$src"; fi
+EOF
+  chmod +x "${SANDBOX}/bin/curl"
+}
+
+make_sandbox
+t "af_validate_version aceita release e prerelease, recusa qualquer outra coisa"
+run_case -- 'af_validate_version 1.0.0 && af_validate_version 1.1.0-rc.1' && ok || no "recusou versao legitima"
+run_case -- 'af_validate_version "1.0.0|x"' >/dev/null 2>&1 && no "aceitou valor com pipe (quebraria o sed do set_env)" || ok
+run_case -- 'af_validate_version latest' >/dev/null 2>&1 && no "aceitou 'latest' como versao" || ok
+run_case -- 'af_validate_version ""' >/dev/null 2>&1 && no "aceitou vazio" || ok
+
+t "af_version_lt compara versoes numericamente, nao como texto"
+run_case -- 'af_version_lt 1.0.0 1.1.0' && ok || no "1.0.0 < 1.1.0 falhou"
+run_case -- 'af_version_lt 1.1.0 1.0.0' && no "1.1.0 < 1.0.0 passou" || ok
+run_case -- 'af_version_lt 1.0.0 1.0.0' && no "1.0.0 < 1.0.0 passou" || ok
+run_case -- 'af_version_lt 1.9.0 1.10.0' && ok || no "comparou 1.9/1.10 como texto"
+
+make_sandbox
+af_release_local 9.9.9
+stub_curl_release
+t "af_resolve_version resolve a ultima release pelo JSON real da API"
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- 'af_resolve_version')"
+assert_eq "$out" "9.9.9"
+
+t "resposta sem tag_name (rate limit) devolve erro, nunca lixo"
+printf '{"message": "API rate limit exceeded", "documentation_url": "x"}\n' > "${SANDBOX}/releases/latest"
+rc=0; out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- 'af_resolve_version')" || rc=$?
+[ "$rc" != "0" ] && ok || no "rate limit virou sucesso"
+[ -z "$out" ] && ok || no "devolveu lixo no rate limit: [$out]"
+
+# O despacho e a decisao mais importante da fase: um dir com .git e a instancia
+# REAL de quem instalou por clone, e o re-run nao pode arrasta-la para o bundle.
+make_sandbox
+t "af_source_mode: .git presente vai para fonte; sem .git, bundle; --from-source forca"
+mkdir -p "${SANDBOX}/comgit/.git" "${SANDBOX}/semgit"
+run_case -- 'INSTALL_DIR="$SANDBOX/comgit"; FROM_SOURCE=0; af_source_mode' && ok || no "dir com .git nao foi para o caminho fonte"
+run_case -- 'INSTALL_DIR="$SANDBOX/semgit"; FROM_SOURCE=0; af_source_mode' && no "dir sem .git foi para o caminho fonte" || ok
+run_case -- 'INSTALL_DIR="$SANDBOX/semgit"; FROM_SOURCE=1; af_source_mode' && ok || no "--from-source nao forcou o caminho fonte"
+
+t "af_fresh_install_dir: manifesto ou .git contam como instalacao existente"
+mkdir -p "${SANDBOX}/vazio"
+run_case -- 'af_fresh_install_dir "$SANDBOX/vazio"' && ok || no "dir vazio nao e fresh"
+run_case -- 'af_fresh_install_dir "$SANDBOX/comgit"' && no "dir com .git passou por fresh" || ok
+run_case -- 'mkdir -p "$SANDBOX/commf"; : > "$SANDBOX/commf/.atlasfile-install-manifest"
+  af_fresh_install_dir "$SANDBOX/commf"' && no "dir com manifesto passou por fresh (re-run de bundle seria barrado pelo guard de volume)" || ok
+
+make_sandbox
+af_release_local 9.9.9
+stub_curl_release
+t "af_fetch_bundle instala os 4 arquivos num dir novo e registra os hashes"
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/instala"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  af_fetch_bundle 9.9.9 "$D" || { printf "ERRO:%s" "$AF_FETCH_ERR"; exit 1; }
+  test -f "$D/docker-compose.yml" && test -f "$D/.env.example" \
+    && test -f "$D/config/opensearch_dashboards.yml" && test -f "$D/config/api_keys.example.json" \
+    && printf "ARQUIVOS "
+  grep -q "bundle v9.9.9" "$D/docker-compose.yml" && printf "CONTEUDO "
+  [ -n "$(manifest_get "$D/.atlasfile-install-manifest" bundle_sha)" ] && printf "SHAS"')"
+case "$out" in *"ARQUIVOS CONTEUDO SHAS"*) ok ;; *) no "instalacao do bundle incompleta: [$out]" ;; esac
+grep -q 'releases/download/v9.9.9/atlasfile-9.9.9-bundle.tar.gz' "$CALLS" && ok || no "nao baixou pela URL da release: $(cat "$CALLS")"
+
+t "SHA adulterado reprova SEM extrair nada"
+make_sandbox
+af_release_local 9.9.9
+stub_curl_release
+# Wrapper de tar que REGISTRA e delega ao tar real: a propriedade nao e so "o
+# dir ficou vazio", e "o tar nunca abriu um tarball de origem nao verificada".
+# Sem esta prova, inverter a ordem (extrair antes de conferir o SHA) passaria.
+cat > "${SANDBOX}/bin/tar" <<EOF
+#!/usr/bin/env bash
+echo "tar \$*" >> "${CALLS}"
+exec /usr/bin/tar "\$@"
+EOF
+chmod +x "${SANDBOX}/bin/tar"
+sed 's/^[0-9a-f]\{8\}/deadbeef/' "${SANDBOX}/releases/SHA256SUMS" > "${SANDBOX}/releases/SHA256SUMS.tmp" \
+  && mv "${SANDBOX}/releases/SHA256SUMS.tmp" "${SANDBOX}/releases/SHA256SUMS"
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/instala2"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  rc=0; af_fetch_bundle 9.9.9 "$D" || rc=$?
+  printf "rc=%s|err=%s|arquivos=%s" "$rc" "$AF_FETCH_ERR" "$(ls -A "$D" | wc -l | tr -d " ")"')"
+case "$out" in "rc=1|"*) ok ;; *) no "checksum adulterado passou: [$out]" ;; esac
+case "$out" in *"checksum mismatch"*) ok ;; *) no "erro nao explica o checksum: [$out]" ;; esac
+case "$out" in *"arquivos=0") ok ;; *) no "extraiu/instalou apesar do checksum ruim: [$out]" ;; esac
+grep -q '^tar ' "$CALLS" && no "o tar foi aberto ANTES de o checksum reprovar: $(grep '^tar ' "$CALLS")" || ok
+
+t "bundle com arquivo intruso e recusado sem tocar o dir de instalacao"
+make_sandbox
+af_release_local 7.7.7
+printf 'malicia\n' > "${SANDBOX}/bundle_src/atlasfile-7.7.7/intruso.sh"
+tar -czf "${SANDBOX}/releases/atlasfile-7.7.7-bundle.tar.gz" -C "${SANDBOX}/bundle_src" "atlasfile-7.7.7"
+( cd "${SANDBOX}/releases" && { command -v sha256sum >/dev/null 2>&1 \
+    && sha256sum atlasfile-*-bundle.tar.gz || shasum -a 256 atlasfile-*-bundle.tar.gz; } > SHA256SUMS )
+stub_curl_release
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/instala3"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  rc=0; af_fetch_bundle 7.7.7 "$D" || rc=$?
+  printf "rc=%s|err=%s|arquivos=%s" "$rc" "$AF_FETCH_ERR" "$(ls -A "$D" | wc -l | tr -d " ")"')"
+case "$out" in "rc=1|"*"arquivos=0") ok ;; *) no "bundle com intruso foi aceito: [$out]" ;; esac
+case "$out" in *"unexpected"*) ok ;; *) no "erro nao nomeia o conteudo inesperado: [$out]" ;; esac
+
+t "bundle com symlink e recusado"
+make_sandbox
+af_release_local 6.6.6
+ln -s /etc/passwd "${SANDBOX}/bundle_src/atlasfile-6.6.6/config/link_malicioso"
+tar -czf "${SANDBOX}/releases/atlasfile-6.6.6-bundle.tar.gz" -C "${SANDBOX}/bundle_src" "atlasfile-6.6.6"
+( cd "${SANDBOX}/releases" && { command -v sha256sum >/dev/null 2>&1 \
+    && sha256sum atlasfile-*-bundle.tar.gz || shasum -a 256 atlasfile-*-bundle.tar.gz; } > SHA256SUMS )
+stub_curl_release
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/instala4"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  rc=0; af_fetch_bundle 6.6.6 "$D" || rc=$?
+  printf "rc=%s|arquivos=%s" "$rc" "$(ls -A "$D" | wc -l | tr -d " ")"')"
+case "$out" in "rc=1|arquivos=0") ok ;; *) no "bundle com symlink foi aceito: [$out]" ;; esac
+
+t "release inexistente (404) explica e aponta a lista de releases"
+make_sandbox
+mkdir -p "${SANDBOX}/releases"
+stub_curl_release
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/instala5"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  rc=0; af_fetch_bundle 4.4.4 "$D" || rc=$?
+  printf "rc=%s|%s" "$rc" "$AF_FETCH_ERR"')"
+case "$out" in "rc=1|"*) ok ;; *) no "404 virou sucesso: [$out]" ;; esac
+case "$out" in *"releases"*) ok ;; *) no "erro de 404 nao aponta onde achar versoes: [$out]" ;; esac
+
+# O contrato do update, re-expresso para o mundo bundle: re-run idempotente,
+# trabalho do usuario intocado, e arquivo NOSSO editado ganha backup nomeado
+# antes de ser substituido (paridade com o clone, que recusa e nomeia).
+make_sandbox
+af_release_local 1.0.0
+af_release_local 1.1.0
+stub_curl_release
+t "re-run com a mesma versao e idempotente e nao inventa backup"
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/up"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  af_fetch_bundle 1.0.0 "$D" >/dev/null 2>&1 && af_fetch_bundle 1.0.0 "$D" >/dev/null 2>&1
+  printf "backups=%s" "$(ls -A "$D" | grep -c ".backup." || true)"')"
+assert_eq "$out" "backups=0"
+
+t "update substitui os arquivos do bundle e preserva .env e arquivo do usuario"
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/up2"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  af_fetch_bundle 1.0.0 "$D" >/dev/null 2>&1
+  printf "MEU_ENV=1\n" > "$D/.env"; printf "rascunho\n" > "$D/minhas_notas.md"
+  af_fetch_bundle 1.1.0 "$D" >/dev/null 2>&1
+  grep -q "bundle v1.1.0" "$D/docker-compose.yml" && printf "NOVO "
+  grep -q "MEU_ENV=1" "$D/.env" && printf "ENV_INTACTO "
+  test -f "$D/minhas_notas.md" && printf "USUARIO_INTACTO"')"
+case "$out" in *"NOVO ENV_INTACTO USUARIO_INTACTO"*) ok ;; *) no "o update clobberou o que nao e dele: [$out]" ;; esac
+
+t "docker-compose.yml editado pelo usuario ganha backup nomeado antes do update"
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/up3"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  af_fetch_bundle 1.0.0 "$D" >/dev/null 2>&1
+  printf "services: {}\n# minha porta customizada\n" > "$D/docker-compose.yml"
+  saida="$(af_fetch_bundle 1.1.0 "$D" 2>&1)"
+  printf "backup=%s|" "$(ls -A "$D" | grep -c "docker-compose.yml.backup." || true)"
+  printf "%s" "$saida" | grep -q "docker-compose.yml" && printf "AVISADO|"
+  printf "%s" "$(manifest_get "$D/.atlasfile-install-manifest" bundle_backups)"')"
+case "$out" in "backup=1|AVISADO|"*docker-compose.yml.backup.*) ok ;; *) no "edicao do usuario foi clobberada sem backup/aviso: [$out]" ;; esac
+
+t "e update de arquivo NAO editado segue silencioso, sem backup"
+out="$(run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/up4"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  af_fetch_bundle 1.0.0 "$D" >/dev/null 2>&1
+  af_fetch_bundle 1.1.0 "$D" >/dev/null 2>&1
+  printf "backups=%s" "$(ls -A "$D" | grep -c ".backup." || true)"')"
+assert_eq "$out" "backups=0"
+
+# A fase 4 nao pode compilar no caminho bundle nem puxar no caminho fonte.
+make_sandbox
+t "af_stack_up no caminho bundle faz pull e nunca build; no fonte, o contrario"
+run_case -- 'AF_SOURCE_PATH=0; IS_TTY=0; LOG_FILE="$SANDBOX/log"; af_stack_up' >/dev/null 2>&1
+grep -q 'compose -f docker-compose.yml pull' "$CALLS" && ok || no "bundle path nao fez pull: $(cat "$CALLS")"
+grep -q 'build' "$CALLS" && no "bundle path compilou: $(cat "$CALLS")" || ok
+: > "$CALLS"
+run_case -- 'AF_SOURCE_PATH=1; IS_TTY=0; LOG_FILE="$SANDBOX/log"; af_stack_up' >/dev/null 2>&1
+grep -q 'docker-compose.build.yml build' "$CALLS" && ok || no "caminho fonte nao compilou: $(cat "$CALLS")"
+grep -q ' pull' "$CALLS" && no "caminho fonte fez pull: $(cat "$CALLS")" || ok
+
+t "caminho bundle nunca chama git"
+: > "$CALLS"
+make_sandbox
+af_release_local 9.9.9
+stub_curl_release
+run_case AF_FAKE_RELEASES="${SANDBOX}/releases" -- '
+  D="$SANDBOX/semgit2"; mkdir -p "$D"; LOG_FILE="$SANDBOX/log"
+  af_fetch_bundle 9.9.9 "$D"' >/dev/null 2>&1
+grep -q '^git ' "$CALLS" && no "o bundle path tocou o git: $(cat "$CALLS")" || ok
+
+# Downgrade e decisao do usuario, nunca um default: headless recusa.
+make_sandbox
+t "af_downgrade_gate: headless recusa; interativo respeita a resposta"
+rc=0; run_case -- 'ASSUME_YES=1; TTY_DEV=/dev/null; af_downgrade_gate 1.0.0 1.1.0' >/dev/null 2>&1 || rc=$?
+[ "$rc" != "0" ] && ok || no "downgrade passou sem confirmacao headless"
+printf 'y\n' > "${SANDBOX}/tty_in"
+rc=0; run_case -- 'ASSUME_YES=0; TTY_DEV="$SANDBOX/tty_in"; af_downgrade_gate 1.0.0 1.1.0' >/dev/null 2>&1 || rc=$?
+[ "$rc" = "0" ] && ok || no "downgrade confirmado com y foi recusado"
+printf 'n\n' > "${SANDBOX}/tty_in"
+rc=0; run_case -- 'ASSUME_YES=0; TTY_DEV="$SANDBOX/tty_in"; af_downgrade_gate 1.0.0 1.1.0' >/dev/null 2>&1 || rc=$?
+[ "$rc" != "0" ] && ok || no "downgrade recusado com n seguiu adiante"
+
+t "e um update normal nao pergunta nada"
+rc=0; run_case -- 'ASSUME_YES=1; TTY_DEV=/dev/null; af_downgrade_gate 1.1.0 1.0.0' >/dev/null 2>&1 || rc=$?
+[ "$rc" = "0" ] && ok || no "update normal caiu na guarda de downgrade"
+
+# ── Uninstall no mundo bundle ───────────────────────────────────────────────
+make_sandbox
+t "repo_clone=bundle com manifesto batendo e dir limpo entra no plano de remocao"
+out="$(run_case -- "${PLAN_FACTS}
+  UN_CLONE_STATE=bundle; UN_DIR_RECORDED=\"\$UN_DIR\"
+  un_build_plan 0 0 0; printf '%s' \"\$UN_ACTIONS\"")"
+case "$out" in *rm-clone*) ok ;; *) no "instalacao bundle legitima nao e removivel: [$out]" ;; esac
+
+t "bundle com install_dir divergente NAO e removido (mesma guarda do clone)"
+out="$(run_case -- "${PLAN_FACTS}
+  UN_CLONE_STATE=bundle; UN_DIR_RECORDED=/outro/lugar
+  un_build_plan 0 0 0; printf 'A:%s|K:%s' \"\$UN_ACTIONS\" \"\$UN_PLAN_KEEP\"")"
+case "$out" in *rm-clone*) no "removeu com manifesto apontando outro lugar" ;; *) ok ;; esac
+case "$(achata "$out")" in *"records the install at /outro/lugar"*) ok ;; *) no "nao explicou a preservacao: [$out]" ;; esac
+
+t "arquivo estranho num dir bundle preserva a pasta e nomeia o intruso"
+make_sandbox
+mkdir -p "${SANDBOX}/binst/config"
+printf 'services: {}\n' > "${SANDBOX}/binst/docker-compose.yml"
+printf 'x\n' > "${SANDBOX}/binst/.env.example"
+printf 'x\n' > "${SANDBOX}/binst/config/opensearch_dashboards.yml"
+printf '{}\n' > "${SANDBOX}/binst/config/api_keys.example.json"
+printf 'X=1\n' > "${SANDBOX}/binst/.env"
+printf 'meu\n' > "${SANDBOX}/binst/meu_tcc.docx"
+out="$(run_case -- '
+  mf="$SANDBOX/binst/.atlasfile-install-manifest"
+  manifest_set "$mf" repo_clone bundle
+  manifest_set "$mf" install_dir "$SANDBOX/binst"
+  manifest_set "$mf" bundle_files "docker-compose.yml,.env.example,config/opensearch_dashboards.yml,config/api_keys.example.json"
+  un_collect "$SANDBOX/binst"
+  un_build_plan 0 0 0
+  printf "sujo=%s|A:%s|K:%s" "$UN_DIR_DIRTY" "$UN_ACTIONS" "$UN_PLAN_KEEP"')"
+case "$out" in "sujo=1|"*) ok ;; *) no "o intruso nao sujou o dir bundle: [$out]" ;; esac
+case "$out" in *rm-clone*) no "removeu a pasta com arquivo do usuario dentro" ;; *) ok ;; esac
+printf '%s' "$out" | grep -q 'meu_tcc.docx' && ok || no "nao nomeou o intruso: [$out]"
+
+t "e um dir bundle so com artefatos nossos segue removivel"
+rm -f "${SANDBOX}/binst/meu_tcc.docx"
+out="$(run_case -- '
+  un_collect "$SANDBOX/binst"
+  un_build_plan 0 0 0; printf "sujo=%s|%s" "$UN_DIR_DIRTY" "$UN_ACTIONS"')"
+case "$out" in "sujo=0|"*rm-clone*) ok ;; *) no "artefato nosso travou a remocao do dir bundle: [$out]" ;; esac
+
+t "backup de compose feito pelo update nao conta como intruso"
+out="$(run_case -- '
+  mf="$SANDBOX/binst/.atlasfile-install-manifest"
+  touch "$SANDBOX/binst/docker-compose.yml.backup.20260101000000"
+  manifest_set "$mf" bundle_backups docker-compose.yml.backup.20260101000000
+  un_collect "$SANDBOX/binst"
+  printf "sujo=%s" "$UN_DIR_DIRTY"')"
+assert_eq "$out" "sujo=0"
+
+t "sem manifesto, dir bundle e preservado com explicacao (stack ainda sai)"
+make_sandbox
+mkdir -p "${SANDBOX}/orfao"
+printf 'services: {}\n' > "${SANDBOX}/orfao/docker-compose.yml"
+out="$(run_case -- '
+  un_collect "$SANDBOX/orfao"
+  UN_COMPOSE_FILE=1; UN_CONTAINERS=1
+  un_build_plan 0 0 0; printf "A:%s|K:%s" "$UN_ACTIONS" "$UN_PLAN_KEEP"')"
+case "$out" in *compose-down*) ok ;; *) no "sem manifesto nem a stack saiu: [$out]" ;; esac
+case "$out" in *rm-clone*) no "sem manifesto removeu a pasta assim mesmo" ;; *) ok ;; esac
+case "$out" in *"not created by this installer"*) ok ;; *) no "nao explicou a preservacao: [$out]" ;; esac
+
+# Pos-4a a instalacao padrao tem UMA imagem, a do GHCR. Se o un_collect so a
+# enxergar na companhia das legadas, o uninstall novo vaza ~290 MB em silencio.
+t "uninstall enxerga a imagem GHCR quando ela e a UNICA imagem da instalacao"
+make_sandbox
+mkdir -p "${SANDBOX}/inst"
+printf 'services: {}\n' > "${SANDBOX}/inst/docker-compose.yml"
+cat > "${SANDBOX}/bin/docker" <<EOF
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "image inspect") exit 1 ;;
+  "images --format") printf 'ghcr.io/aleonnet/atlasfile:1.1.0\nopensearchproject/opensearch:2.17.1\n' ;;
+esac
+exit 0
+EOF
+chmod +x "${SANDBOX}/bin/docker"
+out="$(run_case -- 'un_collect "$SANDBOX/inst"; printf "%s" "$UN_IMAGES"')"
+case "$out" in *"ghcr.io/aleonnet/atlasfile:1.1.0"*) ok ;; *) no "imagem GHCR unica fora do plano — uninstall vazaria a imagem: [$out]" ;; esac
+case "$out" in *opensearchproject*) no "imagem upstream entrou no plano: [$out]" ;; *) ok ;; esac
+
+t "un_dir_is_safe aceita instalacao bundle (compose file, sem .git)"
+make_sandbox
+mkdir -p "${SANDBOX}/binst2"
+printf 'services: {}\n' > "${SANDBOX}/binst2/docker-compose.yml"
+run_case -- 'un_dir_is_safe "$SANDBOX/binst2"' && ok || no "recusou uma instalacao bundle legitima"
+
+t "--doctor reconhece uma instalacao bundle como criada por este instalador"
+make_sandbox
+mkdir -p "${SANDBOX}/binst3"
+printf 'services: {}\n' > "${SANDBOX}/binst3/docker-compose.yml"
+printf 'X=1\n' > "${SANDBOX}/binst3/.env"
+out="$(run_case -- '
+  mf="$SANDBOX/binst3/.atlasfile-install-manifest"
+  manifest_set "$mf" repo_clone bundle
+  manifest_set "$mf" bundle_files "docker-compose.yml"' >/dev/null 2>&1
+  env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/binst3" 2>&1 || true)"
+case "$out" in *"release bundle"*"--uninstall"*) ok ;; *) no "--doctor nao reconhece instalacao bundle (diria que preserva o que ele remove): [$out]" ;; esac
+case "$out" in *"NOT created by this installer"*) no "--doctor mente sobre a proveniencia do dir bundle" ;; *) ok ;; esac
+
+# ── Flags novas ─────────────────────────────────────────────────────────────
+t "--version exige valor e explica quando ele falta"
+out="$(bash "$REPO_ROOT/install.sh" --version 2>&1)" && no "--version sem valor passou" || ok
+case "$out" in *"--version"*) ok ;; *) no "erro sem mensagem acionavel: [$out]" ;; esac
+out="$(bash "$REPO_ROOT/install.sh" --version --help 2>&1)" && no "--version comendo a flag seguinte passou" || ok
+
+t "--from-source e --version passam pelo parser"
+bash "$REPO_ROOT/install.sh" --from-source --help >/dev/null 2>&1 && ok || no "--from-source recusado"
+bash "$REPO_ROOT/install.sh" --version 1.0.0 --help >/dev/null 2>&1 && ok || no "--version 1.0.0 recusado"
+
+t "--branch e --repo-url continuam aceitos (o install.ps1 os encaminha)"
+bash "$REPO_ROOT/install.sh" --branch x --repo-url y --help >/dev/null 2>&1 && ok || no "flags de fonte recusadas"
+
+t "--doctor nao resolve release nem baixa bundle"
+make_sandbox
+stub_curl_release
+env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null AF_FAKE_RELEASES="${SANDBOX}/releases" \
+  bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/nada" >/dev/null 2>&1 || true
+grep -q 'releases' "$CALLS" && no "o --doctor tocou a rede de releases: $(cat "$CALLS")" || ok
+
+# Update cross-branch do caminho fonte — achado 1 da fase 3: o clone raso nasce
+# com refspec so de main, e `--branch outra` morria em "unknown revision".
+make_sandbox
+t "update cross-branch: --branch diferente do clone passa a funcionar"
+( cd "$SANDBOX" && git init -q --bare rb.git && git -C rb.git symbolic-ref HEAD refs/heads/main
+  git clone -q rb.git rb_src 2>/dev/null
+  cd rb_src && git config user.email t@t && git config user.name t
+  printf 'm1\n' > f.txt && git add -A && git commit -qm m1 && git branch -M main && git push -q origin main
+  git checkout -qb feature && printf 'vf\n' > f.txt && git add -A && git commit -qm vf \
+  && git push -q origin feature ) >/dev/null 2>&1
+git clone -q --depth 1 --branch main "file://${SANDBOX}/rb.git" "${SANDBOX}/rb_clone" >/dev/null 2>&1
+out="$(run_case PATH=/usr/bin:/bin -- '
+  af_update_clone "$SANDBOX/rb_clone" feature >/dev/null 2>&1
+  cat "$SANDBOX/rb_clone/f.txt"')"
+assert_eq "$out" "vf"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAILED"
 [ "$FAILED" = "0" ]

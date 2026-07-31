@@ -8,7 +8,7 @@ Sistema local de organização documental por projeto, com ciclo operacional de 
 
 ## Instalação rápida
 
-Sem pré-requisitos para preparar: o instalador detecta o que falta (Docker, git) e oferece instalar para você — use `--install-deps` para autorizar sem perguntas. Modelo 100% local é um passo **depois** da instalação: o download são vários GB e tiraria qualquer previsibilidade da duração.
+Sem pré-requisitos para preparar: o instalador detecta o que falta (Docker) e oferece instalar para você — use `--install-deps` para autorizar sem perguntas. Modelo 100% local é um passo **depois** da instalação: o download são vários GB e tiraria qualquer previsibilidade da duração.
 
 **macOS / Linux:**
 
@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh 
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.ps1))) -EnableAuth
 ```
 
-O instalador clona o projeto, configura o `.env`, sobe a stack Docker e abre `http://localhost:8000` — o assistente de primeiros passos guia a criação do primeiro projeto. Instalação manual e detalhes: [INSTALL.md](INSTALL.md). Rode `install.sh --help` para ver todas as flags — no Windows, `install.ps1 -Help`.
+O instalador baixa a última release (um bundle de ~10 KB mais a imagem publicada de ~290 MB via pull do ghcr.io — sem compilador, sem git), configura o `.env`, sobe a stack Docker e abre `http://localhost:8000` — o assistente de primeiros passos guia a criação do primeiro projeto. Contribuidores mantêm o caminho antigo de clone e build com `--from-source`. Instalação manual e detalhes: [INSTALL.md](INSTALL.md). Rode `install.sh --help` para ver todas as flags — no Windows, `install.ps1 -Help`.
 
 **No Windows seus documentos ficam do lado Windows**, na sua pasta Documentos (`…\Documents\AtlasFileProjects`), então aparecem no Explorer como qualquer outra pasta e sobrevivem a um `wsl --unregister`. Só o AtlasFile mora dentro do WSL. Use `-ProjectsRoot` para escolher outra pasta e `-InstallDeps` para instalar WSL2 e Docker Desktop sem perguntar nada.
 
