@@ -4,6 +4,14 @@ Registro dos planos de implementação executados, organizados por versão.
 
 ---
 
+## 1.0.0 — flag do Dashboards (2026-07-31, sem bump)
+
+| # | Plano | Escopo |
+|---|-------|--------|
+| 1 | [flag_enable_dashboards_instaladores](flag_enable_dashboards_instaladores.plan.md) | **`--enable-dashboards`/`--no-dashboards` (win: `-EnableDashboards`/`-NoDashboards`)** — a observabilidade vira flag de instalador (arqueologia: a flag nunca existiu; o opt-in por `.env` da Fase 2 nunca ganhou superfície). 8 funções novas acima do gate de biblioteca (merge/remoção token-wise da `COMPOSE_PROFILES`, precedência flag>env>`.env`, teardown explícito pós-`up` porque `--remove-orphans` não pega serviço com profile — medido), painel restaurado com a credencial que loga (`OPENSEARCH_INITIAL_ADMIN_PASSWORD`, só com o dashboards ligado), guarda/doctor conhecem a 5601 efetiva, uninstall derruba o serviço com profile (D7), cookie SSO nunca rotacionado (D8). Contrato pego pelo E2E real: `--no-dashboards` sem nunca ter ligado não cria chave (vermelho 351/1 → fix + 2 mutantes). Prova: sh 310→352/0 por nome, win 241/0, 15+3 mutantes mortos, pre-flight A–G, E2E completo na lima (SSO 302 com/sem `Set-Cookie` como discriminador, A→B→A com CSV limpa, guarda dos dois lados, uninstall zero containers). **Descoberta fora de escopo pendente**: manifesto do dir sobrevive ao uninstall em dir preservado → reinstall pós `--keep-data` quebra com 401 (registro no plano) |
+
+---
+
 ## 1.0.0 — portas configuráveis (subplano pós-4b, 2026-07-31, sem bump)
 
 | # | Plano | Escopo |

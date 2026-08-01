@@ -4,6 +4,18 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## Instalador — 2026-07-31 (flag do Dashboards; sem bump — a versão do app segue 1.0.0)
+
+### `--enable-dashboards` / `--no-dashboards` (Windows: `-EnableDashboards` / `-NoDashboards`)
+
+- A observabilidade vira **flag de instalador** (arqueologia registrada: a flag nunca existiu — pré-v0.57.0 o Dashboards era serviço default; o opt-in por `.env` da Fase 2 nunca ganhou superfície). Ligar grava `DASHBOARDS_ENABLED=true` e faz **merge token-wise** de `dashboards` em `COMPOSE_PROFILES` (valor existente do usuário preservado; `dashboards-extra` jamais confundido); desligar reverte as chaves **e remove o container** — o `--remove-orphans` não pega serviço com profile (medido em pre-flight), então nasce o teardown explícito `compose --profile dashboards rm -sf opensearch-dashboards`, executado DEPOIS do `up` (o app novo nasce antes de o dashboards morrer). O par junto é recusado cedo nos dois instaladores.
+- **Painel final restaurado** (a linha da v0.43.1 que a consolidação removeu): URL + `login admin · password …` lendo **`OPENSEARCH_INITIAL_ADMIN_PASSWORD`** — a chave que o container realmente aceita; num `.env` herdado a `OPENSEARCH_PASSWORD` pode divergir e não logar. Só com o dashboards ligado (a versão antiga imprimia a credencial sempre — vazamento). O SSO do link "Observabilidade" segue abrindo autenticado sem senha nenhuma (a chave de cookie por instalação continua gerada incondicionalmente).
+- Guarda de portas e doctor conhecem a **5601 efetiva** (`DASHBOARDS_PORT`), só quando o estado desejado é ligado — precedência `flag > COMPOSE_PROFILES do processo > .env` (a mesma do compose); com `--no-dashboards`, a 5601 ocupada não bloqueia (é a porta do container que vai morrer). Doctor ganha a linha de estado com contrapositivo. Uninstall passa `--profile dashboards` no `down` — sem isso o container com profile sobrevivia à desinstalação.
+- `--no-dashboards` numa instalação que **nunca ligou** o dashboards não cria chave nenhuma no `.env` — contrato do plano que o E2E real reprovou na primeira implementação (a bancada não cobria o caso; vermelho 351/1 → verde 352/0 + 2 mutantes na guarda nova). O ciclo A→B→A termina com a CSV limpa: o último token `dashboards` remove a linha `COMPOSE_PROFILES` inteira.
+- Prova: bancada sh 310→**352/0** (baseline por nome via TRACE, zero bloco perdido), **15 mutantes sh em 5 rodadas + 3 ps1** todos mortos pela guarda-alvo, pre-flight A-G medindo as premissas do compose (CSV, profile via `.env`, `--remove-orphans`×profile, idempotência do `rm`), bancada win 241/0 e E2E completo na VM lima — install ligado (3 serviços, painel com credencial que loga: OpenSearch 200 via HTTPS e Dashboards 200), SSO 302 **com** `Set-Cookie` ligado e **sem** desligado, re-run preserva `.env` byte-idêntico, desligar remove o container na ordem up→rm, guarda da 5601 ocupada falha ensinando `DASHBOARDS_PORT` (e não bloqueia o desligar), uninstall com dashboards no ar termina com zero containers (relatório no plano concluído).
+
+---
+
 ## Instalador — 2026-07-31 (Fase 4b; sem bump — a versão do app segue 1.0.0)
 
 ### `install.ps1` alinhado à release: flags novas, ajuda sem promessa de clone, painel com o dono real (Fase 4b)

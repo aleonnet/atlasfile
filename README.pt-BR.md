@@ -184,7 +184,7 @@ Para a função de cada script operacional e técnico, veja `docs/11_scripts_and
 | AtlasFile | http://localhost:8000 | Interface web + FastAPI (REST + SSE) num processo só |
 | MCP | http://localhost:8000/mcp | Tools para chat/classificação (mesma API key da API) |
 | OpenSearch | https://localhost:9200 | Motor de busca (admin / `OPENSEARCH_PASSWORD` do `.env`) |
-| Dashboards | http://localhost:5601 | OpenSearch Dashboards (opt-in: `COMPOSE_PROFILES=dashboards` + `DASHBOARDS_ENABLED=true`) |
+| Dashboards | http://localhost:5601 | OpenSearch Dashboards (opt-in: flag `--enable-dashboards`/`-EnableDashboards` do instalador, ou `COMPOSE_PROFILES=dashboards` + `DASHBOARDS_ENABLED=true` no `.env`) |
 
 As portas de host são configuráveis no `.env` (`ATLASFILE_PORT`, `OPENSEARCH_PORT`, `DASHBOARDS_PORT`); o instalador aceita `--port` (`-Port` no Windows). O OpenSearch nasce em `127.0.0.1`.
 

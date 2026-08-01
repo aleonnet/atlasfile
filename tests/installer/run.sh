@@ -567,8 +567,10 @@ corte="$(grep -n 'AF-FIM-DO-TRILHO' "$REPO_ROOT/install.sh" | head -1 | cut -d: 
 # COMENTARIO NAO E CODIGO: sem descartar as linhas de `#`, a guarda casa com o
 # proprio comentario que explica o defeito e reprova o codigo ja corrigido — foi
 # o que aconteceu aqui, e e a mesma armadilha que o check_gutter_holes registra.
+# af_panel_dash imprime RELATORIO (pos-trilho, sem calha) mas mora acima da
+# marca por ser funcao testavel — mesma isencao do un_report/print_banner.
 fora="$(head -n "$corte" "$REPO_ROOT/install.sh" \
-  | awk '/^un_report\(\) \{/{pula=1} pula&&/^\}/{pula=0; next} !pula' \
+  | awk '/^(un_report|af_panel_dash)\(\) \{/{pula=1} pula&&/^\}/{pula=0; next} !pula' \
   | grep -vE "^[[:space:]]*#" \
   | grep -nE "printf '[ ]{2,}" | grep -v 'GUT' | grep -v '^[0-9]*:note()' || true)"
 [ -z "$fora" ] && ok || no "linha(s) fora da calha: $fora"
@@ -1967,6 +1969,171 @@ hardcoded="$(grep -n 'http://localhost:8000' "$REPO_ROOT/install.sh" | grep -v '
 t "e o mesmo para a porta 9200 do OpenSearch na guarda e no doctor"
 hardcoded="$(grep -nE 'in 8000 9200|iTCP:"?9200' "$REPO_ROOT/install.sh" | grep -v '^[0-9]*:[[:space:]]*#' || true)"
 [ -z "$hardcoded" ] && ok || no "porta 9200 literal na guarda/doctor: $hardcoded"
+
+# ── Flag do Dashboards (--enable-dashboards / --no-dashboards) ──────────────
+# O opt-in da Fase 2 vira flag: liga = DASHBOARDS_ENABLED=true + token
+# dashboards no CSV COMPOSE_PROFILES; desliga = o inverso + teardown do
+# container (o --remove-orphans NAO pega servico com profile — medido no T0).
+t "--enable-dashboards e --no-dashboards passam pelo parser"
+bash "$REPO_ROOT/install.sh" --enable-dashboards --help >/dev/null 2>&1 && ok || no "--enable-dashboards recusada"
+bash "$REPO_ROOT/install.sh" --no-dashboards --help >/dev/null 2>&1 && ok || no "--no-dashboards recusada"
+
+# NUNCA via --help (ele sai DENTRO do loop do parser e a validacao pos-loop
+# nao rodaria): o cenario roda o caminho real e exige rc!=0 + mensagem com as
+# DUAS flags + zero ferramenta tocada.
+t "o par contraditorio e recusado cedo, com mensagem, sem tocar ferramenta"
+make_sandbox
+rc=0; out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --enable-dashboards --no-dashboards --yes 2>&1)" || rc=$?
+[ "$rc" != "0" ] && ok || no "aceitou o par contraditorio"
+case "$out" in *"--enable-dashboards"*) ok ;; *) no "mensagem nao cita --enable-dashboards: [$out]" ;; esac
+case "$out" in *"--no-dashboards"*) ok ;; *) no "mensagem nao cita --no-dashboards: [$out]" ;; esac
+[ -s "$CALLS" ] && no "tocou ferramenta antes de recusar: $(cat "$CALLS")" || ok
+
+t "af_env_csv_add: append de verdade, idempotente, e cria a chave ausente"
+make_sandbox
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=outra\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_add COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=outra,dashboards"
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=outra,dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_add COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=outra,dashboards"
+out="$(run_case -- 'cd "$SANDBOX"; : > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_add COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=dashboards"
+
+t "af_env_csv_remove: token-wise; ultimo token remove a LINHA; similar intocado"
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=outra,dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_remove COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=outra"
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_remove COMPOSE_PROFILES dashboards >/dev/null; grep -c "^COMPOSE_PROFILES=" .env || true')"
+assert_eq "$out" "0"
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=dashboards-extra\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_remove COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=dashboards-extra"
+
+t "af_dash_desired: precedencia flag > env do processo > .env, token-wise"
+make_sandbox
+out="$(run_case -- 'INSTALL_DIR="$SANDBOX/nda"; WITH_DASHBOARDS=1; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "LIGADO"
+out="$(run_case COMPOSE_PROFILES=dashboards -- 'INSTALL_DIR="$SANDBOX/nda"; WITH_DASHBOARDS=""; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "LIGADO"
+out="$(run_case COMPOSE_PROFILES=outra -- 'mkdir -p "$SANDBOX/ie"; printf "COMPOSE_PROFILES=dashboards\n" > "$SANDBOX/ie/.env"
+  INSTALL_DIR="$SANDBOX/ie"; WITH_DASHBOARDS=""; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "DESLIGADO"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ie2"; printf "COMPOSE_PROFILES=outra,dashboards\n" > "$SANDBOX/ie2/.env"
+  INSTALL_DIR="$SANDBOX/ie2"; WITH_DASHBOARDS=""; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "LIGADO"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ie3"; printf "COMPOSE_PROFILES=dashboards-extra\n" > "$SANDBOX/ie3/.env"
+  INSTALL_DIR="$SANDBOX/ie3"; WITH_DASHBOARDS=""; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "DESLIGADO"
+out="$(run_case COMPOSE_PROFILES=dashboards -- 'INSTALL_DIR="$SANDBOX/nda"; WITH_DASHBOARDS=0; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "DESLIGADO"
+
+t "af_dash_apply: liga, desliga e sem flag nao toca no .env"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ia"; cd "$SANDBOX/ia"; : > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=1; af_dash_apply >/dev/null
+  printf "%s|%s" "$(grep "^DASHBOARDS_ENABLED=" .env)" "$(grep "^COMPOSE_PROFILES=" .env)"')"
+assert_eq "$out" "DASHBOARDS_ENABLED=true|COMPOSE_PROFILES=dashboards"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ib"; cd "$SANDBOX/ib"
+  printf "DASHBOARDS_ENABLED=true\nCOMPOSE_PROFILES=outra,dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=0; af_dash_apply >/dev/null
+  printf "%s|%s" "$(grep "^DASHBOARDS_ENABLED=" .env)" "$(grep "^COMPOSE_PROFILES=" .env)"')"
+assert_eq "$out" "DASHBOARDS_ENABLED=false|COMPOSE_PROFILES=outra"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ic"; cd "$SANDBOX/ic"; printf "X=1\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=""; af_dash_apply >/dev/null; cat .env')"
+assert_eq "$out" "X=1"
+
+t "af_dash_apply: --no-dashboards sem estado previo nao cria chave; token orfao e revertido"
+out="$(run_case -- 'mkdir -p "$SANDBOX/id"; cd "$SANDBOX/id"; printf "X=1\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=0; af_dash_apply >/dev/null; cat .env')"
+assert_eq "$out" "X=1"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ie4"; cd "$SANDBOX/ie4"; printf "COMPOSE_PROFILES=dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=0; af_dash_apply >/dev/null
+  printf "%s|%s" "$(grep "^DASHBOARDS_ENABLED=" .env)" "$(grep -c "^COMPOSE_PROFILES=" .env || true)"')"
+assert_eq "$out" "DASHBOARDS_ENABLED=false|0"
+
+t "af_resolve_dash_port: env > .env > 5601"
+out="$(run_case DASHBOARDS_PORT=5699 -- 'INSTALL_DIR="$SANDBOX/x"; af_resolve_dash_port; printf %s "$AF_DASH_PORT"')"
+assert_eq "$out" "5699"
+out="$(run_case -- 'mkdir -p "$SANDBOX/dp"; printf "DASHBOARDS_PORT=5777\n" > "$SANDBOX/dp/.env"
+  INSTALL_DIR="$SANDBOX/dp"; af_resolve_dash_port; printf %s "$AF_DASH_PORT"')"
+assert_eq "$out" "5777"
+out="$(run_case -- 'INSTALL_DIR="$SANDBOX/x"; af_resolve_dash_port; printf %s "$AF_DASH_PORT"')"
+assert_eq "$out" "5601"
+
+t "af_panel_dash: ligado imprime URL e a credencial CERTA; desligado, silencio"
+make_sandbox
+out="$(run_case -- 'mkdir -p "$SANDBOX/ip"; cd "$SANDBOX/ip"
+  printf "OPENSEARCH_PASSWORD=chave-errada\nOPENSEARCH_INITIAL_ADMIN_PASSWORD=Af!certa9\nCOMPOSE_PROFILES=dashboards\n" > .env
+  INSTALL_DIR="$SANDBOX/ip"; WITH_DASHBOARDS=""; AF_DASH_PORT=5601; af_panel_dash')"
+printf '%s' "$out" | grep -q 'Af!certa9' && ok || no "nao imprimiu a INITIAL (a que o container aceita): [$out]"
+printf '%s' "$out" | grep -q 'chave-errada' && no "imprimiu OPENSEARCH_PASSWORD (a chave que pode nao logar)" || ok
+printf '%s' "$out" | grep -q '5601' && ok || no "sem a URL do dashboards: [$out]"
+out="$(run_case -- 'mkdir -p "$SANDBOX/iq"; cd "$SANDBOX/iq"
+  printf "OPENSEARCH_INITIAL_ADMIN_PASSWORD=Af!x9\n" > .env
+  INSTALL_DIR="$SANDBOX/iq"; WITH_DASHBOARDS=""; AF_DASH_PORT=5601; af_panel_dash')"
+[ -z "$out" ] && ok || no "painel imprimiu credencial com dashboards DESLIGADO (vazamento): [$out]"
+
+t "af_stack_up conta os servicos de verdade e faz o teardown na ordem up->rm"
+make_sandbox
+out="$(run_case COMPOSE_PROFILES=dashboards -- 'AF_SOURCE_PATH=0; IS_TTY=0; LOG_FILE="$SANDBOX/log"
+  INSTALL_DIR="$SANDBOX"; WITH_DASHBOARDS=""; af_stack_up' 2>&1)"
+printf '%s' "$out" | grep -q 'starting the 3 services' && ok || no "com dashboards nao contou 3: [$out]"
+: > "$CALLS"
+out="$(run_case -- 'AF_SOURCE_PATH=0; IS_TTY=0; LOG_FILE="$SANDBOX/log"
+  INSTALL_DIR="$SANDBOX"; WITH_DASHBOARDS=0; af_stack_up' 2>&1)"
+printf '%s' "$out" | grep -q 'starting the 2 services' && ok || no "desligando nao contou 2: [$out]"
+grep -q 'compose --profile dashboards rm -sf opensearch-dashboards' "$CALLS" \
+  && ok || no "teardown ausente ou com nome errado (typo e no-op silencioso): $(cat "$CALLS")"
+linha_up="$(grep -n ' up -d' "$CALLS" | head -1 | cut -d: -f1)"
+linha_rm="$(grep -n 'rm -sf opensearch-dashboards' "$CALLS" | head -1 | cut -d: -f1)"
+[ -n "$linha_up" ] && [ -n "$linha_rm" ] && [ "$linha_up" -lt "$linha_rm" ] \
+  && ok || no "ordem errada: up=$linha_up rm=$linha_rm (o app novo vem ANTES de perder o dashboards)"
+: > "$CALLS"
+run_case -- 'AF_SOURCE_PATH=0; IS_TTY=0; LOG_FILE="$SANDBOX/log"
+  INSTALL_DIR="$SANDBOX"; WITH_DASHBOARDS=""; af_stack_up' >/dev/null 2>&1
+grep -q 'rm -sf' "$CALLS" && no "teardown rodou sem --no-dashboards" || ok
+
+t "guarda: ligando com 5601 ocupada falha ensinando DASHBOARDS_PORT"
+make_sandbox
+mkdir -p "${SANDBOX}/inst"; printf 'services: {}\n' > "${SANDBOX}/inst/docker-compose.yml"
+cat > "${SANDBOX}/bin/ss" <<EOF
+#!/usr/bin/env bash
+echo "ss \$*" >> "${CALLS}"
+printf 'LISTEN 0 4096 0.0.0.0:5601 0.0.0.0:*\n'
+EOF
+chmod +x "${SANDBOX}/bin/ss"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --yes --no-open --enable-dashboards --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"port 5601 is already in use"*) ok ;; *) no "nao barrou a 5601 ligando: [$out]" ;; esac
+case "$out" in *"DASHBOARDS_PORT"*) ok ;; *) no "a falha nao ensina DASHBOARDS_PORT: [$out]" ;; esac
+
+t "e desligando, a 5601 ocupada NAO bloqueia nem e checada"
+: > "$CALLS"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --yes --no-open --no-dashboards --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"port 5601"*) no "checou/barrou a 5601 num --no-dashboards: [$out]" ;; *) ok ;; esac
+
+t "doctor diz o estado do dashboards e nao afirma ligado sem estado"
+make_uninstall_sandbox
+printf 'COMPOSE_PROFILES=dashboards\nDASHBOARDS_ENABLED=true\n' > "${SANDBOX}/inst/.env"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"observability dashboard"*) ok ;; *) no "doctor nao cita o dashboards: [$out]" ;; esac
+case "$out" in *"enabled"*) ok ;; *) no "doctor nao diz que esta ligado: [$out]" ;; esac
+rm -f "${SANDBOX}/inst/.env"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"observability dashboard"*"enabled (profile active)"*) no "doctor afirmou ligado sem estado nenhum" ;; *) ok ;; esac
+
+t "uninstall com profile: o down leva o --profile dashboards junto"
+make_uninstall_sandbox
+: > "${SANDBOX}/tty_in"
+run_uninstaller --yes --keep-data --delegated >/dev/null 2>&1 || true
+grep -q 'compose --env-file.*--profile dashboards.*down' "$CALLS" \
+  && ok || no "down sem o profile (deixaria o container de pe): $(grep 'compose' "$CALLS" | head -2)"
 
 # Achado do E2E da 4a numa VM real: um uninstall parcial anterior (pasta suja
 # preservada) remove o .env; a re-execucao com --force morria na interpolacao

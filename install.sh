@@ -46,6 +46,7 @@ AF_DOWNLOAD_BASE="${ATLASFILE_DOWNLOAD_BASE:-https://github.com}"
 FROM_SOURCE=0
 AF_PIN_VERSION=""
 AF_PORT_FLAG=""
+WITH_DASHBOARDS=""
 AF_TARGET_VERSION=""
 AF_SOURCE_PATH=0
 AF_FRESH_INSTALL=0
@@ -135,6 +136,11 @@ Install options:
                         asking (Homebrew/Docker/git; sudo on Linux)
   --enable-auth         Enable API authentication (generates a key in
                         config/api_keys.json)
+  --enable-dashboards   Also enable the OpenSearch Dashboards (observability;
+                        an extra ~430 MiB download). Writes the two .env keys
+                        and starts the third service
+  --no-dashboards       Disable the dashboards on a re-run: reverts the .env
+                        keys and removes the container
   --no-open             Do not open the browser at the end
 
 Uninstall options:
@@ -209,6 +215,8 @@ while [ $# -gt 0 ]; do
     --bootstrap-only) BOOTSTRAP_ONLY=1; shift ;;  # hidden: prereqs only, then exit (CI/support)
     --no-open) OPEN_BROWSER=0; shift ;;
     --enable-auth) ENABLE_AUTH=1; shift ;;
+    --enable-dashboards) WITH_DASHBOARDS=1; AF_DASH_ON_SEEN=1; shift ;;
+    --no-dashboards) WITH_DASHBOARDS=0; AF_DASH_OFF_SEEN=1; shift ;;
     # Depreciadas: aceitas e IGNORADAS. O site, o histórico do shell e as
     # anotações de quem já instalou continuam trazendo estas flags; um
     # instalador público que responde "Unknown flag" a um comando que ele mesmo
@@ -230,6 +238,12 @@ while [ $# -gt 0 ]; do
     *) echo "Unknown flag: $1 (use --help)"; exit 1 ;;
   esac
 done
+
+# Par contraditorio recusado CEDO (echo+exit: fail() so nasce mais abaixo).
+# Repetir a MESMA flag e inocuo; um liga e o outro desliga nao tem leitura.
+if [ "${AF_DASH_ON_SEEN:-0}" = "1" ] && [ "${AF_DASH_OFF_SEEN:-0}" = "1" ]; then
+  echo "--enable-dashboards and --no-dashboards cannot be combined - pick one"; exit 1
+fi
 
 # ── Palette and UI primitives ───────────────────────────────────────────────
 # IS_TTY drives interactivity, COLOR_OK drives color (NO_COLOR is honoured),
@@ -1155,6 +1169,108 @@ af_persist_port() {
   ok "ATLASFILE_PORT=${AF_PORT} written to .env (the host port the stack binds)"
 }
 
+# ── Dashboards opt-in como flag (--enable-dashboards / --no-dashboards) ─────
+# O motor (profile no compose, gate no backend, link no frontend, auto-import,
+# SSO) existe desde a v0.57.0; estas funcoes so automatizam as duas chaves do
+# .env e o ciclo de vida do container. Acima do gate de biblioteca para a
+# bancada alcancar (mesma razao do af_stack_up).
+af_csv_has() { # <csv> <token> — comparacao por TOKEN, nunca substring
+  printf '%s' "${1:-}" | tr ',' '\n' | grep -qx "$2"
+}
+
+af_env_csv_add() { # <chave> <token> — no .env do cwd, como set_env
+  local atual novo
+  atual="$(grep "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  af_csv_has "$atual" "$2" && return 0
+  if [ -n "$atual" ]; then novo="${atual},$2"; else novo="$2"; fi
+  set_env "$1" "$novo"
+}
+
+af_env_csv_remove() { # <chave> <token> — remove o token; ultimo token remove a LINHA
+  local atual novo tmp_env
+  atual="$(grep "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  af_csv_has "$atual" "$2" || return 0
+  novo="$(printf '%s' "$atual" | tr ',' '\n' | grep -vx "$2" | paste -sd, - || true)"
+  if [ -n "$novo" ]; then
+    set_env "$1" "$novo"
+  else
+    backup_env_once
+    tmp_env="$(mktemp)"
+    grep -v "^$1=" .env > "$tmp_env" || true
+    mv "$tmp_env" .env
+  fi
+}
+
+# Estado DESEJADO do dashboards, por precedencia (a mesma do compose):
+# flag > COMPOSE_PROFILES do processo > .env > ausente.
+af_dash_desired() {
+  [ "${WITH_DASHBOARDS:-}" = "1" ] && return 0
+  [ "${WITH_DASHBOARDS:-}" = "0" ] && return 1
+  if [ -n "${COMPOSE_PROFILES:-}" ]; then
+    af_csv_has "${COMPOSE_PROFILES}" dashboards
+    return $?
+  fi
+  af_csv_has "$(af_env_lookup COMPOSE_PROFILES)" dashboards
+}
+
+af_dash_apply() { # grava a decisao no .env do cwd (fase 3); sem flag, nao toca
+  case "${WITH_DASHBOARDS:-}" in
+    1)
+      set_env DASHBOARDS_ENABLED true
+      af_env_csv_add COMPOSE_PROFILES dashboards
+      ok "observability dashboard enabled (DASHBOARDS_ENABLED + profile written to .env)"
+      ;;
+    0)
+      # Reverte so o que existe: numa instalacao que nunca ligou o dashboards,
+      # --no-dashboards nao cria chave nenhuma — pego pelo E2E, nao pela bancada.
+      if grep -q "^DASHBOARDS_ENABLED=" .env 2>/dev/null \
+        || af_csv_has "$(grep "^COMPOSE_PROFILES=" .env 2>/dev/null | head -1 | cut -d= -f2- || true)" dashboards; then
+        set_env DASHBOARDS_ENABLED false
+        af_env_csv_remove COMPOSE_PROFILES dashboards
+        ok "observability dashboard disabled in .env"
+      fi
+      ;;
+  esac
+  return 0
+}
+
+# O teardown existe porque o --remove-orphans NAO pega servico com profile
+# (medido no pre-flight): sem ele, --no-dashboards deixaria o container vivo.
+# Nome de SERVICO (nao container_name); a bancada cobra a string completa
+# porque ha versao de compose em que typo de servico e no-op com rc 0.
+af_dash_teardown() {
+  run_step "removing the dashboards container" docker compose --profile dashboards rm -sf opensearch-dashboards
+}
+
+af_resolve_dash_port() {
+  if af_valid_port "${DASHBOARDS_PORT:-}"; then AF_DASH_PORT="${DASHBOARDS_PORT}"
+  else
+    AF_DASH_PORT="$(af_env_lookup DASHBOARDS_PORT)"
+    af_valid_port "$AF_DASH_PORT" || AF_DASH_PORT=5601
+  fi
+  return 0
+}
+
+# Bloco do painel final (le o .env do cwd). SO com o dashboards ligado — a
+# versao v0.43.1 imprimia a credencial sempre que a chave existisse, um
+# vazamento. E a chave certa e a INITIAL: e ela que o container do Dashboards
+# aceita (docker-compose.yml injeta OPENSEARCH_PASSWORD a partir DELA); num
+# .env herdado as duas podem divergir e a outra nao loga.
+af_panel_dash() {
+  af_dash_desired || return 0
+  local os_pass_now
+  os_pass_now="$(grep '^OPENSEARCH_INITIAL_ADMIN_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  [ -n "$os_pass_now" ] || os_pass_now="$(grep '^OPENSEARCH_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  printf '  %s📊 OpenSearch Dashboards%s (operations dashboard "AtlasFile — Operação"):\n' "${BOLD:-}" "${RESET:-}"
+  if [ -n "$os_pass_now" ]; then
+    printf '     http://localhost:%s · login %sadmin%s · password %s%s%s\n\n' \
+      "${AF_DASH_PORT:-5601}" "${BOLD:-}" "${RESET:-}" "${ORANGE:-}" "${os_pass_now}" "${RESET:-}"
+  else
+    printf '     http://localhost:%s\n\n' "${AF_DASH_PORT:-5601}"
+  fi
+  return 0
+}
+
 
 # ── Uninstall ───────────────────────────────────────────────────────────────
 # Facts first (all read-only), then a plan in text with a REMOVED and a
@@ -1721,7 +1837,7 @@ un_compose_down() {
     done
     grep -q '^PROJECTS_HOST_ROOT=' "$envtmp" || printf 'PROJECTS_HOST_ROOT=/tmp\n' >> "$envtmp"
     rc_down=0
-    docker compose --env-file "$envtmp" down $args || rc_down=$?
+    docker compose --env-file "$envtmp" --profile dashboards down $args || rc_down=$?
     rm -f "$envtmp"
     exit "$rc_down" )
 }
@@ -2123,7 +2239,15 @@ run_doctor() {
   local porta
   af_resolve_app_port
   af_resolve_os_port
-  for porta in "$AF_PORT" "$AF_OS_PORT"; do
+  af_resolve_dash_port
+  doc_portas="$AF_PORT $AF_OS_PORT"
+  if af_dash_desired; then
+    doc_portas="$doc_portas $AF_DASH_PORT"
+    doc_ok "observability dashboard: enabled (profile active) — http://localhost:${AF_DASH_PORT}"
+  else
+    doc_warn "observability dashboard: disabled (optional — enable with --enable-dashboards)"
+  fi
+  for porta in $doc_portas; do
     if af_port_busy "$porta"; then
       if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q "atlasfile.*:${porta}"; then
         doc_ok "port ${porta} is AtlasFile's own"
@@ -2749,14 +2873,22 @@ af_fetch_bundle() { # <versao> <dir>
 # A fase 4 em funcao, para a bancada alcancar a decisao build-vs-pull: o
 # caminho bundle NUNCA compila, o caminho fonte NUNCA faz pull.
 af_stack_up() {
+  # Contagem HONESTA: com o profile do dashboards ativo sao 3 servicos.
+  local af_svc_n=2
+  af_dash_desired && af_svc_n=3
   if [ "$AF_SOURCE_PATH" = "1" ]; then
     # o compose base consome a imagem publicada; o overlay devolve o build local
     run_step "building the app image" docker compose -f docker-compose.yml -f docker-compose.build.yml build
-    run_step "starting the 2 services" docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --remove-orphans
+    run_step "starting the ${af_svc_n} services" docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --remove-orphans
   else
     run_step "pulling the app image (published on ghcr.io)" docker compose -f docker-compose.yml pull
-    run_step "starting the 2 services" docker compose -f docker-compose.yml up -d --remove-orphans
+    run_step "starting the ${af_svc_n} services" docker compose -f docker-compose.yml up -d --remove-orphans
   fi
+  # Desligar: o rm vem DEPOIS do up — o app novo (com DASHBOARDS_ENABLED=false)
+  # nasce antes de o dashboards morrer; perder um sem ganhar o outro e o pior
+  # estado. O --remove-orphans nao cobre servico com profile (medido no T0).
+  [ "${WITH_DASHBOARDS:-}" = "0" ] && af_dash_teardown
+  return 0
 }
 
 # ── Test-library guard: `ATLASFILE_INSTALL_LIB=1 source install.sh` stops here ─
@@ -2948,7 +3080,12 @@ fi
 # esperas, painel, browser) tem de falar da mesma porta.
 af_resolve_app_port
 af_resolve_os_port
-for port in "$AF_PORT" "$AF_OS_PORT"; do
+af_resolve_dash_port
+# A 5601 so entra quando o dashboards esta LIGANDO ou ja ativo — com
+# --no-dashboards nao se checa a porta do proprio container a remover.
+af_portas_guarda="$AF_PORT $AF_OS_PORT"
+af_dash_desired && af_portas_guarda="$af_portas_guarda $AF_DASH_PORT"
+for port in $af_portas_guarda; do
   if af_port_busy "$port"; then
     if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q "atlasfile.*:${port}"; then
       info "port ${port} is used by AtlasFile itself (it will be updated)"
@@ -2959,6 +3096,8 @@ for port in "$AF_PORT" "$AF_OS_PORT"; do
       # o remedio na mensagem.
       if [ "$port" = "$AF_PORT" ]; then
         fail "port ${port} is already in use by another process — free it, or install on another port: re-run with --port N (the .env key is ATLASFILE_PORT)"
+      elif [ "$port" = "$AF_DASH_PORT" ]; then
+        fail "port ${port} is already in use by another process — free it, or set DASHBOARDS_PORT in the .env and re-run"
       else
         fail "port ${port} is already in use by another process — free it, or set OPENSEARCH_PORT in the .env and re-run"
       fi
@@ -3092,6 +3231,9 @@ fi
 # A porta pedida pelo usuario (flag/env) persiste no .env — e o que faz o
 # re-run e o compose falarem da mesma porta sem repetir a flag.
 af_persist_port
+# E a decisao do dashboards (flag) vira estado no .env — o mesmo .env que o
+# compose le para o profile.
+af_dash_apply
 
 current_root="$(grep '^PROJECTS_HOST_ROOT=' .env | head -1 | cut -d= -f2- || true)"
 # .env.example placeholders do not count as user configuration
@@ -3261,6 +3403,7 @@ if [ "${ENABLE_AUTH}" = "1" ] && [ -n "${API_KEY_VALUE}" ]; then
   printf '  %s🔑 API key%s (paste it in Settings → Access, in each browser):\n' "$BOLD" "$RESET"
   printf '     %s%s%s\n\n' "$ORANGE" "${API_KEY_VALUE}" "$RESET"
 fi
+af_panel_dash
 
 # ── Próximos passos: só os que se aplicam ───────────────────────────────────
 # O mac-env monta esta lista a partir do que REALMENTE aconteceu (`result_ok
@@ -3283,10 +3426,15 @@ fi
 if [ "$OS_KIND" = "mac" ] && [ "$(host_get docker)" = "created" ]; then
   printf '    • Docker Desktop was installed now — keep it open for the stack to run\n'
 fi
-# Dashboards é opt-in desde a consolidação (1/3 do download de terceiros e o
-# produto opera sem ele) — o passo só aparece porque é decisão pós-instalação.
-printf '    • observability dashboard (optional): set %sDASHBOARDS_ENABLED=true%s and %sCOMPOSE_PROFILES=dashboards%s in .env, then %sdocker compose up -d%s\n' \
-  "$BOLD" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET"
+# Dashboards é opt-in (1/3 do download de terceiros e o produto opera sem
+# ele) — ligado pela flag, o passo manual vira o endereço vivo.
+if af_dash_desired; then
+  printf '    • observability dashboard: up at %shttp://localhost:%s%s (login and password in the panel above)\n' \
+    "$BOLD" "${AF_DASH_PORT:-5601}" "$RESET"
+else
+  printf '    • observability dashboard (optional): re-run with %s--enable-dashboards%s, or set %sDASHBOARDS_ENABLED=true%s and %sCOMPOSE_PROFILES=dashboards%s in .env, then %sdocker compose up -d%s\n' \
+    "$BOLD" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET"
+fi
 printf '    • logs:  cd %s && docker compose logs -f\n' "${INSTALL_DIR}"
 printf '    • stop:  cd %s && docker compose down\n' "${INSTALL_DIR}"
 printf '\n'

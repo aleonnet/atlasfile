@@ -20,6 +20,9 @@
 #   -RepoUrl URL   repository to clone (only with -FromSource)
 #   -Branch NAME   branch to clone (only with -FromSource; default: main)
 #   -Port N        host port for the interface/API (default: 8000)
+#   -EnableDashboards
+#                  also enable the OpenSearch Dashboards (observability)
+#   -NoDashboards  disable the dashboards on a re-run
 #   -NoOpen        do not open the browser at the end
 #   -Yes           non-interactive (accept defaults; does NOT install deps)
 #   -InstallDeps   authorize installing missing prerequisites without prompting
@@ -56,6 +59,8 @@ param(
     [string]$RepoUrl = "",
     [string]$Port = "",
     [switch]$NoOpen,
+    [switch]$EnableDashboards,
+    [switch]$NoDashboards,
     # Depreciadas: aceitas e IGNORADAS. O site publica -WithOllama ha meses e
     # PowerShell recusa parametro desconhecido com erro terminante - quem colar
     # o comando do site nao veria nem o banner.
@@ -126,6 +131,11 @@ Install options:
                   Forwarded as --branch
   -Port N         Host port for the interface/API (default: 8000). Forwarded
                   as --port; the .env key on the WSL side is ATLASFILE_PORT
+  -EnableDashboards
+                  Also enable the OpenSearch Dashboards (observability; an
+                  extra ~430 MiB download). Forwarded as --enable-dashboards
+  -NoDashboards   Disable the dashboards on a re-run (reverts the .env keys
+                  and removes the container). Forwarded as --no-dashboards
   -NoOpen         Do not open the browser at the end
   -Yes            Non-interactive. On its own it NEVER installs system
                   dependencies - see -InstallDeps
@@ -1641,6 +1651,11 @@ if ($Port -and ($Port -notmatch '^[0-9]{1,5}$' -or [int]$Port -lt 1 -or [int]$Po
     Write-Fail "-Port `"$Port`" is not a valid TCP port (1-65535)."
     Stop-Installer 1; return
 }
+# Um liga e o outro desliga: o par junto nao tem leitura honesta.
+if ($EnableDashboards -and $NoDashboards) {
+    Write-Fail "-EnableDashboards and -NoDashboards cannot be combined - pick one."
+    Stop-Installer 1; return
+}
 
 # --- O WSL da para USAR? read-only de verdade -------------------------------
 # So `--status` e `-l -q`. NUNCA `wsl -e`, e e essa a razao de existir.
@@ -2490,6 +2505,8 @@ if ($Version) { $shFlags += " --version $Version" }
 if ($FromSource) { $shFlags += " --from-source" }
 if ($RepoUrl) { $shFlags += " --repo-url $RepoUrl" }
 if ($Port) { $shFlags += " --port $Port" }
+if ($EnableDashboards) { $shFlags += " --enable-dashboards" }
+if ($NoDashboards) { $shFlags += " --no-dashboards" }
 # A divisoria do handover, logo antes de entregar: daqui em diante quem escreve
 # na tela e o outro instalador, e isso precisa ficar visivel. A calha continua,
 # entao o trilho atravessa a fronteira em vez de recomecar do outro lado.
