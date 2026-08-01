@@ -46,6 +46,7 @@ AF_DOWNLOAD_BASE="${ATLASFILE_DOWNLOAD_BASE:-https://github.com}"
 FROM_SOURCE=0
 AF_PIN_VERSION=""
 AF_PORT_FLAG=""
+WITH_DASHBOARDS=""
 AF_TARGET_VERSION=""
 AF_SOURCE_PATH=0
 AF_FRESH_INSTALL=0
@@ -135,6 +136,11 @@ Install options:
                         asking (Homebrew/Docker/git; sudo on Linux)
   --enable-auth         Enable API authentication (generates a key in
                         config/api_keys.json)
+  --enable-dashboards   Also enable the OpenSearch Dashboards (observability;
+                        an extra ~430 MiB download). Writes the two .env keys
+                        and starts the third service
+  --no-dashboards       Disable the dashboards on a re-run: reverts the .env
+                        keys and removes the container
   --no-open             Do not open the browser at the end
 
 Uninstall options:
@@ -209,6 +215,8 @@ while [ $# -gt 0 ]; do
     --bootstrap-only) BOOTSTRAP_ONLY=1; shift ;;  # hidden: prereqs only, then exit (CI/support)
     --no-open) OPEN_BROWSER=0; shift ;;
     --enable-auth) ENABLE_AUTH=1; shift ;;
+    --enable-dashboards) WITH_DASHBOARDS=1; AF_DASH_ON_SEEN=1; shift ;;
+    --no-dashboards) WITH_DASHBOARDS=0; AF_DASH_OFF_SEEN=1; shift ;;
     # Depreciadas: aceitas e IGNORADAS. O site, o histórico do shell e as
     # anotações de quem já instalou continuam trazendo estas flags; um
     # instalador público que responde "Unknown flag" a um comando que ele mesmo
@@ -230,6 +238,12 @@ while [ $# -gt 0 ]; do
     *) echo "Unknown flag: $1 (use --help)"; exit 1 ;;
   esac
 done
+
+# Par contraditorio recusado CEDO (echo+exit: fail() so nasce mais abaixo).
+# Repetir a MESMA flag e inocuo; um liga e o outro desliga nao tem leitura.
+if [ "${AF_DASH_ON_SEEN:-0}" = "1" ] && [ "${AF_DASH_OFF_SEEN:-0}" = "1" ]; then
+  echo "--enable-dashboards and --no-dashboards cannot be combined - pick one"; exit 1
+fi
 
 # ── Palette and UI primitives ───────────────────────────────────────────────
 # IS_TTY drives interactivity, COLOR_OK drives color (NO_COLOR is honoured),
@@ -960,6 +974,14 @@ manifest_set() { # <file> <key> <value> — merge, never downgrading `created`
 host_get() { manifest_get "$AF_HOST_MANIFEST" "$1"; }
 host_set() { manifest_set "$AF_HOST_MANIFEST" "$1" "$2"; }
 
+# O diretório como CHAVE: sem a barra final, que não muda o lugar mas mudaria a
+# comparação de texto (e, sob a guarda nova, barraria a instalação).
+af_dir_key() { # <dir>
+  local d="$1"
+  [ "$d" = "/" ] || d="${d%/}"
+  printf '%s' "$d"
+}
+
 # Anota que ESTA desinstalação preservou este volume, para este diretório.
 # Best-effort como o resto da escrituração: nunca derruba uma desinstalação.
 # A SENHA vai junto, e é obrigatório: o índice de segurança do OpenSearch nasce
@@ -975,6 +997,10 @@ host_set() { manifest_set "$AF_HOST_MANIFEST" "$1" "$2"; }
 af_kept_volume_record() { # <volume> <install dir> <senha do opensearch>
   [ -n "$1" ] || return 0
   mkdir -p "$AF_STATE_DIR" 2>/dev/null || return 0
+  # A chave e comparada como TEXTO na instalacao seguinte: `--dir ~/AtlasFile/`
+  # e `--dir ~/AtlasFile` sao o mesmo lugar e produzem o mesmo nome de volume,
+  # entao a barra final tem de sumir dos dois lados (ver af_kept_volume_peek).
+  set -- "$1" "$(af_dir_key "$2")" "${3:-}"
   printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}" >> "$AF_KEPT_VOLUMES" 2>/dev/null || true
   chmod 600 "$AF_KEPT_VOLUMES" 2>/dev/null || true
   return 0
@@ -1023,19 +1049,20 @@ af_os_password() {
   printf 'Af!%s9' "$r"
 }
 
+# LER, sem consumir. O consumo mora na fase 3, depois de o .env receber a senha
+# (af_kept_volume_forget): entre reclamar e usar existem o download do bundle e
+# a verificação do checksum, e uma falha ali levava junto a única cópia da senha
+# do volume — o índice ficava inacessível para sempre. Reuso continua sendo de
+# uma vez; o que dispara a marca é o .env escrito, não a intenção de instalar.
 AF_KEPT_VOLUME_PASS=""
-af_kept_volume_claim() { # <volume> <install dir> — senha sai em AF_KEPT_VOLUME_PASS
+af_kept_volume_peek() { # <volume> <install dir> — senha sai em AF_KEPT_VOLUME_PASS
   AF_KEPT_VOLUME_PASS=""
   [ -f "$AF_KEPT_VOLUMES" ] || return 1
-  awk -F'\t' -v v="$1" -v d="$2" '$1 == v && $2 == d { achou = 1 } END { exit !achou }' \
+  local d; d="$(af_dir_key "$2")"
+  awk -F'\t' -v v="$1" -v d="$d" '$1 == v && $2 == d { achou = 1 } END { exit !achou }' \
     "$AF_KEPT_VOLUMES" 2>/dev/null || return 1
-  AF_KEPT_VOLUME_PASS="$(awk -F'\t' -v v="$1" -v d="$2" \
+  AF_KEPT_VOLUME_PASS="$(awk -F'\t' -v v="$1" -v d="$d" \
     '$1 == v && $2 == d { print $3; exit }' "$AF_KEPT_VOLUMES" 2>/dev/null || true)"
-  local tmp="${AF_KEPT_VOLUMES}.tmp.$$"
-  if awk -F'\t' -v v="$1" -v d="$2" '!($1 == v && $2 == d)' "$AF_KEPT_VOLUMES" > "$tmp" 2>/dev/null; then
-    mv "$tmp" "$AF_KEPT_VOLUMES" 2>/dev/null || true
-  fi
-  rm -f "$tmp" 2>/dev/null || true
   return 0
 }
 
@@ -1153,6 +1180,108 @@ af_persist_port() {
   [ "${AF_PORT_EXPLICIT:-0}" = "1" ] || return 0
   set_env ATLASFILE_PORT "$AF_PORT"
   ok "ATLASFILE_PORT=${AF_PORT} written to .env (the host port the stack binds)"
+}
+
+# ── Dashboards opt-in como flag (--enable-dashboards / --no-dashboards) ─────
+# O motor (profile no compose, gate no backend, link no frontend, auto-import,
+# SSO) existe desde a v0.57.0; estas funcoes so automatizam as duas chaves do
+# .env e o ciclo de vida do container. Acima do gate de biblioteca para a
+# bancada alcancar (mesma razao do af_stack_up).
+af_csv_has() { # <csv> <token> — comparacao por TOKEN, nunca substring
+  printf '%s' "${1:-}" | tr ',' '\n' | grep -qx "$2"
+}
+
+af_env_csv_add() { # <chave> <token> — no .env do cwd, como set_env
+  local atual novo
+  atual="$(grep "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  af_csv_has "$atual" "$2" && return 0
+  if [ -n "$atual" ]; then novo="${atual},$2"; else novo="$2"; fi
+  set_env "$1" "$novo"
+}
+
+af_env_csv_remove() { # <chave> <token> — remove o token; ultimo token remove a LINHA
+  local atual novo tmp_env
+  atual="$(grep "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  af_csv_has "$atual" "$2" || return 0
+  novo="$(printf '%s' "$atual" | tr ',' '\n' | grep -vx "$2" | paste -sd, - || true)"
+  if [ -n "$novo" ]; then
+    set_env "$1" "$novo"
+  else
+    backup_env_once
+    tmp_env="$(mktemp)"
+    grep -v "^$1=" .env > "$tmp_env" || true
+    mv "$tmp_env" .env
+  fi
+}
+
+# Estado DESEJADO do dashboards, por precedencia (a mesma do compose):
+# flag > COMPOSE_PROFILES do processo > .env > ausente.
+af_dash_desired() {
+  [ "${WITH_DASHBOARDS:-}" = "1" ] && return 0
+  [ "${WITH_DASHBOARDS:-}" = "0" ] && return 1
+  if [ -n "${COMPOSE_PROFILES:-}" ]; then
+    af_csv_has "${COMPOSE_PROFILES}" dashboards
+    return $?
+  fi
+  af_csv_has "$(af_env_lookup COMPOSE_PROFILES)" dashboards
+}
+
+af_dash_apply() { # grava a decisao no .env do cwd (fase 3); sem flag, nao toca
+  case "${WITH_DASHBOARDS:-}" in
+    1)
+      set_env DASHBOARDS_ENABLED true
+      af_env_csv_add COMPOSE_PROFILES dashboards
+      ok "observability dashboard enabled (DASHBOARDS_ENABLED + profile written to .env)"
+      ;;
+    0)
+      # Reverte so o que existe: numa instalacao que nunca ligou o dashboards,
+      # --no-dashboards nao cria chave nenhuma — pego pelo E2E, nao pela bancada.
+      if grep -q "^DASHBOARDS_ENABLED=" .env 2>/dev/null \
+        || af_csv_has "$(grep "^COMPOSE_PROFILES=" .env 2>/dev/null | head -1 | cut -d= -f2- || true)" dashboards; then
+        set_env DASHBOARDS_ENABLED false
+        af_env_csv_remove COMPOSE_PROFILES dashboards
+        ok "observability dashboard disabled in .env"
+      fi
+      ;;
+  esac
+  return 0
+}
+
+# O teardown existe porque o --remove-orphans NAO pega servico com profile
+# (medido no pre-flight): sem ele, --no-dashboards deixaria o container vivo.
+# Nome de SERVICO (nao container_name); a bancada cobra a string completa
+# porque ha versao de compose em que typo de servico e no-op com rc 0.
+af_dash_teardown() {
+  run_step "removing the dashboards container" docker compose --profile dashboards rm -sf opensearch-dashboards
+}
+
+af_resolve_dash_port() {
+  if af_valid_port "${DASHBOARDS_PORT:-}"; then AF_DASH_PORT="${DASHBOARDS_PORT}"
+  else
+    AF_DASH_PORT="$(af_env_lookup DASHBOARDS_PORT)"
+    af_valid_port "$AF_DASH_PORT" || AF_DASH_PORT=5601
+  fi
+  return 0
+}
+
+# Bloco do painel final (le o .env do cwd). SO com o dashboards ligado — a
+# versao v0.43.1 imprimia a credencial sempre que a chave existisse, um
+# vazamento. E a chave certa e a INITIAL: e ela que o container do Dashboards
+# aceita (docker-compose.yml injeta OPENSEARCH_PASSWORD a partir DELA); num
+# .env herdado as duas podem divergir e a outra nao loga.
+af_panel_dash() {
+  af_dash_desired || return 0
+  local os_pass_now
+  os_pass_now="$(grep '^OPENSEARCH_INITIAL_ADMIN_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  [ -n "$os_pass_now" ] || os_pass_now="$(grep '^OPENSEARCH_PASSWORD=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  printf '  %s📊 OpenSearch Dashboards%s (operations dashboard "AtlasFile — Operação"):\n' "${BOLD:-}" "${RESET:-}"
+  if [ -n "$os_pass_now" ]; then
+    printf '     http://localhost:%s · login %sadmin%s · password %s%s%s\n\n' \
+      "${AF_DASH_PORT:-5601}" "${BOLD:-}" "${RESET:-}" "${ORANGE:-}" "${os_pass_now}" "${RESET:-}"
+  else
+    printf '     http://localhost:%s\n\n' "${AF_DASH_PORT:-5601}"
+  fi
+  return 0
 }
 
 
@@ -1721,7 +1850,7 @@ un_compose_down() {
     done
     grep -q '^PROJECTS_HOST_ROOT=' "$envtmp" || printf 'PROJECTS_HOST_ROOT=/tmp\n' >> "$envtmp"
     rc_down=0
-    docker compose --env-file "$envtmp" down $args || rc_down=$?
+    docker compose --env-file "$envtmp" --profile dashboards down $args || rc_down=$?
     rm -f "$envtmp"
     exit "$rc_down" )
 }
@@ -2123,7 +2252,15 @@ run_doctor() {
   local porta
   af_resolve_app_port
   af_resolve_os_port
-  for porta in "$AF_PORT" "$AF_OS_PORT"; do
+  af_resolve_dash_port
+  doc_portas="$AF_PORT $AF_OS_PORT"
+  if af_dash_desired; then
+    doc_portas="$doc_portas $AF_DASH_PORT"
+    doc_ok "observability dashboard: enabled (profile active) — http://localhost:${AF_DASH_PORT}"
+  else
+    doc_warn "observability dashboard: disabled (optional — enable with --enable-dashboards)"
+  fi
+  for porta in $doc_portas; do
     if af_port_busy "$porta"; then
       if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q "atlasfile.*:${porta}"; then
         doc_ok "port ${porta} is AtlasFile's own"
@@ -2641,6 +2778,48 @@ af_fresh_install_dir() { # <dir>
   return 0
 }
 
+# O que fazer com um volume de dados que JA EXISTE antes de instalar.
+#
+# A pergunta certa nao e "o dir e novo?" — e "a fase 3 vai GERAR uma senha
+# nova?". As duas coincidiam so por acidente (dir novo nunca tem .env), e o
+# acidente cobrou caro: um `--uninstall --keep-data` que PRESERVA a pasta deixa
+# o manifesto para tras (o uninstall so apaga o do HOST), o dir deixa de ser
+# "fresh" para sempre, e a instalacao seguinte gerava senha nova contra o indice
+# de seguranca antigo. Stack inteiro no ar, 401 em tudo, sem uma linha de aviso
+# — medido numa VM Ubuntu no ciclo real. `fresh` nunca foi criterio para
+# REUSAR; e criterio para saber DE QUEM e o volume que ninguem reclamou.
+#
+# A decisao inteira mora aqui, e nao no `if` da fase 1, porque e ela que precisa
+# de prova: a fase 1 fica abaixo do gate de biblioteca, e um mutante que mexesse
+# so no `if` passaria por qualquer teste de funcao.
+AF_VOLUME_DECISION=""
+AF_REUSE_VOLUME=""
+af_volume_decide() { # <volume> <install dir> — resultado em AF_VOLUME_DECISION
+  AF_VOLUME_DECISION="proceed"
+  # Com .env no lugar a senha ja existe: nada a decidir e, sobretudo, nada a
+  # consumir — queimar o registro num re-run de rotina perderia a senha do
+  # volume sem entregar nada em troca.
+  [ -f "${2}/.env" ] && return 0
+  docker volume ls -q 2>/dev/null | grep -qx "$1" || return 0
+  if af_kept_volume_peek "$1" "$2"; then
+    if [ -n "$AF_KEPT_VOLUME_PASS" ]; then
+      AF_REUSE_OS_PASS="$AF_KEPT_VOLUME_PASS"
+      AF_REUSE_VOLUME="$1"
+      AF_VOLUME_DECISION="reuse"
+    else
+      # Registro nosso, mas sem a senha (a desinstalacao nao conseguiu le-la).
+      # Reusar assim anuncia sucesso e entrega 401 em tudo.
+      AF_VOLUME_DECISION="nopass"
+    fi
+  elif af_fresh_install_dir "$2"; then
+    AF_VOLUME_DECISION="refuse"
+  else
+    # Nosso diretorio, volume antigo vivo, senha que ninguem tem.
+    AF_VOLUME_DECISION="nopass"
+  fi
+  return 0
+}
+
 # Downgrade e decisao do usuario, nunca um default (mesma familia da escolha do
 # volume no uninstall): headless FALHA em vez de adivinhar, e --yes nao pula
 # esta confirmacao especifica — o indice do OpenSearch escrito pela versao mais
@@ -2749,14 +2928,22 @@ af_fetch_bundle() { # <versao> <dir>
 # A fase 4 em funcao, para a bancada alcancar a decisao build-vs-pull: o
 # caminho bundle NUNCA compila, o caminho fonte NUNCA faz pull.
 af_stack_up() {
+  # Contagem HONESTA: com o profile do dashboards ativo sao 3 servicos.
+  local af_svc_n=2
+  af_dash_desired && af_svc_n=3
   if [ "$AF_SOURCE_PATH" = "1" ]; then
     # o compose base consome a imagem publicada; o overlay devolve o build local
     run_step "building the app image" docker compose -f docker-compose.yml -f docker-compose.build.yml build
-    run_step "starting the 2 services" docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --remove-orphans
+    run_step "starting the ${af_svc_n} services" docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --remove-orphans
   else
     run_step "pulling the app image (published on ghcr.io)" docker compose -f docker-compose.yml pull
-    run_step "starting the 2 services" docker compose -f docker-compose.yml up -d --remove-orphans
+    run_step "starting the ${af_svc_n} services" docker compose -f docker-compose.yml up -d --remove-orphans
   fi
+  # Desligar: o rm vem DEPOIS do up — o app novo (com DASHBOARDS_ENABLED=false)
+  # nasce antes de o dashboards morrer; perder um sem ganhar o outro e o pior
+  # estado. O --remove-orphans nao cobre servico com profile (medido no T0).
+  [ "${WITH_DASHBOARDS:-}" = "0" ] && af_dash_teardown
+  return 0
 }
 
 # ── Test-library guard: `ATLASFILE_INSTALL_LIB=1 source install.sh` stops here ─
@@ -2912,25 +3099,22 @@ if [ -n "${other_dir}" ]; then
   info "existing instance found at: ${other_dir}"
   fail "the directory ${INSTALL_DIR} would produce the same docker project name ('${compose_project}') as the instance above — they would share containers and volumes. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the other instance first."
 fi
-# `af_fresh_install_dir` e nao `.git`: uma instalacao bundle re-executada nao
-# tem .git, e so o manifesto prova que o volume encontrado e DESTA instalacao —
-# sem isso o re-run seria barrado como se adotasse a instancia de outro.
-if af_fresh_install_dir "${INSTALL_DIR}" && docker volume ls -q 2>/dev/null | grep -qx "${compose_project}_opensearch_data"; then
-  # O volume pode ser NOSSO, guardado de propósito por um `--uninstall
-  # --keep-data` neste mesmo diretório. Sem essa distinção o plano prometia "a
-  # future reinstall reuses it" e a instalação seguinte recusava o dado como se
-  # fosse de outra instância — com dois remédios que não o devolvem. Era um beco
-  # sem saída, e foi medido numa VM Ubuntu.
-  if af_kept_volume_claim "${compose_project}_opensearch_data" "${INSTALL_DIR}"; then
-    info "reusing the data volume you kept on the last uninstall (${compose_project}_opensearch_data)"
-    # A senha viaja com o volume até a fase 3. Sem ela o stack sobe e não
-    # funciona: o índice de segurança do OpenSearch guarda a senha da PRIMEIRA
-    # subida, e uma gerada agora só produz "Authentication finally failed".
-    AF_REUSE_OS_PASS="$AF_KEPT_VOLUME_PASS"
-  else
-    fail "fresh install into ${INSTALL_DIR}, but the volume '${compose_project}_opensearch_data' already holds data from another instance. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the volume (docker volume rm) if you are sure you no longer need it."
-  fi
-fi
+# A decisão inteira mora em `af_volume_decide` (acima do gate de biblioteca),
+# porque é ela que precisa de prova; aqui em baixo fica só a tradução em tela.
+# A senha viaja com o volume até a fase 3: o índice de segurança do OpenSearch
+# guarda a senha da PRIMEIRA subida, e uma gerada agora só produz
+# "Authentication finally failed".
+af_volume_decide "${compose_project}_opensearch_data" "${INSTALL_DIR}"
+case "$AF_VOLUME_DECISION" in
+  reuse)
+    info "reusing the data volume you kept on the last uninstall (${compose_project}_opensearch_data)" ;;
+  refuse)
+    fail "fresh install into ${INSTALL_DIR}, but the volume '${compose_project}_opensearch_data' already holds data from another instance. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the volume (docker volume rm) if you are sure you no longer need it." ;;
+  nopass)
+    fail "the volume '${compose_project}_opensearch_data' holds an OpenSearch index from an earlier install in ${INSTALL_DIR}, and its admin password is not recorded — installing now would generate a new one and every request would answer 401. Restore the .env you had (look for .env.backup.* in ${INSTALL_DIR}), or re-run with --uninstall --purge-data to erase the index and start clean (your documents and the journal on disk are the source: Reconcile rebuilds it)." ;;
+  proceed)
+    : ;;
+esac
 
 # Container names are fixed (atlasfile-*): even with distinct project names,
 # only one instance can exist at a time. If the containers belong to another
@@ -2948,7 +3132,12 @@ fi
 # esperas, painel, browser) tem de falar da mesma porta.
 af_resolve_app_port
 af_resolve_os_port
-for port in "$AF_PORT" "$AF_OS_PORT"; do
+af_resolve_dash_port
+# A 5601 so entra quando o dashboards esta LIGANDO ou ja ativo — com
+# --no-dashboards nao se checa a porta do proprio container a remover.
+af_portas_guarda="$AF_PORT $AF_OS_PORT"
+af_dash_desired && af_portas_guarda="$af_portas_guarda $AF_DASH_PORT"
+for port in $af_portas_guarda; do
   if af_port_busy "$port"; then
     if docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -q "atlasfile.*:${port}"; then
       info "port ${port} is used by AtlasFile itself (it will be updated)"
@@ -2959,6 +3148,8 @@ for port in "$AF_PORT" "$AF_OS_PORT"; do
       # o remedio na mensagem.
       if [ "$port" = "$AF_PORT" ]; then
         fail "port ${port} is already in use by another process — free it, or install on another port: re-run with --port N (the .env key is ATLASFILE_PORT)"
+      elif [ "$port" = "$AF_DASH_PORT" ]; then
+        fail "port ${port} is already in use by another process — free it, or set DASHBOARDS_PORT in the .env and re-run"
       else
         fail "port ${port} is already in use by another process — free it, or set OPENSEARCH_PORT in the .env and re-run"
       fi
@@ -3053,6 +3244,11 @@ if [ ! -f .env ]; then
       .env > "${tmp_env}" && mv "${tmp_env}" .env
   if [ -n "${AF_REUSE_OS_PASS:-}" ]; then
     ok ".env created (OpenSearch password restored from the volume you kept)"
+    # O registro morre AQUI, e não na fase 1: entre decidir e escrever existem o
+    # download do bundle e a verificação do checksum, e uma falha ali levava
+    # junto a única cópia da senha do volume. Reuso segue sendo de uma vez — a
+    # marca é o .env escrito, não a intenção de instalar.
+    af_kept_volume_forget "$AF_REUSE_VOLUME"
   else
     ok ".env created (OpenSearch password generated for this install)"
   fi
@@ -3092,6 +3288,9 @@ fi
 # A porta pedida pelo usuario (flag/env) persiste no .env — e o que faz o
 # re-run e o compose falarem da mesma porta sem repetir a flag.
 af_persist_port
+# E a decisao do dashboards (flag) vira estado no .env — o mesmo .env que o
+# compose le para o profile.
+af_dash_apply
 
 current_root="$(grep '^PROJECTS_HOST_ROOT=' .env | head -1 | cut -d= -f2- || true)"
 # .env.example placeholders do not count as user configuration
@@ -3261,6 +3460,7 @@ if [ "${ENABLE_AUTH}" = "1" ] && [ -n "${API_KEY_VALUE}" ]; then
   printf '  %s🔑 API key%s (paste it in Settings → Access, in each browser):\n' "$BOLD" "$RESET"
   printf '     %s%s%s\n\n' "$ORANGE" "${API_KEY_VALUE}" "$RESET"
 fi
+af_panel_dash
 
 # ── Próximos passos: só os que se aplicam ───────────────────────────────────
 # O mac-env monta esta lista a partir do que REALMENTE aconteceu (`result_ok
@@ -3283,10 +3483,15 @@ fi
 if [ "$OS_KIND" = "mac" ] && [ "$(host_get docker)" = "created" ]; then
   printf '    • Docker Desktop was installed now — keep it open for the stack to run\n'
 fi
-# Dashboards é opt-in desde a consolidação (1/3 do download de terceiros e o
-# produto opera sem ele) — o passo só aparece porque é decisão pós-instalação.
-printf '    • observability dashboard (optional): set %sDASHBOARDS_ENABLED=true%s and %sCOMPOSE_PROFILES=dashboards%s in .env, then %sdocker compose up -d%s\n' \
-  "$BOLD" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET"
+# Dashboards é opt-in (1/3 do download de terceiros e o produto opera sem
+# ele) — ligado pela flag, o passo manual vira o endereço vivo.
+if af_dash_desired; then
+  printf '    • observability dashboard: up at %shttp://localhost:%s%s (login and password in the panel above)\n' \
+    "$BOLD" "${AF_DASH_PORT:-5601}" "$RESET"
+else
+  printf '    • observability dashboard (optional): re-run with %s--enable-dashboards%s, or set %sDASHBOARDS_ENABLED=true%s and %sCOMPOSE_PROFILES=dashboards%s in .env, then %sdocker compose up -d%s\n' \
+    "$BOLD" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET" "$BOLD" "$RESET"
+fi
 printf '    • logs:  cd %s && docker compose logs -f\n' "${INSTALL_DIR}"
 printf '    • stop:  cd %s && docker compose down\n' "${INSTALL_DIR}"
 printf '\n'

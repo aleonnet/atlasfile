@@ -567,8 +567,10 @@ corte="$(grep -n 'AF-FIM-DO-TRILHO' "$REPO_ROOT/install.sh" | head -1 | cut -d: 
 # COMENTARIO NAO E CODIGO: sem descartar as linhas de `#`, a guarda casa com o
 # proprio comentario que explica o defeito e reprova o codigo ja corrigido — foi
 # o que aconteceu aqui, e e a mesma armadilha que o check_gutter_holes registra.
+# af_panel_dash imprime RELATORIO (pos-trilho, sem calha) mas mora acima da
+# marca por ser funcao testavel — mesma isencao do un_report/print_banner.
 fora="$(head -n "$corte" "$REPO_ROOT/install.sh" \
-  | awk '/^un_report\(\) \{/{pula=1} pula&&/^\}/{pula=0; next} !pula' \
+  | awk '/^(un_report|af_panel_dash)\(\) \{/{pula=1} pula&&/^\}/{pula=0; next} !pula' \
   | grep -vE "^[[:space:]]*#" \
   | grep -nE "printf '[ ]{2,}" | grep -v 'GUT' | grep -v '^[0-9]*:note()' || true)"
 [ -z "$fora" ] && ok || no "linha(s) fora da calha: $fora"
@@ -744,8 +746,19 @@ t "o volume preservado e reconhecido na instalacao seguinte, no MESMO diretorio"
 out="$(run_case -- '
   AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
   af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!senha9
-  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile && printf REUSA')"
+  af_kept_volume_peek   atlasfile_opensearch_data /home/x/AtlasFile && printf REUSA')"
 case "$out" in *REUSA*) ok ;; *) no "nao reconheceu o proprio registro: $out" ;; esac
+
+# Os tres campos, cobrados por CONTEUDO: um registro que perde o diretorio (ou
+# a senha) parece certo no `test -f` e nunca reusa nada.
+t "o registro guarda os tres campos: volume, diretorio e senha"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/inst"; printf "OPENSEARCH_PASSWORD=Af!doEnv9\n" > "$SANDBOX/inst/.env"
+  af_kept_volume_record atlasfile_opensearch_data "$SANDBOX/inst" \
+    "$(grep "^OPENSEARCH_PASSWORD=" "$SANDBOX/inst/.env" | cut -d= -f2-)"
+  awk -F"\t" "{ printf \"%s|%s|%s\", \$1, \$2, \$3 }" "$AF_KEPT_VOLUMES"')"
+case "$out" in "atlasfile_opensearch_data|"*"/inst|Af!doEnv9") ok ;; *) no "linha do registro fora do contrato: $out" ;; esac
 
 # A SENHA e obrigatoria, nao acessorio: o indice de seguranca do OpenSearch nasce
 # com a senha da primeira subida e nao muda. Reusar o volume com senha nova
@@ -754,8 +767,8 @@ case "$out" in *REUSA*) ok ;; *) no "nao reconheceu o proprio registro: $out" ;;
 t "e a senha do volume volta junto, senao o reuso sobe quebrado"
 out="$(run_case -- '
   AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
-  af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile "Af!senhaDoVolume9"
-  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile
+  af_kept_volume_record atlasfile_opensearch_data /home/x/ComSenha "Af!senhaDoVolume9"
+  af_kept_volume_peek   atlasfile_opensearch_data /home/x/ComSenha
   printf "SENHA:%s" "$AF_KEPT_VOLUME_PASS"')"
 case "$out" in *"SENHA:Af!senhaDoVolume9"*) ok ;; *) no "a senha nao voltou: $out" ;; esac
 
@@ -812,16 +825,29 @@ t "mas NAO em outro diretorio — adocao silenciosa continua barrada"
 out="$(run_case -- '
   AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
   af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!s9
-  af_kept_volume_claim  atlasfile_opensearch_data /home/x/Outro || printf BARRADO')"
+  af_kept_volume_peek   atlasfile_opensearch_data /home/x/Outro || printf BARRADO')"
 case "$out" in *BARRADO*) ok ;; *) no "adotou volume de outro diretorio: $out" ;; esac
 
+# O consumo saiu do PEEK e virou o `forget` que a fase 3 chama depois de
+# escrever o .env — antes, uma falha de rede na fase 2 (entre reclamar e usar)
+# levava a senha do volume junto. A propriedade e a mesma; o que mudou e a
+# marca que a dispara: o .env escrito, nao a intencao de instalar.
 t "e o reuso e de UMA vez, nao permissao eterna"
 out="$(run_case -- '
   AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
   af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!s9
-  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile >/dev/null
-  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile || printf CONSUMIDO')"
+  af_kept_volume_peek   atlasfile_opensearch_data /home/x/AtlasFile >/dev/null
+  af_kept_volume_forget atlasfile_opensearch_data
+  af_kept_volume_peek   atlasfile_opensearch_data /home/x/AtlasFile || printf CONSUMIDO')"
 case "$out" in *CONSUMIDO*) ok ;; *) no "o registro sobreviveu ao reuso: $out" ;; esac
+
+t "e enquanto o .env nao e escrito, o registro continua la para a proxima tentativa"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!s9
+  af_kept_volume_peek   atlasfile_opensearch_data /home/x/AtlasFile >/dev/null
+  af_kept_volume_peek   atlasfile_opensearch_data /home/x/AtlasFile && printf SOBREVIVEU')"
+case "$out" in *SOBREVIVEU*) ok ;; *) no "o peek consumiu o registro (falha na fase 2 perderia a senha): $out" ;; esac
 
 # Apagado o indice, nao ha reuso a prometer.
 t "apagar o volume esquece o registro"
@@ -829,7 +855,7 @@ out="$(run_case -- '
   AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
   af_kept_volume_record atlasfile_opensearch_data /home/x/AtlasFile Af!s9
   af_kept_volume_forget atlasfile_opensearch_data
-  af_kept_volume_claim  atlasfile_opensearch_data /home/x/AtlasFile || printf ESQUECIDO')"
+  af_kept_volume_peek   atlasfile_opensearch_data /home/x/AtlasFile || printf ESQUECIDO')"
 case "$out" in *ESQUECIDO*) ok ;; *) no "registro sobreviveu ao purge: $out" ;; esac
 
 # O registro so vale se SOBREVIVER ao rm-state, que apaga o manifesto no fim da
@@ -1598,6 +1624,233 @@ run_case -- 'af_fresh_install_dir "$SANDBOX/comgit"' && no "dir com .git passou 
 run_case -- 'mkdir -p "$SANDBOX/commf"; : > "$SANDBOX/commf/.atlasfile-install-manifest"
   af_fresh_install_dir "$SANDBOX/commf"' && no "dir com manifesto passou por fresh (re-run de bundle seria barrado pelo guard de volume)" || ok
 
+# ── O portao do volume: reusar, recusar, ou nao decidir nada ────────────────
+# O defeito que estas guardas trancam, medido numa VM: depois de um
+# `--uninstall --keep-data` que PRESERVA a pasta, o manifesto do diretorio fica
+# para tras (o uninstall so apaga o do HOST) e o dir deixa de ser "fresh" para
+# sempre. O portao antigo era `if af_fresh_install_dir && volume existe`, entao
+# o `&&` curto-circuitava: o registro do volume nunca era reclamado e a senha
+# nova subia contra o indice de seguranca antigo — stack inteiro no ar, 401 em
+# tudo, sem uma linha de aviso.
+#
+# "Dir fresh" e "vai gerar senha nova" so coincidiam por acidente: o predicado
+# honesto e a AUSENCIA do .env, e e ele que manda agora.
+make_sandbox
+cat > "${SANDBOX}/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in "volume ls") echo "vol_reusavel" ;; esac
+exit 0
+STUB
+chmod +x "${SANDBOX}/bin/docker"
+
+t "af_volume_decide: dir com manifesto e registro REUSA — o beco sem saida do --keep-data"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/mf"; : > "$SANDBOX/mf/.atlasfile-install-manifest"
+  af_kept_volume_record vol_reusavel "$SANDBOX/mf" "Af!doVolume9"
+  af_volume_decide vol_reusavel "$SANDBOX/mf"; printf "%s" "$AF_VOLUME_DECISION"')"
+assert_eq "$out" "reuse"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/gt/.git"
+  af_kept_volume_record vol_reusavel "$SANDBOX/gt" "Af!doVolume9"
+  af_volume_decide vol_reusavel "$SANDBOX/gt"; printf "%s" "$AF_VOLUME_DECISION"')"
+assert_eq "$out" "reuse"
+
+# Regressao do fix anterior: o caminho que JA funcionava (pasta removida no
+# uninstall, dir volta a ser fresh) nao pode morrer com a correcao. Sem esta
+# assercao, inverter a ordem das perguntas dentro da funcao passa verde.
+t "af_volume_decide: dir fresh com registro tambem reusa, como sempre reusou"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/fr"
+  af_kept_volume_record vol_reusavel "$SANDBOX/fr" "Af!doVolume9"
+  af_volume_decide vol_reusavel "$SANDBOX/fr"; printf "%s" "$AF_VOLUME_DECISION"')"
+assert_eq "$out" "reuse"
+
+# O que a fase 3 consome e AF_REUSE_OS_PASS, nao AF_KEPT_VOLUME_PASS: testar a
+# segunda testaria a primitiva antiga e deixaria vivo o mutante que decide
+# reusar e nao entrega a senha.
+t "af_volume_decide: a decisao ja entrega a senha que a fase 3 vai escrever"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/sn"; af_kept_volume_record vol_reusavel "$SANDBOX/sn" "Af!doVolume9"
+  af_volume_decide vol_reusavel "$SANDBOX/sn"
+  printf "%s|%s" "$AF_VOLUME_DECISION" "$(af_os_password)"')"
+assert_eq "$out" "reuse|Af!doVolume9"
+
+t "af_volume_decide: registro SEM senha nao vira reuso — reusar sem ela sobe o stack quebrado"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/sv"; : > "$SANDBOX/sv/.atlasfile-install-manifest"
+  af_kept_volume_record vol_reusavel "$SANDBOX/sv" ""
+  af_volume_decide vol_reusavel "$SANDBOX/sv"; printf "%s" "$AF_VOLUME_DECISION"')"
+assert_eq "$out" "nopass"
+
+t "af_volume_decide: volume estranho num dir novo continua sendo RECUSADO"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/es"; af_kept_volume_record vol_reusavel "$SANDBOX/outro" "Af!doVolume9"
+  af_volume_decide vol_reusavel "$SANDBOX/es"; printf "%s" "$AF_VOLUME_DECISION"')"
+assert_eq "$out" "refuse"
+
+# O silencio era o pior desfecho: dir NOSSO, volume antigo vivo, senha que
+# ninguem tem. Instalar ali sobe cinco containers que respondem 401 a tudo.
+t "af_volume_decide: nosso dir com volume antigo e senha desconhecida nao passa calado"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/nd"; : > "$SANDBOX/nd/.atlasfile-install-manifest"
+  af_volume_decide vol_reusavel "$SANDBOX/nd"; printf "%s" "$AF_VOLUME_DECISION"')"
+assert_eq "$out" "nopass"
+
+# Com .env no lugar a senha JA existe: nao ha decisao a tomar — e, sobretudo,
+# nao se pode queimar o registro. Consumi-lo aqui seria perder a senha do
+# volume num re-run de rotina.
+t "af_volume_decide: com .env no lugar nada e decidido e o registro fica intacto"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/ce"; printf "OPENSEARCH_PASSWORD=Af!doEnv9\n" > "$SANDBOX/ce/.env"
+  af_kept_volume_record vol_reusavel "$SANDBOX/ce" "Af!doVolume9"
+  af_volume_decide vol_reusavel "$SANDBOX/ce"
+  printf "%s|%s" "$AF_VOLUME_DECISION" "$(grep -c "$SANDBOX/ce" "$AF_KEPT_VOLUMES")"')"
+assert_eq "$out" "proceed|1"
+
+t "af_volume_decide: sem volume no host, nada a decidir e instalacao segue"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/nv"
+  af_volume_decide vol_que_nao_existe "$SANDBOX/nv"; printf "%s" "$AF_VOLUME_DECISION"')"
+assert_eq "$out" "proceed"
+
+# `--dir ~/AtlasFile/` e `--dir ~/AtlasFile` sao o MESMO lugar e produzem o
+# mesmo nome de volume; sem normalizar, a chave do registro divergiria e a
+# instalacao seria BARRADA pela guarda nova.
+t "af_volume_decide: barra final no --dir nao quebra o casamento do registro"
+out="$(run_case -- '
+  AF_STATE_DIR="$SANDBOX/estado"; AF_KEPT_VOLUMES="$AF_STATE_DIR/kept-volumes"
+  mkdir -p "$SANDBOX/bf"; af_kept_volume_record vol_reusavel "$SANDBOX/bf" "Af!doVolume9"
+  af_volume_decide vol_reusavel "$SANDBOX/bf/"; printf "%s" "$AF_VOLUME_DECISION"')"
+assert_eq "$out" "reuse"
+
+# ── E o portao pelo caminho REAL: o instalador inteiro ──────────────────────
+# A decisao acima e testavel isolada, mas quem a FIA e a fase 1 — que mora
+# abaixo do gate de biblioteca. Um mutante que implemente a funcao certinha e
+# nao mexa no call site passaria em tudo acima e deixaria o defeito medido
+# intacto. Entao a corrida inteira roda aqui: release LOCAL (tar e sha reais),
+# docker de mentira que falha no `pull` de proposito — a corrida morre na fase
+# 4, ja com a fase 3 tendo escrito o .env. Custo medido: ~1,4s por caso.
+# Roda SEM subshell de proposito: `make_sandbox` troca o $SANDBOX, e dentro de
+# `$(...)` essa troca nao voltaria — as assercoes de arquivo (o .env escrito, o
+# registro consumido) leriam a sandbox do bloco anterior e mediriam nada. A
+# saida da corrida vai para AF_CORRIDA_OUT.
+AF_CORRIDA_OUT=""
+af_corrida_gate() { # <fresh|manifesto|git> <semreg|reg|regvazio|regoutro> <volume|semvolume> [comenv]
+  make_sandbox
+  af_release_local 9.9.9
+  stub_curl_release
+  mkdir -p "${SANDBOX}/inst" "${SANDBOX}/.atlasfile"
+  cat > "${SANDBOX}/bin/docker" <<EOF
+#!/usr/bin/env bash
+echo "docker \$*" >> "${CALLS}"
+case "\$1 \$2" in
+  "volume ls")       [ "${3}" = "volume" ] && echo "inst_opensearch_data" ;;
+  "compose version") echo "Docker Compose version v2.30.0" ;;
+  "compose -f")      case "\$*" in *pull*) exit 1 ;; esac ;;
+esac
+exit 0
+EOF
+  chmod +x "${SANDBOX}/bin/docker"
+  case "$1" in
+    manifesto) : > "${SANDBOX}/inst/.atlasfile-install-manifest" ;;
+    git)       mkdir -p "${SANDBOX}/inst/.git"
+               printf 'PROJECTS_HOST_ROOT=%s/Projects\nOPENSEARCH_PASSWORD=Troque-Esta!Senha123\nOPENSEARCH_INITIAL_ADMIN_PASSWORD=Troque-Esta!Senha123\n' "$SANDBOX" > "${SANDBOX}/inst/.env.example" ;;
+  esac
+  case "$2" in
+    reg)      printf 'inst_opensearch_data\t%s/inst\tAf!SenhaDoVolume9\n' "$SANDBOX" > "${SANDBOX}/.atlasfile/kept-volumes" ;;
+    regvazio) printf 'inst_opensearch_data\t%s/inst\t\n' "$SANDBOX" > "${SANDBOX}/.atlasfile/kept-volumes" ;;
+    regoutro) printf 'inst_opensearch_data\t%s/outro\tAf!SenhaDoVolume9\n' "$SANDBOX" > "${SANDBOX}/.atlasfile/kept-volumes" ;;
+  esac
+  if [ "${4:-}" = "comenv" ]; then
+    printf 'PROJECTS_HOST_ROOT=%s/Projects\nOPENSEARCH_PASSWORD=Af!DoEnvExistente9\nATLASFILE_VERSION=9.9.9\n' \
+      "$SANDBOX" > "${SANDBOX}/inst/.env"
+  fi
+  AF_CORRIDA_OUT="${SANDBOX}/corrida.log"
+  env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+    AF_FAKE_RELEASES="${SANDBOX}/releases" \
+    bash "$REPO_ROOT/install.sh" --dir "${SANDBOX}/inst" --yes > "$AF_CORRIDA_OUT" 2>&1 || true
+}
+
+t "corrida inteira: dir com manifesto e registro escreve a senha DO VOLUME no .env"
+af_corrida_gate manifesto reg volume
+out="$(achata "$(cat "$AF_CORRIDA_OUT")")"
+case "$out" in *"reusing the data volume you kept"*) ok ;; *) no "a instalacao nao anunciou o reuso: [$out]" ;; esac
+case "$out" in *"password restored from the volume you kept"*) ok ;; *) no "a fase 3 nao disse que restaurou a senha: [$out]" ;; esac
+senha="$(grep '^OPENSEARCH_PASSWORD=' "${SANDBOX}/inst/.env" 2>/dev/null | cut -d= -f2-)"
+assert_eq "$senha" "Af!SenhaDoVolume9"
+senha_admin="$(grep '^OPENSEARCH_INITIAL_ADMIN_PASSWORD=' "${SANDBOX}/inst/.env" 2>/dev/null | cut -d= -f2-)"
+assert_eq "$senha_admin" "Af!SenhaDoVolume9"
+
+# O registro morre quando o .env e ESCRITO, nao quando a instalacao comeca: se
+# a fase 2 falhar (rede, checksum), consumi-lo antes teria perdido a senha do
+# volume para sempre. Aqui ele tem de estar consumido — o .env saiu.
+t "corrida inteira: o registro e consumido depois de o .env receber a senha"
+n_reg="$(grep -c inst_opensearch_data "${SANDBOX}/.atlasfile/kept-volumes" 2>/dev/null || true)"
+assert_eq "${n_reg:-0}" "0"
+
+t "corrida inteira: dir com .git reusa igual — o manifesto nunca foi o criterio"
+af_corrida_gate git reg volume
+out="$(achata "$(cat "$AF_CORRIDA_OUT")")"
+case "$out" in *"reusing the data volume you kept"*) ok ;; *) no "dir de clone nao reusou: [$out]" ;; esac
+assert_eq "$(grep '^OPENSEARCH_PASSWORD=' "${SANDBOX}/inst/.env" 2>/dev/null | cut -d= -f2-)" "Af!SenhaDoVolume9"
+
+t "corrida inteira: dir novo com volume de OUTRA instancia continua barrado"
+af_corrida_gate fresh regoutro volume
+out="$(achata "$(cat "$AF_CORRIDA_OUT")")"
+case "$out" in *"already holds data from another instance"*) ok ;; *) no "adotou volume estrangeiro: [$out]" ;; esac
+[ -f "${SANDBOX}/inst/.env" ] && no "instalou apesar da recusa" || ok
+
+t "corrida inteira: nosso dir com volume antigo sem senha registrada recusa em vez de subir quebrado"
+af_corrida_gate manifesto semreg volume
+out="$(achata "$(cat "$AF_CORRIDA_OUT")")"
+case "$out" in *"its admin password is not recorded"*) ok ;; *) no "seguiu calado para um stack que so responde 401: [$out]" ;; esac
+[ -f "${SANDBOX}/inst/.env" ] && no "escreveu .env com senha nova contra o volume velho" || ok
+
+t "corrida inteira: registro sem senha tambem recusa, em vez de anunciar um reuso que nao acontece"
+af_corrida_gate manifesto regvazio volume
+out="$(achata "$(cat "$AF_CORRIDA_OUT")")"
+case "$out" in *"its admin password is not recorded"*) ok ;; *) no "nao recusou o registro sem senha: [$out]" ;; esac
+case "$out" in *"reusing the data volume you kept"*) no "anunciou reuso com registro sem senha" ;; *) ok ;; esac
+
+t "corrida inteira: sem volume nenhum, instalacao limpa nao e barrada"
+af_corrida_gate fresh semreg semvolume
+out="$(achata "$(cat "$AF_CORRIDA_OUT")")"
+case "$out" in *"another instance"*|*"is not recorded"*) no "barrou uma instalacao limpa: [$out]" ;; *) ok ;; esac
+case "$out" in *"password generated for this install"*) ok ;; *) no "nao chegou a criar o .env: [$out]" ;; esac
+
+# A meia-volta: quem ESCREVE o registro e o `--uninstall --keep-data`, no fluxo
+# principal. Testar so a primitiva deixava vivo o mutante que grava o diretorio
+# errado — a linha nasce bonita e nunca casa com instalacao nenhuma.
+t "a desinstalacao com --keep-data grava o registro com o diretorio REAL da instalacao"
+make_uninstall_sandbox
+printf 'OPENSEARCH_PASSWORD=Af!DoEnvDaInstalacao9\n' > "${SANDBOX}/inst/.env"
+manifesto="${SANDBOX}/inst/.atlasfile-install-manifest"
+printf 'schema\t1\nrepo_clone\tpreexisting\ninstall_dir\t%s/inst\nenv_file\tcreated\n' "$SANDBOX" > "$manifesto"
+: > "${SANDBOX}/tty_in"
+run_uninstaller --keep-data --yes >/dev/null 2>&1 || true
+linha="$(awk -F'\t' '{ printf "%s|%s|%s", $1, $2, $3 }' "${SANDBOX}/.atlasfile/kept-volumes" 2>/dev/null || true)"
+case "$linha" in
+  "inst_opensearch_data|${SANDBOX}/inst|Af!DoEnvDaInstalacao9") ok ;;
+  *) no "registro fora do contrato depois do --keep-data: [$linha]" ;;
+esac
+
+t "corrida inteira: com .env no lugar o registro NAO e queimado num re-run"
+af_corrida_gate manifesto reg volume comenv
+out="$(achata "$(cat "$AF_CORRIDA_OUT")")"
+case "$out" in *".env already exists"*) ok ;; *) no "nao preservou o .env do usuario: [$out]" ;; esac
+case "$out" in *"reusing the data volume you kept"*) no "anunciou reuso num re-run com .env" ;; *) ok ;; esac
+n_reg="$(grep -c inst_opensearch_data "${SANDBOX}/.atlasfile/kept-volumes" 2>/dev/null || true)"
+assert_eq "${n_reg:-0}" "1"
+
 make_sandbox
 af_release_local 9.9.9
 stub_curl_release
@@ -1967,6 +2220,171 @@ hardcoded="$(grep -n 'http://localhost:8000' "$REPO_ROOT/install.sh" | grep -v '
 t "e o mesmo para a porta 9200 do OpenSearch na guarda e no doctor"
 hardcoded="$(grep -nE 'in 8000 9200|iTCP:"?9200' "$REPO_ROOT/install.sh" | grep -v '^[0-9]*:[[:space:]]*#' || true)"
 [ -z "$hardcoded" ] && ok || no "porta 9200 literal na guarda/doctor: $hardcoded"
+
+# ── Flag do Dashboards (--enable-dashboards / --no-dashboards) ──────────────
+# O opt-in da Fase 2 vira flag: liga = DASHBOARDS_ENABLED=true + token
+# dashboards no CSV COMPOSE_PROFILES; desliga = o inverso + teardown do
+# container (o --remove-orphans NAO pega servico com profile — medido no T0).
+t "--enable-dashboards e --no-dashboards passam pelo parser"
+bash "$REPO_ROOT/install.sh" --enable-dashboards --help >/dev/null 2>&1 && ok || no "--enable-dashboards recusada"
+bash "$REPO_ROOT/install.sh" --no-dashboards --help >/dev/null 2>&1 && ok || no "--no-dashboards recusada"
+
+# NUNCA via --help (ele sai DENTRO do loop do parser e a validacao pos-loop
+# nao rodaria): o cenario roda o caminho real e exige rc!=0 + mensagem com as
+# DUAS flags + zero ferramenta tocada.
+t "o par contraditorio e recusado cedo, com mensagem, sem tocar ferramenta"
+make_sandbox
+rc=0; out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --enable-dashboards --no-dashboards --yes 2>&1)" || rc=$?
+[ "$rc" != "0" ] && ok || no "aceitou o par contraditorio"
+case "$out" in *"--enable-dashboards"*) ok ;; *) no "mensagem nao cita --enable-dashboards: [$out]" ;; esac
+case "$out" in *"--no-dashboards"*) ok ;; *) no "mensagem nao cita --no-dashboards: [$out]" ;; esac
+[ -s "$CALLS" ] && no "tocou ferramenta antes de recusar: $(cat "$CALLS")" || ok
+
+t "af_env_csv_add: append de verdade, idempotente, e cria a chave ausente"
+make_sandbox
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=outra\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_add COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=outra,dashboards"
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=outra,dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_add COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=outra,dashboards"
+out="$(run_case -- 'cd "$SANDBOX"; : > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_add COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=dashboards"
+
+t "af_env_csv_remove: token-wise; ultimo token remove a LINHA; similar intocado"
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=outra,dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_remove COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=outra"
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_remove COMPOSE_PROFILES dashboards >/dev/null; grep -c "^COMPOSE_PROFILES=" .env || true')"
+assert_eq "$out" "0"
+out="$(run_case -- 'cd "$SANDBOX"; printf "COMPOSE_PROFILES=dashboards-extra\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  af_env_csv_remove COMPOSE_PROFILES dashboards >/dev/null; grep "^COMPOSE_PROFILES=" .env')"
+assert_eq "$out" "COMPOSE_PROFILES=dashboards-extra"
+
+t "af_dash_desired: precedencia flag > env do processo > .env, token-wise"
+make_sandbox
+out="$(run_case -- 'INSTALL_DIR="$SANDBOX/nda"; WITH_DASHBOARDS=1; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "LIGADO"
+out="$(run_case COMPOSE_PROFILES=dashboards -- 'INSTALL_DIR="$SANDBOX/nda"; WITH_DASHBOARDS=""; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "LIGADO"
+out="$(run_case COMPOSE_PROFILES=outra -- 'mkdir -p "$SANDBOX/ie"; printf "COMPOSE_PROFILES=dashboards\n" > "$SANDBOX/ie/.env"
+  INSTALL_DIR="$SANDBOX/ie"; WITH_DASHBOARDS=""; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "DESLIGADO"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ie2"; printf "COMPOSE_PROFILES=outra,dashboards\n" > "$SANDBOX/ie2/.env"
+  INSTALL_DIR="$SANDBOX/ie2"; WITH_DASHBOARDS=""; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "LIGADO"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ie3"; printf "COMPOSE_PROFILES=dashboards-extra\n" > "$SANDBOX/ie3/.env"
+  INSTALL_DIR="$SANDBOX/ie3"; WITH_DASHBOARDS=""; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "DESLIGADO"
+out="$(run_case COMPOSE_PROFILES=dashboards -- 'INSTALL_DIR="$SANDBOX/nda"; WITH_DASHBOARDS=0; af_dash_desired && echo LIGADO || echo DESLIGADO')"
+assert_eq "$out" "DESLIGADO"
+
+t "af_dash_apply: liga, desliga e sem flag nao toca no .env"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ia"; cd "$SANDBOX/ia"; : > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=1; af_dash_apply >/dev/null
+  printf "%s|%s" "$(grep "^DASHBOARDS_ENABLED=" .env)" "$(grep "^COMPOSE_PROFILES=" .env)"')"
+assert_eq "$out" "DASHBOARDS_ENABLED=true|COMPOSE_PROFILES=dashboards"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ib"; cd "$SANDBOX/ib"
+  printf "DASHBOARDS_ENABLED=true\nCOMPOSE_PROFILES=outra,dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=0; af_dash_apply >/dev/null
+  printf "%s|%s" "$(grep "^DASHBOARDS_ENABLED=" .env)" "$(grep "^COMPOSE_PROFILES=" .env)"')"
+assert_eq "$out" "DASHBOARDS_ENABLED=false|COMPOSE_PROFILES=outra"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ic"; cd "$SANDBOX/ic"; printf "X=1\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=""; af_dash_apply >/dev/null; cat .env')"
+assert_eq "$out" "X=1"
+
+t "af_dash_apply: --no-dashboards sem estado previo nao cria chave; token orfao e revertido"
+out="$(run_case -- 'mkdir -p "$SANDBOX/id"; cd "$SANDBOX/id"; printf "X=1\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=0; af_dash_apply >/dev/null; cat .env')"
+assert_eq "$out" "X=1"
+out="$(run_case -- 'mkdir -p "$SANDBOX/ie4"; cd "$SANDBOX/ie4"; printf "COMPOSE_PROFILES=dashboards\n" > .env; ENV_STATE=preexisting; AF_MANIFEST="$SANDBOX/mf"
+  WITH_DASHBOARDS=0; af_dash_apply >/dev/null
+  printf "%s|%s" "$(grep "^DASHBOARDS_ENABLED=" .env)" "$(grep -c "^COMPOSE_PROFILES=" .env || true)"')"
+assert_eq "$out" "DASHBOARDS_ENABLED=false|0"
+
+t "af_resolve_dash_port: env > .env > 5601"
+out="$(run_case DASHBOARDS_PORT=5699 -- 'INSTALL_DIR="$SANDBOX/x"; af_resolve_dash_port; printf %s "$AF_DASH_PORT"')"
+assert_eq "$out" "5699"
+out="$(run_case -- 'mkdir -p "$SANDBOX/dp"; printf "DASHBOARDS_PORT=5777\n" > "$SANDBOX/dp/.env"
+  INSTALL_DIR="$SANDBOX/dp"; af_resolve_dash_port; printf %s "$AF_DASH_PORT"')"
+assert_eq "$out" "5777"
+out="$(run_case -- 'INSTALL_DIR="$SANDBOX/x"; af_resolve_dash_port; printf %s "$AF_DASH_PORT"')"
+assert_eq "$out" "5601"
+
+t "af_panel_dash: ligado imprime URL e a credencial CERTA; desligado, silencio"
+make_sandbox
+out="$(run_case -- 'mkdir -p "$SANDBOX/ip"; cd "$SANDBOX/ip"
+  printf "OPENSEARCH_PASSWORD=chave-errada\nOPENSEARCH_INITIAL_ADMIN_PASSWORD=Af!certa9\nCOMPOSE_PROFILES=dashboards\n" > .env
+  INSTALL_DIR="$SANDBOX/ip"; WITH_DASHBOARDS=""; AF_DASH_PORT=5601; af_panel_dash')"
+printf '%s' "$out" | grep -q 'Af!certa9' && ok || no "nao imprimiu a INITIAL (a que o container aceita): [$out]"
+printf '%s' "$out" | grep -q 'chave-errada' && no "imprimiu OPENSEARCH_PASSWORD (a chave que pode nao logar)" || ok
+printf '%s' "$out" | grep -q '5601' && ok || no "sem a URL do dashboards: [$out]"
+out="$(run_case -- 'mkdir -p "$SANDBOX/iq"; cd "$SANDBOX/iq"
+  printf "OPENSEARCH_INITIAL_ADMIN_PASSWORD=Af!x9\n" > .env
+  INSTALL_DIR="$SANDBOX/iq"; WITH_DASHBOARDS=""; AF_DASH_PORT=5601; af_panel_dash')"
+[ -z "$out" ] && ok || no "painel imprimiu credencial com dashboards DESLIGADO (vazamento): [$out]"
+
+t "af_stack_up conta os servicos de verdade e faz o teardown na ordem up->rm"
+make_sandbox
+out="$(run_case COMPOSE_PROFILES=dashboards -- 'AF_SOURCE_PATH=0; IS_TTY=0; LOG_FILE="$SANDBOX/log"
+  INSTALL_DIR="$SANDBOX"; WITH_DASHBOARDS=""; af_stack_up' 2>&1)"
+printf '%s' "$out" | grep -q 'starting the 3 services' && ok || no "com dashboards nao contou 3: [$out]"
+: > "$CALLS"
+out="$(run_case -- 'AF_SOURCE_PATH=0; IS_TTY=0; LOG_FILE="$SANDBOX/log"
+  INSTALL_DIR="$SANDBOX"; WITH_DASHBOARDS=0; af_stack_up' 2>&1)"
+printf '%s' "$out" | grep -q 'starting the 2 services' && ok || no "desligando nao contou 2: [$out]"
+grep -q 'compose --profile dashboards rm -sf opensearch-dashboards' "$CALLS" \
+  && ok || no "teardown ausente ou com nome errado (typo e no-op silencioso): $(cat "$CALLS")"
+linha_up="$(grep -n ' up -d' "$CALLS" | head -1 | cut -d: -f1)"
+linha_rm="$(grep -n 'rm -sf opensearch-dashboards' "$CALLS" | head -1 | cut -d: -f1)"
+[ -n "$linha_up" ] && [ -n "$linha_rm" ] && [ "$linha_up" -lt "$linha_rm" ] \
+  && ok || no "ordem errada: up=$linha_up rm=$linha_rm (o app novo vem ANTES de perder o dashboards)"
+: > "$CALLS"
+run_case -- 'AF_SOURCE_PATH=0; IS_TTY=0; LOG_FILE="$SANDBOX/log"
+  INSTALL_DIR="$SANDBOX"; WITH_DASHBOARDS=""; af_stack_up' >/dev/null 2>&1
+grep -q 'rm -sf' "$CALLS" && no "teardown rodou sem --no-dashboards" || ok
+
+t "guarda: ligando com 5601 ocupada falha ensinando DASHBOARDS_PORT"
+make_sandbox
+mkdir -p "${SANDBOX}/inst"; printf 'services: {}\n' > "${SANDBOX}/inst/docker-compose.yml"
+cat > "${SANDBOX}/bin/ss" <<EOF
+#!/usr/bin/env bash
+echo "ss \$*" >> "${CALLS}"
+printf 'LISTEN 0 4096 0.0.0.0:5601 0.0.0.0:*\n'
+EOF
+chmod +x "${SANDBOX}/bin/ss"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --yes --no-open --enable-dashboards --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"port 5601 is already in use"*) ok ;; *) no "nao barrou a 5601 ligando: [$out]" ;; esac
+case "$out" in *"DASHBOARDS_PORT"*) ok ;; *) no "a falha nao ensina DASHBOARDS_PORT: [$out]" ;; esac
+
+t "e desligando, a 5601 ocupada NAO bloqueia nem e checada"
+: > "$CALLS"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --yes --no-open --no-dashboards --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"port 5601"*) no "checou/barrou a 5601 num --no-dashboards: [$out]" ;; *) ok ;; esac
+
+t "doctor diz o estado do dashboards e nao afirma ligado sem estado"
+make_uninstall_sandbox
+printf 'COMPOSE_PROFILES=dashboards\nDASHBOARDS_ENABLED=true\n' > "${SANDBOX}/inst/.env"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"observability dashboard"*) ok ;; *) no "doctor nao cita o dashboards: [$out]" ;; esac
+case "$out" in *"enabled"*) ok ;; *) no "doctor nao diz que esta ligado: [$out]" ;; esac
+rm -f "${SANDBOX}/inst/.env"
+out="$(env -i HOME="$SANDBOX" PATH="${SANDBOX}/bin:/usr/bin:/bin" TTY_DEV=/dev/null \
+  bash "$REPO_ROOT/install.sh" --doctor --dir "${SANDBOX}/inst" 2>&1 || true)"
+case "$out" in *"observability dashboard"*"enabled (profile active)"*) no "doctor afirmou ligado sem estado nenhum" ;; *) ok ;; esac
+
+t "uninstall com profile: o down leva o --profile dashboards junto"
+make_uninstall_sandbox
+: > "${SANDBOX}/tty_in"
+run_uninstaller --yes --keep-data --delegated >/dev/null 2>&1 || true
+grep -q 'compose --env-file.*--profile dashboards.*down' "$CALLS" \
+  && ok || no "down sem o profile (deixaria o container de pe): $(grep 'compose' "$CALLS" | head -2)"
 
 # Achado do E2E da 4a numa VM real: um uninstall parcial anterior (pasta suja
 # preservada) remove o .env; a re-execucao com --force morria na interpolacao

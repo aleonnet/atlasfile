@@ -577,6 +577,25 @@ Assert-Match "-Branch virou caminho de contribuidor" $out "only with -FromSource
 # caminho fonte e um clone mesmo, e o positivo acima cobra o qualificador.
 Assert-True "-Branch nao promete mais clone por padrao" ($out -notmatch "Branch to clone \(default") "a linha do -Branch ainda promete clone incondicional"
 
+Write-Host "== H9. dashboards: flags viajam, par recusado cedo, contrapositivos =="
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-EnableDashboards", "-NoOpen")
+$calls = Calls
+Assert-Match "-EnableDashboards viaja como --enable-dashboards" $calls "--enable-dashboards"
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-NoDashboards", "-NoOpen")
+$calls = Calls
+Assert-Match "-NoDashboards viaja como --no-dashboards" $calls "--no-dashboards"
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-NoOpen")
+$calls = Calls
+Assert-NoMatch "sem as flags, nada de --enable-dashboards" $calls "--enable-dashboards"
+Assert-NoMatch "e nada de --no-dashboards" $calls "--no-dashboards"
+$sb = New-Sandbox
+$out = Run-Installer @("-Yes", "-EnableDashboards", "-NoDashboards")
+Assert-Match "o par contraditorio e recusado" $out "cannot be combined"
+Assert-True "e nenhuma ferramenta chegou a ser chamada" (-not ((Calls) -match '\S')) "houve chamada apos o par contraditorio"
+
 Write-Host "== K. o caminho ANIMADO executa e termina no quadro final =="
 # Sem o ATLASFILE_FORCE_ANIM este caminho seria intestavel: redirecionado, o
 # instalador escolhe o banner estatico, e um erro de indice na tabela da orbita
