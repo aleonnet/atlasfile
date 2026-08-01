@@ -465,25 +465,17 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 ### O instalador recusa: "its admin password is not recorded"
 
-Acontece quando existe um volume de dados de uma instalação anterior naquela
-pasta, o `.env` não está mais lá e a senha daquele volume não ficou registrada
-(desinstalação feita por uma versão antiga do instalador, ou com o daemon do
-Docker fora do ar, ou `.env` apagado à mão). O índice de segurança do OpenSearch
-guarda a senha da primeira subida e não muda: instalar por cima geraria uma
-senha nova e **toda requisição responderia 401**, com a stack de pé. Por isso a
-recusa é antes de instalar, não depois. Duas saídas:
+Existe um volume de dados de uma instalação anterior naquela pasta e a senha
+dele não ficou registrada. O índice de segurança do OpenSearch guarda a senha da
+primeira subida: instalar por cima geraria outra e **toda requisição responderia
+401**. Por isso a recusa vem antes de instalar, não depois. Para começar limpo:
 
 ```bash
-# 1. devolver a senha antiga: a pasta guarda os backups de .env do instalador
-ls ~/AtlasFile/.env.backup.*
-cp ~/AtlasFile/.env.backup.<data> ~/AtlasFile/.env   # e re-execute o instalador
-
-# 2. ou começar limpo: apaga o índice (seus documentos e o journal ficam)
 curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --uninstall --purge-data
 ```
 
-O índice é reconstruível: os documentos e o `_ATLASFILE/journal` em disco são a
-fonte, e o Reconcile os reindexa.
+Seus documentos e o `_ATLASFILE/journal` ficam em disco — o Reconcile reconstrói
+o índice.
 
 ### Limpar ambiente local (containers + rede + volumes)
 

@@ -3111,7 +3111,7 @@ case "$AF_VOLUME_DECISION" in
   refuse)
     fail "fresh install into ${INSTALL_DIR}, but the volume '${compose_project}_opensearch_data' already holds data from another instance. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the volume (docker volume rm) if you are sure you no longer need it." ;;
   nopass)
-    fail "the volume '${compose_project}_opensearch_data' holds an OpenSearch index from an earlier install in ${INSTALL_DIR}, and its admin password is not recorded — installing now would generate a new one and every request would answer 401. Restore the .env you had (look for .env.backup.* in ${INSTALL_DIR}), or re-run with --uninstall --purge-data to erase the index and start clean (your documents and the journal on disk are the source: Reconcile rebuilds it)." ;;
+    fail "the volume '${compose_project}_opensearch_data' holds an index from an earlier install and its admin password is not recorded — a new install would generate another one and every request would answer 401. Start clean: re-run with --uninstall --purge-data (your documents stay; Reconcile rebuilds the index)." ;;
   proceed)
     : ;;
 esac
