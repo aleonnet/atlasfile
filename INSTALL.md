@@ -463,6 +463,28 @@ docker compose down
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
+### O instalador recusa: "its admin password is not recorded"
+
+Acontece quando existe um volume de dados de uma instalação anterior naquela
+pasta, o `.env` não está mais lá e a senha daquele volume não ficou registrada
+(desinstalação feita por uma versão antiga do instalador, ou com o daemon do
+Docker fora do ar, ou `.env` apagado à mão). O índice de segurança do OpenSearch
+guarda a senha da primeira subida e não muda: instalar por cima geraria uma
+senha nova e **toda requisição responderia 401**, com a stack de pé. Por isso a
+recusa é antes de instalar, não depois. Duas saídas:
+
+```bash
+# 1. devolver a senha antiga: a pasta guarda os backups de .env do instalador
+ls ~/AtlasFile/.env.backup.*
+cp ~/AtlasFile/.env.backup.<data> ~/AtlasFile/.env   # e re-execute o instalador
+
+# 2. ou começar limpo: apaga o índice (seus documentos e o journal ficam)
+curl -fsSL https://raw.githubusercontent.com/aleonnet/atlasfile/main/install.sh | bash -s -- --uninstall --purge-data
+```
+
+O índice é reconstruível: os documentos e o `_ATLASFILE/journal` em disco são a
+fonte, e o Reconcile os reindexa.
+
 ### Limpar ambiente local (containers + rede + volumes)
 
 ```bash
@@ -551,7 +573,7 @@ make uninstall
 | Item | Comportamento |
 |---|---|
 | Containers, rede e imagens do app | `docker compose down --rmi local` rodado de dentro da instalação (o compose resolve o projeto sozinho), mais remoção explícita das imagens nomeadas (`ghcr.io/aleonnet/atlasfile:*` e `atlasfile-local:*` — `--rmi local` não remove imagem com `image:` no compose). Nunca por nome de container (os nomes `atlasfile-*` são fixos e podem ser de outra instalação) |
-| Volume do OpenSearch (o índice) | **Sem default**: ele pergunta. `--purge-data` apaga, `--keep-data` mantém. Modo headless exige uma das duas. Seus documentos e o journal em `_ATLASFILE/` ficam em disco e não são afetados — o índice se reconstrói com Reconciliar |
+| Volume do OpenSearch (o índice) | **Sem default**: ele pergunta. `--purge-data` apaga, `--keep-data` mantém — e guarda junto a senha daquele volume (em `~/.atlasfile/kept-volumes`, modo 600), porque o índice de segurança do OpenSearch não aceita outra depois da primeira subida; a reinstalação **na mesma pasta** a restaura sozinha. Modo headless exige uma das duas. Seus documentos e o journal em `_ATLASFILE/` ficam em disco e não são afetados — o índice se reconstrói com Reconciliar |
 | Imagens `opensearchproject/*` | Preservadas (podem ser compartilhadas com outros stacks); o resumo mostra como liberar o espaço |
 | Pasta da instalação | Removida **só** se o manifesto disser que o instalador a criou (clone `created` ou bundle) e não houver trabalho seu dentro — alterações locais no clone, ou arquivos que o instalador não pôs numa instalação bundle (`--force` para forçar). Um clone de desenvolvimento é sempre preservado |
 | Pasta de projetos | **Nunca apagada.** A única exceção é uma pasta que o instalador criou e que continua vazia |

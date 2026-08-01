@@ -508,7 +508,7 @@ funcional, assumindo compromisso público de estabilidade).
 
 ---
 
-## Fase 4a — `install.sh` sem clone (Linux/macOS)
+## Fase 4a — `install.sh` sem clone (Linux/macOS) — **ENTREGUE 2026-07-31**
 
 > **EXECUTADA em 2026-07-31 (sem bump de versão — o app segue 1.0.0; o
 > install.sh chega pelo raw/main no merge)** — registro em
@@ -659,12 +659,14 @@ Riscos **não** intencionais, a tratar na mesma mudança:
    duas fontes de verdade (ver
    `planos_concluidos/tres_correcoes_naming_reconcile_dryrun_v0563.plan.md`).
 
-**Congela até a Fase 4b definir a forma**
+**Congela até a Fase 4b definir a forma** — ~~congelado~~, **resolvido na 4b**
 
-4. **Item 2 — `-RepoUrl` / `-NoOpen` / `-NoOllama` no `install.ps1`.** Implementar
-   `-RepoUrl` agora é construir uma bandeira que a Fase 4b apaga: sem clone não há
-   repo URL, há registry e versão. `-NoOpen` e `-NoOllama` são ortogonais e podem
-   ir a qualquer momento.
+4. ~~**Item 2 — `-RepoUrl` / `-NoOpen` / `-NoOllama` no `install.ps1`.**~~ A 4b
+   decidiu a forma: `-RepoUrl` nasceu **só com `-FromSource`** (o caminho
+   contribuidor, onde repo URL ainda faz sentido), junto de `-Version` e
+   `-NoOpen`. `-NoOllama` **deliberadamente não nasceu** — é flag já depreciada
+   que o ps1 nunca teve. Registro:
+   `planos_concluidos/fase4b_installps1_release_flags_painel.plan.md`.
 
 **Resolvido antes deste plano executar**
 
@@ -693,10 +695,10 @@ Riscos **não** intencionais, a tratar na mesma mudança:
 8. "Durabilidade de chats e eventos de custo" — gatilho é "antes da próxima minor
    com mudanças de índice"; a Fase 2 não mexe em índice. Segue no roadmap.
 
-**Achado lateral, sem custo:** `tests/installer/win/run.ps1:1073` diz "uma
-bancada de 123 assertivas" e o arquivo tem 206 callsites — número obsoleto num
-comentário (e envelhecendo: eram 195 na v0.56.2), que o `check_consistency.py`
-não pega por não ser asserção. Corrigir quando a Fase 4b tocar o arquivo.
+**Achado lateral, sem custo:** ~~`tests/installer/win/run.ps1:1073` diz "uma
+bancada de 123 assertivas"~~ — **corrigido**: o comentário com o número obsoleto
+saiu do arquivo (a bancada está em 241 callsites em 2026-08-01). Continua sem
+guarda automática: o `check_consistency.py` não pega número em comentário.
 
 ### Ordem recomendada
 
