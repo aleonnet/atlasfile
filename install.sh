@@ -974,6 +974,14 @@ manifest_set() { # <file> <key> <value> — merge, never downgrading `created`
 host_get() { manifest_get "$AF_HOST_MANIFEST" "$1"; }
 host_set() { manifest_set "$AF_HOST_MANIFEST" "$1" "$2"; }
 
+# O diretório como CHAVE: sem a barra final, que não muda o lugar mas mudaria a
+# comparação de texto (e, sob a guarda nova, barraria a instalação).
+af_dir_key() { # <dir>
+  local d="$1"
+  [ "$d" = "/" ] || d="${d%/}"
+  printf '%s' "$d"
+}
+
 # Anota que ESTA desinstalação preservou este volume, para este diretório.
 # Best-effort como o resto da escrituração: nunca derruba uma desinstalação.
 # A SENHA vai junto, e é obrigatório: o índice de segurança do OpenSearch nasce
@@ -989,6 +997,10 @@ host_set() { manifest_set "$AF_HOST_MANIFEST" "$1" "$2"; }
 af_kept_volume_record() { # <volume> <install dir> <senha do opensearch>
   [ -n "$1" ] || return 0
   mkdir -p "$AF_STATE_DIR" 2>/dev/null || return 0
+  # A chave e comparada como TEXTO na instalacao seguinte: `--dir ~/AtlasFile/`
+  # e `--dir ~/AtlasFile` sao o mesmo lugar e produzem o mesmo nome de volume,
+  # entao a barra final tem de sumir dos dois lados (ver af_kept_volume_peek).
+  set -- "$1" "$(af_dir_key "$2")" "${3:-}"
   printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}" >> "$AF_KEPT_VOLUMES" 2>/dev/null || true
   chmod 600 "$AF_KEPT_VOLUMES" 2>/dev/null || true
   return 0
@@ -1037,19 +1049,20 @@ af_os_password() {
   printf 'Af!%s9' "$r"
 }
 
+# LER, sem consumir. O consumo mora na fase 3, depois de o .env receber a senha
+# (af_kept_volume_forget): entre reclamar e usar existem o download do bundle e
+# a verificação do checksum, e uma falha ali levava junto a única cópia da senha
+# do volume — o índice ficava inacessível para sempre. Reuso continua sendo de
+# uma vez; o que dispara a marca é o .env escrito, não a intenção de instalar.
 AF_KEPT_VOLUME_PASS=""
-af_kept_volume_claim() { # <volume> <install dir> — senha sai em AF_KEPT_VOLUME_PASS
+af_kept_volume_peek() { # <volume> <install dir> — senha sai em AF_KEPT_VOLUME_PASS
   AF_KEPT_VOLUME_PASS=""
   [ -f "$AF_KEPT_VOLUMES" ] || return 1
-  awk -F'\t' -v v="$1" -v d="$2" '$1 == v && $2 == d { achou = 1 } END { exit !achou }' \
+  local d; d="$(af_dir_key "$2")"
+  awk -F'\t' -v v="$1" -v d="$d" '$1 == v && $2 == d { achou = 1 } END { exit !achou }' \
     "$AF_KEPT_VOLUMES" 2>/dev/null || return 1
-  AF_KEPT_VOLUME_PASS="$(awk -F'\t' -v v="$1" -v d="$2" \
+  AF_KEPT_VOLUME_PASS="$(awk -F'\t' -v v="$1" -v d="$d" \
     '$1 == v && $2 == d { print $3; exit }' "$AF_KEPT_VOLUMES" 2>/dev/null || true)"
-  local tmp="${AF_KEPT_VOLUMES}.tmp.$$"
-  if awk -F'\t' -v v="$1" -v d="$2" '!($1 == v && $2 == d)' "$AF_KEPT_VOLUMES" > "$tmp" 2>/dev/null; then
-    mv "$tmp" "$AF_KEPT_VOLUMES" 2>/dev/null || true
-  fi
-  rm -f "$tmp" 2>/dev/null || true
   return 0
 }
 
@@ -2765,6 +2778,48 @@ af_fresh_install_dir() { # <dir>
   return 0
 }
 
+# O que fazer com um volume de dados que JA EXISTE antes de instalar.
+#
+# A pergunta certa nao e "o dir e novo?" — e "a fase 3 vai GERAR uma senha
+# nova?". As duas coincidiam so por acidente (dir novo nunca tem .env), e o
+# acidente cobrou caro: um `--uninstall --keep-data` que PRESERVA a pasta deixa
+# o manifesto para tras (o uninstall so apaga o do HOST), o dir deixa de ser
+# "fresh" para sempre, e a instalacao seguinte gerava senha nova contra o indice
+# de seguranca antigo. Stack inteiro no ar, 401 em tudo, sem uma linha de aviso
+# — medido numa VM Ubuntu no ciclo real. `fresh` nunca foi criterio para
+# REUSAR; e criterio para saber DE QUEM e o volume que ninguem reclamou.
+#
+# A decisao inteira mora aqui, e nao no `if` da fase 1, porque e ela que precisa
+# de prova: a fase 1 fica abaixo do gate de biblioteca, e um mutante que mexesse
+# so no `if` passaria por qualquer teste de funcao.
+AF_VOLUME_DECISION=""
+AF_REUSE_VOLUME=""
+af_volume_decide() { # <volume> <install dir> — resultado em AF_VOLUME_DECISION
+  AF_VOLUME_DECISION="proceed"
+  # Com .env no lugar a senha ja existe: nada a decidir e, sobretudo, nada a
+  # consumir — queimar o registro num re-run de rotina perderia a senha do
+  # volume sem entregar nada em troca.
+  [ -f "${2}/.env" ] && return 0
+  docker volume ls -q 2>/dev/null | grep -qx "$1" || return 0
+  if af_kept_volume_peek "$1" "$2"; then
+    if [ -n "$AF_KEPT_VOLUME_PASS" ]; then
+      AF_REUSE_OS_PASS="$AF_KEPT_VOLUME_PASS"
+      AF_REUSE_VOLUME="$1"
+      AF_VOLUME_DECISION="reuse"
+    else
+      # Registro nosso, mas sem a senha (a desinstalacao nao conseguiu le-la).
+      # Reusar assim anuncia sucesso e entrega 401 em tudo.
+      AF_VOLUME_DECISION="nopass"
+    fi
+  elif af_fresh_install_dir "$2"; then
+    AF_VOLUME_DECISION="refuse"
+  else
+    # Nosso diretorio, volume antigo vivo, senha que ninguem tem.
+    AF_VOLUME_DECISION="nopass"
+  fi
+  return 0
+}
+
 # Downgrade e decisao do usuario, nunca um default (mesma familia da escolha do
 # volume no uninstall): headless FALHA em vez de adivinhar, e --yes nao pula
 # esta confirmacao especifica — o indice do OpenSearch escrito pela versao mais
@@ -3044,25 +3099,22 @@ if [ -n "${other_dir}" ]; then
   info "existing instance found at: ${other_dir}"
   fail "the directory ${INSTALL_DIR} would produce the same docker project name ('${compose_project}') as the instance above — they would share containers and volumes. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the other instance first."
 fi
-# `af_fresh_install_dir` e nao `.git`: uma instalacao bundle re-executada nao
-# tem .git, e so o manifesto prova que o volume encontrado e DESTA instalacao —
-# sem isso o re-run seria barrado como se adotasse a instancia de outro.
-if af_fresh_install_dir "${INSTALL_DIR}" && docker volume ls -q 2>/dev/null | grep -qx "${compose_project}_opensearch_data"; then
-  # O volume pode ser NOSSO, guardado de propósito por um `--uninstall
-  # --keep-data` neste mesmo diretório. Sem essa distinção o plano prometia "a
-  # future reinstall reuses it" e a instalação seguinte recusava o dado como se
-  # fosse de outra instância — com dois remédios que não o devolvem. Era um beco
-  # sem saída, e foi medido numa VM Ubuntu.
-  if af_kept_volume_claim "${compose_project}_opensearch_data" "${INSTALL_DIR}"; then
-    info "reusing the data volume you kept on the last uninstall (${compose_project}_opensearch_data)"
-    # A senha viaja com o volume até a fase 3. Sem ela o stack sobe e não
-    # funciona: o índice de segurança do OpenSearch guarda a senha da PRIMEIRA
-    # subida, e uma gerada agora só produz "Authentication finally failed".
-    AF_REUSE_OS_PASS="$AF_KEPT_VOLUME_PASS"
-  else
-    fail "fresh install into ${INSTALL_DIR}, but the volume '${compose_project}_opensearch_data' already holds data from another instance. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the volume (docker volume rm) if you are sure you no longer need it."
-  fi
-fi
+# A decisão inteira mora em `af_volume_decide` (acima do gate de biblioteca),
+# porque é ela que precisa de prova; aqui em baixo fica só a tradução em tela.
+# A senha viaja com o volume até a fase 3: o índice de segurança do OpenSearch
+# guarda a senha da PRIMEIRA subida, e uma gerada agora só produz
+# "Authentication finally failed".
+af_volume_decide "${compose_project}_opensearch_data" "${INSTALL_DIR}"
+case "$AF_VOLUME_DECISION" in
+  reuse)
+    info "reusing the data volume you kept on the last uninstall (${compose_project}_opensearch_data)" ;;
+  refuse)
+    fail "fresh install into ${INSTALL_DIR}, but the volume '${compose_project}_opensearch_data' already holds data from another instance. Use --dir with a different name (e.g. --dir ~/AtlasFileNew) or remove the volume (docker volume rm) if you are sure you no longer need it." ;;
+  nopass)
+    fail "the volume '${compose_project}_opensearch_data' holds an OpenSearch index from an earlier install in ${INSTALL_DIR}, and its admin password is not recorded — installing now would generate a new one and every request would answer 401. Restore the .env you had (look for .env.backup.* in ${INSTALL_DIR}), or re-run with --uninstall --purge-data to erase the index and start clean (your documents and the journal on disk are the source: Reconcile rebuilds it)." ;;
+  proceed)
+    : ;;
+esac
 
 # Container names are fixed (atlasfile-*): even with distinct project names,
 # only one instance can exist at a time. If the containers belong to another
@@ -3192,6 +3244,11 @@ if [ ! -f .env ]; then
       .env > "${tmp_env}" && mv "${tmp_env}" .env
   if [ -n "${AF_REUSE_OS_PASS:-}" ]; then
     ok ".env created (OpenSearch password restored from the volume you kept)"
+    # O registro morre AQUI, e não na fase 1: entre decidir e escrever existem o
+    # download do bundle e a verificação do checksum, e uma falha ali levava
+    # junto a única cópia da senha do volume. Reuso segue sendo de uma vez — a
+    # marca é o .env escrito, não a intenção de instalar.
+    af_kept_volume_forget "$AF_REUSE_VOLUME"
   else
     ok ".env created (OpenSearch password generated for this install)"
   fi

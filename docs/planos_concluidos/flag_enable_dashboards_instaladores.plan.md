@@ -117,7 +117,14 @@ apenas as chamam.
 - **T6 CI**: pendente do PR (7 jobs). **T7 site**: pendente de merge +
   aprovação do texto pelo dono.
 
-## Descoberta fora de escopo (pendente de decisão)
+## Descoberta fora de escopo — CORRIGIDA em plano próprio
+
+> Resolvida em [`correcao_reuso_volume_pos_keep_data`](correcao_reuso_volume_pos_keep_data.plan.md),
+> no mesmo PR. A investigação mostrou que o fix candidato abaixo (apagar o
+> manifesto) **não resolveria** — `.git` também reprova o `af_fresh_install_dir`
+> — e criaria duas regressões. A correção entregue ataca o portão do volume: a
+> decisão passa a depender da ausência do `.env`, não da "frescura" do
+> diretório. O texto original fica abaixo como registro do diagnóstico.
 
 O E2E revelou um **bug real pré-existente** (interação Fase 4a ×
 uninstall): quando o uninstall preserva o diretório ("kept: what already
