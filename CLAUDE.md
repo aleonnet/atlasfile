@@ -4,33 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Diretrizes do projeto
 
-### Comunicação
-- Sempre responder no mesmo idioma do prompt (default PT-BR, Português do Brasil).
-- Ser objetivo, factual e mensurável.
-- Separar claramente: entendimento do problema, alternativas, trade-offs e recomendação.
-- Declarar explicitamente o grau de certeza de cada ponto: fato verificado no código, inferência, ou desconhecido.
-
-### Papel
-- Atuar como desenvolvedor sênior full stack e especialista em dados, com foco em sistemas reais de produção.
-- Tratar IA como ferramenta de apoio, nunca como tomadora de decisão.
-
-### Investigação obrigatória
-- Antes de sugerir solução, ler integralmente os códigos, schemas, queries e artefatos impactados.
-- Antes de propor mudança, confirmar entendimento do problema e do objetivo de negócio.
-- Nunca assumir premissas ausentes; apontar ambiguidades, lacunas e limitações explicitamente.
-- Zero trial-and-error. Diagnosticar sistematicamente antes de propor alteração.
-
-### Soluções
-- Não propor soluções greenfield sem validar legado, ambiente, time e restrições operacionais.
-- Priorizar soluções simples, incrementais, reversíveis e testáveis.
-- Explicitar trade-offs técnicos e de negócio: manutenção, escala, custo, risco e impacto operacional.
-- Preferir utilitários battle-tested do framework/biblioteca adotados.
-
-### Código
-- Não gerar código sem minha aprovação explícita.
-- Perguntar "posso fazer?" não é autorização; aguardar autorização explícita.
-- Não alterar código fora do escopo aprovado.
-- Não deixar imports não utilizados, código morto ou constantes órfãs.
+> As regras de trabalho (comunicação, papel, investigação, escopo, git) valem
+> para todos os projetos e vivem no `CLAUDE.md` global do usuário — não são
+> repetidas aqui para não divergirem. Abaixo fica só o que é **deste**
+> repositório.
 
 ### Planejamento
 - Todo plano deve incluir:
@@ -47,21 +24,55 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Ao concluir planos (checklist obrigatório)
 1. Salvar plano em `docs/planos_concluidos/<nome_unico>.plan.md`
 2. Atualizar `docs/planos_concluidos/README.md` com o novo plano
-3. Bump de versão em `frontend/package.json` e `frontend/package-lock.json` seguindo SemVer:
-   - **patch** (0.0.x): bug fixes, ajustes visuais, correções de cálculo
-   - **minor** (0.x.0): novas features, novos endpoints, novos componentes
-   - **major** (x.0.0): breaking changes em APIs ou schemas
+3. Bump de versão **só em release real do app** — e **nunca por conta própria**:
+   - **Mudança de instalador NÃO bumpa** (`install.sh`/`install.ps1`/bancadas):
+     eles viajam por `raw.githubusercontent.com/main` e não fazem parte do
+     bundle da release. Decisão registrada em 2026-07-31; desde a v1.0.0 já
+     foram cinco planos concluídos sem bump.
+   - Quando bumpar: `frontend/package.json` + `frontend/package-lock.json`,
+     SemVer — **patch** (0.0.x) bug fixes e ajustes visuais; **minor** (0.x.0)
+     features, endpoints, componentes; **major** (x.0.0) breaking em API/schema.
+   - O bump exige **confirmação nominal do dono no momento**. Plano aprovado
+     não é autorização para bumpar.
 4. Atualizar `CHANGELOG.md` com as mudanças da versão
 5. Revisar `README.md` e `INSTALL.md` — atualizar se houve mudança em setup, dependências ou funcionalidades documentadas
 6. Adicionar todos os arquivos alterados ao git staging
 7. Propor texto de commit baseado nas alterações desde o último commit, considerando os planos concluídos
 
-### Git
-- NUNCA adicionar `--trailer` em commits (ex: `Made-with: Cursor` ou qualquer outro trailer não autorizado).
-- Commits devem conter exclusivamente a mensagem descritiva das mudanças, sem metadados de ferramentas.
-
 ## Skills obrigatórios
 - **safe-exec** (`.claude/skills/safe-exec/SKILL.md`): Deve ser sempre usado antes de executar qualquer comando Bash. Classifica comandos como safe (executar imediatamente) ou destructive (pedir confirmação explícita).
+
+## O que "verde" significa aqui (invariantes, não números)
+
+Número em arquivo apodrece — então o que vale é o **comando** e o **invariante**.
+Medir antes de afirmar; nunca citar contagem de memória.
+
+| Canal | Comando | Invariante |
+|---|---|---|
+| Bancada dos instaladores | `bash tests/installer/run.sh` | `0 failed` |
+| Baseline por NOME | `AF_BENCH_TRACE=1 bash tests/installer/run.sh 2>&1 >/dev/null \| grep -c '^TRACE'` | **zero nome perdido** contra a medição anterior (`comm -23` vazio). Nome de bloco é a unidade de regressão — total de asserções sozinho esconde perda |
+| Consistência dos instaladores | `python3 tests/installer/check_consistency.py` | 13 guardas verdes; reprovação é sinal, nunca flake |
+| Bancada Windows | `tests/installer/win/run.ps1` na VM, canal `prlctl exec` **sem** `-u` (SYSTEM) | `0 failed`; o canal `--current-user` mede errado por falta de elevação |
+| Backend / frontend | `make test` | `0 failed` |
+
+Última medição (2026-08-01): bancada sh **383/0** com **214 nomes**;
+consistência **13/13**. Windows **241/0** em 2026-07-31 (não re-medido depois).
+
+## Armadilhas conhecidas do `install.sh`
+
+- **O gate de biblioteca não torna nada intestável.** Abaixo do
+  `ATLASFILE_INSTALL_LIB` o `run_case` não alcança — mas a bancada **roda o
+  instalador inteiro** em ~1,4 s: release local (`af_release_local` +
+  `stub_curl_release`, tar e sha reais) + stub de docker que falha no `pull`, e
+  a corrida atravessa as fases 1–3 e morre na 4, com `.env` escrito e tela
+  inteira observável. **Nunca declarar um caminho "intestável" sem medir esse
+  canal** — foi premissa errada num plano aprovado, corrigida pela banca.
+- **Guarda se prova com mutante**, um por vez, cada um nomeando a asserção-alvo
+  que morreu; restauração byte-exata conferida com `cmp`.
+- **Nunca rodar processo que MUTA o `install.sh` em paralelo com suíte que o
+  lê** — o resultado vira ruído impossível de interpretar.
+- Instalação por bundle **não deixa `install.sh` na pasta**: re-executar exige o
+  one-liner do raw/main.
 
 ## Comandos de build e teste
 
