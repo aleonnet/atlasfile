@@ -51,12 +51,12 @@ Medir antes de afirmar; nunca citar contagem de memória.
 |---|---|---|
 | Bancada dos instaladores | `bash tests/installer/run.sh` | `0 failed` |
 | Baseline por NOME | `AF_BENCH_TRACE=1 bash tests/installer/run.sh 2>&1 >/dev/null \| grep -c '^TRACE'` | **zero nome perdido** contra a medição anterior (`comm -23` vazio). Nome de bloco é a unidade de regressão — total de asserções sozinho esconde perda |
-| Consistência dos instaladores | `python3 tests/installer/check_consistency.py` | 13 guardas verdes; reprovação é sinal, nunca flake |
+| Consistência dos instaladores | `python3 tests/installer/check_consistency.py` | 14 guardas verdes; reprovação é sinal, nunca flake. A 14ª é a **paridade dos gêmeos**: toda flag pública e toda chave de manifesto precisa de posição declarada no livro-razão (`PARIDADE_FLAGS`/`PARIDADE_MANIFESTO`) — "ambos" ou só-um-lado COM motivo; superfície nova sem posição = vermelho. Mudou de lado? Atualize o livro NA MESMA mudança |
 | Bancada Windows | `tests/installer/win/run.ps1` na VM, canal `prlctl exec` **sem** `-u` (SYSTEM) | `0 failed`; o canal `--current-user` mede errado por falta de elevação |
 | Backend / frontend | `make test` | `0 failed` |
 
-Última medição (2026-08-01): bancada sh **383/0** com **214 nomes**;
-consistência **13/13**. Windows **241/0** em 2026-07-31 (não re-medido depois).
+Última medição (2026-08-24): bancada sh **383/0** com **214 nomes**;
+consistência **14/14** (paridade dos gêmeos incluída, mutação testada nos dois sentidos). Windows **241/0** em 2026-07-31 (não re-medido depois).
 
 ## Armadilhas conhecidas do `install.sh`
 

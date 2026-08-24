@@ -4,6 +4,20 @@ Todas as mudanças relevantes do AtlasFile são documentadas neste arquivo.
 
 ---
 
+## 2026-08-24
+
+### Adicionado
+- **Guarda de paridade dos gêmeos** (`check_twin_parity`, a 14ª do
+  `check_consistency.py`): flag pública e chave de manifesto agora têm
+  posição declarada num livro-razão (`PARIDADE_FLAGS`/`PARIDADE_MANIFESTO`)
+  — "ambos" ou só-um-lado **com o motivo escrito** (ex.: `--no-ollama`
+  depreciada só no sh; `wsl_*` só no host Windows, que delega o lado Linux
+  ao install.sh dentro do WSL). Superfície nova sem posição no livro é
+  divergência: uma flag nascida num gêmeo não fica mais órfã no outro em
+  silêncio. Mutação testada nos dois sentidos (flag fantasma no sh, chave
+  fantasma no ps1 → 4 vermelhos, incluindo as guardas antigas pegando pelos
+  próprios ângulos; reversão limpa).
+
 ## Instalador — 2026-08-01 (reuso do volume guardado; sem bump — a versão do app segue 1.0.0)
 
 ### O 401 depois de `--uninstall --keep-data` numa pasta preservada

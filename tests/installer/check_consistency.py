@@ -447,6 +447,132 @@ def check_manifest_keys(problems):
                         % (PS, chave))
 
 
+# -----------------------------------------------------------------------------
+# Paridade dos GEMEOS (install.sh x install.ps1) - flags e chaves de manifesto.
+#
+# As checagens acima cruzam cada instalador com a PROPRIA bancada e ajuda, e a
+# arte entre os dois - mas nada impedia uma flag nascer no sh e nunca chegar ao
+# ps1 (ou vice-versa), nem uma chave de manifesto existir so de um lado sem
+# ninguem DECIDIR isso. A paridade aqui nao e igualdade cega: e um LIVRO-RAZAO.
+# Toda flag publica e toda chave de manifesto precisa de posicao declarada:
+#   "ambos"          - existe nos dois (nome normalizado)
+#   "sh:<motivo>"    - so no install.sh, com o porque escrito
+#   "ps:<motivo>"    - so no install.ps1, com o porque escrito
+# Superficie nova sem posicao no livro = divergencia. Mudou de lado? Atualize o
+# livro NA MESMA mudanca - e o motivo vira revisao, nao arqueologia.
+# -----------------------------------------------------------------------------
+
+# Normalizacao: "--keep-data" -> "keepdata" ; "KeepData" -> "keepdata"
+def _norm(nome):
+    return nome.lstrip("-").replace("-", "").lower()
+
+
+PARIDADE_FLAGS = {
+    # nucleo identico nos dois
+    "branch": "ambos", "dir": "ambos", "doctor": "ambos", "dryrun": "ambos",
+    "enableauth": "ambos", "enabledashboards": "ambos", "force": "ambos",
+    "fromsource": "ambos", "help": "ambos", "installdeps": "ambos",
+    "keepdata": "ambos", "nodashboards": "ambos", "noopen": "ambos",
+    "ollamamodel": "ambos", "port": "ambos", "projectsroot": "ambos",
+    "purgedata": "ambos", "removedeps": "ambos", "repourl": "ambos",
+    "uninstall": "ambos", "verbose": "ambos", "version": "ambos",
+    "withollama": "ambos", "yes": "ambos",
+    # so no sh, com motivo
+    "noollama": "sh: depreciada aceita por compat; o site nunca publicou -NoOllama",
+    "h": "sh: alias curto de --help; PowerShell resolve prefixo sozinho",
+    "y": "sh: alias curto de --yes; PowerShell resolve prefixo sozinho",
+}
+
+PARIDADE_MANIFESTO = {
+    # o lado Windows DELEGA o Linux ao install.sh dentro do WSL - o manifesto
+    # de la vive la; o host Windows so registra o que ELE criou
+    "docker": "ambos", "install_dir": "ambos",
+    "wsl": "ps: artefato do host Windows (wsl --install)",
+    "wsl_distro": "ps: distro criada/usada pelo bootstrap",
+    "wsl_user": "ps: usuario provisionado na distro",
+    "api_keys_file": "sh: gerado no lado Linux",
+    "bundle_backups": "sh: backups do bundle ficam no filesystem Linux",
+    "bundle_files": "sh: idem",
+    "bundle_sha": "sh: idem",
+    "compose_plugin": "sh: plugin do docker no Linux/macOS",
+    "docker_group": "sh: grupo docker e conceito Linux",
+    "env_backup": "sh: .env vive no lado Linux",
+    "env_file": "sh: idem",
+    "git": "sh: no Windows o git usado e o de dentro do WSL",
+    "homebrew": "sh: so macOS",
+    "projects_root": "sh: caminho do lado Linux",
+    "projects_root_created": "sh: idem",
+    "repo_clone": "sh: clone vive no lado Linux",
+}
+
+
+def _flags_sh_publicas(sh):
+    arms = sh[sh.find('case "$1" in'):]
+    arms = arms[:arms.find("esac")]
+    achadas = set()
+    for line in arms.splitlines():
+        m = re.match(r"\s*([-a-z|]+)\)", line)
+        if not m or "hidden" in line:
+            continue
+        for f in m.group(1).split("|"):
+            if f.startswith("-"):
+                achadas.add(_norm(f))
+    return achadas
+
+
+def _flags_ps(ps):
+    block = ps[ps.find("param("):]
+    block = block[:block.find(")\n")]
+    return {_norm(p) for p in re.findall(r"\$([A-Za-z]+)", block)}
+
+
+def check_twin_parity(problems):
+    sh, ps = read(SH), read(PS)
+
+    tem_sh = _flags_sh_publicas(sh)
+    tem_ps = _flags_ps(ps)
+    for nome in sorted(tem_sh | tem_ps):
+        pos = PARIDADE_FLAGS.get(nome)
+        if pos is None:
+            lados = "+".join(l for l, t in (("sh", tem_sh), ("ps", tem_ps)) if nome in t)
+            problems.append("paridade  flag '%s' (%s) sem posicao no livro-razao PARIDADE_FLAGS"
+                            % (nome, lados))
+            continue
+        if pos == "ambos":
+            if nome not in tem_sh:
+                problems.append("paridade  flag '%s' declarada 'ambos' mas sumiu do install.sh" % nome)
+            if nome not in tem_ps:
+                problems.append("paridade  flag '%s' declarada 'ambos' mas sumiu do install.ps1" % nome)
+        elif pos.startswith("sh") and nome in tem_ps:
+            problems.append("paridade  flag '%s' declarada so-sh mas existe no install.ps1 - atualize o livro" % nome)
+        elif pos.startswith("ps") and nome in tem_sh:
+            problems.append("paridade  flag '%s' declarada so-ps mas existe no install.sh - atualize o livro" % nome)
+    for nome, pos in sorted(PARIDADE_FLAGS.items()):
+        if pos == "ambos" and nome not in tem_sh and nome not in tem_ps:
+            problems.append("paridade  livro cita flag '%s' que nao existe em nenhum gemeo - limpe o livro" % nome)
+
+    esc_sh = set(re.findall(r"\bhost_set\s+([a-z_]+)\s", sh))
+    esc_sh |= set(re.findall(r"manifest_set\s+\"\$\w+\"\s+([a-z_]+)\s", sh))
+    esc_ps = set(re.findall(r"Set-AfState\s+\"([A-Za-z_]+)\"", ps))
+    esc_ps = {k.lower() for k in esc_ps}
+    for chave in sorted(esc_sh | esc_ps):
+        pos = PARIDADE_MANIFESTO.get(chave)
+        if pos is None:
+            lados = "+".join(l for l, t in (("sh", esc_sh), ("ps", esc_ps)) if chave in t)
+            problems.append("paridade  chave de manifesto '%s' (%s) sem posicao em PARIDADE_MANIFESTO"
+                            % (chave, lados))
+            continue
+        if pos == "ambos":
+            if chave not in esc_sh:
+                problems.append("paridade  chave '%s' declarada 'ambos' mas o install.sh nao a grava" % chave)
+            if chave not in esc_ps:
+                problems.append("paridade  chave '%s' declarada 'ambos' mas o install.ps1 nao a grava" % chave)
+        elif pos.startswith("sh") and chave in esc_ps:
+            problems.append("paridade  chave '%s' declarada so-sh mas o install.ps1 a grava - atualize o livro" % chave)
+        elif pos.startswith("ps") and chave in esc_sh:
+            problems.append("paridade  chave '%s' declarada so-ps mas o install.sh a grava - atualize o livro" % chave)
+
+
 def check_call_before_declaration(problems):
     """Funcao chamada pelo fluxo principal ANTES de ser declarada.
 
@@ -729,13 +855,15 @@ def main():
     check_quotes(problems)
     check_call_before_declaration(problems)
     check_manifest_keys(problems)
+    check_twin_parity(problems)
     for p in problems:
         print(p)
     if problems:
         print("\n%d divergencia(s) entre instalador, bancada e ajuda" % len(problems))
         return 1
     print("instaladores consistentes: assertivas casam com o fonte, ajuda casa com o parser, "
-          "sem funcao morta, mesma arte e mesmas primitivas de UI nos dois")
+          "sem funcao morta, mesma arte e mesmas primitivas de UI nos dois, e toda flag e "
+          "chave de manifesto com posicao declarada no livro-razao de paridade dos gemeos")
     return 0
 
 
